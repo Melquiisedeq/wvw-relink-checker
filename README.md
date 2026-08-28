@@ -9,11 +9,7 @@ relink, plus live tier standings for every NA and EU match.
 
 **[Open the live tool](https://melquiisedeq.github.io/wvw-relink-checker/)**
 
-<!--
-Optional: add a screenshot or short GIF of the tool here once you have one.
-Save the image in the repo (e.g. docs/screenshot.png) then use:
 ![WvW Relink Checker screenshot](docs/screenshot.png)
--->
 
 ## Why this exists
 
