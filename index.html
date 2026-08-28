@@ -26,24 +26,58 @@
     --border:#262c35;
     --text:#e7ebf0;
     --muted:#9aa4b2;
-    --accent:#c6923c;
-    --accent-soft:#3a2f1c;
+    --accent:#7fd6f2;
+    --accent-soft:rgba(127,214,242,.14);
+    --warm:#c6923c;
+    --warm-soft:#3a2f1c;
     --ok:#4caf7d;
     --err:#e15c5c;
+    --blue:#5b8ff0;
+    --green:#4caf7d;
+    --red:#e15c5c;
   }
   *{box-sizing:border-box;}
   body{
     margin:0;
-    padding:32px 16px;
+    padding:0;
     background:radial-gradient(circle at top, #1a1f27, #0f1216 60%);
     color:var(--text);
     font-family:'Segoe UI', system-ui, -apple-system, sans-serif;
-    display:flex;
-    justify-content:center;
   }
-  .wrap{width:100%;max-width:780px;}
-  h1{font-size:1.5rem;margin:0 0 4px;letter-spacing:.3px;}
-  .subtitle{color:var(--muted);font-size:.92rem;margin-bottom:24px;line-height:1.5;}
+  .page{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:24px;
+    padding:32px 16px;
+  }
+  .wrap{width:100%;max-width:720px;order:0;}
+  .rail{width:100%;max-width:720px;}
+  .rail-left{order:1;}
+  .rail-right{order:2;}
+  @media (min-width:1400px){
+    .page{flex-direction:row;justify-content:center;align-items:flex-start;}
+    .rail{width:300px;flex:0 0 300px;max-width:none;position:sticky;top:24px;}
+    .rail-left{order:-1;}
+    .rail-right{order:1;}
+    .wrap{order:0;}
+  }
+  .title-row{display:flex;align-items:center;gap:12px;margin-bottom:8px;}
+  .title-row svg{flex-shrink:0;filter:drop-shadow(0 0 5px rgba(140,224,255,.45));}
+  h1{
+    font-family:Cambria,Georgia,'Times New Roman',serif;
+    font-size:1.7rem;margin:0;letter-spacing:1.5px;text-transform:uppercase;
+    background:linear-gradient(100deg,#e7ebf0 20%,var(--accent) 55%,#e7ebf0 85%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .header-rule{
+    height:2px;border-radius:2px;margin:0 0 22px;
+    background:linear-gradient(90deg,var(--red),var(--accent),var(--blue),var(--green),var(--red));
+    background-size:300% 100%;opacity:.55;
+    animation:rule-scan 7s linear infinite;
+  }
+  @keyframes rule-scan{0%{background-position:0% 0;}100%{background-position:300% 0;}}
+  .subtitle{color:var(--muted);font-size:.92rem;margin-bottom:24px;line-height:1.5;max-width:720px;}
   .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:20px;}
   label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:8px;}
   textarea{
@@ -54,19 +88,67 @@
   textarea:focus{outline:2px solid var(--accent);}
   .row{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap;}
   button{
-    background:var(--accent);color:#1a1305;border:none;border-radius:8px;
+    background:var(--accent);color:#062733;border:none;border-radius:8px;
     padding:10px 18px;font-weight:600;font-size:.95rem;cursor:pointer;
-    transition:filter .15s ease;
+    transition:filter .15s ease, transform .1s ease;
   }
-  button:hover{filter:brightness(1.08);}
-  button:disabled{opacity:.5;cursor:wait;}
+  button:hover{filter:brightness(1.1);}
+  button:active{transform:scale(.96);}
+  button:disabled{opacity:.75;cursor:wait;transform:none;}
+  .btn-pips{display:inline-flex;align-items:center;gap:5px;height:1em;}
+  .btn-pips span{
+    width:6px;height:6px;border-radius:50%;opacity:.35;
+    animation:pip-pulse 1s ease-in-out infinite;
+  }
+  .btn-pips span:nth-child(1){background:var(--red);animation-delay:0s;}
+  .btn-pips span:nth-child(2){background:var(--blue);animation-delay:.2s;}
+  .btn-pips span:nth-child(3){background:var(--green);animation-delay:.4s;}
+  @keyframes pip-pulse{0%,100%{opacity:.3;transform:scale(.8);}50%{opacity:1;transform:scale(1.3);}}
+
+  /* --- "Check complete" effect: a page-wide jolt + fortress flash --- */
+  .page.shake{animation:page-shake .4s ease-in-out;}
+  @keyframes page-shake{
+    0%,100%{transform:translateX(0);}
+    20%{transform:translateX(-7px);}
+    40%{transform:translateX(6px);}
+    60%{transform:translateX(-4px);}
+    80%{transform:translateX(2px);}
+  }
+  .impact-overlay{
+    position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    pointer-events:none;z-index:50;opacity:0;
+  }
+  .impact-overlay::before{
+    content:'';position:absolute;inset:0;
+    background:radial-gradient(circle, rgba(140,224,255,.4) 0%, transparent 60%);
+  }
+  .impact-stack{
+    position:relative;width:200px;height:200px;
+    filter:drop-shadow(0 0 26px rgba(140,224,255,.9));
+    transform:scale(.3) rotate(-20deg);
+  }
+  .impact-crest{position:absolute;left:50%;top:50%;width:150px;transform:translate(-50%,-50%);}
+  .impact-overlay.play{animation:overlay-flash .85s ease-out;}
+  .impact-overlay.play .impact-stack{animation:fortress-rise .85s ease-out;}
+  @keyframes overlay-flash{
+    0%{opacity:0;}
+    18%{opacity:1;}
+    55%{opacity:.9;}
+    100%{opacity:0;}
+  }
+  @keyframes fortress-rise{
+    0%{transform:scale(.3) rotate(-25deg);}
+    30%{transform:scale(1.2) rotate(8deg);}
+    45%{transform:scale(1) rotate(-2deg);}
+    100%{transform:scale(1.06) rotate(0deg);}
+  }
   .hint{color:var(--muted);font-size:.8rem;margin-top:6px;}
   table{width:100%;border-collapse:collapse;margin-top:4px;font-size:.92rem;}
   th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--border);}
   th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;}
   tr:last-child td{border-bottom:none;}
   .tag{
-    display:inline-block;background:var(--accent-soft);color:var(--accent);
+    display:inline-block;background:var(--warm-soft);color:var(--warm);
     border-radius:6px;padding:2px 8px;font-size:.8rem;font-weight:600;
   }
   .status-ok{color:var(--ok);}
@@ -80,21 +162,120 @@
     animation:spin .7s linear infinite;vertical-align:-2px;margin-right:6px;
   }
   @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* --- Match panel (guild check results) --- */
+  .match-panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;}
+  .match-panel-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;}
+  .match-tier{font-weight:700;font-size:.95rem;}
+  .match-region{color:var(--muted);font-size:.78rem;}
+  .team-cols{display:grid;grid-template-columns:1fr;gap:10px;}
+  .team-col{border:1px solid var(--border);border-radius:10px;padding:10px;}
+  .team-col.is-yours{border-color:var(--accent);}
+  .team-head{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+  .dot{
+    width:10px;height:10px;border-radius:50%;flex-shrink:0;
+    box-shadow:0 0 0 2px rgba(0,0,0,.35), 0 0 6px 0 currentColor;
+  }
+  .dot-red{background:radial-gradient(circle at 30% 30%, #ff9a9a, var(--red));color:var(--red);}
+  .dot-blue{background:radial-gradient(circle at 30% 30%, #b8cdff, var(--blue));color:var(--blue);}
+  .dot-green{background:radial-gradient(circle at 30% 30%, #b3ecce, var(--green));color:var(--green);}
+  .dot-pending{background:#4b5563;box-shadow:none;}
+  .server-cell{display:flex;align-items:center;gap:8px;}
+  .team-name{font-weight:600;font-size:.88rem;}
+  .pin-badge{
+    display:inline-block;margin-top:2px;margin-bottom:6px;
+    background:var(--warm-soft);color:var(--warm);
+    border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:600;
+  }
+  .team-stats{display:flex;gap:12px;flex-wrap:wrap;font-size:.78rem;color:var(--muted);margin-bottom:8px;}
+  .panel-note{color:var(--muted);font-size:.78rem;font-style:italic;}
+
+  /* --- Live standings rails: deliberately understated, they're secondary info --- */
+  .standings-card{background:rgba(255,255,255,.015);border-color:rgba(255,255,255,.06);}
+  .standings-header{margin-bottom:12px;}
+  .standings-header h2{
+    margin:0 0 2px;font-size:.8rem;font-weight:600;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.06em;
+  }
+  .standings-grid{display:flex;flex-direction:column;gap:10px;}
+  .standing-match{border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:9px 10px;}
+  .standing-match-title{font-size:.7rem;color:var(--muted);margin-bottom:6px;font-weight:600;opacity:.8;}
+  .standing-side{
+    display:flex;flex-direction:column;gap:2px;padding:5px 0;font-size:.8rem;
+    border-bottom:1px solid rgba(255,255,255,.04);
+  }
+  .standing-side:last-child{border-bottom:none;}
+  .standing-side-top{display:flex;align-items:center;gap:7px;}
+  .standing-side-top .rank-badge{width:20px;height:20px;font-size:.64rem;}
+  .standing-side-top .dot{width:8px;height:8px;box-shadow:0 0 0 1px rgba(0,0,0,.35);}
+  .standing-side-name{font-weight:600;}
+  .standing-side-stats{color:var(--muted);font-size:.72rem;padding-left:27px;}
+  .stat-label{opacity:.75;}
+  .stat-value{color:var(--text);font-weight:600;}
+  .sep{opacity:.4;margin:0 4px;}
+  .rank-badge{
+    width:26px;height:26px;flex-shrink:0;
+    clip-path:polygon(50% 0%, 100% 22%, 100% 68%, 50% 100%, 0% 68%, 0% 22%);
+    display:flex;align-items:center;justify-content:center;
+    font-size:.78rem;font-weight:800;font-family:Cambria,Georgia,serif;
+    background:#0c0f13;border:1px solid var(--border);color:var(--muted);
+  }
+  .rank-1{background:linear-gradient(160deg,#fff3c4,#c99a2e 65%);color:#3a2a05;}
+  .rank-2{background:linear-gradient(160deg,#eef2f7,#a9b4c0 65%);color:#22262c;}
+  .rank-3{background:linear-gradient(160deg,#f0c9a0,#a9673a 65%);color:#2b1704;}
 </style>
 </head>
 <body>
+<div class="page" id="page">
+<aside class="rail rail-left">
+  <div class="card standings-card">
+    <div class="standings-header">
+      <h2>NA standings</h2>
+      <span id="standingsStatusNA" class="hint"><span class="spinner"></span>Loading…</span>
+    </div>
+    <div class="standings-grid" id="standingsGridNA"></div>
+  </div>
+</aside>
+
 <div class="wrap">
 
-  <h1>🔎 WvW Relink Checker</h1>
+  <div class="title-row">
+    <svg width="27" height="32" viewBox="0 0 160 190" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="iceGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#f2fdff"/>
+          <stop offset="100%" stop-color="#6fd8f5"/>
+        </linearGradient>
+        <linearGradient id="shieldEdge" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#eafcff"/>
+          <stop offset="100%" stop-color="#3fa9cc"/>
+        </linearGradient>
+      </defs>
+      <path d="M10,10 H150 V95 C150,145 112,172 80,188 C48,172 10,145 10,95 Z" fill="#0f1216" stroke="url(#shieldEdge)" stroke-width="4"/>
+      <path d="M20,18 H140 V95 C140,138 108,162 80,176 C52,162 20,138 20,95 Z" fill="none" stroke="#3fa9cc" stroke-width="1" opacity="0.5"/>
+      <g fill="url(#iceGrad)" transform="translate(38,55)">
+        <rect x="0" y="66" width="84" height="14"/>
+        <rect x="12" y="30" width="60" height="38"/>
+        <rect x="12" y="12" width="10" height="20"/>
+        <rect x="28" y="12" width="10" height="20"/>
+        <rect x="44" y="12" width="10" height="20"/>
+        <rect x="60" y="12" width="10" height="20"/>
+        <rect x="38" y="-8" width="6" height="22"/>
+        <path d="M44,-8 L64,-1 L44,6 Z"/>
+      </g>
+    </svg>
+    <h1>WvW Relink Checker</h1>
+  </div>
+  <div class="header-rule"></div>
   <p class="subtitle">
-    Paste each alliance guild's name (one per line) and this tool looks up which
-    WvW matchmaking team/server it landed on, using the official ArenaNet API.
-    Everything runs locally in your browser — nothing is sent anywhere except
-    the official GW2 API.
+    Drop in your alliance's guild names (one per line) and find out which
+    team each one landed on after the relink, plus the tier, score and top
+    guilds on every side of the match. It all runs in your browser, so
+    nothing leaves except calls to the official GW2 API.
   </p>
 
   <div class="card">
-    <label for="guildInput">Guild names (one per line) — a raw GUID also works</label>
+    <label for="guildInput">Guild names, one per line (a raw GUID works too)</label>
     <textarea id="guildInput" placeholder="Mistakes To Miracles
 Another Guild Here
 One More Guild"></textarea>
@@ -104,11 +285,14 @@ One More Guild"></textarea>
       <span id="statusMsg" class="hint"></span>
     </div>
     <p class="hint">
-      Note: the name must match the in-game guild name exactly (the API search
-      is an exact match, not a tag or partial search). Max 60 entries per run.
+      Names need to match the in-game guild name exactly — the API search
+      doesn't do tags or partial matches. Up to 60 guilds per run.
     </p>
   </div>
 
+  <div class="card" id="resultsPlaceholder">
+    <p class="muted" style="margin:0;">Paste some guild names above and hit Check — results show up here.</p>
+  </div>
   <div class="card" id="resultCard" style="display:none;">
     <table>
       <thead>
@@ -122,13 +306,45 @@ One More Guild"></textarea>
       <tbody id="resultBody"></tbody>
     </table>
   </div>
+  <div id="matchPanelsContainer" style="display:flex;flex-direction:column;gap:16px;"></div>
 
   <footer>
-    Data via the <a href="https://wiki.guildwars2.com/wiki/API:Main" target="_blank" rel="noopener noreferrer">Guild Wars 2 API v2</a>.
-    WvW team names have no dedicated API endpoint — the list used here is the
-    static table published by ArenaNet on the wiki, and may go stale if new
-    matchmaking teams are added.
+    Data comes straight from the <a href="https://wiki.guildwars2.com/wiki/API:Main" target="_blank" rel="noopener noreferrer">Guild Wars 2 API</a>.
+    Team names aren't something the API can look up on its own, so those
+    come from ArenaNet's static team list, combined live with real match
+    data every time the page loads or you run a check.
   </footer>
+</div>
+
+<aside class="rail rail-right">
+  <div class="card standings-card">
+    <div class="standings-header">
+      <h2>EU standings</h2>
+      <span id="standingsStatusEU" class="hint"><span class="spinner"></span>Loading…</span>
+    </div>
+    <div class="standings-grid" id="standingsGridEU"></div>
+  </div>
+</aside>
+</div>
+
+<div class="impact-overlay" id="impactOverlay">
+  <!-- Reuses the #iceGrad and #shieldEdge gradients defined in the title icon's <defs> above -->
+  <div class="impact-stack">
+    <svg class="impact-crest" viewBox="0 0 160 190" xmlns="http://www.w3.org/2000/svg">
+      <path d="M10,10 H150 V95 C150,145 112,172 80,188 C48,172 10,145 10,95 Z" fill="#0f1216" stroke="url(#shieldEdge)" stroke-width="4"/>
+      <path d="M20,18 H140 V95 C140,138 108,162 80,176 C52,162 20,138 20,95 Z" fill="none" stroke="#3fa9cc" stroke-width="1" opacity="0.5"/>
+      <g fill="url(#iceGrad)" transform="translate(38,55)">
+        <rect x="0" y="66" width="84" height="14"/>
+        <rect x="12" y="30" width="60" height="38"/>
+        <rect x="12" y="12" width="10" height="20"/>
+        <rect x="28" y="12" width="10" height="20"/>
+        <rect x="44" y="12" width="10" height="20"/>
+        <rect x="60" y="12" width="10" height="20"/>
+        <rect x="38" y="-8" width="6" height="22"/>
+        <path d="M44,-8 L64,-1 L44,6 Z"/>
+      </g>
+    </svg>
+  </div>
 </div>
 
 <script>
@@ -166,21 +382,43 @@ const TEAM_NAMES = Object.freeze({
   "12015": "Bava Nisos"
 });
 
+const REGION_NAMES = Object.freeze({ '1': 'NA', '2': 'EU' });
+const COLORS = ['red', 'blue', 'green'];
+const RANK_LABELS = Object.freeze({ 1: '1', 2: '2', 3: '3' });
+
+// The public matches endpoint still labels each side with the old "world"
+// numbering, which sits exactly 10000 below the newer WvW Team ID used by
+// wvw/guilds/:region (team 11009 shows up as world 1009 in match data).
+// These two helpers convert between the two wherever they meet.
+const TEAM_ID_OFFSET = 10000;
+const toTeamId = (worldId) => String(Number(worldId) + TEAM_ID_OFFSET);
+
 const API_BASE = "https://api.guildwars2.com/v2";
 const GUID_RE = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i;
 
 const MAX_ENTRIES = 60;        // hard cap so a pasted wall of text can't hammer a public API
 const REQUEST_TIMEOUT_MS = 10000;
-const THROTTLE_MS = 200;       // gap between guild lookups, to stay well under rate limits
+const THROTTLE_MS = 200;       // gap between sequential lookups, to stay well under rate limits
 const MAX_RETRIES = 2;         // for 429 / transient network errors
 
 const guildInput  = document.getElementById('guildInput');
 const runBtn      = document.getElementById('runBtn');
+const impactOverlay = document.getElementById('impactOverlay');
+const pageEl      = document.getElementById('page');
 const statusMsg   = document.getElementById('statusMsg');
+const resultsPlaceholder = document.getElementById('resultsPlaceholder');
 const resultCard  = document.getElementById('resultCard');
 const resultBody  = document.getElementById('resultBody');
+const matchPanelsContainer = document.getElementById('matchPanelsContainer');
+const standingsGridNA   = document.getElementById('standingsGridNA');
+const standingsGridEU   = document.getElementById('standingsGridEU');
+const standingsStatusNA = document.getElementById('standingsStatusNA');
+const standingsStatusEU = document.getElementById('standingsStatusEU');
 
-let wvwMapCache = null; // { na: {guid: teamId}, eu: {guid: teamId} }
+let wvwMapCache = null;              // { na: {guid: teamId}, eu: {guid: teamId} }
+const guildNameCache = new Map();    // guildId -> { name, tag } | null
+const teamToMatchId = new Map();     // teamId -> matchId
+const matchDataCache = new Map();    // matchId -> match object from the API
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -204,9 +442,7 @@ async function fetchJson(url, attempt = 0) {
     if (!res.ok) {
       throw new Error(`API request failed (HTTP ${res.status})`);
     }
-
-    const data = await res.json();
-    return data;
+    return await res.json();
   } catch (err) {
     if (err.name === 'AbortError') {
       throw new Error('Request timed out');
@@ -251,11 +487,24 @@ async function resolveGuildId(rawName) {
 }
 
 async function getGuildInfo(guildId) {
-  const info = await fetchJson(`${API_BASE}/guild/${guildId}`);
-  if (!info || typeof info.tag !== 'string') {
+  if (guildNameCache.has(guildId)) {
+    const cached = guildNameCache.get(guildId);
+    if (cached) return cached;
     throw new Error('Unexpected guild data from API');
   }
-  return info; // { id, name, tag, ... }
+
+  try {
+    const info = await fetchJson(`${API_BASE}/guild/${guildId}`);
+    if (!info || typeof info.tag !== 'string' || typeof info.name !== 'string') {
+      throw new Error('Unexpected guild data from API');
+    }
+    const result = { name: info.name, tag: info.tag };
+    guildNameCache.set(guildId, result);
+    return result;
+  } catch (err) {
+    guildNameCache.set(guildId, null);
+    throw err;
+  }
 }
 
 // Uses hasOwnProperty explicitly (instead of `maps.na[id]`) so a crafted
@@ -268,6 +517,174 @@ function findLink(guildId, maps) {
     return { region: 'EU', teamId: maps.eu[guildId] };
   }
   return null;
+}
+
+/**
+ * Fetches the current WvW match for a given team ID, caching by both
+ * team ID and match ID so guilds sharing a team never trigger duplicate
+ * requests.
+ */
+async function getMatchForTeam(teamId) {
+  if (teamToMatchId.has(teamId)) {
+    return matchDataCache.get(teamToMatchId.get(teamId));
+  }
+
+  const raw = await fetchJson(`${API_BASE}/wvw/matches?world=${encodeURIComponent(teamId)}`);
+  const match = Array.isArray(raw) ? raw[0] : raw;
+
+  if (!match || typeof match.id !== 'string' || typeof match.worlds !== 'object') {
+    throw new Error('No active match found for this team');
+  }
+
+  teamToMatchId.set(teamId, match.id);
+  matchDataCache.set(match.id, match);
+  return match;
+}
+
+function colorForTeam(match, teamId) {
+  return COLORS.find((c) => toTeamId(match.worlds[c]) === String(teamId)) || null;
+}
+
+/**
+ * Loads every currently active WvW match (all NA and EU tiers) in just two
+ * requests: one to list the match ids, one to fetch all of them at once via
+ * the `ids` parameter. This is what powers the standings section that's
+ * visible the moment the page opens, no guild search needed. Every match
+ * fetched here is also dropped into the shared caches, so a guild check
+ * afterwards reuses this data instead of asking the API again.
+ */
+async function loadStandings() {
+  try {
+    const idList = await fetchJson(`${API_BASE}/wvw/matches`);
+    if (!Array.isArray(idList) || idList.length === 0) {
+      throw new Error('No active matches returned');
+    }
+
+    // Fetched per-region rather than as one combined request: keeps each
+    // request small and means an issue with one region's ids can't wipe
+    // out the other region's results.
+    const naIds = idList.filter((id) => id.startsWith('1-'));
+    const euIds = idList.filter((id) => id.startsWith('2-'));
+
+    const fetchRegion = async (ids) => {
+      if (ids.length === 0) return [];
+      const data = await fetchJson(`${API_BASE}/wvw/matches?ids=${ids.map(encodeURIComponent).join(',')}`);
+      return Array.isArray(data) ? data : [];
+    };
+
+    const [naMatches, euMatches] = await Promise.all([fetchRegion(naIds), fetchRegion(euIds)]);
+
+    for (const match of [...naMatches, ...euMatches]) {
+      if (!match || typeof match.id !== 'string' || typeof match.worlds !== 'object') continue;
+      matchDataCache.set(match.id, match);
+      for (const color of COLORS) {
+        teamToMatchId.set(toTeamId(match.worlds[color]), match.id);
+      }
+    }
+
+    renderStandingsRegion(standingsGridNA, naMatches);
+    renderStandingsRegion(standingsGridEU, euMatches);
+    standingsStatusNA.textContent = naMatches.length ? '' : "Couldn't load NA standings.";
+    standingsStatusEU.textContent = euMatches.length ? '' : "Couldn't load EU standings.";
+  } catch (err) {
+    standingsStatusNA.textContent = "Couldn't load live standings right now.";
+    standingsStatusEU.textContent = "Couldn't load live standings right now.";
+  }
+}
+
+// Builds a "Label value · Label value" line as separate styled spans, so the
+// label (dim) and value (bright) are visually distinct instead of one flat
+// run of text — used by both the standings rails and the detailed match panel.
+function buildStatsLine(pairs, className) {
+  const container = document.createElement('span');
+  if (className) container.className = className;
+
+  pairs.forEach(([label, value], i) => {
+    if (i > 0) {
+      const sep = document.createElement('span');
+      sep.className = 'sep';
+      sep.textContent = '·';
+      container.appendChild(sep);
+    }
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'stat-label';
+    labelSpan.textContent = `${label} `;
+    const valueSpan = document.createElement('span');
+    valueSpan.className = 'stat-value';
+    valueSpan.textContent = value;
+    container.appendChild(labelSpan);
+    container.appendChild(valueSpan);
+  });
+
+  return container;
+}
+
+function renderStandingSide(match, color, rankByColor) {
+  const worldId = match.worlds[color];
+  const teamId = toTeamId(worldId);
+  const serverName = TEAM_NAMES[teamId] || `Unknown team (ID ${worldId})`;
+  const kills = Number(match.kills?.[color] ?? 0);
+  const deaths = Number(match.deaths?.[color] ?? 0);
+  const kd = formatKd(kills, deaths);
+  const vp = Number(match.victory_points?.[color] ?? 0).toLocaleString();
+  const skirmish = getSkirmishScore(match, color);
+
+  const row = document.createElement('div');
+  row.className = 'standing-side';
+
+  const top = document.createElement('div');
+  top.className = 'standing-side-top';
+
+  const badge = document.createElement('span');
+  const rank = rankByColor[color];
+  badge.className = `rank-badge rank-${rank}`;
+  badge.textContent = RANK_LABELS[rank] || `#${rank}`;
+
+  const dot = document.createElement('span');
+  dot.className = `dot dot-${color}`;
+
+  const name = document.createElement('span');
+  name.className = 'standing-side-name';
+  name.textContent = serverName;
+
+  top.appendChild(badge);
+  top.appendChild(dot);
+  top.appendChild(name);
+
+  const statPairs = [];
+  if (skirmish !== null) statPairs.push(['Skirmish', skirmish.toLocaleString()]);
+  statPairs.push(['VP', vp], ['K/D', kd]);
+
+  row.appendChild(top);
+  row.appendChild(buildStatsLine(statPairs, 'standing-side-stats'));
+  return row;
+}
+
+function renderStandingsRegion(gridEl, matches) {
+  gridEl.textContent = '';
+  if (matches.length === 0) return;
+
+  const sorted = [...matches].sort((a, b) => Number(a.id.split('-')[1]) - Number(b.id.split('-')[1]));
+
+  for (const match of sorted) {
+    const [, tierNum] = match.id.split('-');
+    const rankByColor = rankMatchByVictoryPoints(match);
+
+    const box = document.createElement('div');
+    box.className = 'standing-match';
+
+    const label = document.createElement('div');
+    label.className = 'standing-match-title';
+    label.textContent = `Tier ${tierNum || '?'}`;
+    box.appendChild(label);
+
+    const ranked = [...COLORS].sort((a, b) => rankByColor[a] - rankByColor[b]);
+    for (const color of ranked) {
+      box.appendChild(renderStandingSide(match, color, rankByColor));
+    }
+
+    gridEl.appendChild(box);
+  }
 }
 
 /**
@@ -311,12 +728,135 @@ function renderRow({ originalName, tag, region, server, error }) {
     tr.appendChild(regionCell);
 
     const serverCell = document.createElement('td');
-    serverCell.className = 'status-ok';
-    serverCell.textContent = server;
+    serverCell.className = 'server-cell';
+
+    const dot = document.createElement('span');
+    dot.className = 'dot dot-pending';
+    dot.title = 'Working out which side this is…';
+
+    const serverText = document.createElement('span');
+    serverText.className = 'status-ok';
+    serverText.textContent = server;
+
+    serverCell.appendChild(dot);
+    serverCell.appendChild(serverText);
     tr.appendChild(serverCell);
+
+    resultBody.appendChild(tr);
+    return dot;
   }
 
   resultBody.appendChild(tr);
+  return null;
+}
+
+// "scores" on the match object is the cumulative total since the match
+// started (can run into the hundreds of thousands), which is NOT what
+// community trackers like GW2Mists show. What players actually look at is
+// the current skirmish score (resets every 2 hours) and the running
+// victory points. This pulls the latest skirmish entry if the API included one.
+function getSkirmishScore(match, color) {
+  if (Array.isArray(match.skirmishes) && match.skirmishes.length > 0) {
+    const last = match.skirmishes[match.skirmishes.length - 1];
+    const value = last?.scores?.[color];
+    if (typeof value === 'number') return value;
+  }
+  return null;
+}
+
+// Ranks the three sides of a match by victory points, highest first.
+// This is the same standing used to decide who moves up/down a tier.
+function rankMatchByVictoryPoints(match) {
+  const ranked = COLORS
+    .map((color) => ({ color, vp: Number(match.victory_points?.[color] ?? 0) }))
+    .sort((a, b) => b.vp - a.vp);
+
+  const rankByColor = {};
+  ranked.forEach((entry, i) => { rankByColor[entry.color] = i + 1; });
+  return rankByColor;
+}
+
+function formatKd(kills, deaths) {
+  if (deaths > 0) return (kills / deaths).toFixed(2);
+  return kills > 0 ? '∞' : '0.00';
+}
+
+/**
+ * Renders one match panel (tier header + one column per side) into the
+ * sidebar. `yourGuildsByColor` maps 'red'/'blue'/'green' to the list of
+ * queried guild names that landed on that side of this specific match.
+ */
+function renderMatchPanel(match, yourGuildsByColor) {
+  const [regionCode, tierNum] = match.id.split('-');
+  const regionName = REGION_NAMES[regionCode] || `Region ${regionCode}`;
+
+  const panel = document.createElement('div');
+  panel.className = 'match-panel';
+
+  const header = document.createElement('div');
+  header.className = 'match-panel-header';
+  const tierEl = document.createElement('span');
+  tierEl.className = 'match-tier';
+  tierEl.textContent = `Tier ${tierNum || '?'}`;
+  const regionEl = document.createElement('span');
+  regionEl.className = 'match-region';
+  regionEl.textContent = `${regionName} · match ${match.id}`;
+  header.appendChild(tierEl);
+  header.appendChild(regionEl);
+  panel.appendChild(header);
+
+  const cols = document.createElement('div');
+  cols.className = 'team-cols';
+
+  const rankByColor = rankMatchByVictoryPoints(match);
+
+  for (const color of COLORS) {
+    const worldId = match.worlds[color];
+    const teamId = toTeamId(worldId);
+    const serverName = TEAM_NAMES[teamId] || `Unknown team (ID ${worldId})`;
+    const yours = yourGuildsByColor[color] || [];
+
+    const col = document.createElement('div');
+    col.className = 'team-col' + (yours.length ? ' is-yours' : '');
+
+    const head = document.createElement('div');
+    head.className = 'team-head';
+    const rankBadge = document.createElement('span');
+    const rank = rankByColor[color];
+    rankBadge.className = `rank-badge rank-${rank}`;
+    rankBadge.textContent = RANK_LABELS[rank] || `#${rank}`;
+    const dot = document.createElement('span');
+    dot.className = `dot dot-${color}`;
+    const name = document.createElement('span');
+    name.className = 'team-name';
+    name.textContent = serverName;
+    head.appendChild(rankBadge);
+    head.appendChild(dot);
+    head.appendChild(name);
+    col.appendChild(head);
+
+    if (yours.length) {
+      const pin = document.createElement('span');
+      pin.className = 'pin-badge';
+      pin.textContent = `📍 ${yours.join(', ')}`;
+      col.appendChild(pin);
+    }
+
+    const kills = Number(match.kills?.[color] ?? 0);
+    const deaths = Number(match.deaths?.[color] ?? 0);
+    const kd = formatKd(kills, deaths);
+    const vp = Number(match.victory_points?.[color] ?? 0).toLocaleString();
+    const skirmish = getSkirmishScore(match, color);
+
+    const statPairs = [];
+    if (skirmish !== null) statPairs.push(['Skirmish', skirmish.toLocaleString()]);
+    statPairs.push(['VP', vp], ['K/D', kd]);
+    col.appendChild(buildStatsLine(statPairs, 'team-stats'));
+    cols.appendChild(col);
+  }
+
+  panel.appendChild(cols);
+  return panel;
 }
 
 function parseGuildNames(rawText) {
@@ -339,23 +879,43 @@ async function run() {
   const names = parseGuildNames(guildInput.value);
 
   if (names.length === 0) {
-    statusMsg.textContent = 'Paste at least one guild name.';
+    statusMsg.textContent = 'Paste at least one guild name first.';
     return;
   }
 
   runBtn.disabled = true;
-  statusMsg.innerHTML = '<span class="spinner"></span>Querying the ArenaNet API…';
+  runBtn.innerHTML = '<span class="btn-pips"><span></span><span></span><span></span></span>';
+  statusMsg.innerHTML = '<span class="spinner"></span>Talking to the GW2 API…';
   resultBody.textContent = '';
+  matchPanelsContainer.textContent = '';
+  resultsPlaceholder.style.display = 'none';
   resultCard.style.display = 'block';
+
+  const finish = () => {
+    runBtn.disabled = false;
+    runBtn.textContent = 'Check';
+
+    // Restart both CSS animations from scratch, then play them together.
+    pageEl.classList.remove('shake');
+    impactOverlay.classList.remove('play');
+    void pageEl.offsetWidth;
+    pageEl.classList.add('shake');
+    impactOverlay.classList.add('play');
+  };
 
   let maps;
   try {
     maps = await getWvwMaps();
   } catch (e) {
-    statusMsg.textContent = 'Could not load WvW data from the API. Please try again shortly.';
-    runBtn.disabled = false;
+    statusMsg.textContent = "Couldn't load WvW data right now, give it another try in a bit.";
+    finish();
     return;
   }
+
+  // teamId -> list of your queried guild names that landed there
+  const teamsFound = new Map();
+  // teamId -> list of dot elements in the table waiting to be colored in
+  const dotsByTeam = new Map();
 
   // Sequential with a small delay between lookups: gentler on the public
   // API than firing everything in parallel, and avoids tripping rate limits.
@@ -369,7 +929,13 @@ async function run() {
         renderRow({ originalName, error: 'No WvW link registered yet' });
       } else {
         const server = TEAM_NAMES[link.teamId] || `Unknown team (ID ${link.teamId})`;
-        renderRow({ originalName, tag: info.tag, region: link.region, server });
+        const dot = renderRow({ originalName, tag: info.tag, region: link.region, server });
+
+        if (!teamsFound.has(link.teamId)) teamsFound.set(link.teamId, []);
+        teamsFound.get(link.teamId).push(info.name);
+
+        if (!dotsByTeam.has(link.teamId)) dotsByTeam.set(link.teamId, []);
+        dotsByTeam.get(link.teamId).push(dot);
       }
     } catch (e) {
       renderRow({ originalName, error: e.message || 'Lookup failed' });
@@ -378,14 +944,57 @@ async function run() {
     await sleep(THROTTLE_MS);
   }
 
-  statusMsg.textContent = `Done — ${names.length} guild(s) checked.`;
-  runBtn.disabled = false;
+  // Second phase: fetch match/score context for every distinct team found.
+  // These usually come straight from the standings cache already loaded on
+  // page open, so this is often instant.
+  if (teamsFound.size > 0) {
+    statusMsg.innerHTML = '<span class="spinner"></span>Pulling in match details…';
+
+    const panelsByMatchId = new Map(); // matchId -> { match, yourGuildsByColor }
+
+    for (const [teamId, yourGuildNames] of teamsFound) {
+      let match;
+      try {
+        match = await getMatchForTeam(teamId);
+      } catch (e) {
+        const note = document.createElement('p');
+        note.className = 'panel-note';
+        note.textContent = `Match data unavailable for team ${TEAM_NAMES[teamId] || teamId}.`;
+        matchPanelsContainer.appendChild(note);
+        await sleep(THROTTLE_MS);
+        continue;
+      }
+
+      const color = colorForTeam(match, teamId);
+      if (!panelsByMatchId.has(match.id)) {
+        panelsByMatchId.set(match.id, { match, yourGuildsByColor: { red: [], blue: [], green: [] } });
+      }
+      if (color) {
+        panelsByMatchId.get(match.id).yourGuildsByColor[color].push(...yourGuildNames);
+        const dots = dotsByTeam.get(teamId) || [];
+        dots.forEach((dot) => {
+          if (!dot) return;
+          dot.className = `dot dot-${color}`;
+          dot.title = `${color[0].toUpperCase()}${color.slice(1)} side`;
+        });
+      }
+    }
+
+    for (const { match, yourGuildsByColor } of panelsByMatchId.values()) {
+      matchPanelsContainer.appendChild(renderMatchPanel(match, yourGuildsByColor));
+    }
+  }
+
+  statusMsg.textContent = `Done, checked ${names.length} guild(s).`;
+  finish();
 }
 
 runBtn.addEventListener('click', run);
 guildInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.ctrlKey) run();
 });
+
+loadStandings();
 </script>
 </body>
 </html>
