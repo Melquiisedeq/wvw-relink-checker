@@ -1,10 +1,19 @@
 # WvW Relink Checker
 
+[![Live Demo](https://img.shields.io/badge/demo-live-7fd6f2?style=flat-square)](https://melquiisedeq.github.io/wvw-relink-checker/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-3fa9cc?style=flat-square)](LICENSE)
+
 A single-file web tool for Guild Wars 2 WvW alliances. Paste a list of
 guild names and instantly see which team each one landed on after a
 relink, plus live tier standings for every NA and EU match.
 
-**Live demo:** replace this line with your GitHub Pages URL once deployed.
+**[Open the live tool](https://melquiisedeq.github.io/wvw-relink-checker/)**
+
+<!--
+Optional: add a screenshot or short GIF of the tool here once you have one.
+Save the image in the repo (e.g. docs/screenshot.png) then use:
+![WvW Relink Checker screenshot](docs/screenshot.png)
+-->
 
 ## Why this exists
 
