@@ -21,9 +21,13 @@ whole list of guilds at once, and shows live match data on top.
 ## Features
 
 - Paste guild names, one per line, and get the region and server for each.
+- A top banner shows the countdown to the next weekly relink and to the
+  season lockout, so you always know how much time is left.
 - Live standings for every current NA and EU match: tier, rank, skirmish
   score, victory points, and kill/death ratio.
 - Marks which side your guild landed on, right in the results.
+- One-click "Copy summary" button that turns the results into a short,
+  shareable text block grouped by team, ready to paste in Discord.
 - No installation, no backend, no build step. It is a single HTML file.
 - No sign-in, no API key, no personal data collected or stored.
 - Runs entirely in your browser. It only talks to the official GW2 API.
@@ -38,6 +42,8 @@ whole list of guilds at once, and shows live match data on top.
    list, since there is no endpoint that resolves this automatically.
 4. Standings for every active match load automatically when the page opens,
    so most guild checks reuse data that is already cached.
+5. The relink and lockout timers come straight from the API's own timer
+   endpoints and refresh once a minute while the page is open.
 
 Nothing leaves your browser except requests to `api.guildwars2.com`.
 
@@ -46,7 +52,8 @@ Nothing leaves your browser except requests to `api.guildwars2.com`.
 1. Open the page, locally or through the hosted link.
 2. Paste guild names exactly as they appear in game, one per line.
 3. Click Check.
-4. Share the results with your alliance.
+4. Use "Copy summary" to grab a shareable, team-by-team text block.
+5. Share the results with your alliance.
 
 Guild names must match exactly, since the API only supports exact search,
 not partial or tag based matches. A raw guild GUID also works. Up to 60

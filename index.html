@@ -63,6 +63,34 @@
     .wrap{order:0;}
   }
   .title-row{display:flex;align-items:center;gap:12px;margin-bottom:8px;}
+  .relink-banner{
+    width:100%;padding:8px 20px;
+    background:linear-gradient(180deg, rgba(127,214,242,.08), rgba(127,214,242,.02));
+    border-bottom:1px solid var(--accent-soft);
+  }
+  .relink-inner{
+    max-width:480px;margin:0 auto;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .relink-stat{
+    flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:2px;
+  }
+  .relink-stat-title{
+    font-size:.64rem;font-weight:700;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.08em;
+  }
+  .relink-stat-value{font-size:.84rem;color:var(--text);}
+  .relink-stat-value .region{color:var(--muted);font-weight:400;}
+  .relink-stat-value .time{font-weight:700;color:var(--text);}
+  .relink-divider{width:1px;height:26px;background:var(--border);margin:0 20px;}
+  .relink-stat--primary .relink-stat-title{color:var(--accent);}
+  .relink-stat--primary .relink-stat-value{
+    font-size:1.02rem;font-weight:700;color:var(--accent);letter-spacing:.2px;
+  }
+  @media (max-width:460px){
+    .relink-inner{flex-direction:column;gap:8px;}
+    .relink-divider{width:50%;height:1px;margin:0;}
+  }
   .title-row svg{flex-shrink:0;filter:drop-shadow(0 0 5px rgba(140,224,255,.45));}
   h1{
     font-family:Cambria,Georgia,'Times New Roman',serif;
@@ -87,6 +115,7 @@
   }
   textarea:focus{outline:2px solid var(--accent);}
   .row{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap;}
+  #copyRow{padding-top:14px;border-top:1px solid var(--border);}
   button{
     background:var(--accent);color:#062733;border:none;border-radius:8px;
     padding:10px 18px;font-weight:600;font-size:.95rem;cursor:pointer;
@@ -105,7 +134,7 @@
   .btn-pips span:nth-child(3){background:var(--green);animation-delay:.4s;}
   @keyframes pip-pulse{0%,100%{opacity:.3;transform:scale(.8);}50%{opacity:1;transform:scale(1.3);}}
 
-  /* --- "Check complete" effect: a page-wide jolt + fortress flash --- */
+  /* Page shake + fortress flash, played after a check finishes */
   .page.shake{animation:page-shake .4s ease-in-out;}
   @keyframes page-shake{
     0%,100%{transform:translateX(0);}
@@ -163,7 +192,7 @@
   }
   @keyframes spin{to{transform:rotate(360deg);}}
 
-  /* --- Match panel (guild check results) --- */
+  /* Match panel: guild check results */
   .match-panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;}
   .match-panel-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;}
   .match-tier{font-weight:700;font-size:.95rem;}
@@ -190,7 +219,7 @@
   .team-stats{display:flex;gap:12px;flex-wrap:wrap;font-size:.78rem;color:var(--muted);margin-bottom:8px;}
   .panel-note{color:var(--muted);font-size:.78rem;font-style:italic;}
 
-  /* --- Live standings rails: deliberately understated, they're secondary info --- */
+  /* Standings rails: muted on purpose, this is secondary info */
   .standings-card{background:rgba(255,255,255,.015);border-color:rgba(255,255,255,.06);}
   .standings-header{margin-bottom:12px;}
   .standings-header h2{
@@ -226,6 +255,7 @@
 </style>
 </head>
 <body>
+<div class="relink-banner" id="relinkBanner" style="display:none;"></div>
 <div class="page" id="page">
 <aside class="rail rail-left">
   <div class="card standings-card">
@@ -305,6 +335,10 @@ One More Guild"></textarea>
       </thead>
       <tbody id="resultBody"></tbody>
     </table>
+    <div class="row" id="copyRow" style="display:none;">
+      <button id="copySummaryBtn" type="button">Copy summary</button>
+      <span id="copyFeedback" class="hint"></span>
+    </div>
   </div>
   <div id="matchPanelsContainer" style="display:flex;flex-direction:column;gap:16px;"></div>
 
@@ -350,8 +384,7 @@ One More Guild"></textarea>
 <script>
 'use strict';
 
-// Static WvW matchmaking team ID -> name table (source: official API wiki, "Team IDs" section).
-// Update manually if ArenaNet adds new teams. Frozen so it can't be mutated at runtime.
+// Team ID to name table from the official API wiki. Update manually for new teams.
 const TEAM_NAMES = Object.freeze({
   "11001": "Moogooloo",
   "11002": "Rall's Rest",
@@ -386,10 +419,8 @@ const REGION_NAMES = Object.freeze({ '1': 'NA', '2': 'EU' });
 const COLORS = ['red', 'blue', 'green'];
 const RANK_LABELS = Object.freeze({ 1: '1', 2: '2', 3: '3' });
 
-// The public matches endpoint still labels each side with the old "world"
-// numbering, which sits exactly 10000 below the newer WvW Team ID used by
-// wvw/guilds/:region (team 11009 shows up as world 1009 in match data).
-// These two helpers convert between the two wherever they meet.
+// Match data still uses the old "world" numbering, 10000 below the newer
+// Team ID (team 11009 shows up as world 1009 in match data). Convert here.
 const TEAM_ID_OFFSET = 10000;
 const toTeamId = (worldId) => String(Number(worldId) + TEAM_ID_OFFSET);
 
@@ -410,22 +441,26 @@ const resultsPlaceholder = document.getElementById('resultsPlaceholder');
 const resultCard  = document.getElementById('resultCard');
 const resultBody  = document.getElementById('resultBody');
 const matchPanelsContainer = document.getElementById('matchPanelsContainer');
+const copyRow = document.getElementById('copyRow');
+const copySummaryBtn = document.getElementById('copySummaryBtn');
+const copyFeedback = document.getElementById('copyFeedback');
 const standingsGridNA   = document.getElementById('standingsGridNA');
 const standingsGridEU   = document.getElementById('standingsGridEU');
 const standingsStatusNA = document.getElementById('standingsStatusNA');
 const standingsStatusEU = document.getElementById('standingsStatusEU');
+const relinkBanner = document.getElementById('relinkBanner');
 
 let wvwMapCache = null;              // { na: {guid: teamId}, eu: {guid: teamId} }
-const guildNameCache = new Map();    // guildId -> { name, tag } | null
+const guildNameCache = new Map();    // guildId -> { ok, data } | { ok: false, error }
 const teamToMatchId = new Map();     // teamId -> matchId
 const matchDataCache = new Map();    // matchId -> match object from the API
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Fetch JSON with a hard timeout and a small retry budget for transient
- * failures (429 rate limit, network hiccups). Never retries on 4xx other
- * than 429, since those indicate a bad request, not a transient issue.
+ * Fetch JSON with a timeout and a small retry budget. Retries on 429
+ * (respecting Retry-After), 5xx server errors, and network failures.
+ * Does not retry other 4xx codes since those won't succeed on retry.
  */
 async function fetchJson(url, attempt = 0) {
   const controller = new AbortController();
@@ -439,6 +474,10 @@ async function fetchJson(url, attempt = 0) {
       await sleep(retryAfter * 1000);
       return fetchJson(url, attempt + 1);
     }
+    if (res.status >= 500 && attempt < MAX_RETRIES) {
+      await sleep(500 * (attempt + 1));
+      return fetchJson(url, attempt + 1);
+    }
     if (!res.ok) {
       throw new Error(`API request failed (HTTP ${res.status})`);
     }
@@ -447,7 +486,7 @@ async function fetchJson(url, attempt = 0) {
     if (err.name === 'AbortError') {
       throw new Error('Request timed out');
     }
-    if (attempt < MAX_RETRIES) {
+    if (err instanceof TypeError && attempt < MAX_RETRIES) {
       await sleep(500 * (attempt + 1));
       return fetchJson(url, attempt + 1);
     }
@@ -489,8 +528,8 @@ async function resolveGuildId(rawName) {
 async function getGuildInfo(guildId) {
   if (guildNameCache.has(guildId)) {
     const cached = guildNameCache.get(guildId);
-    if (cached) return cached;
-    throw new Error('Unexpected guild data from API');
+    if (cached.ok) return cached.data;
+    throw new Error(cached.error);
   }
 
   try {
@@ -499,16 +538,16 @@ async function getGuildInfo(guildId) {
       throw new Error('Unexpected guild data from API');
     }
     const result = { name: info.name, tag: info.tag };
-    guildNameCache.set(guildId, result);
+    guildNameCache.set(guildId, { ok: true, data: result });
     return result;
   } catch (err) {
-    guildNameCache.set(guildId, null);
+    guildNameCache.set(guildId, { ok: false, error: err.message || 'Guild lookup failed' });
     throw err;
   }
 }
 
-// Uses hasOwnProperty explicitly (instead of `maps.na[id]`) so a crafted
-// key like "__proto__" can never resolve through the prototype chain.
+// Uses hasOwnProperty so a crafted key like "__proto__" can't resolve
+// through the prototype chain.
 function findLink(guildId, maps) {
   if (Object.prototype.hasOwnProperty.call(maps.na, guildId)) {
     return { region: 'NA', teamId: maps.na[guildId] };
@@ -519,11 +558,8 @@ function findLink(guildId, maps) {
   return null;
 }
 
-/**
- * Fetches the current WvW match for a given team ID, caching by both
- * team ID and match ID so guilds sharing a team never trigger duplicate
- * requests.
- */
+// Fetches the current match for a team ID, cached by team and match ID
+// so guilds sharing a team never trigger duplicate requests.
 async function getMatchForTeam(teamId) {
   if (teamToMatchId.has(teamId)) {
     return matchDataCache.get(teamToMatchId.get(teamId));
@@ -545,14 +581,117 @@ function colorForTeam(match, teamId) {
   return COLORS.find((c) => toTeamId(match.worlds[c]) === String(teamId)) || null;
 }
 
-/**
- * Loads every currently active WvW match (all NA and EU tiers) in just two
- * requests: one to list the match ids, one to fetch all of them at once via
- * the `ids` parameter. This is what powers the standings section that's
- * visible the moment the page opens, no guild search needed. Every match
- * fetched here is also dropped into the shared caches, so a guild check
- * afterwards reuses this data instead of asking the API again.
- */
+function formatCountdown(msRemaining) {
+  if (msRemaining === null) return 'unknown';
+  if (msRemaining <= 0) return 'any moment now';
+
+  const totalMinutes = Math.floor(msRemaining / 60000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function buildRelinkStat(title, value, isPrimary) {
+  const stat = document.createElement('div');
+  stat.className = isPrimary ? 'relink-stat relink-stat--primary' : 'relink-stat';
+  const titleEl = document.createElement('div');
+  titleEl.className = 'relink-stat-title';
+  titleEl.textContent = title;
+  const valueEl = document.createElement('div');
+  valueEl.className = 'relink-stat-value';
+  if (typeof value === 'string') {
+    valueEl.textContent = value;
+  } else {
+    valueEl.appendChild(value);
+  }
+  stat.appendChild(titleEl);
+  stat.appendChild(valueEl);
+  return stat;
+}
+
+// Dims the region labels (NA/EU) and emphasizes the countdown values,
+// since the time is what the person actually came to read.
+function buildRelinkValue(naMs, euMs) {
+  const frag = document.createDocumentFragment();
+  const naRegion = document.createElement('span');
+  naRegion.className = 'region';
+  naRegion.textContent = 'NA ';
+  const naTime = document.createElement('span');
+  naTime.className = 'time';
+  naTime.textContent = formatCountdown(naMs);
+  const euRegion = document.createElement('span');
+  euRegion.className = 'region';
+  euRegion.textContent = ' · EU ';
+  const euTime = document.createElement('span');
+  euTime.className = 'time';
+  euTime.textContent = formatCountdown(euMs);
+  frag.append(naRegion, naTime, euRegion, euTime);
+  return frag;
+}
+
+// Loads the two official WvW timers: weekly relink and season lockout.
+// Refreshes every minute.
+async function loadTimers() {
+  let assignment, lockout;
+  try {
+    const [assignRaw, lockoutRaw] = await Promise.all([
+      fetchJson(`${API_BASE}/wvw/timers/teamAssignment`),
+      fetchJson(`${API_BASE}/wvw/timers/lockout`)
+    ]);
+    assignment = Array.isArray(assignRaw) ? assignRaw[0] : assignRaw;
+    lockout = Array.isArray(lockoutRaw) ? lockoutRaw[0] : lockoutRaw;
+  } catch (err) {
+    return; // banner just stays hidden if timers are unavailable
+  }
+
+  const relinkNA = assignment?.na ? new Date(assignment.na).getTime() : null;
+  const relinkEU = assignment?.eu ? new Date(assignment.eu).getTime() : null;
+  // NA and EU lockout timestamps are always identical, so only one is kept.
+  const lockoutTime = lockout?.na
+    ? new Date(lockout.na).getTime()
+    : (lockout?.eu ? new Date(lockout.eu).getTime() : null);
+
+  if ([relinkNA, relinkEU, lockoutTime].every((t) => t === null)) return;
+
+  const update = () => {
+    const now = Date.now();
+    relinkBanner.textContent = '';
+    const hasRelink = relinkNA !== null || relinkEU !== null;
+    const hasLockout = lockoutTime !== null;
+    if (!hasRelink && !hasLockout) return;
+
+    const inner = document.createElement('div');
+    inner.className = 'relink-inner';
+
+    if (hasRelink) {
+      const naLeft = relinkNA !== null ? relinkNA - now : null;
+      const euLeft = relinkEU !== null ? relinkEU - now : null;
+      inner.appendChild(buildRelinkStat('Next Relink', buildRelinkValue(naLeft, euLeft), false));
+    }
+    if (hasRelink && hasLockout) {
+      const divider = document.createElement('div');
+      divider.className = 'relink-divider';
+      inner.appendChild(divider);
+    }
+    if (hasLockout) {
+      // Season lockout matters more than the weekly relink, so it gets
+      // the primary styling and larger accent-colored text.
+      inner.appendChild(buildRelinkStat('Season Lockout', formatCountdown(lockoutTime - now), true));
+    }
+    relinkBanner.appendChild(inner);
+  };
+
+  relinkBanner.style.display = 'block';
+  update();
+  setInterval(update, 60000);
+}
+
+// Loads every active match (NA + EU) in two requests and powers the
+// standings rails. Results are cached, so a later guild check reuses them.
 async function loadStandings() {
   try {
     const idList = await fetchJson(`${API_BASE}/wvw/matches`);
@@ -560,9 +699,7 @@ async function loadStandings() {
       throw new Error('No active matches returned');
     }
 
-    // Fetched per-region rather than as one combined request: keeps each
-    // request small and means an issue with one region's ids can't wipe
-    // out the other region's results.
+    // Fetched per region so an issue with one region can't wipe out the other.
     const naIds = idList.filter((id) => id.startsWith('1-'));
     const euIds = idList.filter((id) => id.startsWith('2-'));
 
@@ -592,9 +729,8 @@ async function loadStandings() {
   }
 }
 
-// Builds a "Label value · Label value" line as separate styled spans, so the
-// label (dim) and value (bright) are visually distinct instead of one flat
-// run of text — used by both the standings rails and the detailed match panel.
+// Builds a "Label value · Label value" line with the label dimmed and the
+// value bright. Used by both the standings rails and the match panel.
 function buildStatsLine(pairs, className) {
   const container = document.createElement('span');
   if (className) container.className = className;
@@ -687,12 +823,8 @@ function renderStandingsRegion(gridEl, matches) {
   }
 }
 
-/**
- * Builds each row with DOM APIs and textContent only — no innerHTML with
- * interpolated strings anywhere in this file. That way guild names coming
- * back from the API (or typed by the user) can never be interpreted as
- * markup, regardless of their content.
- */
+// Uses DOM APIs and textContent only, no innerHTML with interpolated
+// strings. Guild names from the API or the user can never be parsed as markup.
 function renderRow({ originalName, tag, region, server, error }) {
   const tr = document.createElement('tr');
 
@@ -750,11 +882,9 @@ function renderRow({ originalName, tag, region, server, error }) {
   return null;
 }
 
-// "scores" on the match object is the cumulative total since the match
-// started (can run into the hundreds of thousands), which is NOT what
-// community trackers like GW2Mists show. What players actually look at is
-// the current skirmish score (resets every 2 hours) and the running
-// victory points. This pulls the latest skirmish entry if the API included one.
+// The match's cumulative "scores" field isn't what trackers show. Players
+// look at the current skirmish score (resets every 2 hours) and victory
+// points, so this pulls the latest skirmish entry.
 function getSkirmishScore(match, color) {
   if (Array.isArray(match.skirmishes) && match.skirmishes.length > 0) {
     const last = match.skirmishes[match.skirmishes.length - 1];
@@ -764,8 +894,7 @@ function getSkirmishScore(match, color) {
   return null;
 }
 
-// Ranks the three sides of a match by victory points, highest first.
-// This is the same standing used to decide who moves up/down a tier.
+// Ranks the three sides by victory points, the same standing used for tier promotion.
 function rankMatchByVictoryPoints(match) {
   const ranked = COLORS
     .map((color) => ({ color, vp: Number(match.victory_points?.[color] ?? 0) }))
@@ -781,11 +910,8 @@ function formatKd(kills, deaths) {
   return kills > 0 ? '∞' : '0.00';
 }
 
-/**
- * Renders one match panel (tier header + one column per side) into the
- * sidebar. `yourGuildsByColor` maps 'red'/'blue'/'green' to the list of
- * queried guild names that landed on that side of this specific match.
- */
+// Renders one match panel (tier header + one column per side).
+// yourGuildsByColor maps each color to the queried guilds on that side.
 function renderMatchPanel(match, yourGuildsByColor) {
   const [regionCode, tierNum] = match.id.split('-');
   const regionName = REGION_NAMES[regionCode] || `Region ${regionCode}`;
@@ -875,6 +1001,42 @@ function parseGuildNames(rawText) {
   return names.slice(0, MAX_ENTRIES);
 }
 
+// Groups guilds on the same team into one block, listing the two
+// opposing servers. Falls back to a plain line if match data is missing.
+function buildSummaryText(entries) {
+  const byTeam = new Map(); // teamId -> guild names
+  for (const { name, teamId } of entries) {
+    if (!byTeam.has(teamId)) byTeam.set(teamId, []);
+    byTeam.get(teamId).push(name);
+  }
+
+  const blocks = [];
+  for (const [teamId, names] of byTeam) {
+    const server = TEAM_NAMES[teamId] || `Unknown team (ID ${teamId})`;
+    const matchId = teamToMatchId.get(teamId);
+    const match = matchId ? matchDataCache.get(matchId) : null;
+
+    if (!match) {
+      blocks.push(`${names.join(', ')} landed on ${server}`);
+      continue;
+    }
+
+    const [regionCode, tierNum] = match.id.split('-');
+    const regionName = REGION_NAMES[regionCode] || `Region ${regionCode}`;
+    const myColor = colorForTeam(match, teamId);
+    const enemyNames = COLORS.filter((c) => c !== myColor).map((c) => {
+      const enemyTeamId = toTeamId(match.worlds[c]);
+      return TEAM_NAMES[enemyTeamId] || `Unknown team (ID ${match.worlds[c]})`;
+    });
+
+    let block = `${names.join(', ')} landed on ${server} (${regionName} Tier ${tierNum})`;
+    if (enemyNames.length > 0) block += `\nFighting: ${enemyNames.join(', ')}`;
+    blocks.push(block);
+  }
+
+  return blocks.join('\n\n');
+}
+
 async function run() {
   const names = parseGuildNames(guildInput.value);
 
@@ -916,9 +1078,10 @@ async function run() {
   const teamsFound = new Map();
   // teamId -> list of dot elements in the table waiting to be colored in
   const dotsByTeam = new Map();
+  // Every successfully resolved guild, kept around to build the copy summary
+  const successEntries = [];
 
-  // Sequential with a small delay between lookups: gentler on the public
-  // API than firing everything in parallel, and avoids tripping rate limits.
+  // Sequential with a small delay between lookups, gentler on the public API.
   for (const originalName of names) {
     try {
       const guildId = await resolveGuildId(originalName);
@@ -936,6 +1099,8 @@ async function run() {
 
         if (!dotsByTeam.has(link.teamId)) dotsByTeam.set(link.teamId, []);
         dotsByTeam.get(link.teamId).push(dot);
+
+        successEntries.push({ name: info.name, teamId: link.teamId });
       }
     } catch (e) {
       renderRow({ originalName, error: e.message || 'Lookup failed' });
@@ -944,9 +1109,8 @@ async function run() {
     await sleep(THROTTLE_MS);
   }
 
-  // Second phase: fetch match/score context for every distinct team found.
-  // These usually come straight from the standings cache already loaded on
-  // page open, so this is often instant.
+  // Fetches match/score context for every distinct team found. Usually
+  // instant since these are already in the standings cache.
   if (teamsFound.size > 0) {
     statusMsg.innerHTML = '<span class="spinner"></span>Pulling in match details…';
 
@@ -985,6 +1149,14 @@ async function run() {
     }
   }
 
+  if (successEntries.length > 0) {
+    copySummaryBtn.dataset.summary = buildSummaryText(successEntries);
+    copyRow.style.display = 'flex';
+    copyFeedback.textContent = '';
+  } else {
+    copyRow.style.display = 'none';
+  }
+
   statusMsg.textContent = `Done, checked ${names.length} guild(s).`;
   finish();
 }
@@ -994,7 +1166,18 @@ guildInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.ctrlKey) run();
 });
 
+copySummaryBtn.addEventListener('click', async () => {
+  const text = copySummaryBtn.dataset.summary || '';
+  try {
+    await navigator.clipboard.writeText(text);
+    copyFeedback.textContent = 'Copied to clipboard.';
+  } catch (err) {
+    copyFeedback.textContent = "Couldn't copy automatically, select the text manually.";
+  }
+});
+
 loadStandings();
+loadTimers();
 </script>
 </body>
 </html>
