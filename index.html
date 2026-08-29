@@ -4,19 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!--
-  Content-Security-Policy hardening notes:
-  - default-src 'none'      -> deny everything by default (fail closed)
-  - connect-src ... api.guildwars2.com -> the ONLY host this page is allowed to talk to
-  - script-src/style-src 'unsafe-inline' -> required because this is a single self-contained
-    file with no external assets (no CDN = no supply-chain risk), so inline is an
-    acceptable trade-off here
-  - img-src/base-uri/form-action 'none' -> no images, no <base> hijacking, no form
-    submission target at all
-  This means even if something were ever injected into this page, it has nowhere
-  to exfiltrate data to except the official GW2 API.
+  CSP notes: default-src 'none' denies everything by default.
+  connect-src only allows api.guildwars2.com and docs.google.com (the
+  community sheet, read-only, no API key). unsafe-inline is fine here since
+  this is a single file with no external scripts or CDN. img-src, base-uri,
+  and form-action are all 'none': no images, no <base> hijacking, no forms.
 -->
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.guildwars2.com; img-src 'none'; base-uri 'none'; form-action 'none';">
+      content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.guildwars2.com https://docs.google.com; img-src 'none'; base-uri 'none'; form-action 'none';">
 <meta name="referrer" content="no-referrer">
 <title>WvW Relink Checker — GW2</title>
 <style>
@@ -49,7 +44,7 @@
     flex-direction:column;
     align-items:center;
     gap:24px;
-    padding:32px 16px;
+    padding:18px 16px 32px;
   }
   .wrap{width:100%;max-width:720px;order:0;}
   .rail{width:100%;max-width:720px;}
@@ -252,6 +247,49 @@
   .rank-1{background:linear-gradient(160deg,#fff3c4,#c99a2e 65%);color:#3a2a05;}
   .rank-2{background:linear-gradient(160deg,#eef2f7,#a9b4c0 65%);color:#22262c;}
   .rank-3{background:linear-gradient(160deg,#f0c9a0,#a9673a 65%);color:#2b1704;}
+
+  /* Community guild list: small icon next to NA server names, opens a popover */
+  .server-guilds-btn{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:19px;height:21px;padding:0;margin-left:1px;flex-shrink:0;
+    background:none;border:none;color:var(--accent);
+    opacity:.8;line-height:1;cursor:pointer;
+    filter:drop-shadow(0 0 3px rgba(127,214,242,.35));
+    transition:opacity .15s ease, transform .15s ease;
+  }
+  .server-guilds-btn:hover,.server-guilds-btn.active{opacity:1;transform:scale(1.15);}
+  .server-guilds-btn svg{display:block;}
+  .guilds-popover{
+    position:fixed;z-index:60;width:280px;max-height:340px;overflow-y:auto;
+    background:var(--card);border:1px solid var(--border);border-radius:10px;
+    padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.45);font-size:.8rem;
+  }
+  .guilds-popover-header{
+    display:flex;align-items:center;justify-content:space-between;
+    font-weight:700;color:var(--text);margin-bottom:8px;
+  }
+  .guilds-popover-close{
+    background:none;border:none;color:var(--muted);font-size:1.5rem;
+    line-height:1;cursor:pointer;padding:0 4px;
+  }
+  .guilds-popover-close:hover{color:var(--text);}
+  .guilds-popover-section-title{
+    font-size:.72rem;font-weight:800;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.08em;
+    margin:12px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border);
+  }
+  .guilds-popover-section-title:first-of-type{margin-top:0;}
+  .alliance-block{margin-bottom:10px;}
+  .alliance-name{font-weight:700;color:var(--blue);margin-bottom:2px;}
+  .guild-list{display:flex;flex-direction:column;gap:1px;}
+  .alliance-block .guild-list{padding-left:10px;}
+  .guild-line{line-height:1.5;}
+  .guild-tag{font-weight:700;color:var(--accent);}
+  .guild-region{color:var(--muted);opacity:.75;}
+  .guilds-popover-footer{
+    color:var(--muted);font-size:.7rem;margin-top:10px;
+    padding-top:8px;border-top:1px solid var(--border);line-height:1.5;
+  }
 </style>
 </head>
 <body>
@@ -306,7 +344,7 @@
 
   <div class="card">
     <label for="guildInput">Guild names, one per line (a raw GUID works too)</label>
-    <textarea id="guildInput" placeholder="Lulu
+    <textarea id="guildInput" placeholder="Mistakes To Miracles
 Another Guild Here
 One More Guild"></textarea>
 
@@ -426,6 +464,13 @@ const toTeamId = (worldId) => String(Number(worldId) + TEAM_ID_OFFSET);
 
 const API_BASE = "https://api.guildwars2.com/v2";
 const GUID_RE = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i;
+
+// NA WvW Discord's community-maintained guild/alliance sheet. Covers NA
+// servers only. Read-only, via the gviz CSV export (no API key needed).
+const SHEET_ID = '1Txjpcet-9FDVek6uJ0N3OciwgbpE0cfWozUK7ATfWx4';
+const SHEET_URL = (tab) =>
+  `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
+const SHEET_HUMAN_URL = 'https://bit.ly/46pscDg';
 
 const MAX_ENTRIES = 60;        // hard cap so a pasted wall of text can't hammer a public API
 const REQUEST_TIMEOUT_MS = 10000;
@@ -690,6 +735,280 @@ async function loadTimers() {
   setInterval(update, 60000);
 }
 
+// Community guild list (NA WvW Discord sheet).
+// Minimal CSV parser: handles quoted fields and embedded newlines (an
+// alliance's member list is packed into one cell as newline-separated lines).
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (c === '"') { inQuotes = false; }
+      else { field += c; }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      row.push(field); field = '';
+    } else if (c === '\r') {
+      // skip, \n right after ends the row
+    } else if (c === '\n') {
+      row.push(field); rows.push(row); row = []; field = '';
+    } else {
+      field += c;
+    }
+  }
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+// Splits "[TAG] Name (region)" into parts. Dash and region are optional,
+// since alliance header rows are just "[TAG] Alliance Name".
+const GUILD_ENTRY_RE = /^\[([^\]]+)\]\s*-?\s*(.+?)\s*(?:\(([^)]+)\))?$/;
+function parseGuildEntry(raw) {
+  const trimmed = raw.trim();
+  const m = GUILD_ENTRY_RE.exec(trimmed);
+  if (!m) return { tag: null, name: trimmed, region: null };
+  return { tag: m[1], name: m[2].trim(), region: m[3] || null };
+}
+
+// Column indexes match the sheet's current layout. Update if it's reordered.
+const SOLO_WORLD_COL = 21;
+const ALLIANCE_MEMBERS_COL = 2;
+const ALLIANCE_WORLD_COL = 22;
+
+let communityGuildsCache = null; // Map: teamName -> { alliances, solo }
+
+async function fetchSheetCsv(tab) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(SHEET_URL(tab), { signal: controller.signal, cache: 'no-store' });
+    if (!res.ok) throw new Error(`Sheet "${tab}" request failed (HTTP ${res.status})`);
+    return await res.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function addToTeam(byTeam, teamName) {
+  if (!byTeam.has(teamName)) byTeam.set(teamName, { alliances: [], solo: [] });
+  return byTeam.get(teamName);
+}
+
+async function loadCommunityGuilds() {
+  if (communityGuildsCache) return communityGuildsCache;
+
+  const [soloText, allianceText] = await Promise.all([
+    fetchSheetCsv('SoloGuilds'),
+    fetchSheetCsv('Alliances')
+  ]);
+
+  const byTeam = new Map();
+
+  for (const row of parseCsv(soloText).slice(1)) {
+    const world = (row[SOLO_WORLD_COL] || '').trim();
+    const raw = (row[0] || '').trim();
+    if (!world || !raw) continue;
+    addToTeam(byTeam, world).solo.push(parseGuildEntry(raw));
+  }
+
+  for (const row of parseCsv(allianceText).slice(1)) {
+    const world = (row[ALLIANCE_WORLD_COL] || '').trim();
+    const raw = (row[0] || '').trim();
+    if (!world || !raw) continue;
+    const members = (row[ALLIANCE_MEMBERS_COL] || '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map(parseGuildEntry);
+    addToTeam(byTeam, world).alliances.push({ ...parseGuildEntry(raw), members });
+  }
+
+  communityGuildsCache = byTeam;
+  return byTeam;
+}
+
+// One popover at a time, positioned near the clicked icon, closed on
+// outside click or Escape.
+let activePopover = null;
+let activeTrigger = null;
+
+function closeGuildsPopover() {
+  if (activePopover) activePopover.remove();
+  if (activeTrigger) activeTrigger.classList.remove('active');
+  activePopover = null;
+  activeTrigger = null;
+}
+
+document.addEventListener('click', (e) => {
+  if (activePopover && !activePopover.contains(e.target) && e.target !== activeTrigger) {
+    closeGuildsPopover();
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeGuildsPopover();
+});
+
+function positionPopover(popover, triggerEl) {
+  const rect = triggerEl.getBoundingClientRect();
+  const maxLeft = window.innerWidth - popover.offsetWidth - 12;
+  const left = Math.max(12, Math.min(rect.left, maxLeft));
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const top = spaceBelow > 200 ? rect.bottom + 6 : rect.top - popover.offsetHeight - 6;
+  popover.style.left = `${left}px`;
+  popover.style.top = `${Math.max(12, top)}px`;
+}
+
+function buildGuildList(entries) {
+  const list = document.createElement('div');
+  list.className = 'guild-list';
+  for (const entry of entries) {
+    const line = document.createElement('div');
+    line.className = 'guild-line';
+    if (entry.tag) {
+      const tag = document.createElement('span');
+      tag.className = 'guild-tag';
+      tag.textContent = `[${entry.tag}] `;
+      line.appendChild(tag);
+    }
+    line.appendChild(document.createTextNode(entry.name));
+    if (entry.region) {
+      const region = document.createElement('span');
+      region.className = 'guild-region';
+      region.textContent = ` (${entry.region})`;
+      line.appendChild(region);
+    }
+    list.appendChild(line);
+  }
+  return list;
+}
+
+function renderGuildsPopoverContent(popover, teamName, data) {
+  popover.textContent = '';
+
+  const header = document.createElement('div');
+  header.className = 'guilds-popover-header';
+  const title = document.createElement('span');
+  title.textContent = teamName;
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'guilds-popover-close';
+  closeBtn.textContent = '×';
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.addEventListener('click', closeGuildsPopover);
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+  popover.appendChild(header);
+
+  const hasAlliances = data && data.alliances.length > 0;
+  const hasSolo = data && data.solo.length > 0;
+
+  if (!hasAlliances && !hasSolo) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.style.margin = '0';
+    empty.textContent = 'No guilds listed for this server in the community sheet yet.';
+    popover.appendChild(empty);
+  } else {
+    if (hasAlliances) {
+      const sectionTitle = document.createElement('div');
+      sectionTitle.className = 'guilds-popover-section-title';
+      sectionTitle.textContent = 'Alliances';
+      popover.appendChild(sectionTitle);
+      for (const alliance of data.alliances) {
+        const block = document.createElement('div');
+        block.className = 'alliance-block';
+        const name = document.createElement('div');
+        name.className = 'alliance-name';
+        name.textContent = alliance.tag ? `[${alliance.tag}] ${alliance.name}` : alliance.name;
+        block.appendChild(name);
+        block.appendChild(buildGuildList(alliance.members));
+        popover.appendChild(block);
+      }
+    }
+    if (hasSolo) {
+      const sectionTitle = document.createElement('div');
+      sectionTitle.className = 'guilds-popover-section-title';
+      sectionTitle.textContent = 'Solo guilds';
+      popover.appendChild(sectionTitle);
+      popover.appendChild(buildGuildList(data.solo));
+    }
+  }
+
+  const footer = document.createElement('p');
+  footer.className = 'guilds-popover-footer';
+  footer.textContent = 'Community-maintained, may be incomplete or outdated. ';
+  const link = document.createElement('a');
+  link.href = SHEET_HUMAN_URL;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = 'Open sheet';
+  footer.appendChild(link);
+  popover.appendChild(footer);
+}
+
+async function toggleGuildsPopover(teamName, triggerEl) {
+  if (activeTrigger === triggerEl) { closeGuildsPopover(); return; }
+  closeGuildsPopover();
+
+  activeTrigger = triggerEl;
+  triggerEl.classList.add('active');
+
+  const popover = document.createElement('div');
+  popover.className = 'guilds-popover';
+  const loading = document.createElement('p');
+  loading.className = 'hint';
+  loading.style.margin = '0';
+  loading.innerHTML = '<span class="spinner"></span>Loading community list…';
+  popover.appendChild(loading);
+  document.body.appendChild(popover);
+  activePopover = popover;
+  positionPopover(popover, triggerEl);
+
+  let byTeam;
+  try {
+    byTeam = await loadCommunityGuilds();
+  } catch (err) {
+    if (activeTrigger !== triggerEl) return;
+    popover.textContent = '';
+    const msg = document.createElement('p');
+    msg.className = 'hint';
+    msg.style.margin = '0';
+    msg.textContent = "Couldn't load the community guild list right now.";
+    popover.appendChild(msg);
+    return;
+  }
+
+  if (activeTrigger !== triggerEl) return; // closed while loading
+  renderGuildsPopoverContent(popover, teamName, byTeam.get(teamName));
+  positionPopover(popover, triggerEl);
+}
+
+// Small shield icon with an info mark inside, next to NA server names
+// only. Opens the community guild list popover on click.
+function buildServerGuildsButton(teamName) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'server-guilds-btn';
+  btn.setAttribute('aria-label', `Show guilds on ${teamName}`);
+  btn.title = `Show guilds on ${teamName}`;
+  btn.innerHTML = '<svg width="17" height="19" viewBox="0 0 24 27" xmlns="http://www.w3.org/2000/svg">' +
+    '<path d="M12 2 L21 4.5 V13 C21 19 17 23.5 12 25.5 C7 23.5 3 19 3 13 V4.5 Z" ' +
+    'fill="currentColor" fill-opacity=".18" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>' +
+    '<circle cx="12" cy="9.5" r="1.6" fill="currentColor"/>' +
+    '<rect x="10.4" y="13.2" width="3.2" height="8" rx="1.6" fill="currentColor"/></svg>';
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleGuildsPopover(teamName, btn);
+  });
+  return btn;
+}
+
 // Loads every active match (NA + EU) in two requests and powers the
 // standings rails. Results are cached, so a later guild check reuses them.
 async function loadStandings() {
@@ -786,6 +1105,7 @@ function renderStandingSide(match, color, rankByColor) {
   top.appendChild(badge);
   top.appendChild(dot);
   top.appendChild(name);
+  if (match.id.startsWith('1-')) top.appendChild(buildServerGuildsButton(serverName));
 
   const statPairs = [];
   if (skirmish !== null) statPairs.push(['Skirmish', skirmish.toLocaleString()]);
@@ -872,6 +1192,7 @@ function renderRow({ originalName, tag, region, server, error }) {
 
     serverCell.appendChild(dot);
     serverCell.appendChild(serverText);
+    if (region === 'NA') serverCell.appendChild(buildServerGuildsButton(server));
     tr.appendChild(serverCell);
 
     resultBody.appendChild(tr);
@@ -959,6 +1280,7 @@ function renderMatchPanel(match, yourGuildsByColor) {
     head.appendChild(rankBadge);
     head.appendChild(dot);
     head.appendChild(name);
+    if (regionCode === '1') head.appendChild(buildServerGuildsButton(serverName));
     col.appendChild(head);
 
     if (yours.length) {

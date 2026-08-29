@@ -26,6 +26,9 @@ whole list of guilds at once, and shows live match data on top.
 - Live standings for every current NA and EU match: tier, rank, skirmish
   score, victory points, and kill/death ratio.
 - Marks which side your guild landed on, right in the results.
+- Click the small shield icon next to any NA server name to see which
+  alliances and solo guilds the community has reported on that server
+  (tag and name for each), sourced from the NA WvW Discord's guild sheet.
 - One-click "Copy summary" button that turns the results into a short,
   shareable text block grouped by team, ready to paste in Discord.
 - No installation, no backend, no build step. It is a single HTML file.
@@ -44,8 +47,13 @@ whole list of guilds at once, and shows live match data on top.
    so most guild checks reuse data that is already cached.
 5. The relink and lockout timers come straight from the API's own timer
    endpoints and refresh once a minute while the page is open.
+6. The NA guild/alliance list behind the shield icon is fetched, on first
+   click, from a public Google Sheet maintained by the NA WvW Discord
+   (as a CSV export, no API key involved) and cached for the rest of the
+   session.
 
-Nothing leaves your browser except requests to `api.guildwars2.com`.
+Nothing leaves your browser except requests to `api.guildwars2.com` and,
+only if you click a shield icon, a read-only request to `docs.google.com`.
 
 ## Usage
 
@@ -78,7 +86,8 @@ repo root. No build pipeline required.
 ## Security
 
 - A strict Content Security Policy only allows connections to
-  `api.guildwars2.com`. Everything else is denied by default.
+  `api.guildwars2.com` and, read-only, `docs.google.com` for the community
+  guild sheet. Everything else is denied by default.
 - All dynamic content is rendered through safe DOM APIs, never `innerHTML`
   with interpolated data. This rules out injection through guild names or
   API responses.
@@ -93,6 +102,10 @@ repo root. No build pipeline required.
   resolve them. If ArenaNet adds new matchmaking teams, the `TEAM_NAMES`
   object in `index.html` needs a manual update.
 - Guild search requires an exact name match.
+- The NA guild/alliance list is community-maintained (not run by ArenaNet
+  or this project), covers NA only, and may be incomplete or out of date.
+  If the sheet's maintainer renames or reorders its tabs, this feature can
+  break silently until updated to match.
 
 ## Disclaimer
 
