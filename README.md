@@ -25,6 +25,8 @@ whole list of guilds at once, and shows live match data on top.
   season lockout, so you always know how much time is left.
 - Live standings for every current NA and EU match: tier, rank, skirmish
   score, victory points, and kill/death ratio.
+- Click the small crossed-swords icon next to any K/D value to see the
+  breakdown per map (EBG, and each borderland), instead of just the total.
 - Marks which side your guild landed on, right in the results.
 - Click the small shield icon next to any NA server name to see which
   alliances and solo guilds the community has reported on that server
@@ -51,6 +53,8 @@ whole list of guilds at once, and shows live match data on top.
    click, from a public Google Sheet maintained by the NA WvW Discord
    (as a CSV export, no API key involved) and cached for the rest of the
    session.
+7. The per-map K/D breakdown uses match data already loaded on the page,
+   so it opens instantly with no extra request.
 
 Nothing leaves your browser except requests to `api.guildwars2.com` and,
 only if you click a shield icon, a read-only request to `docs.google.com`.

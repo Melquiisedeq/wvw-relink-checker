@@ -259,26 +259,26 @@
   }
   .server-guilds-btn:hover,.server-guilds-btn.active{opacity:1;transform:scale(1.15);}
   .server-guilds-btn svg{display:block;}
-  .guilds-popover{
+  .info-popover{
     position:fixed;z-index:60;width:280px;max-height:340px;overflow-y:auto;
     background:var(--card);border:1px solid var(--border);border-radius:10px;
     padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.45);font-size:.8rem;
   }
-  .guilds-popover-header{
+  .info-popover-header{
     display:flex;align-items:center;justify-content:space-between;
     font-weight:700;color:var(--text);margin-bottom:8px;
   }
-  .guilds-popover-close{
+  .info-popover-close{
     background:none;border:none;color:var(--muted);font-size:1.5rem;
     line-height:1;cursor:pointer;padding:0 4px;
   }
-  .guilds-popover-close:hover{color:var(--text);}
-  .guilds-popover-section-title{
+  .info-popover-close:hover{color:var(--text);}
+  .info-popover-section-title{
     font-size:.72rem;font-weight:800;color:var(--muted);
     text-transform:uppercase;letter-spacing:.08em;
     margin:12px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border);
   }
-  .guilds-popover-section-title:first-of-type{margin-top:0;}
+  .info-popover-section-title:first-of-type{margin-top:0;}
   .alliance-block{margin-bottom:10px;}
   .alliance-name{font-weight:700;color:var(--blue);margin-bottom:2px;}
   .guild-list{display:flex;flex-direction:column;gap:1px;}
@@ -286,12 +286,42 @@
   .guild-line{line-height:1.5;}
   .guild-tag{font-weight:700;color:var(--accent);}
   .guild-region{color:var(--muted);opacity:.75;}
-  .guilds-popover-footer{
+  .info-popover-footer{
     color:var(--muted);font-size:.7rem;margin-top:10px;
     padding-top:8px;border-top:1px solid var(--border);line-height:1.5;
   }
+
+  /* Per-map K/D breakdown: small crossed-swords icon next to the K/D value */
+  .map-kd-btn{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:15px;height:16px;padding:0;margin-left:3px;flex-shrink:0;
+    background:none;border:none;color:var(--accent);
+    opacity:.8;vertical-align:middle;cursor:pointer;
+    filter:drop-shadow(0 0 3px rgba(127,214,242,.35));
+    transition:opacity .15s ease, transform .15s ease;
+  }
+  .map-kd-btn:hover,.map-kd-btn.active{opacity:1;transform:scale(1.15);}
+  .map-kd-btn svg{display:block;}
+  .map-kd-row{
+    display:flex;align-items:baseline;justify-content:space-between;
+    padding:4px 0;font-size:.8rem;border-bottom:1px solid var(--border);
+    gap:10px;
+  }
+  .map-kd-row:last-child{border-bottom:none;}
+  .map-kd-label{font-weight:700;flex-shrink:0;}
+  .map-kd-label--gbl{color:var(--green);}
+  .map-kd-label--bbl{color:var(--blue);}
+  .map-kd-label--rbl{color:var(--red);}
+  .map-kd-label--ebg{
+    background:linear-gradient(90deg,var(--red),var(--green),var(--blue));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .map-kd-counts{color:var(--text);white-space:nowrap;}
+  .map-kd-kills, .map-kd-deaths{margin-left:8px;}
+  .map-kd-ratio{color:var(--accent);font-weight:700;margin-left:10px;}
 </style>
 </head>
+
 <body>
 <div class="relink-banner" id="relinkBanner" style="display:none;"></div>
 <div class="page" id="page">
@@ -344,7 +374,7 @@
 
   <div class="card">
     <label for="guildInput">Guild names, one per line (a raw GUID works too)</label>
-    <textarea id="guildInput" placeholder="Lulu
+    <textarea id="guildInput" placeholder="Mistakes To Miracles
 Another Guild Here
 One More Guild"></textarea>
 
@@ -457,10 +487,17 @@ const REGION_NAMES = Object.freeze({ '1': 'NA', '2': 'EU' });
 const COLORS = ['red', 'blue', 'green'];
 const RANK_LABELS = Object.freeze({ 1: '1', 2: '2', 3: '3' });
 
-// Match data still uses the old "world" numbering, 10000 below the newer
-// Team ID (team 11009 shows up as world 1009 in match data). Convert here.
-const TEAM_ID_OFFSET = 10000;
-const toTeamId = (worldId) => String(Number(worldId) + TEAM_ID_OFFSET);
+// Match data includes both the legacy "worlds" field (old per-region world
+// numbers) and "all_worlds", a mixed list of those legacy numbers plus the
+// modern Team ID, in no fixed order. Team IDs are always 5-digit (11xxx or
+// 12xxx); legacy world numbers are always 4-digit, so picking the value
+// >= 10000 reliably finds the Team ID regardless of its position.
+function matchTeamId(match, color) {
+  const list = match.all_worlds && match.all_worlds[color];
+  if (!Array.isArray(list)) return null;
+  const teamId = list.find((n) => Number(n) >= 10000);
+  return teamId !== undefined ? String(teamId) : null;
+}
 
 const API_BASE = "https://api.guildwars2.com/v2";
 const GUID_RE = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i;
@@ -613,7 +650,7 @@ async function getMatchForTeam(teamId) {
   const raw = await fetchJson(`${API_BASE}/wvw/matches?world=${encodeURIComponent(teamId)}`);
   const match = Array.isArray(raw) ? raw[0] : raw;
 
-  if (!match || typeof match.id !== 'string' || typeof match.worlds !== 'object') {
+  if (!match || typeof match.id !== 'string' || typeof match.all_worlds !== 'object') {
     throw new Error('No active match found for this team');
   }
 
@@ -623,7 +660,7 @@ async function getMatchForTeam(teamId) {
 }
 
 function colorForTeam(match, teamId) {
-  return COLORS.find((c) => toTeamId(match.worlds[c]) === String(teamId)) || null;
+  return COLORS.find((c) => matchTeamId(match, c) === String(teamId)) || null;
 }
 
 function formatCountdown(msRemaining) {
@@ -838,7 +875,7 @@ async function loadCommunityGuilds() {
 let activePopover = null;
 let activeTrigger = null;
 
-function closeGuildsPopover() {
+function closePopover() {
   if (activePopover) activePopover.remove();
   if (activeTrigger) activeTrigger.classList.remove('active');
   activePopover = null;
@@ -847,11 +884,11 @@ function closeGuildsPopover() {
 
 document.addEventListener('click', (e) => {
   if (activePopover && !activePopover.contains(e.target) && e.target !== activeTrigger) {
-    closeGuildsPopover();
+    closePopover();
   }
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeGuildsPopover();
+  if (e.key === 'Escape') closePopover();
 });
 
 function positionPopover(popover, triggerEl) {
@@ -892,15 +929,15 @@ function renderGuildsPopoverContent(popover, teamName, data) {
   popover.textContent = '';
 
   const header = document.createElement('div');
-  header.className = 'guilds-popover-header';
+  header.className = 'info-popover-header';
   const title = document.createElement('span');
   title.textContent = teamName;
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
-  closeBtn.className = 'guilds-popover-close';
+  closeBtn.className = 'info-popover-close';
   closeBtn.textContent = '×';
   closeBtn.setAttribute('aria-label', 'Close');
-  closeBtn.addEventListener('click', closeGuildsPopover);
+  closeBtn.addEventListener('click', closePopover);
   header.appendChild(title);
   header.appendChild(closeBtn);
   popover.appendChild(header);
@@ -917,7 +954,7 @@ function renderGuildsPopoverContent(popover, teamName, data) {
   } else {
     if (hasAlliances) {
       const sectionTitle = document.createElement('div');
-      sectionTitle.className = 'guilds-popover-section-title';
+      sectionTitle.className = 'info-popover-section-title';
       sectionTitle.textContent = 'Alliances';
       popover.appendChild(sectionTitle);
       for (const alliance of data.alliances) {
@@ -933,7 +970,7 @@ function renderGuildsPopoverContent(popover, teamName, data) {
     }
     if (hasSolo) {
       const sectionTitle = document.createElement('div');
-      sectionTitle.className = 'guilds-popover-section-title';
+      sectionTitle.className = 'info-popover-section-title';
       sectionTitle.textContent = 'Solo guilds';
       popover.appendChild(sectionTitle);
       popover.appendChild(buildGuildList(data.solo));
@@ -941,7 +978,7 @@ function renderGuildsPopoverContent(popover, teamName, data) {
   }
 
   const footer = document.createElement('p');
-  footer.className = 'guilds-popover-footer';
+  footer.className = 'info-popover-footer';
   footer.textContent = 'Community-maintained, may be incomplete or outdated. ';
   const link = document.createElement('a');
   link.href = SHEET_HUMAN_URL;
@@ -953,14 +990,14 @@ function renderGuildsPopoverContent(popover, teamName, data) {
 }
 
 async function toggleGuildsPopover(teamName, triggerEl) {
-  if (activeTrigger === triggerEl) { closeGuildsPopover(); return; }
-  closeGuildsPopover();
+  if (activeTrigger === triggerEl) { closePopover(); return; }
+  closePopover();
 
   activeTrigger = triggerEl;
   triggerEl.classList.add('active');
 
   const popover = document.createElement('div');
-  popover.className = 'guilds-popover';
+  popover.className = 'info-popover';
   const loading = document.createElement('p');
   loading.className = 'hint';
   loading.style.margin = '0';
@@ -1009,6 +1046,104 @@ function buildServerGuildsButton(teamName) {
   return btn;
 }
 
+// Maps the API's map "type" values to the short names players use in-game.
+const MAP_LABELS = Object.freeze({
+  Center: 'EBG', RedHome: 'RBL', BlueHome: 'BBL', GreenHome: 'GBL'
+});
+const MAP_LABEL_CLASS = Object.freeze({
+  Center: 'map-kd-label--ebg', RedHome: 'map-kd-label--rbl',
+  BlueHome: 'map-kd-label--bbl', GreenHome: 'map-kd-label--gbl'
+});
+const MAP_ORDER = ['Center', 'GreenHome', 'BlueHome', 'RedHome'];
+
+function buildMapKdRow(type, kills, deaths) {
+  const row = document.createElement('div');
+  row.className = 'map-kd-row';
+  const labelEl = document.createElement('span');
+  labelEl.className = `map-kd-label ${MAP_LABEL_CLASS[type]}`;
+  labelEl.textContent = MAP_LABELS[type];
+  const countsEl = document.createElement('span');
+  countsEl.className = 'map-kd-counts';
+  const killsEl = document.createElement('span');
+  killsEl.className = 'map-kd-kills';
+  killsEl.textContent = `⚔ ${kills.toLocaleString()}`;
+  const deathsEl = document.createElement('span');
+  deathsEl.className = 'map-kd-deaths';
+  deathsEl.textContent = `💀 ${deaths.toLocaleString()}`;
+  const ratioEl = document.createElement('span');
+  ratioEl.className = 'map-kd-ratio';
+  ratioEl.textContent = formatKd(kills, deaths);
+  countsEl.appendChild(killsEl);
+  countsEl.appendChild(deathsEl);
+  countsEl.appendChild(ratioEl);
+  row.appendChild(labelEl);
+  row.appendChild(countsEl);
+  return row;
+}
+
+function renderMapKdPopoverContent(popover, serverName, match, color) {
+  popover.textContent = '';
+
+  const header = document.createElement('div');
+  header.className = 'info-popover-header';
+  const title = document.createElement('span');
+  title.textContent = `${serverName} · K/D by map`;
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'info-popover-close';
+  closeBtn.textContent = '×';
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.addEventListener('click', closePopover);
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+  popover.appendChild(header);
+
+  const maps = Array.isArray(match.maps) ? match.maps : [];
+  for (const type of MAP_ORDER) {
+    const mapData = maps.find((m) => m.type === type);
+    const kills = Number(mapData?.kills?.[color] ?? 0);
+    const deaths = Number(mapData?.deaths?.[color] ?? 0);
+    popover.appendChild(buildMapKdRow(type, kills, deaths));
+  }
+}
+
+// Small crossed-swords icon next to the K/D value, opening a per-map breakdown.
+// Data is already in `match`, so this needs no fetch, unlike the guild list.
+function buildMapKdButton(serverName, match, color) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'map-kd-btn';
+  btn.setAttribute('aria-label', `Show K/D by map for ${serverName}`);
+  btn.title = `Show K/D by map for ${serverName}`;
+  btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+    '<g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<g transform="rotate(45 12 11)">' +
+    '<line x1="12" y1="2" x2="12" y2="17"/>' +
+    '<line x1="9" y1="16" x2="15" y2="16"/>' +
+    '<circle cx="12" cy="20" r="1.3" fill="currentColor" stroke="none"/>' +
+    '</g>' +
+    '<g transform="rotate(-45 12 11)">' +
+    '<line x1="12" y1="2" x2="12" y2="17"/>' +
+    '<line x1="9" y1="16" x2="15" y2="16"/>' +
+    '<circle cx="12" cy="20" r="1.3" fill="currentColor" stroke="none"/>' +
+    '</g>' +
+    '</g></svg>';
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (activeTrigger === btn) { closePopover(); return; }
+    closePopover();
+    activeTrigger = btn;
+    btn.classList.add('active');
+    const popover = document.createElement('div');
+    popover.className = 'info-popover';
+    document.body.appendChild(popover);
+    activePopover = popover;
+    renderMapKdPopoverContent(popover, serverName, match, color);
+    positionPopover(popover, btn);
+  });
+  return btn;
+}
+
 // Loads every active match (NA + EU) in two requests and powers the
 // standings rails. Results are cached, so a later guild check reuses them.
 async function loadStandings() {
@@ -1031,10 +1166,11 @@ async function loadStandings() {
     const [naMatches, euMatches] = await Promise.all([fetchRegion(naIds), fetchRegion(euIds)]);
 
     for (const match of [...naMatches, ...euMatches]) {
-      if (!match || typeof match.id !== 'string' || typeof match.worlds !== 'object') continue;
+      if (!match || typeof match.id !== 'string' || typeof match.all_worlds !== 'object') continue;
       matchDataCache.set(match.id, match);
       for (const color of COLORS) {
-        teamToMatchId.set(toTeamId(match.worlds[color]), match.id);
+        const teamId = matchTeamId(match, color);
+        if (teamId) teamToMatchId.set(teamId, match.id);
       }
     }
 
@@ -1075,9 +1211,8 @@ function buildStatsLine(pairs, className) {
 }
 
 function renderStandingSide(match, color, rankByColor) {
-  const worldId = match.worlds[color];
-  const teamId = toTeamId(worldId);
-  const serverName = TEAM_NAMES[teamId] || `Unknown team (ID ${worldId})`;
+  const teamId = matchTeamId(match, color);
+  const serverName = TEAM_NAMES[teamId] || `Unknown team (ID ${teamId})`;
   const kills = Number(match.kills?.[color] ?? 0);
   const deaths = Number(match.deaths?.[color] ?? 0);
   const kd = formatKd(kills, deaths);
@@ -1111,8 +1246,12 @@ function renderStandingSide(match, color, rankByColor) {
   if (skirmish !== null) statPairs.push(['Skirmish', skirmish.toLocaleString()]);
   statPairs.push(['VP', vp], ['K/D', kd]);
 
+  const statsLine = buildStatsLine(statPairs, 'standing-side-stats');
+  const values = statsLine.querySelectorAll('.stat-value');
+  values[values.length - 1].appendChild(buildMapKdButton(serverName, match, color));
+
   row.appendChild(top);
-  row.appendChild(buildStatsLine(statPairs, 'standing-side-stats'));
+  row.appendChild(statsLine);
   return row;
 }
 
@@ -1258,9 +1397,8 @@ function renderMatchPanel(match, yourGuildsByColor) {
   const rankByColor = rankMatchByVictoryPoints(match);
 
   for (const color of COLORS) {
-    const worldId = match.worlds[color];
-    const teamId = toTeamId(worldId);
-    const serverName = TEAM_NAMES[teamId] || `Unknown team (ID ${worldId})`;
+    const teamId = matchTeamId(match, color);
+    const serverName = TEAM_NAMES[teamId] || `Unknown team (ID ${teamId})`;
     const yours = yourGuildsByColor[color] || [];
 
     const col = document.createElement('div');
@@ -1299,7 +1437,10 @@ function renderMatchPanel(match, yourGuildsByColor) {
     const statPairs = [];
     if (skirmish !== null) statPairs.push(['Skirmish', skirmish.toLocaleString()]);
     statPairs.push(['VP', vp], ['K/D', kd]);
-    col.appendChild(buildStatsLine(statPairs, 'team-stats'));
+    const statsLine = buildStatsLine(statPairs, 'team-stats');
+    const values = statsLine.querySelectorAll('.stat-value');
+    values[values.length - 1].appendChild(buildMapKdButton(serverName, match, color));
+    col.appendChild(statsLine);
     cols.appendChild(col);
   }
 
@@ -1347,8 +1488,8 @@ function buildSummaryText(entries) {
     const regionName = REGION_NAMES[regionCode] || `Region ${regionCode}`;
     const myColor = colorForTeam(match, teamId);
     const enemyNames = COLORS.filter((c) => c !== myColor).map((c) => {
-      const enemyTeamId = toTeamId(match.worlds[c]);
-      return TEAM_NAMES[enemyTeamId] || `Unknown team (ID ${match.worlds[c]})`;
+      const enemyTeamId = matchTeamId(match, c);
+      return TEAM_NAMES[enemyTeamId] || `Unknown team (ID ${enemyTeamId})`;
     });
 
     let block = `${names.join(', ')} landed on ${server} (${regionName} Tier ${tierNum})`;
