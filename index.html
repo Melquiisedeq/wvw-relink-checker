@@ -864,7 +864,14 @@ async function loadTimers() {
     if (hasLockout) {
       // Season lockout matters more than the weekly relink, so it gets
       // the primary styling and larger accent-colored text.
-      inner.appendChild(buildRelinkStat('Season Lockout', formatCountdown(lockoutTime - now), true));
+      // Once the published timestamp is in the past, the API has no next
+      // value until the upcoming relink reassigns teams, so a countdown
+      // here would get stuck reading "any moment now". Show a static
+      // message instead while waiting for the next relink.
+      const lockoutValue = lockoutTime - now > 0
+        ? formatCountdown(lockoutTime - now)
+        : 'resumes after next relink';
+      inner.appendChild(buildRelinkStat('Season Lockout', lockoutValue, true));
     }
     relinkBanner.appendChild(inner);
   };
