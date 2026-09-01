@@ -585,15 +585,19 @@ const TEAM_NAMES = Object.freeze({
   "12015": "Bava Nisos"
 });
 
+// Looks up a team's display name. Uses hasOwnProperty so a lookup key like
+// "__proto__" can't resolve through the prototype chain instead of failing.
+function teamName(teamId) {
+  if (Object.prototype.hasOwnProperty.call(TEAM_NAMES, teamId)) return TEAM_NAMES[teamId];
+  return `Unknown team (ID ${teamId})`;
+}
+
 const REGION_NAMES = Object.freeze({ '1': 'NA', '2': 'EU' });
 const COLORS = ['red', 'blue', 'green'];
 const RANK_LABELS = Object.freeze({ 1: '1', 2: '2', 3: '3' });
 
-// Match data includes both the legacy "worlds" field (old per-region world
-// numbers) and "all_worlds", a mixed list of those legacy numbers plus the
-// modern Team ID, in no fixed order. Team IDs are always 5-digit (11xxx or
-// 12xxx); legacy world numbers are always 4-digit, so picking the value
-// >= 10000 reliably finds the Team ID regardless of its position.
+// "all_worlds" mixes legacy 4-digit world numbers with the modern 5-digit
+// Team ID in no fixed order, so >= 10000 reliably picks out the Team ID.
 function matchTeamId(match, color) {
   const list = match.all_worlds && match.all_worlds[color];
   if (!Array.isArray(list)) return null;
@@ -612,6 +616,7 @@ const SHEET_URL = (tab) =>
 const SHEET_HUMAN_URL = 'https://bit.ly/46pscDg';
 
 const MAX_ENTRIES = 60;        // hard cap so a pasted wall of text can't hammer a public API
+const MAX_NAME_LENGTH = 64;    // real guild names and GUIDs are well under this
 const REQUEST_TIMEOUT_MS = 10000;
 const THROTTLE_MS = 200;       // gap between sequential lookups, to stay well under rate limits
 const MAX_RETRIES = 2;         // for 429 / transient network errors
@@ -862,12 +867,9 @@ async function loadTimers() {
       inner.appendChild(divider);
     }
     if (hasLockout) {
-      // Season lockout matters more than the weekly relink, so it gets
-      // the primary styling and larger accent-colored text.
-      // Once the published timestamp is in the past, the API has no next
-      // value until the upcoming relink reassigns teams, so a countdown
-      // here would get stuck reading "any moment now". Show a static
-      // message instead while waiting for the next relink.
+      // Primary stat: larger, accent-colored text. Once the published
+      // timestamp is in the past, there's no next value until the next
+      // relink, so show a static message instead of a stuck countdown.
       const lockoutValue = lockoutTime - now > 0
         ? formatCountdown(lockoutTime - now)
         : 'resumes after next relink';
@@ -1268,10 +1270,8 @@ function buildMapKdButton(serverName, match, color) {
   return btn;
 }
 
-// Skirmish score per 2-hour block over the week: the closest thing to an
-// "activity" signal the API exposes, since team population isn't reported
-// anymore. Not pure kills, since it also includes objective points, but it
-// tracks combat closely enough to be a useful proxy.
+// Skirmish score per 2-hour block over the week. Includes objective points,
+// not just kills, but tracks combat closely enough to be a useful proxy.
 function getSkirmishSeries(match, color) {
   if (!Array.isArray(match.skirmishes)) return [];
   return match.skirmishes.map((s) => Number(s?.scores?.[color] ?? 0));
@@ -1503,9 +1503,42 @@ function buildStatsLine(pairs, className) {
   return container;
 }
 
-function renderStandingSide(match, color, rankByColor) {
+// Builds the "Skirmish · Activity · K/D" line with its trend/info/map icons
+// and leader underline. Shared by the standings rail and the match panel,
+// which both show the same three stats per side.
+function buildStandingStats(match, color, stats, className) {
+  const { kills, deaths, kd, skirmish, serverName, leaders } = stats;
+
+  const statPairs = [];
+  let skirmishIndex = -1;
+  if (skirmish !== null) { skirmishIndex = statPairs.length; statPairs.push(['Skirmish', formatCompact(skirmish)]); }
+  const activityIndex = statPairs.length;
+  statPairs.push(['Activity', formatCompact(kills + deaths)]);
+  const kdIndex = statPairs.length;
+  statPairs.push(['K/D', kd]);
+
+  const statsLine = buildStatsLine(statPairs, className);
+  const values = statsLine.querySelectorAll('.stat-value');
+
+  if (skirmishIndex !== -1) {
+    const trendBtn = buildSkirmishTrendButton(serverName, match, color);
+    if (trendBtn) values[skirmishIndex].appendChild(trendBtn);
+    if (leaders.skirmish === color) markStatLeader(values[skirmishIndex]);
+  }
+  if (leaders.activity === color) markStatLeader(values[activityIndex]);
+  values[activityIndex].appendChild(buildActivityInfoButton(serverName, match, color));
+
+  const kdValue = values[kdIndex];
+  if (kills !== deaths) kdValue.classList.add(kills > deaths ? 'kd-good' : 'kd-bad');
+  if (leaders.kd === color) markStatLeader(kdValue);
+  kdValue.appendChild(buildMapKdButton(serverName, match, color));
+
+  return statsLine;
+}
+
+function renderStandingSide(match, color, rankByColor, leaders, leaderScore) {
   const teamId = matchTeamId(match, color);
-  const serverName = TEAM_NAMES[teamId] || `Unknown team (ID ${teamId})`;
+  const serverName = teamName(teamId);
   const kills = Number(match.kills?.[color] ?? 0);
   const deaths = Number(match.deaths?.[color] ?? 0);
   const kd = formatKd(kills, deaths);
@@ -1540,33 +1573,12 @@ function renderStandingSide(match, color, rankByColor) {
   vpEl.innerHTML = `<span class="stat-label">VP </span><span class="stat-value">${vp}</span>`;
   top.appendChild(vpEl);
 
-  const statPairs = [];
-  let skirmishIndex = -1;
-  if (skirmish !== null) { skirmishIndex = statPairs.length; statPairs.push(['Skirmish', formatCompact(skirmish)]); }
-  const activityIndex = statPairs.length;
-  statPairs.push(['Activity', formatCompact(kills + deaths)]);
-  const kdIndex = statPairs.length;
-  statPairs.push(['K/D', kd]);
-
-  const statsLine = buildStatsLine(statPairs, 'standing-side-stats');
-  const values = statsLine.querySelectorAll('.stat-value');
-  const leaders = getStatLeaders(match);
-  if (skirmishIndex !== -1) {
-    const trendBtn = buildSkirmishTrendButton(serverName, match, color);
-    if (trendBtn) values[skirmishIndex].appendChild(trendBtn);
-    if (leaders.skirmish === color) markStatLeader(values[skirmishIndex]);
-  }
-  if (leaders.activity === color) markStatLeader(values[activityIndex]);
-  values[activityIndex].appendChild(buildActivityInfoButton(serverName, match, color));
-  const kdValue = values[kdIndex];
-  if (kills !== deaths) kdValue.classList.add(kills > deaths ? 'kd-good' : 'kd-bad');
-  if (leaders.kd === color) markStatLeader(kdValue);
-  kdValue.appendChild(buildMapKdButton(serverName, match, color));
+  const statsLine = buildStandingStats(match, color,
+    { kills, deaths, kd, skirmish, serverName, leaders }, 'standing-side-stats');
 
   row.appendChild(top);
   row.appendChild(statsLine);
 
-  const leaderScore = getSkirmishLeaderScore(match);
   if (skirmish !== null && leaderScore !== null) {
     row.appendChild(buildSkirmishBar(color, skirmish, leaderScore));
   }
@@ -1583,6 +1595,8 @@ function renderStandingsRegion(gridEl, matches) {
   for (const match of sorted) {
     const [, tierNum] = match.id.split('-');
     const rankByColor = rankMatchByVictoryPoints(match);
+    const leaders = getStatLeaders(match);
+    const leaderScore = getSkirmishLeaderScore(match);
 
     const box = document.createElement('div');
     box.className = 'standing-match';
@@ -1594,7 +1608,7 @@ function renderStandingsRegion(gridEl, matches) {
 
     const ranked = [...COLORS].sort((a, b) => rankByColor[a] - rankByColor[b]);
     for (const color of ranked) {
-      box.appendChild(renderStandingSide(match, color, rankByColor));
+      box.appendChild(renderStandingSide(match, color, rankByColor, leaders, leaderScore));
     }
 
     gridEl.appendChild(box);
@@ -1779,10 +1793,12 @@ function renderMatchPanel(match, yourGuildsByColor) {
 
   const rankByColor = rankMatchByVictoryPoints(match);
   const orderedColors = [...COLORS].sort((a, b) => rankByColor[a] - rankByColor[b]);
+  const leaders = getStatLeaders(match);
+  const leaderScore = getSkirmishLeaderScore(match);
 
   for (const color of orderedColors) {
     const teamId = matchTeamId(match, color);
-    const serverName = TEAM_NAMES[teamId] || `Unknown team (ID ${teamId})`;
+    const serverName = teamName(teamId);
     const yours = yourGuildsByColor[color] || [];
 
     const kills = Number(match.kills?.[color] ?? 0);
@@ -1822,31 +1838,10 @@ function renderMatchPanel(match, yourGuildsByColor) {
       col.appendChild(pin);
     }
 
-    const statPairs = [];
-    let skirmishIndex = -1;
-    if (skirmish !== null) { skirmishIndex = statPairs.length; statPairs.push(['Skirmish', formatCompact(skirmish)]); }
-    const activityIndex = statPairs.length;
-    statPairs.push(['Activity', formatCompact(kills + deaths)]);
-    const kdIndex = statPairs.length;
-    statPairs.push(['K/D', kd]);
-    const statsLine = buildStatsLine(statPairs, 'team-stats');
-    const values = statsLine.querySelectorAll('.stat-value');
-    const leaders = getStatLeaders(match);
-    if (skirmishIndex !== -1) {
-      const trendBtn = buildSkirmishTrendButton(serverName, match, color);
-      if (trendBtn) values[skirmishIndex].appendChild(trendBtn);
-      if (leaders.skirmish === color) markStatLeader(values[skirmishIndex]);
-    }
-    if (leaders.activity === color) markStatLeader(values[activityIndex]);
-    values[activityIndex].appendChild(buildActivityInfoButton(serverName, match, color));
-    const kdValue = values[kdIndex];
-    if (kills !== deaths) kdValue.classList.add(kills > deaths ? 'kd-good' : 'kd-bad');
-    if (leaders.kd === color) markStatLeader(kdValue);
-    kdValue.appendChild(buildMapKdButton(serverName, match, color));
-
+    const statsLine = buildStandingStats(match, color,
+      { kills, deaths, kd, skirmish, serverName, leaders }, 'team-stats');
     col.appendChild(statsLine);
 
-    const leaderScore = getSkirmishLeaderScore(match);
     if (skirmish !== null && leaderScore !== null) {
       col.appendChild(buildSkirmishBar(color, skirmish, leaderScore));
     }
@@ -1863,7 +1858,7 @@ function parseGuildNames(rawText) {
   const names = [];
 
   for (const line of rawText.split('\n')) {
-    const trimmed = line.trim();
+    const trimmed = line.trim().slice(0, MAX_NAME_LENGTH);
     if (!trimmed) continue;
     const key = trimmed.toLowerCase();
     if (seen.has(key)) continue; // silently de-dupe repeated entries
@@ -1885,7 +1880,7 @@ function buildSummaryText(entries) {
 
   const blocks = [];
   for (const [teamId, names] of byTeam) {
-    const server = TEAM_NAMES[teamId] || `Unknown team (ID ${teamId})`;
+    const server = teamName(teamId);
     const matchId = teamToMatchId.get(teamId);
     const match = matchId ? matchDataCache.get(matchId) : null;
 
@@ -1899,7 +1894,7 @@ function buildSummaryText(entries) {
     const myColor = colorForTeam(match, teamId);
     const enemyNames = COLORS.filter((c) => c !== myColor).map((c) => {
       const enemyTeamId = matchTeamId(match, c);
-      return TEAM_NAMES[enemyTeamId] || `Unknown team (ID ${enemyTeamId})`;
+      return teamName(enemyTeamId);
     });
 
     let block = `${names.join(', ')} landed on ${server} (${regionName} Tier ${tierNum})`;
@@ -1964,7 +1959,7 @@ async function run() {
       if (!link) {
         renderRow({ originalName, error: 'No WvW link registered yet' });
       } else {
-        const server = TEAM_NAMES[link.teamId] || `Unknown team (ID ${link.teamId})`;
+        const server = teamName(link.teamId);
         const dot = renderRow({ originalName, tag: info.tag, region: link.region, server });
 
         if (!teamsFound.has(link.teamId)) teamsFound.set(link.teamId, []);
@@ -1996,7 +1991,7 @@ async function run() {
       } catch (e) {
         const note = document.createElement('p');
         note.className = 'panel-note';
-        note.textContent = `Match data unavailable for team ${TEAM_NAMES[teamId] || teamId}.`;
+        note.textContent = `Match data unavailable for team ${teamName(teamId)}.`;
         matchPanelsContainer.appendChild(note);
         await sleep(THROTTLE_MS);
         continue;
