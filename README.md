@@ -20,22 +20,45 @@ whole list of guilds at once, and shows live match data on top.
 
 ## Features
 
-- Paste guild names, one per line, and get the region and server for each.
-- A top banner shows the countdown to the next weekly relink and to the
-  season lockout, so you always know how much time is left.
-- Live standings for every current NA and EU match: tier, rank, skirmish
-  score, victory points, and kill/death ratio.
-- Click the small crossed-swords icon next to any K/D value to see the
-  breakdown per map (EBG, and each borderland), instead of just the total.
+**Guild lookup**
+- Paste guild names, one per line, and get the region, server, and current
+  match context for each.
 - Marks which side your guild landed on, right in the results.
-- Click the small shield icon next to any NA server name to see which
-  alliances and solo guilds the community has reported on that server
-  (tag and name for each), sourced from the NA WvW Discord's guild sheet.
 - One-click "Copy summary" button that turns the results into a short,
   shareable text block grouped by team, ready to paste in Discord.
-- No installation, no backend, no build step. It is a single HTML file.
-- No sign-in, no API key, no personal data collected or stored.
-- Runs entirely in your browser. It only talks to the official GW2 API.
+
+**Live standings (NA and EU)**
+- Every current match, all tiers, ranked by victory points, refreshed on
+  page load.
+- Each side shows Skirmish score, Activity (kills + deaths this week), and
+  K/D, colored green or red depending on whether that side is winning or
+  losing the kill trade.
+- Whichever side leads a stat within its tier gets that number underlined.
+- A thin score bar shows how the current 2-hour skirmish compares to the
+  tier leader.
+- Each side is tinted in its own WvW color (red, blue, green) for a quick
+  visual read.
+- A trophy icon next to each region links to that region's player kill
+  leaderboard on gw2mists.com.
+
+**Detail popovers** (click the small icon next to a stat; closes on
+outside click, Escape, or if the window resizes)
+- Trend icon on Skirmish: score per 2-hour block for the week, with the
+  current and peak values.
+- Info icon on Activity: what the number means, plus the kills/deaths
+  breakdown behind it.
+- Crossed-swords icon on K/D: kills, deaths, and K/D broken down per map
+  (EBG and each borderland).
+- Shield icon on NA server names: which alliances and solo guilds the
+  community has reported there, tag and name for each.
+
+**Relink and lockout timers**
+- A banner at the top counts down to the next weekly relink and to the
+  season lockout.
+
+**No installation, no backend, no build step**
+- It's a single HTML file. No sign-in, no API key, no personal data
+  collected or stored. Runs entirely in your browser.
 
 ## How it works
 
@@ -43,8 +66,11 @@ whole list of guilds at once, and shows live match data on top.
 2. Guild-to-team mappings are fetched once from the WvW guilds endpoints
    and reused for every guild you check.
 3. The team ID is matched against the API's match data to find the current
-   tier, score, and side. Team names come from ArenaNet's published team
-   list, since there is no endpoint that resolves this automatically.
+   tier, score, and side. Match data includes a legacy "world" field and a
+   modern Team ID mixed into an `all_worlds` list; Team IDs are always
+   5-digit, so that's what this tool matches on. Team names come from
+   ArenaNet's published team list, since there's no endpoint that resolves
+   this automatically.
 4. Standings for every active match load automatically when the page opens,
    so most guild checks reuse data that is already cached.
 5. The relink and lockout timers come straight from the API's own timer
@@ -53,8 +79,9 @@ whole list of guilds at once, and shows live match data on top.
    click, from a public Google Sheet maintained by the NA WvW Discord
    (as a CSV export, no API key involved) and cached for the rest of the
    session.
-7. The per-map K/D breakdown uses match data already loaded on the page,
-   so it opens instantly with no extra request.
+7. The per-map K/D and Activity breakdowns use match data already loaded
+   on the page, so they open instantly with no extra request. The Skirmish
+   trend uses the same match's per-skirmish score history.
 
 Nothing leaves your browser except requests to `api.guildwars2.com` and,
 only if you click a shield icon, a read-only request to `docs.google.com`.
@@ -92,13 +119,15 @@ repo root. No build pipeline required.
 - A strict Content Security Policy only allows connections to
   `api.guildwars2.com` and, read-only, `docs.google.com` for the community
   guild sheet. Everything else is denied by default.
-- All dynamic content is rendered through safe DOM APIs, never `innerHTML`
-  with interpolated data. This rules out injection through guild names or
-  API responses.
+- Guild names, alliance names, and tags (from the API or the community
+  sheet) are always rendered through `textContent`, never `innerHTML`, so
+  they can never be parsed as markup. The only values ever interpolated
+  into `innerHTML` are numbers already coerced with `Number()`.
 - Object lookups guard against prototype pollution explicitly.
 - Every request has a timeout and a bounded retry policy, including
   respect for `Retry-After` on rate limit responses.
 - Input is capped and deduplicated on the client before any request fires.
+- External links open with `rel="noopener noreferrer"`.
 
 ## Limitations
 
@@ -110,6 +139,8 @@ repo root. No build pipeline required.
   or this project), covers NA only, and may be incomplete or out of date.
   If the sheet's maintainer renames or reorders its tabs, this feature can
   break silently until updated to match.
+- The player kill leaderboard link points to gw2mists.com, a third-party
+  community site not affiliated with this project.
 
 ## Disclaimer
 

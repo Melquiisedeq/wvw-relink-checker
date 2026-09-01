@@ -23,8 +23,6 @@
     --muted:#9aa4b2;
     --accent:#7fd6f2;
     --accent-soft:rgba(127,214,242,.14);
-    --warm:#c6923c;
-    --warm-soft:#3a2f1c;
     --ok:#4caf7d;
     --err:#e15c5c;
     --blue:#5b8ff0;
@@ -52,7 +50,7 @@
   .rail-right{order:2;}
   @media (min-width:1400px){
     .page{flex-direction:row;justify-content:center;align-items:flex-start;}
-    .rail{width:300px;flex:0 0 300px;max-width:none;position:sticky;top:24px;}
+    .rail{width:360px;flex:0 0 360px;max-width:none;position:sticky;top:24px;}
     .rail-left{order:-1;}
     .rail-right{order:1;}
     .wrap{order:0;}
@@ -172,7 +170,7 @@
   th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;}
   tr:last-child td{border-bottom:none;}
   .tag{
-    display:inline-block;background:var(--warm-soft);color:var(--warm);
+    display:inline-block;background:var(--accent-soft);color:var(--accent);
     border-radius:6px;padding:2px 8px;font-size:.8rem;font-weight:600;
   }
   .status-ok{color:var(--ok);}
@@ -194,7 +192,6 @@
   .match-region{color:var(--muted);font-size:.78rem;}
   .team-cols{display:grid;grid-template-columns:1fr;gap:10px;}
   .team-col{border:1px solid var(--border);border-radius:10px;padding:10px;}
-  .team-col.is-yours{border-color:var(--accent);}
   .team-head{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
   .dot{
     width:10px;height:10px;border-radius:50%;flex-shrink:0;
@@ -208,35 +205,45 @@
   .team-name{font-weight:600;font-size:.88rem;}
   .pin-badge{
     display:inline-block;margin-top:2px;margin-bottom:6px;
-    background:var(--warm-soft);color:var(--warm);
-    border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:600;
+    background:var(--accent-soft);color:var(--accent);
+    border-radius:6px;padding:3px 9px;font-size:.78rem;font-weight:700;
   }
   .team-stats{display:flex;gap:12px;flex-wrap:wrap;font-size:.78rem;color:var(--muted);margin-bottom:8px;}
   .panel-note{color:var(--muted);font-size:.78rem;font-style:italic;}
 
-  /* Standings rails: muted on purpose, this is secondary info */
+  /* Standings rails: secondary info, but headers still need to read clearly */
   .standings-card{background:rgba(255,255,255,.015);border-color:rgba(255,255,255,.06);}
-  .standings-header{margin-bottom:12px;}
+  .standings-header{margin-bottom:12px;display:flex;align-items:baseline;gap:8px;}
+  .standings-header-left{display:flex;align-items:center;gap:6px;}
+  .standings-status{margin-left:auto;}
   .standings-header h2{
-    margin:0 0 2px;font-size:.8rem;font-weight:600;color:var(--muted);
+    margin:0;font-size:.82rem;font-weight:700;color:var(--accent);
     text-transform:uppercase;letter-spacing:.06em;
   }
+  .leaderboard-link{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:22px;height:22px;border-radius:50%;
+    background:var(--accent-soft);color:var(--accent);
+    opacity:.85;transition:opacity .15s ease, background .15s ease;
+  }
+  .leaderboard-link:hover{opacity:1;background:rgba(127,214,242,.28);}
+  .leaderboard-link svg{display:block;}
   .standings-grid{display:flex;flex-direction:column;gap:10px;}
   .standing-match{border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:9px 10px;}
-  .standing-match-title{font-size:.7rem;color:var(--muted);margin-bottom:6px;font-weight:600;opacity:.8;}
+  .standing-match-title{font-size:.72rem;color:var(--text);margin-bottom:6px;font-weight:700;opacity:.9;}
   .standing-side{
     display:flex;flex-direction:column;gap:2px;padding:5px 0;font-size:.8rem;
-    border-bottom:1px solid rgba(255,255,255,.04);
   }
-  .standing-side:last-child{border-bottom:none;}
   .standing-side-top{display:flex;align-items:center;gap:7px;}
+  .standing-vp{margin-left:auto;font-size:.72rem;white-space:nowrap;flex-shrink:0;}
+  .standing-vp .stat-value{color:var(--accent);font-weight:800;font-size:.85rem;}
   .standing-side-top .rank-badge{width:20px;height:20px;font-size:.64rem;}
   .standing-side-top .dot{width:8px;height:8px;box-shadow:0 0 0 1px rgba(0,0,0,.35);}
   .standing-side-name{font-weight:600;}
   .standing-side-stats{color:var(--muted);font-size:.72rem;padding-left:27px;}
-  .stat-label{opacity:.75;}
+  .stat-label{opacity:.88;}
   .stat-value{color:var(--text);font-weight:600;}
-  .sep{opacity:.4;margin:0 4px;}
+  .sep{opacity:.4;margin:0 2px;}
   .rank-badge{
     width:26px;height:26px;flex-shrink:0;
     clip-path:polygon(50% 0%, 100% 22%, 100% 68%, 50% 100%, 0% 68%, 0% 22%);
@@ -260,7 +267,7 @@
   .server-guilds-btn:hover,.server-guilds-btn.active{opacity:1;transform:scale(1.15);}
   .server-guilds-btn svg{display:block;}
   .info-popover{
-    position:fixed;z-index:60;width:280px;max-height:340px;overflow-y:auto;
+    position:fixed;z-index:60;width:280px;max-height:min(340px, 70vh);overflow-y:auto;
     background:var(--card);border:1px solid var(--border);border-radius:10px;
     padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.45);font-size:.8rem;
   }
@@ -294,7 +301,7 @@
   /* Per-map K/D breakdown: small crossed-swords icon next to the K/D value */
   .map-kd-btn{
     display:inline-flex;align-items:center;justify-content:center;
-    width:15px;height:16px;padding:0;margin-left:3px;flex-shrink:0;
+    width:15px;height:16px;padding:0;margin-left:1px;flex-shrink:0;
     background:none;border:none;color:var(--accent);
     opacity:.8;vertical-align:middle;cursor:pointer;
     filter:drop-shadow(0 0 3px rgba(127,214,242,.35));
@@ -319,6 +326,77 @@
   .map-kd-counts{color:var(--text);white-space:nowrap;}
   .map-kd-kills, .map-kd-deaths{margin-left:8px;}
   .map-kd-ratio{color:var(--accent);font-weight:700;margin-left:10px;}
+  .glyph-sword{font-size:1.3em;display:inline-block;line-height:1;vertical-align:-1px;}
+  .glyph-skull{display:inline-block;line-height:1;}
+
+  /* Activity sparkline: subtle skirmish-score trend line under the stats */
+  .activity-btn{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:14px;height:15px;padding:0;margin-left:1px;flex-shrink:0;
+    background:none;border:none;color:var(--accent);
+    opacity:.8;vertical-align:middle;cursor:pointer;
+    filter:drop-shadow(0 0 3px rgba(127,214,242,.35));
+    transition:opacity .15s ease, transform .15s ease;
+  }
+  .activity-btn:hover,.activity-btn.active{opacity:1;transform:scale(1.15);}
+  .activity-btn svg{display:block;}
+  .activity-info-btn{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:14px;height:15px;padding:0;margin-left:1px;flex-shrink:0;
+    background:none;border:none;color:var(--accent);
+    opacity:.8;vertical-align:middle;cursor:pointer;
+    filter:drop-shadow(0 0 3px rgba(127,214,242,.35));
+    transition:opacity .15s ease, transform .15s ease;
+  }
+  .activity-info-btn:hover,.activity-info-btn.active{opacity:1;transform:scale(1.15);}
+  .activity-info-btn svg{display:block;}
+  .activity-total{margin-bottom:8px;}
+  .activity-total-row{
+    display:flex;justify-content:space-between;font-size:.8rem;
+    color:var(--muted);padding:2px 0;
+  }
+  .activity-total-row span:last-child{color:var(--text);font-weight:600;}
+  .activity-total-sum{
+    border-top:1px solid var(--border);margin-top:2px;padding-top:6px;
+    font-weight:700;color:var(--text);
+  }
+  .activity-total-sum span:last-child{color:var(--accent);font-size:.95rem;}
+  .activity-stats{display:flex;justify-content:space-between;font-size:.78rem;color:var(--muted);margin-bottom:4px;}
+  .activity-stats b{color:var(--text);}
+  .activity-chart{width:100%;height:60px;display:block;}
+  .activity-line{fill:none;stroke:var(--accent);stroke-width:2;}
+  .activity-dot{fill:var(--accent);}
+  .activity-axis{display:flex;justify-content:space-between;font-size:.66rem;color:var(--muted);margin-top:3px;}
+  .activity-note{color:var(--muted);font-size:.72rem;margin-top:8px;line-height:1.5;}
+
+  /* Skirmish score bar: current-skirmish score relative to the tier leader */
+  .skirmish-bar-row{display:flex;align-items:center;gap:6px;margin-top:5px;}
+  .skirmish-bar-track{flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden;}
+  .skirmish-bar-fill{height:100%;border-radius:2px;transition:width .3s ease;}
+  .skirmish-bar-pct{font-size:.66rem;color:var(--muted);min-width:26px;text-align:right;flex-shrink:0;}
+  .skirmish-bar-red{background:var(--red);}
+  .skirmish-bar-blue{background:var(--blue);}
+  .skirmish-bar-green{background:var(--green);}
+
+  /* K/D value colored by who's winning the fight stat */
+  .kd-good{color:var(--green)!important;}
+  .kd-bad{color:var(--red)!important;}
+  .stat-leader{
+    text-decoration:underline;
+    text-decoration-color:var(--accent);text-underline-offset:3px;
+  }
+
+  /* Team-tinted card: border and a faint background wash in the side's color */
+  .standing-side{border:1px solid transparent;border-radius:8px;padding:6px 8px;margin:4px 0;}
+  .standing-side.side-red{border-color:rgba(225,92,92,.35);background:rgba(225,92,92,.06);}
+  .standing-side.side-blue{border-color:rgba(91,143,240,.35);background:rgba(91,143,240,.06);}
+  .standing-side.side-green{border-color:rgba(76,175,125,.35);background:rgba(76,175,125,.06);}
+  .team-col.col-red{border-color:rgba(225,92,92,.35);background:rgba(225,92,92,.05);}
+  .team-col.col-blue{border-color:rgba(91,143,240,.35);background:rgba(91,143,240,.05);}
+  .team-col.col-green{border-color:rgba(76,175,125,.35);background:rgba(76,175,125,.05);}
+
+  /* Your guild's side: bolder name plus a bright pin badge */
+  .team-col.is-yours .team-name{color:var(--accent);}
 </style>
 </head>
 
@@ -328,8 +406,19 @@
 <aside class="rail rail-left">
   <div class="card standings-card">
     <div class="standings-header">
-      <h2>NA standings</h2>
-      <span id="standingsStatusNA" class="hint"><span class="spinner"></span>Loading…</span>
+      <span class="standings-header-left">
+        <h2>NA standings</h2>
+        <a class="leaderboard-link" href="https://gw2mists.com/en/leaderboards/player?region=1"
+           target="_blank" rel="noopener noreferrer" title="NA player kill leaderboard (gw2mists.com)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 21h8"/><path d="M12 17v4"/>
+            <path d="M7 4h10v5a5 5 0 0 1-10 0V4Z"/>
+            <path d="M7 5H4a2 2 0 0 0 0 4h1.5"/><path d="M17 5h3a2 2 0 0 1 0 4h-1.5"/>
+          </svg>
+        </a>
+      </span>
+      <span id="standingsStatusNA" class="hint standings-status"><span class="spinner"></span>Loading…</span>
     </div>
     <div class="standings-grid" id="standingsGridNA"></div>
   </div>
@@ -374,7 +463,7 @@
 
   <div class="card">
     <label for="guildInput">Guild names, one per line (a raw GUID works too)</label>
-    <textarea id="guildInput" placeholder="Mistakes To Miracles
+    <textarea id="guildInput" placeholder="Lulu
 Another Guild Here
 One More Guild"></textarea>
 
@@ -421,8 +510,19 @@ One More Guild"></textarea>
 <aside class="rail rail-right">
   <div class="card standings-card">
     <div class="standings-header">
-      <h2>EU standings</h2>
-      <span id="standingsStatusEU" class="hint"><span class="spinner"></span>Loading…</span>
+      <span class="standings-header-left">
+        <h2>EU standings</h2>
+        <a class="leaderboard-link" href="https://gw2mists.com/en/leaderboards/player"
+           target="_blank" rel="noopener noreferrer" title="EU player kill leaderboard (gw2mists.com)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 21h8"/><path d="M12 17v4"/>
+            <path d="M7 4h10v5a5 5 0 0 1-10 0V4Z"/>
+            <path d="M7 5H4a2 2 0 0 0 0 4h1.5"/><path d="M17 5h3a2 2 0 0 1 0 4h-1.5"/>
+          </svg>
+        </a>
+      </span>
+      <span id="standingsStatusEU" class="hint standings-status"><span class="spinner"></span>Loading…</span>
     </div>
     <div class="standings-grid" id="standingsGridEU"></div>
   </div>
@@ -891,14 +991,28 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closePopover();
 });
 
+function getViewportSize() {
+  if (window.visualViewport) {
+    return { width: window.visualViewport.width, height: window.visualViewport.height };
+  }
+  return { width: window.innerWidth, height: window.innerHeight };
+}
+
 function positionPopover(popover, triggerEl) {
   const rect = triggerEl.getBoundingClientRect();
-  const maxLeft = window.innerWidth - popover.offsetWidth - 12;
+  const { width: vw, height: vh } = getViewportSize();
+  const maxLeft = vw - popover.offsetWidth - 12;
   const left = Math.max(12, Math.min(rect.left, maxLeft));
-  const spaceBelow = window.innerHeight - rect.bottom;
-  const top = spaceBelow > 200 ? rect.bottom + 6 : rect.top - popover.offsetHeight - 6;
+  const spaceBelow = vh - rect.bottom;
+  const fitsBelow = spaceBelow >= popover.offsetHeight + 12;
+  const top = fitsBelow ? rect.bottom + 6 : rect.top - popover.offsetHeight - 6;
   popover.style.left = `${left}px`;
-  popover.style.top = `${Math.max(12, top)}px`;
+  popover.style.top = `${Math.max(12, Math.min(top, vh - popover.offsetHeight - 12))}px`;
+}
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', closePopover);
+  window.visualViewport.addEventListener('scroll', closePopover);
 }
 
 function buildGuildList(entries) {
@@ -1066,12 +1180,13 @@ function buildMapKdRow(type, kills, deaths) {
   countsEl.className = 'map-kd-counts';
   const killsEl = document.createElement('span');
   killsEl.className = 'map-kd-kills';
-  killsEl.textContent = `⚔ ${kills.toLocaleString()}`;
+  killsEl.innerHTML = `<span class="glyph-sword">⚔</span> ${kills.toLocaleString()}`;
   const deathsEl = document.createElement('span');
   deathsEl.className = 'map-kd-deaths';
-  deathsEl.textContent = `💀 ${deaths.toLocaleString()}`;
+  deathsEl.innerHTML = `<span class="glyph-skull">💀</span> ${deaths.toLocaleString()}`;
   const ratioEl = document.createElement('span');
   ratioEl.className = 'map-kd-ratio';
+  if (kills !== deaths) ratioEl.classList.add(kills > deaths ? 'kd-good' : 'kd-bad');
   ratioEl.textContent = formatKd(kills, deaths);
   countsEl.appendChild(killsEl);
   countsEl.appendChild(deathsEl);
@@ -1139,6 +1254,175 @@ function buildMapKdButton(serverName, match, color) {
     document.body.appendChild(popover);
     activePopover = popover;
     renderMapKdPopoverContent(popover, serverName, match, color);
+    positionPopover(popover, btn);
+  });
+  return btn;
+}
+
+// Skirmish score per 2-hour block over the week: the closest thing to an
+// "activity" signal the API exposes, since team population isn't reported
+// anymore. Not pure kills, since it also includes objective points, but it
+// tracks combat closely enough to be a useful proxy.
+function getSkirmishSeries(match, color) {
+  if (!Array.isArray(match.skirmishes)) return [];
+  return match.skirmishes.map((s) => Number(s?.scores?.[color] ?? 0));
+}
+
+// Maps a list of numbers to SVG polyline points inside a width x height box.
+// Also returns the last point's coordinates, to mark "now" on the chart.
+function buildSparklinePoints(values, width, height) {
+  if (values.length < 2) return { points: '', last: null };
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const range = max - min || 1;
+  const stepX = width / (values.length - 1);
+  const coords = values.map((v, i) => [i * stepX, height - ((v - min) / range) * height]);
+  const last = coords[coords.length - 1];
+  return { points: coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' '), last };
+}
+
+function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
+  popover.textContent = '';
+
+  const header = document.createElement('div');
+  header.className = 'info-popover-header';
+  const title = document.createElement('span');
+  title.textContent = `${serverName} · Skirmish score`;
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'info-popover-close';
+  closeBtn.textContent = '×';
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.addEventListener('click', closePopover);
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+  popover.appendChild(header);
+
+  const series = getSkirmishSeries(match, color);
+  if (series.length < 2) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.style.margin = '0';
+    empty.textContent = 'Not enough skirmish data yet this week.';
+    popover.appendChild(empty);
+    return;
+  }
+
+  const now = series[series.length - 1];
+  const peak = Math.max(...series);
+
+  const stats = document.createElement('div');
+  stats.className = 'activity-stats';
+  stats.innerHTML = `<span>Now <b>${now.toLocaleString()}</b></span><span>Peak <b>${peak.toLocaleString()}</b></span>`;
+  popover.appendChild(stats);
+
+  const { points, last } = buildSparklinePoints(series, 240, 60);
+  const chart = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  chart.setAttribute('viewBox', '0 0 240 60');
+  chart.setAttribute('class', 'activity-chart');
+  chart.innerHTML = `<polyline points="${points}" class="activity-line"/>` +
+    `<circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3" class="activity-dot"/>`;
+  popover.appendChild(chart);
+
+  const axis = document.createElement('div');
+  axis.className = 'activity-axis';
+  axis.innerHTML = '<span>Reset</span><span>Now</span>';
+  popover.appendChild(axis);
+
+  const note = document.createElement('p');
+  note.className = 'activity-note';
+  note.textContent = 'Score per 2h skirmish block. Most of it comes from holding objectives over ' +
+    'time, plus a small bonus per enemy kill, so a high number usually means good map control, ' +
+    'not necessarily a big fight.';
+  popover.appendChild(note);
+}
+
+// Trend icon on the Skirmish stat, opening the score-over-time chart we
+// already built.
+function buildSkirmishTrendButton(serverName, match, color) {
+  const series = getSkirmishSeries(match, color);
+  if (series.length < 2) return null;
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'activity-btn';
+  btn.setAttribute('aria-label', `Show skirmish score trend for ${serverName}`);
+  btn.title = `Show skirmish score trend for ${serverName}`;
+  btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+    '<path d="M3 17 L9 10 L14 14 L21 5" stroke="currentColor" stroke-width="2.2" ' +
+    'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (activeTrigger === btn) { closePopover(); return; }
+    closePopover();
+    activeTrigger = btn;
+    btn.classList.add('active');
+    const popover = document.createElement('div');
+    popover.className = 'info-popover';
+    document.body.appendChild(popover);
+    activePopover = popover;
+    renderSkirmishTrendPopoverContent(popover, serverName, match, color);
+    positionPopover(popover, btn);
+  });
+  return btn;
+}
+
+function renderActivityInfoPopoverContent(popover, serverName, match, color) {
+  popover.textContent = '';
+
+  const header = document.createElement('div');
+  header.className = 'info-popover-header';
+  const title = document.createElement('span');
+  title.textContent = `${serverName} · Activity`;
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'info-popover-close';
+  closeBtn.textContent = '×';
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.addEventListener('click', closePopover);
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+  popover.appendChild(header);
+
+  const kills = Number(match.kills?.[color] ?? 0);
+  const deaths = Number(match.deaths?.[color] ?? 0);
+  const totalBlock = document.createElement('div');
+  totalBlock.className = 'activity-total';
+  totalBlock.innerHTML =
+    `<div class="activity-total-row"><span><span class="glyph-sword">⚔</span> Kills</span><span>${kills.toLocaleString()}</span></div>` +
+    `<div class="activity-total-row"><span><span class="glyph-skull">💀</span> Deaths</span><span>${deaths.toLocaleString()}</span></div>` +
+    `<div class="activity-total-row activity-total-sum"><span>Total this week</span><span>${(kills + deaths).toLocaleString()}</span></div>`;
+  popover.appendChild(totalBlock);
+
+  const note = document.createElement('p');
+  note.className = 'activity-note';
+  note.textContent = 'Activity is simply kills + deaths this week, a straightforward measure of ' +
+    'combat with none of the PPT ambiguity that skirmish score has.';
+  popover.appendChild(note);
+}
+
+// Info icon on the Activity stat, explaining what that number means.
+// Distinct from the Skirmish trend icon and the K/D map icon on purpose.
+function buildActivityInfoButton(serverName, match, color) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'activity-info-btn';
+  btn.setAttribute('aria-label', `What is Activity for ${serverName}?`);
+  btn.title = `What is Activity for ${serverName}?`;
+  btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">' +
+    '<path d="M13 2 L4 14 h6 l-1 8 l9 -12 h-6 Z"/></svg>';
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (activeTrigger === btn) { closePopover(); return; }
+    closePopover();
+    activeTrigger = btn;
+    btn.classList.add('active');
+    const popover = document.createElement('div');
+    popover.className = 'info-popover';
+    document.body.appendChild(popover);
+    activePopover = popover;
+    renderActivityInfoPopoverContent(popover, serverName, match, color);
     positionPopover(popover, btn);
   });
   return btn;
@@ -1220,7 +1504,7 @@ function renderStandingSide(match, color, rankByColor) {
   const skirmish = getSkirmishScore(match, color);
 
   const row = document.createElement('div');
-  row.className = 'standing-side';
+  row.className = `standing-side side-${color}`;
 
   const top = document.createElement('div');
   top.className = 'standing-side-top';
@@ -1242,16 +1526,42 @@ function renderStandingSide(match, color, rankByColor) {
   top.appendChild(name);
   if (match.id.startsWith('1-')) top.appendChild(buildServerGuildsButton(serverName));
 
+  const vpEl = document.createElement('span');
+  vpEl.className = 'standing-vp';
+  vpEl.innerHTML = `<span class="stat-label">VP </span><span class="stat-value">${vp}</span>`;
+  top.appendChild(vpEl);
+
   const statPairs = [];
-  if (skirmish !== null) statPairs.push(['Skirmish', skirmish.toLocaleString()]);
-  statPairs.push(['VP', vp], ['K/D', kd]);
+  let skirmishIndex = -1;
+  if (skirmish !== null) { skirmishIndex = statPairs.length; statPairs.push(['Skirmish', formatCompact(skirmish)]); }
+  const activityIndex = statPairs.length;
+  statPairs.push(['Activity', formatCompact(kills + deaths)]);
+  const kdIndex = statPairs.length;
+  statPairs.push(['K/D', kd]);
 
   const statsLine = buildStatsLine(statPairs, 'standing-side-stats');
   const values = statsLine.querySelectorAll('.stat-value');
-  values[values.length - 1].appendChild(buildMapKdButton(serverName, match, color));
+  const leaders = getStatLeaders(match);
+  if (skirmishIndex !== -1) {
+    const trendBtn = buildSkirmishTrendButton(serverName, match, color);
+    if (trendBtn) values[skirmishIndex].appendChild(trendBtn);
+    if (leaders.skirmish === color) markStatLeader(values[skirmishIndex]);
+  }
+  if (leaders.activity === color) markStatLeader(values[activityIndex]);
+  values[activityIndex].appendChild(buildActivityInfoButton(serverName, match, color));
+  const kdValue = values[kdIndex];
+  if (kills !== deaths) kdValue.classList.add(kills > deaths ? 'kd-good' : 'kd-bad');
+  if (leaders.kd === color) markStatLeader(kdValue);
+  kdValue.appendChild(buildMapKdButton(serverName, match, color));
 
   row.appendChild(top);
   row.appendChild(statsLine);
+
+  const leaderScore = getSkirmishLeaderScore(match);
+  if (skirmish !== null && leaderScore !== null) {
+    row.appendChild(buildSkirmishBar(color, skirmish, leaderScore));
+  }
+
   return row;
 }
 
@@ -1354,6 +1664,63 @@ function getSkirmishScore(match, color) {
   return null;
 }
 
+// Highest current-skirmish score among the three sides, used to size the
+// score bar relative to whoever is leading right now.
+function getSkirmishLeaderScore(match) {
+  const scores = COLORS.map((c) => getSkirmishScore(match, c)).filter((s) => s !== null);
+  return scores.length > 0 ? Math.max(...scores) : null;
+}
+
+function markStatLeader(valueEl) {
+  valueEl.classList.add('stat-leader');
+}
+
+// Finds which color leads each stat, so that side's number can be
+// underlined as "standing out" in the tier. Independent per stat: a side
+// could lead Activity but not Skirmish, for example.
+function getStatLeaders(match) {
+  const best = (values) => {
+    let leader = null, max = -Infinity;
+    for (const [c, v] of values) {
+      if (v !== null && v > max) { max = v; leader = c; }
+    }
+    return leader;
+  };
+  const skirmishValues = COLORS.map((c) => [c, getSkirmishScore(match, c)]);
+  const activityValues = COLORS.map((c) => [c, Number(match.kills?.[c] ?? 0) + Number(match.deaths?.[c] ?? 0)]);
+  const kdValues = COLORS.map((c) => {
+    const k = Number(match.kills?.[c] ?? 0);
+    const d = Number(match.deaths?.[c] ?? 0);
+    return [c, d > 0 ? k / d : (k > 0 ? Infinity : 0)];
+  });
+  return { skirmish: best(skirmishValues), activity: best(activityValues), kd: best(kdValues) };
+}
+
+// Thin bar showing this side's current skirmish score relative to the
+// tier leader, in the side's own color. Purely visual, no popover.
+function buildSkirmishBar(color, score, leaderScore) {
+  const row = document.createElement('div');
+  row.className = 'skirmish-bar-row';
+  row.title = 'Current skirmish score vs the tier leader';
+
+  const track = document.createElement('div');
+  track.className = 'skirmish-bar-track';
+  const fill = document.createElement('div');
+  const rawPct = leaderScore > 0 ? (score / leaderScore) * 100 : 0;
+  const pct = Math.max(4, rawPct);
+  fill.className = `skirmish-bar-fill skirmish-bar-${color}`;
+  fill.style.width = `${pct}%`;
+  track.appendChild(fill);
+
+  const label = document.createElement('span');
+  label.className = 'skirmish-bar-pct';
+  label.textContent = `${Math.round(rawPct)}%`;
+
+  row.appendChild(track);
+  row.appendChild(label);
+  return row;
+}
+
 // Ranks the three sides by victory points, the same standing used for tier promotion.
 function rankMatchByVictoryPoints(match) {
   const ranked = COLORS
@@ -1368,6 +1735,13 @@ function rankMatchByVictoryPoints(match) {
 function formatKd(kills, deaths) {
   if (deaths > 0) return (kills / deaths).toFixed(2);
   return kills > 0 ? '∞' : '0.00';
+}
+
+// Shortens large stat numbers (11,434 -> 11.4k) so the stats line fits
+// without wrapping. Below 1,000 it just uses the normal separator.
+function formatCompact(n) {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return n.toLocaleString();
 }
 
 // Renders one match panel (tier header + one column per side).
@@ -1395,14 +1769,21 @@ function renderMatchPanel(match, yourGuildsByColor) {
   cols.className = 'team-cols';
 
   const rankByColor = rankMatchByVictoryPoints(match);
+  const orderedColors = [...COLORS].sort((a, b) => rankByColor[a] - rankByColor[b]);
 
-  for (const color of COLORS) {
+  for (const color of orderedColors) {
     const teamId = matchTeamId(match, color);
     const serverName = TEAM_NAMES[teamId] || `Unknown team (ID ${teamId})`;
     const yours = yourGuildsByColor[color] || [];
 
+    const kills = Number(match.kills?.[color] ?? 0);
+    const deaths = Number(match.deaths?.[color] ?? 0);
+    const kd = formatKd(kills, deaths);
+    const vp = Number(match.victory_points?.[color] ?? 0).toLocaleString();
+    const skirmish = getSkirmishScore(match, color);
+
     const col = document.createElement('div');
-    col.className = 'team-col' + (yours.length ? ' is-yours' : '');
+    col.className = `team-col col-${color}` + (yours.length ? ' is-yours' : '');
 
     const head = document.createElement('div');
     head.className = 'team-head';
@@ -1419,6 +1800,10 @@ function renderMatchPanel(match, yourGuildsByColor) {
     head.appendChild(dot);
     head.appendChild(name);
     if (regionCode === '1') head.appendChild(buildServerGuildsButton(serverName));
+    const vpEl = document.createElement('span');
+    vpEl.className = 'standing-vp';
+    vpEl.innerHTML = `<span class="stat-label">VP </span><span class="stat-value">${vp}</span>`;
+    head.appendChild(vpEl);
     col.appendChild(head);
 
     if (yours.length) {
@@ -1428,19 +1813,35 @@ function renderMatchPanel(match, yourGuildsByColor) {
       col.appendChild(pin);
     }
 
-    const kills = Number(match.kills?.[color] ?? 0);
-    const deaths = Number(match.deaths?.[color] ?? 0);
-    const kd = formatKd(kills, deaths);
-    const vp = Number(match.victory_points?.[color] ?? 0).toLocaleString();
-    const skirmish = getSkirmishScore(match, color);
-
     const statPairs = [];
-    if (skirmish !== null) statPairs.push(['Skirmish', skirmish.toLocaleString()]);
-    statPairs.push(['VP', vp], ['K/D', kd]);
+    let skirmishIndex = -1;
+    if (skirmish !== null) { skirmishIndex = statPairs.length; statPairs.push(['Skirmish', formatCompact(skirmish)]); }
+    const activityIndex = statPairs.length;
+    statPairs.push(['Activity', formatCompact(kills + deaths)]);
+    const kdIndex = statPairs.length;
+    statPairs.push(['K/D', kd]);
     const statsLine = buildStatsLine(statPairs, 'team-stats');
     const values = statsLine.querySelectorAll('.stat-value');
-    values[values.length - 1].appendChild(buildMapKdButton(serverName, match, color));
+    const leaders = getStatLeaders(match);
+    if (skirmishIndex !== -1) {
+      const trendBtn = buildSkirmishTrendButton(serverName, match, color);
+      if (trendBtn) values[skirmishIndex].appendChild(trendBtn);
+      if (leaders.skirmish === color) markStatLeader(values[skirmishIndex]);
+    }
+    if (leaders.activity === color) markStatLeader(values[activityIndex]);
+    values[activityIndex].appendChild(buildActivityInfoButton(serverName, match, color));
+    const kdValue = values[kdIndex];
+    if (kills !== deaths) kdValue.classList.add(kills > deaths ? 'kd-good' : 'kd-bad');
+    if (leaders.kd === color) markStatLeader(kdValue);
+    kdValue.appendChild(buildMapKdButton(serverName, match, color));
+
     col.appendChild(statsLine);
+
+    const leaderScore = getSkirmishLeaderScore(match);
+    if (skirmish !== null && leaderScore !== null) {
+      col.appendChild(buildSkirmishBar(color, skirmish, leaderScore));
+    }
+
     cols.appendChild(col);
   }
 
