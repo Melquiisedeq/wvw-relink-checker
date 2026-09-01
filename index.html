@@ -22,6 +22,7 @@
     --text:#e7ebf0;
     --muted:#9aa4b2;
     --accent:#7fd6f2;
+    --accent-bright:#66f5ff;
     --accent-soft:rgba(127,214,242,.14);
     --ok:#4caf7d;
     --err:#e15c5c;
@@ -236,7 +237,8 @@
   }
   .standing-side-top{display:flex;align-items:center;gap:7px;}
   .standing-vp{margin-left:auto;font-size:.72rem;white-space:nowrap;flex-shrink:0;}
-  .standing-vp .stat-value{color:var(--accent);font-weight:800;font-size:.85rem;}
+  .standing-vp .stat-label{color:var(--muted);opacity:1;}
+  .standing-vp .stat-value{color:#ffffff;font-weight:800;font-size:.85rem;}
   .standing-side-top .rank-badge{width:20px;height:20px;font-size:.64rem;}
   .standing-side-top .dot{width:8px;height:8px;box-shadow:0 0 0 1px rgba(0,0,0,.35);}
   .standing-side-name{font-weight:600;}
@@ -302,7 +304,7 @@
   .map-kd-btn{
     display:inline-flex;align-items:center;justify-content:center;
     width:15px;height:16px;padding:0;margin-left:1px;flex-shrink:0;
-    background:none;border:none;color:var(--accent);
+    background:none;border:none;color:var(--accent-bright);
     opacity:.8;vertical-align:middle;cursor:pointer;
     filter:drop-shadow(0 0 3px rgba(127,214,242,.35));
     transition:opacity .15s ease, transform .15s ease;
@@ -333,7 +335,7 @@
   .activity-btn{
     display:inline-flex;align-items:center;justify-content:center;
     width:14px;height:15px;padding:0;margin-left:1px;flex-shrink:0;
-    background:none;border:none;color:var(--accent);
+    background:none;border:none;color:var(--accent-bright);
     opacity:.8;vertical-align:middle;cursor:pointer;
     filter:drop-shadow(0 0 3px rgba(127,214,242,.35));
     transition:opacity .15s ease, transform .15s ease;
@@ -343,7 +345,7 @@
   .activity-info-btn{
     display:inline-flex;align-items:center;justify-content:center;
     width:14px;height:15px;padding:0;margin-left:1px;flex-shrink:0;
-    background:none;border:none;color:var(--accent);
+    background:none;border:none;color:var(--accent-bright);
     opacity:.8;vertical-align:middle;cursor:pointer;
     filter:drop-shadow(0 0 3px rgba(127,214,242,.35));
     transition:opacity .15s ease, transform .15s ease;
