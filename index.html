@@ -587,7 +587,7 @@ const TEAM_NAMES = Object.freeze({
 
 // Looks up a team's display name. Uses hasOwnProperty so a lookup key like
 // "__proto__" can't resolve through the prototype chain instead of failing.
-function teamName(teamId) {
+function getTeamName(teamId) {
   if (Object.prototype.hasOwnProperty.call(TEAM_NAMES, teamId)) return TEAM_NAMES[teamId];
   return `Unknown team (ID ${teamId})`;
 }
@@ -621,6 +621,18 @@ const REQUEST_TIMEOUT_MS = 10000;
 const THROTTLE_MS = 200;       // gap between sequential lookups, to stay well under rate limits
 const MAX_RETRIES = 2;         // for 429 / transient network errors
 
+// Background refresh cadence for data that can change while a tab stays
+// open. ArenaNet's own match data is known to update inconsistently
+// (community reports of delays ranging from under a minute to over an
+// hour), so no client-side interval can guarantee freshness — 3 minutes
+// just balances "as current as the API allows" against not hammering it.
+// Relink and lockout timestamps only change roughly weekly, so they're
+// checked far less often. Both cadences are well under the API's
+// published rate limit (300 requests/minute per IP) and only run while
+// the tab is visible.
+const STANDINGS_REFRESH_MS = 3 * 60 * 1000;  // match scores, kills/deaths, VP
+const TIMERS_REFRESH_MS = 10 * 60 * 1000;    // relink schedule, season lockout
+
 const guildInput  = document.getElementById('guildInput');
 const runBtn      = document.getElementById('runBtn');
 const impactOverlay = document.getElementById('impactOverlay');
@@ -640,6 +652,7 @@ const standingsStatusEU = document.getElementById('standingsStatusEU');
 const relinkBanner = document.getElementById('relinkBanner');
 
 let wvwMapCache = null;              // { na: {guid: teamId}, eu: {guid: teamId} }
+let wvwMapCachedAt = 0;
 const guildNameCache = new Map();    // guildId -> { ok, data } | { ok: false, error }
 const teamToMatchId = new Map();     // teamId -> matchId
 const matchDataCache = new Map();    // matchId -> match object from the API
@@ -685,8 +698,10 @@ async function fetchJson(url, attempt = 0) {
   }
 }
 
+// Guild-to-team assignment only changes at relink, so the cache expires on
+// the same cadence as the relink timer instead of lasting the whole session.
 async function getWvwMaps() {
-  if (wvwMapCache) return wvwMapCache;
+  if (wvwMapCache && Date.now() - wvwMapCachedAt < TIMERS_REFRESH_MS) return wvwMapCache;
 
   const [na, eu] = await Promise.all([
     fetchJson(`${API_BASE}/wvw/guilds/na`),
@@ -698,6 +713,7 @@ async function getWvwMaps() {
   }
 
   wvwMapCache = { na, eu };
+  wvwMapCachedAt = Date.now();
   return wvwMapCache;
 }
 
@@ -770,6 +786,33 @@ function colorForTeam(match, teamId) {
   return COLORS.find((c) => matchTeamId(match, c) === String(teamId)) || null;
 }
 
+// Runs `fn` on an interval while the tab is visible, and catches up right
+// away when the tab regains focus if enough time has passed. Skips a run
+// if the previous one is still in flight, so a slow network never stacks
+// up overlapping requests.
+function schedulePeriodicRefresh(fn, intervalMs) {
+  let inFlight = false;
+  let lastRun = 0;
+
+  const run = async () => {
+    if (inFlight || document.visibilityState === 'hidden') return;
+    if (Date.now() - lastRun < intervalMs) return;
+    inFlight = true;
+    try {
+      await fn();
+    } catch (err) {
+      // fn() is expected to handle its own errors; this is just a safety
+      // net so a future mistake can't leave an unhandled rejection.
+    } finally {
+      lastRun = Date.now();
+      inFlight = false;
+    }
+  };
+
+  setInterval(run, intervalMs);
+  document.addEventListener('visibilitychange', run);
+}
+
 function formatCountdown(msRemaining) {
   if (msRemaining === null) return 'unknown';
   if (msRemaining <= 0) return 'any moment now';
@@ -822,65 +865,77 @@ function buildRelinkValue(naMs, euMs) {
   return frag;
 }
 
-// Loads the two official WvW timers: weekly relink and season lockout.
-// Refreshes every minute.
-async function loadTimers() {
-  let assignment, lockout;
+// Timer state, module-level so fetchTimers() (periodic re-fetch) and
+// updateRelinkBanner() (60s display tick) can run on independent
+// schedules and both read the latest values.
+let relinkNA = null;
+let relinkEU = null;
+let lockoutTime = null;
+let timersLoaded = false;
+
+async function fetchTimers() {
   try {
     const [assignRaw, lockoutRaw] = await Promise.all([
       fetchJson(`${API_BASE}/wvw/timers/teamAssignment`),
       fetchJson(`${API_BASE}/wvw/timers/lockout`)
     ]);
-    assignment = Array.isArray(assignRaw) ? assignRaw[0] : assignRaw;
-    lockout = Array.isArray(lockoutRaw) ? lockoutRaw[0] : lockoutRaw;
+    const assignment = Array.isArray(assignRaw) ? assignRaw[0] : assignRaw;
+    const lockout = Array.isArray(lockoutRaw) ? lockoutRaw[0] : lockoutRaw;
+
+    relinkNA = assignment?.na ? new Date(assignment.na).getTime() : null;
+    relinkEU = assignment?.eu ? new Date(assignment.eu).getTime() : null;
+    // NA and EU lockout timestamps are always identical, so only one is kept.
+    lockoutTime = lockout?.na
+      ? new Date(lockout.na).getTime()
+      : (lockout?.eu ? new Date(lockout.eu).getTime() : null);
+    timersLoaded = true;
   } catch (err) {
-    return; // banner just stays hidden if timers are unavailable
+    // Keep showing the last known values; the banner just skips this cycle.
+  }
+}
+
+function updateRelinkBanner() {
+  if (!timersLoaded) return;
+  const now = Date.now();
+  const hasRelink = relinkNA !== null || relinkEU !== null;
+  const hasLockout = lockoutTime !== null;
+  relinkBanner.textContent = '';
+  if (!hasRelink && !hasLockout) {
+    relinkBanner.style.display = 'none';
+    return;
   }
 
-  const relinkNA = assignment?.na ? new Date(assignment.na).getTime() : null;
-  const relinkEU = assignment?.eu ? new Date(assignment.eu).getTime() : null;
-  // NA and EU lockout timestamps are always identical, so only one is kept.
-  const lockoutTime = lockout?.na
-    ? new Date(lockout.na).getTime()
-    : (lockout?.eu ? new Date(lockout.eu).getTime() : null);
+  const inner = document.createElement('div');
+  inner.className = 'relink-inner';
 
-  if ([relinkNA, relinkEU, lockoutTime].every((t) => t === null)) return;
-
-  const update = () => {
-    const now = Date.now();
-    relinkBanner.textContent = '';
-    const hasRelink = relinkNA !== null || relinkEU !== null;
-    const hasLockout = lockoutTime !== null;
-    if (!hasRelink && !hasLockout) return;
-
-    const inner = document.createElement('div');
-    inner.className = 'relink-inner';
-
-    if (hasRelink) {
-      const naLeft = relinkNA !== null ? relinkNA - now : null;
-      const euLeft = relinkEU !== null ? relinkEU - now : null;
-      inner.appendChild(buildRelinkStat('Next Relink', buildRelinkValue(naLeft, euLeft), false));
-    }
-    if (hasRelink && hasLockout) {
-      const divider = document.createElement('div');
-      divider.className = 'relink-divider';
-      inner.appendChild(divider);
-    }
-    if (hasLockout) {
-      // Primary stat: larger, accent-colored text. Once the published
-      // timestamp is in the past, there's no next value until the next
-      // relink, so show a static message instead of a stuck countdown.
-      const lockoutValue = lockoutTime - now > 0
-        ? formatCountdown(lockoutTime - now)
-        : 'resumes after next relink';
-      inner.appendChild(buildRelinkStat('Season Lockout', lockoutValue, true));
-    }
-    relinkBanner.appendChild(inner);
-  };
-
+  if (hasRelink) {
+    const naLeft = relinkNA !== null ? relinkNA - now : null;
+    const euLeft = relinkEU !== null ? relinkEU - now : null;
+    inner.appendChild(buildRelinkStat('Next Relink', buildRelinkValue(naLeft, euLeft), false));
+  }
+  if (hasRelink && hasLockout) {
+    const divider = document.createElement('div');
+    divider.className = 'relink-divider';
+    inner.appendChild(divider);
+  }
+  if (hasLockout) {
+    // Primary stat: larger, accent-colored text. Once the published
+    // timestamp is in the past, there's no next value until the next
+    // relink, so show a static message instead of a stuck countdown.
+    const lockoutValue = lockoutTime - now > 0
+      ? formatCountdown(lockoutTime - now)
+      : 'Resumes after next relink';
+    inner.appendChild(buildRelinkStat('Season Lockout', lockoutValue, true));
+  }
   relinkBanner.style.display = 'block';
-  update();
-  setInterval(update, 60000);
+  relinkBanner.appendChild(inner);
+}
+
+// Fetches both timers once and renders the banner immediately. Used for
+// the initial page load; later refreshes call fetchTimers directly.
+async function loadTimers() {
+  await fetchTimers();
+  updateRelinkBanner();
 }
 
 // Community guild list (NA WvW Discord sheet).
@@ -1477,6 +1532,13 @@ async function loadStandings() {
   }
 }
 
+// Rebuilding the grid on refresh would leave a popover pointing at a
+// removed element, so close it first.
+async function refreshStandings() {
+  closePopover();
+  await loadStandings();
+}
+
 // Builds a "Label value · Label value" line with the label dimmed and the
 // value bright. Used by both the standings rails and the match panel.
 function buildStatsLine(pairs, className) {
@@ -1538,7 +1600,7 @@ function buildStandingStats(match, color, stats, className) {
 
 function renderStandingSide(match, color, rankByColor, leaders, leaderScore) {
   const teamId = matchTeamId(match, color);
-  const serverName = teamName(teamId);
+  const serverName = getTeamName(teamId);
   const kills = Number(match.kills?.[color] ?? 0);
   const deaths = Number(match.deaths?.[color] ?? 0);
   const kd = formatKd(kills, deaths);
@@ -1798,7 +1860,7 @@ function renderMatchPanel(match, yourGuildsByColor) {
 
   for (const color of orderedColors) {
     const teamId = matchTeamId(match, color);
-    const serverName = teamName(teamId);
+    const serverName = getTeamName(teamId);
     const yours = yourGuildsByColor[color] || [];
 
     const kills = Number(match.kills?.[color] ?? 0);
@@ -1880,7 +1942,7 @@ function buildSummaryText(entries) {
 
   const blocks = [];
   for (const [teamId, names] of byTeam) {
-    const server = teamName(teamId);
+    const server = getTeamName(teamId);
     const matchId = teamToMatchId.get(teamId);
     const match = matchId ? matchDataCache.get(matchId) : null;
 
@@ -1894,7 +1956,7 @@ function buildSummaryText(entries) {
     const myColor = colorForTeam(match, teamId);
     const enemyNames = COLORS.filter((c) => c !== myColor).map((c) => {
       const enemyTeamId = matchTeamId(match, c);
-      return teamName(enemyTeamId);
+      return getTeamName(enemyTeamId);
     });
 
     let block = `${names.join(', ')} landed on ${server} (${regionName} Tier ${tierNum})`;
@@ -1959,7 +2021,7 @@ async function run() {
       if (!link) {
         renderRow({ originalName, error: 'No WvW link registered yet' });
       } else {
-        const server = teamName(link.teamId);
+        const server = getTeamName(link.teamId);
         const dot = renderRow({ originalName, tag: info.tag, region: link.region, server });
 
         if (!teamsFound.has(link.teamId)) teamsFound.set(link.teamId, []);
@@ -1991,7 +2053,7 @@ async function run() {
       } catch (e) {
         const note = document.createElement('p');
         note.className = 'panel-note';
-        note.textContent = `Match data unavailable for team ${teamName(teamId)}.`;
+        note.textContent = `Match data unavailable for team ${getTeamName(teamId)}.`;
         matchPanelsContainer.appendChild(note);
         await sleep(THROTTLE_MS);
         continue;
@@ -2044,8 +2106,13 @@ copySummaryBtn.addEventListener('click', async () => {
   }
 });
 
-loadStandings();
+// Initial load, then keep both data sets fresh in the background for as
+// long as the tab stays open (see STANDINGS_REFRESH_MS / TIMERS_REFRESH_MS).
+refreshStandings();
 loadTimers();
+setInterval(updateRelinkBanner, 60000); // ticks the countdown display only
+schedulePeriodicRefresh(refreshStandings, STANDINGS_REFRESH_MS);
+schedulePeriodicRefresh(async () => { await fetchTimers(); updateRelinkBanner(); }, TIMERS_REFRESH_MS);
 </script>
 </body>
 </html>
