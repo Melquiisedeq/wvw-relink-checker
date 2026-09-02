@@ -928,7 +928,7 @@ function updateRelinkBanner() {
     // relink, so show a static message instead of a stuck countdown.
     const lockoutValue = lockoutTime - now > 0
       ? formatCountdown(lockoutTime - now)
-      : 'Resumes after next relink';
+      : 'resumes after next relink';
     inner.appendChild(buildRelinkStat('Season Lockout', lockoutValue, true));
   }
   relinkBanner.style.display = 'block';
