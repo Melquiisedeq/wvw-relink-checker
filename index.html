@@ -632,6 +632,10 @@ const MAX_RETRIES = 2;         // for 429 / transient network errors
 // the tab is visible.
 const STANDINGS_REFRESH_MS = 3 * 60 * 1000;  // match scores, kills/deaths, VP
 const TIMERS_REFRESH_MS = 10 * 60 * 1000;    // relink schedule, season lockout
+// Community sheet is edited by hand, not polled in the background (only
+// re-fetched when a shield icon is actually clicked), so a shorter TTL
+// costs nothing extra while keeping edits visible reasonably quickly.
+const COMMUNITY_SHEET_TTL_MS = 5 * 60 * 1000;
 
 const guildInput  = document.getElementById('guildInput');
 const runBtn      = document.getElementById('runBtn');
@@ -985,6 +989,7 @@ const ALLIANCE_MEMBERS_COL = 2;
 const ALLIANCE_WORLD_COL = 22;
 
 let communityGuildsCache = null; // Map: teamName -> { alliances, solo }
+let communityGuildsCachedAt = 0;
 
 async function fetchSheetCsv(tab) {
   const controller = new AbortController();
@@ -1004,7 +1009,9 @@ function addToTeam(byTeam, teamName) {
 }
 
 async function loadCommunityGuilds() {
-  if (communityGuildsCache) return communityGuildsCache;
+  if (communityGuildsCache && Date.now() - communityGuildsCachedAt < COMMUNITY_SHEET_TTL_MS) {
+    return communityGuildsCache;
+  }
 
   const [soloText, allianceText] = await Promise.all([
     fetchSheetCsv('SoloGuilds'),
@@ -1033,6 +1040,7 @@ async function loadCommunityGuilds() {
   }
 
   communityGuildsCache = byTeam;
+  communityGuildsCachedAt = Date.now();
   return byTeam;
 }
 
