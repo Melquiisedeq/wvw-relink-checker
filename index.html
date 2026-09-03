@@ -214,9 +214,14 @@
 
   /* Standings rails: secondary info, but headers still need to read clearly */
   .standings-card{background:rgba(255,255,255,.015);border-color:rgba(255,255,255,.06);}
-  .standings-header{margin-bottom:12px;display:flex;align-items:baseline;gap:8px;}
+  .standings-header{margin-bottom:12px;display:flex;align-items:center;gap:8px;}
   .standings-header-left{display:flex;align-items:center;gap:6px;}
-  .standings-status{margin-left:auto;}
+  .standings-status{margin-left:auto;display:inline-flex;align-items:center;gap:6px;position:relative;top:-3px;}
+  .live-dot{
+    display:inline-block;width:5px;height:5px;border-radius:50%;flex-shrink:0;
+    background:var(--accent);opacity:.55;cursor:default;
+    animation:pip-pulse 2.4s ease-in-out infinite;
+  }
   .standings-header h2{
     margin:0;font-size:.82rem;font-weight:700;color:var(--accent);
     text-transform:uppercase;letter-spacing:.06em;
@@ -273,6 +278,9 @@
     background:var(--card);border:1px solid var(--border);border-radius:10px;
     padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.45);font-size:.8rem;
   }
+  /* Guild/alliance list only: often long, so it gets more default room and
+     a manual resize handle. The other popovers stay compact. */
+  .info-popover--guilds{width:300px;max-height:85vh;min-height:120px;resize:vertical;}
   .info-popover-header{
     display:flex;align-items:center;justify-content:space-between;
     font-weight:700;color:var(--text);margin-bottom:8px;
@@ -928,7 +936,7 @@ function updateRelinkBanner() {
     // relink, so show a static message instead of a stuck countdown.
     const lockoutValue = lockoutTime - now > 0
       ? formatCountdown(lockoutTime - now)
-      : 'resumes after next relink';
+      : 'Resumes after next relink';
     inner.appendChild(buildRelinkStat('Season Lockout', lockoutValue, true));
   }
   relinkBanner.style.display = 'block';
@@ -1185,7 +1193,7 @@ async function toggleGuildsPopover(teamName, triggerEl) {
   triggerEl.classList.add('active');
 
   const popover = document.createElement('div');
-  popover.className = 'info-popover';
+  popover.className = 'info-popover info-popover--guilds';
   const loading = document.createElement('p');
   loading.className = 'hint';
   loading.style.margin = '0';
@@ -1500,6 +1508,18 @@ function buildActivityInfoButton(serverName, match, color) {
   return btn;
 }
 
+// Shows the pulsing live-dot next to the synced time on success; plain
+// text (no dot) for loading/error states.
+function setStandingsStatus(el, synced, text) {
+  el.textContent = '';
+  if (!synced) { el.textContent = text; return; }
+  const dot = document.createElement('span');
+  dot.className = 'live-dot';
+  dot.title = 'Live standings, refreshes automatically every ~3 minutes';
+  el.appendChild(dot);
+  el.appendChild(document.createTextNode(text));
+}
+
 // Loads every active match (NA + EU) in two requests and powers the
 // standings rails. Results are cached, so a later guild check reuses them.
 async function loadStandings() {
@@ -1532,8 +1552,11 @@ async function loadStandings() {
 
     renderStandingsRegion(standingsGridNA, naMatches);
     renderStandingsRegion(standingsGridEU, euMatches);
-    standingsStatusNA.textContent = naMatches.length ? '' : "Couldn't load NA standings.";
-    standingsStatusEU.textContent = euMatches.length ? '' : "Couldn't load EU standings.";
+    const syncedAt = `Synced ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    const naOk = naMatches.length > 0;
+    const euOk = euMatches.length > 0;
+    setStandingsStatus(standingsStatusNA, naOk, naOk ? syncedAt : "Couldn't load NA standings.");
+    setStandingsStatus(standingsStatusEU, euOk, euOk ? syncedAt : "Couldn't load EU standings.");
   } catch (err) {
     standingsStatusNA.textContent = "Couldn't load live standings right now.";
     standingsStatusEU.textContent = "Couldn't load live standings right now.";

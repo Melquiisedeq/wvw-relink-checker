@@ -9,7 +9,7 @@ relink, plus live tier standings for every NA and EU match.
 
 **[Open the live tool](https://melquiisedeq.github.io/wvw-relink-checker/)**
 
-![WvW Relink Checker screenshot](docs/screenshot1.png)
+![WvW Relink Checker screenshot](docs/screenshot.png)
 
 ## Why this exists
 
@@ -28,8 +28,14 @@ whole list of guilds at once, and shows live match data on top.
   shareable text block grouped by team, ready to paste in Discord.
 
 **Live standings (NA and EU)**
-- Every current match, all tiers, ranked by victory points, refreshed on
-  page load.
+- Every current match, all tiers, ranked by victory points, refreshed
+  automatically in the background (about every 3 minutes) for as long as
+  the page stays open, no reload needed.
+- Auto-refresh pauses while the tab is in the background and catches up
+  right away when you switch back to it, so it never wastes requests on a
+  tab nobody's looking at.
+- A small pulsing dot next to "Synced HH:MM" shows the data is live;
+  hover it for the refresh interval.
 - Each side shows Skirmish score, Activity (kills + deaths this week), and
   K/D, colored green or red depending on whether that side is winning or
   losing the kill trade.
@@ -54,7 +60,11 @@ outside click, Escape, or if the window resizes)
 
 **Relink and lockout timers**
 - A banner at the top counts down to the next weekly relink and to the
-  season lockout.
+  season lockout, re-fetched from the API about every 10 minutes so it
+  reflects a relink shortly after it actually happens.
+- Once a season's lockout date has passed and the next one hasn't been
+  published yet, the banner shows "Resumes after next relink" instead of
+  a countdown stuck at zero.
 
 **No installation, no backend, no build step**
 - It's a single HTML file. No sign-in, no API key, no personal data
@@ -64,21 +74,25 @@ outside click, Escape, or if the window resizes)
 
 1. Each guild name is resolved to an ID through the guild search endpoint.
 2. Guild-to-team mappings are fetched once from the WvW guilds endpoints
-   and reused for every guild you check.
+   and reused for every guild you check, for up to about 10 minutes (the
+   same cadence as the relink timer, since that's the only thing that
+   changes this data) before the next check re-fetches it.
 3. The team ID is matched against the API's match data to find the current
    tier, score, and side. Match data includes a legacy "world" field and a
    modern Team ID mixed into an `all_worlds` list; Team IDs are always
    5-digit, so that's what this tool matches on. Team names come from
    ArenaNet's published team list, since there's no endpoint that resolves
    this automatically.
-4. Standings for every active match load automatically when the page opens,
-   so most guild checks reuse data that is already cached.
+4. Standings for every active match load when the page opens and then
+   keep refreshing automatically in the background (see Features above),
+   so most guild checks reuse data that's already cached and current.
 5. The relink and lockout timers come straight from the API's own timer
-   endpoints and refresh once a minute while the page is open.
-6. The NA guild/alliance list behind the shield icon is fetched, on first
-   click, from a public Google Sheet maintained by the NA WvW Discord
-   (as a CSV export, no API key involved) and cached for the rest of the
-   session.
+   endpoints. The on-screen countdown ticks every minute; the underlying
+   timestamps themselves are re-fetched about every 10 minutes.
+6. The NA guild/alliance list behind the shield icon is fetched from a
+   public Google Sheet maintained by the NA WvW Discord (as a CSV export,
+   no API key involved), cached for about 5 minutes, and only re-fetched
+   when a shield icon is actually clicked.
 7. The per-map K/D and Activity breakdowns use match data already loaded
    on the page, so they open instantly with no extra request. The Skirmish
    trend uses the same match's per-skirmish score history.
@@ -126,11 +140,18 @@ repo root. No build pipeline required.
 - Object lookups guard against prototype pollution explicitly.
 - Every request has a timeout and a bounded retry policy, including
   respect for `Retry-After` on rate limit responses.
-- Input is capped and deduplicated on the client before any request fires.
+- Input is capped and deduplicated on the client before any request fires,
+  and each pasted line is capped at 64 characters so one absurdly long
+  line can't turn into an oversized request.
 - External links open with `rel="noopener noreferrer"`.
 
 ## Limitations
 
+- Background refresh keeps standings and timers current within a few
+  minutes, but it can't outrun ArenaNet's own backend: match data is
+  known to update inconsistently on their end (sometimes near-instant,
+  occasionally delayed much longer), which no client-side polling
+  interval can fix.
 - Team names come from a static table since the API has no endpoint to
   resolve them. If ArenaNet adds new matchmaking teams, the `TEAM_NAMES`
   object in `index.html` needs a manual update.
