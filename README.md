@@ -24,8 +24,16 @@ whole list of guilds at once, and shows live match data on top.
 - Paste guild names, one per line, and get the region, server, and current
   match context for each.
 - Marks which side your guild landed on, right in the results.
-- One-click "Copy summary" button that turns the results into a short,
-  shareable text block grouped by team, ready to paste in Discord.
+- Two one-click copy buttons build a shareable summary of who you're
+  fighting with and against:
+  - **Copy for chat**: a compact, tags-only version that fits the
+    in-game chat's character limit.
+  - **Copy for Discord**: a fuller version with guild names, plus each
+    alliance's tag and every member guild's own tag underneath it (a
+    guild doesn't always fly its alliance's tag).
+  - The ally/enemy tag breakdown is built from the same NA community
+    sheet as the shield icon below, so it's NA only; EU summaries fall
+    back to a plain "Fighting: ..." line.
 
 **Live standings (NA and EU)**
 - Every current match, all tiers, ranked by victory points, refreshed
@@ -105,7 +113,8 @@ only if you click a shield icon, a read-only request to `docs.google.com`.
 1. Open the page, locally or through the hosted link.
 2. Paste guild names exactly as they appear in game, one per line.
 3. Click Check.
-4. Use "Copy summary" to grab a shareable, team-by-team text block.
+4. Use "Copy for chat" or "Copy for Discord" to grab a shareable,
+   team-by-team text block in the format that fits where you're posting it.
 5. Share the results with your alliance.
 
 Guild names must match exactly, since the API only supports exact search,

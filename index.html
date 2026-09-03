@@ -7,13 +7,15 @@
   CSP notes: default-src 'none' denies everything by default.
   connect-src only allows api.guildwars2.com and docs.google.com (the
   community sheet, read-only, no API key). unsafe-inline is fine here since
-  this is a single file with no external scripts or CDN. img-src, base-uri,
-  and form-action are all 'none': no images, no <base> hijacking, no forms.
+  this is a single file with no external scripts or CDN. img-src allows
+  only data: URIs (for the inline SVG favicon below), never external
+  images. base-uri and form-action are 'none': no <base> hijacking, no forms.
 -->
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.guildwars2.com https://docs.google.com; img-src 'none'; base-uri 'none'; form-action 'none';">
+      content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.guildwars2.com https://docs.google.com; img-src data:; base-uri 'none'; form-action 'none';">
 <meta name="referrer" content="no-referrer">
-<title>WvW Relink Checker — GW2</title>
+<title>WvW Relink Checker</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20160%20190%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22fiIceGrad%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23f2fdff%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%236fd8f5%22%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D%22fiShieldEdge%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23eafcff%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%233fa9cc%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Cpath%20d%3D%22M10%2C10%20H150%20V95%20C150%2C145%20112%2C172%2080%2C188%20C48%2C172%2010%2C145%2010%2C95%20Z%22%20fill%3D%22%230f1216%22%20stroke%3D%22url%28%23fiShieldEdge%29%22%20stroke-width%3D%224%22%2F%3E%3Cpath%20d%3D%22M20%2C18%20H140%20V95%20C140%2C138%20108%2C162%2080%2C176%20C52%2C162%2020%2C138%2020%2C95%20Z%22%20fill%3D%22none%22%20stroke%3D%22%233fa9cc%22%20stroke-width%3D%221%22%20opacity%3D%220.5%22%2F%3E%3Cg%20fill%3D%22url%28%23fiIceGrad%29%22%20transform%3D%22translate%2838%2C55%29%22%3E%3Crect%20x%3D%220%22%20y%3D%2266%22%20width%3D%2284%22%20height%3D%2214%22%2F%3E%3Crect%20x%3D%2212%22%20y%3D%2230%22%20width%3D%2260%22%20height%3D%2238%22%2F%3E%3Crect%20x%3D%2212%22%20y%3D%2212%22%20width%3D%2210%22%20height%3D%2220%22%2F%3E%3Crect%20x%3D%2228%22%20y%3D%2212%22%20width%3D%2210%22%20height%3D%2220%22%2F%3E%3Crect%20x%3D%2244%22%20y%3D%2212%22%20width%3D%2210%22%20height%3D%2220%22%2F%3E%3Crect%20x%3D%2260%22%20y%3D%2212%22%20width%3D%2210%22%20height%3D%2220%22%2F%3E%3Crect%20x%3D%2238%22%20y%3D%22-8%22%20width%3D%226%22%20height%3D%2222%22%2F%3E%3Cpath%20d%3D%22M44%2C-8%20L64%2C-1%20L44%2C6%20Z%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E">
 <style>
   :root{
     --bg:#0f1216;
@@ -482,13 +484,13 @@ One More Guild Name"></textarea>
       <span id="statusMsg" class="hint"></span>
     </div>
     <p class="hint">
-      Names need to match the in-game guild name exactly — the API search
+      Names need to match the in-game guild name exactly. The API search
       doesn't do tags or partial matches. Up to 60 guilds per run.
     </p>
   </div>
 
   <div class="card" id="resultsPlaceholder">
-    <p class="muted" style="margin:0;">Paste some guild names above and hit Check — results show up here.</p>
+    <p class="muted" style="margin:0;">Paste some guild names above and hit Check. Results show up here.</p>
   </div>
   <div class="card" id="resultCard" style="display:none;">
     <table>
@@ -503,7 +505,8 @@ One More Guild Name"></textarea>
       <tbody id="resultBody"></tbody>
     </table>
     <div class="row" id="copyRow" style="display:none;">
-      <button id="copySummaryBtn" type="button">Copy summary</button>
+      <button id="copyChatBtn" type="button">Copy for chat</button>
+      <button id="copyDiscordBtn" type="button">Copy for Discord</button>
       <span id="copyFeedback" class="hint"></span>
     </div>
   </div>
@@ -632,7 +635,7 @@ const MAX_RETRIES = 2;         // for 429 / transient network errors
 // Background refresh cadence for data that can change while a tab stays
 // open. ArenaNet's own match data is known to update inconsistently
 // (community reports of delays ranging from under a minute to over an
-// hour), so no client-side interval can guarantee freshness — 3 minutes
+// hour), so no client-side interval can guarantee freshness. 3 minutes
 // just balances "as current as the API allows" against not hammering it.
 // Relink and lockout timestamps only change roughly weekly, so they're
 // checked far less often. Both cadences are well under the API's
@@ -655,7 +658,8 @@ const resultCard  = document.getElementById('resultCard');
 const resultBody  = document.getElementById('resultBody');
 const matchPanelsContainer = document.getElementById('matchPanelsContainer');
 const copyRow = document.getElementById('copyRow');
-const copySummaryBtn = document.getElementById('copySummaryBtn');
+const copyChatBtn = document.getElementById('copyChatBtn');
+const copyDiscordBtn = document.getElementById('copyDiscordBtn');
 const copyFeedback = document.getElementById('copyFeedback');
 const standingsGridNA   = document.getElementById('standingsGridNA');
 const standingsGridEU   = document.getElementById('standingsGridEU');
@@ -1962,40 +1966,113 @@ function parseGuildNames(rawText) {
   return names.slice(0, MAX_ENTRIES);
 }
 
-// Groups guilds on the same team into one block, listing the two
-// opposing servers. Falls back to a plain line if match data is missing.
-function buildSummaryText(entries) {
+// "[TAG] " for each entry that has one, space-separated. Used for the
+// compact chat version, where only tags matter, not full names.
+function formatTagRow(entries) {
+  return entries.filter((e) => e.tag).map((e) => `[${e.tag}]`).join(' ');
+}
+
+function buildCompactCommunityBlock(label, data) {
+  if (!data) return null;
+  const lines = [];
+  if (data.alliances.length) lines.push(`Alliances: ${formatTagRow(data.alliances)}`);
+  if (data.solo.length) lines.push(`Solo: ${formatTagRow(data.solo)}`);
+  if (lines.length === 0) return null;
+  return `${label}\n${lines.join('\n')}`;
+}
+
+// Discord version has room to spell things out, including each alliance
+// member's own tag, since a guild doesn't always fly its alliance's tag.
+function buildDetailedCommunityBlock(label, data) {
+  if (!data) return null;
+  const lines = [];
+  if (data.alliances.length) {
+    lines.push('Alliances:');
+    for (const alliance of data.alliances) {
+      const head = alliance.tag ? `[${alliance.tag}] ${alliance.name}` : alliance.name;
+      lines.push(`  ${head}`);
+      for (const member of alliance.members) {
+        lines.push(`    ${member.tag ? `[${member.tag}] ${member.name}` : member.name}`);
+      }
+    }
+  }
+  if (data.solo.length) {
+    lines.push('Solo guilds:');
+    for (const solo of data.solo) {
+      lines.push(`  ${solo.tag ? `[${solo.tag}] ${solo.name}` : solo.name}`);
+    }
+  }
+  if (lines.length === 0) return null;
+  return `${label}\n${lines.join('\n')}`;
+}
+
+// Builds both a compact summary for the character-limited in-game chat
+// (tags only) and a fuller one for Discord (names + alliance member tags).
+// Ally/enemy guild and alliance tags come from the community sheet, which
+// is NA-only, so EU blocks fall back to a plain "Fighting: ..." line.
+async function buildSummaryText(entries) {
   const byTeam = new Map(); // teamId -> guild names
   for (const { name, teamId } of entries) {
     if (!byTeam.has(teamId)) byTeam.set(teamId, []);
     byTeam.get(teamId).push(name);
   }
 
-  const blocks = [];
+  // Only fetched if an NA team is actually involved, and only once.
+  let communityByServer = null;
+
+  const compactBlocks = [];
+  const detailedBlocks = [];
+
   for (const [teamId, names] of byTeam) {
     const server = getTeamName(teamId);
     const matchId = teamToMatchId.get(teamId);
     const match = matchId ? matchDataCache.get(matchId) : null;
 
     if (!match) {
-      blocks.push(`${names.join(', ')} landed on ${server}`);
+      const line = `${names.join(', ')} landed on ${server}`;
+      compactBlocks.push(line);
+      detailedBlocks.push(line);
       continue;
     }
 
     const [regionCode, tierNum] = match.id.split('-');
     const regionName = REGION_NAMES[regionCode] || `Region ${regionCode}`;
     const myColor = colorForTeam(match, teamId);
-    const enemyNames = COLORS.filter((c) => c !== myColor).map((c) => {
+    const enemyTeams = COLORS.filter((c) => c !== myColor).map((c) => {
       const enemyTeamId = matchTeamId(match, c);
-      return getTeamName(enemyTeamId);
+      return { teamId: enemyTeamId, name: getTeamName(enemyTeamId) };
     });
 
-    let block = `${names.join(', ')} landed on ${server} (${regionName} Tier ${tierNum})`;
-    if (enemyNames.length > 0) block += `\nFighting: ${enemyNames.join(', ')}`;
-    blocks.push(block);
+    const header = `${names.join(', ')} landed on ${server} (${regionName} Tier ${tierNum})`;
+    let compact = header;
+    let detailed = header;
+
+    if (regionCode === '1') {
+      if (!communityByServer) {
+        try { communityByServer = await loadCommunityGuilds(); } catch (e) { communityByServer = new Map(); }
+      }
+      const servers = [
+        { label: `${server} Allies`, name: server },
+        ...enemyTeams.map((e) => ({ label: `${e.name} Enemies`, name: e.name }))
+      ];
+      for (const s of servers) {
+        const data = communityByServer.get(s.name);
+        const c = buildCompactCommunityBlock(s.label, data);
+        if (c) compact += `\n\n${c}`;
+        const d = buildDetailedCommunityBlock(s.label, data);
+        if (d) detailed += `\n\n${d}`;
+      }
+    } else if (enemyTeams.length > 0) {
+      const fighting = `\nFighting: ${enemyTeams.map((e) => e.name).join(', ')}`;
+      compact += fighting;
+      detailed += fighting;
+    }
+
+    compactBlocks.push(compact);
+    detailedBlocks.push(detailed);
   }
 
-  return blocks.join('\n\n');
+  return { compact: compactBlocks.join('\n\n'), detailed: detailedBlocks.join('\n\n') };
 }
 
 async function run() {
@@ -2111,7 +2188,9 @@ async function run() {
   }
 
   if (successEntries.length > 0) {
-    copySummaryBtn.dataset.summary = buildSummaryText(successEntries);
+    const { compact, detailed } = await buildSummaryText(successEntries);
+    copyChatBtn.dataset.summary = compact;
+    copyDiscordBtn.dataset.summary = detailed;
     copyRow.style.display = 'flex';
     copyFeedback.textContent = '';
   } else {
@@ -2127,15 +2206,17 @@ guildInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.ctrlKey) run();
 });
 
-copySummaryBtn.addEventListener('click', async () => {
-  const text = copySummaryBtn.dataset.summary || '';
+async function copySummary(btn) {
+  const text = btn.dataset.summary || '';
   try {
     await navigator.clipboard.writeText(text);
     copyFeedback.textContent = 'Copied to clipboard.';
   } catch (err) {
     copyFeedback.textContent = "Couldn't copy automatically, select the text manually.";
   }
-});
+}
+copyChatBtn.addEventListener('click', () => copySummary(copyChatBtn));
+copyDiscordBtn.addEventListener('click', () => copySummary(copyDiscordBtn));
 
 // Initial load, then keep both data sets fresh in the background for as
 // long as the tab stays open (see STANDINGS_REFRESH_MS / TIMERS_REFRESH_MS).
