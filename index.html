@@ -816,7 +816,7 @@ function schedulePeriodicRefresh(fn, intervalMs) {
     inFlight = true;
     try {
       await fn();
-    } catch (err) {
+    } catch {
       // fn() is expected to handle its own errors; this is just a safety
       // net so a future mistake can't leave an unhandled rejection.
     } finally {
@@ -905,7 +905,7 @@ async function fetchTimers() {
       ? new Date(lockout.na).getTime()
       : (lockout?.eu ? new Date(lockout.eu).getTime() : null);
     timersLoaded = true;
-  } catch (err) {
+  } catch {
     // Keep showing the last known values; the banner just skips this cycle.
   }
 }
@@ -940,7 +940,7 @@ function updateRelinkBanner() {
     // relink, so show a static message instead of a stuck countdown.
     const lockoutValue = lockoutTime - now > 0
       ? formatCountdown(lockoutTime - now)
-      : 'resumes after next relink';
+      : 'Resumes after next relink';
     inner.appendChild(buildRelinkStat('Season Lockout', lockoutValue, true));
   }
   relinkBanner.style.display = 'block';
@@ -987,12 +987,31 @@ function parseCsv(text) {
 
 // Splits "[TAG] Name (region)" into parts. Dash and region are optional,
 // since alliance header rows are just "[TAG] Alliance Name".
-const GUILD_ENTRY_RE = /^\[([^\]]+)\]\s*-?\s*(.+?)\s*(?:\(([^)]+)\))?$/;
+// Deliberately NOT one combined regex: a single pattern mixing "\s*-?\s*"
+// with a lazy "(.+?)" and a trailing optional group is vulnerable to
+// catastrophic backtracking on adversarial input (e.g. a long run of
+// whitespace with no closing paren), which could freeze the tab for
+// every viewer since this text comes from an editable community sheet.
+// Each step below is a simple anchored match, so parsing stays linear
+// in the length of the input no matter what the sheet contains.
+const GUILD_TAG_RE = /^\[([^\]]+)\]/;
+const TRAILING_REGION_RE = /\(([^()]+)\)\s*$/;
 function parseGuildEntry(raw) {
   const trimmed = raw.trim();
-  const m = GUILD_ENTRY_RE.exec(trimmed);
-  if (!m) return { tag: null, name: trimmed, region: null };
-  return { tag: m[1], name: m[2].trim(), region: m[3] || null };
+  const tagMatch = GUILD_TAG_RE.exec(trimmed);
+  if (!tagMatch) return { tag: null, name: trimmed, region: null };
+
+  let rest = trimmed.slice(tagMatch[0].length).trim();
+  if (rest.startsWith('-')) rest = rest.slice(1).trim();
+
+  const regionMatch = TRAILING_REGION_RE.exec(rest);
+  if (!regionMatch) return { tag: tagMatch[1], name: rest, region: null };
+
+  return {
+    tag: tagMatch[1],
+    name: rest.slice(0, regionMatch.index).trim(),
+    region: regionMatch[1]
+  };
 }
 
 // Column indexes match the sheet's current layout. Update if it's reordered.
@@ -1210,7 +1229,7 @@ async function toggleGuildsPopover(teamName, triggerEl) {
   let byTeam;
   try {
     byTeam = await loadCommunityGuilds();
-  } catch (err) {
+  } catch {
     if (activeTrigger !== triggerEl) return;
     popover.textContent = '';
     const msg = document.createElement('p');
@@ -1561,7 +1580,7 @@ async function loadStandings() {
     const euOk = euMatches.length > 0;
     setStandingsStatus(standingsStatusNA, naOk, naOk ? syncedAt : "Couldn't load NA standings.");
     setStandingsStatus(standingsStatusEU, euOk, euOk ? syncedAt : "Couldn't load EU standings.");
-  } catch (err) {
+  } catch {
     standingsStatusNA.textContent = "Couldn't load live standings right now.";
     standingsStatusEU.textContent = "Couldn't load live standings right now.";
   }
@@ -2049,7 +2068,7 @@ async function buildSummaryText(entries) {
 
     if (regionCode === '1') {
       if (!communityByServer) {
-        try { communityByServer = await loadCommunityGuilds(); } catch (e) { communityByServer = new Map(); }
+        try { communityByServer = await loadCommunityGuilds(); } catch { communityByServer = new Map(); }
       }
       const servers = [
         { label: `${server} Allies`, name: server },
@@ -2106,7 +2125,7 @@ async function run() {
   let maps;
   try {
     maps = await getWvwMaps();
-  } catch (e) {
+  } catch {
     statusMsg.textContent = "Couldn't load WvW data right now, give it another try in a bit.";
     finish();
     return;
@@ -2158,7 +2177,7 @@ async function run() {
       let match;
       try {
         match = await getMatchForTeam(teamId);
-      } catch (e) {
+      } catch {
         const note = document.createElement('p');
         note.className = 'panel-note';
         note.textContent = `Match data unavailable for team ${getTeamName(teamId)}.`;
@@ -2211,7 +2230,7 @@ async function copySummary(btn) {
   try {
     await navigator.clipboard.writeText(text);
     copyFeedback.textContent = 'Copied to clipboard.';
-  } catch (err) {
+  } catch {
     copyFeedback.textContent = "Couldn't copy automatically, select the text manually.";
   }
 }
