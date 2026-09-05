@@ -48,6 +48,10 @@ whole list of guilds at once, and shows live match data on top.
   K/D, colored green or red depending on whether that side is winning or
   losing the kill trade.
 - Whichever side leads a stat within its tier gets that number underlined.
+- A small arrow next to each side's VP previews where it lands at the next
+  relink: up for 1st place, down for 3rd, a flat bar for 2nd (and for 1st
+  or 3rd when there's no tier left to move into). Hover it for the full
+  wording.
 - A thin score bar shows how the current 2-hour skirmish compares to the
   tier leader.
 - Each side is tinted in its own WvW color (red, blue, green) for a quick
@@ -72,9 +76,14 @@ guild list stays open on resize and just re-arranges its columns instead)
   free of leftover blank space no matter how uneven alliance sizes are.
 
 **Relink and lockout timers**
-- A banner at the top counts down to the next weekly relink and to the
-  season lockout, re-fetched from the API about every 10 minutes so it
-  reflects a relink shortly after it actually happens.
+- A banner at the top counts down to the next relink — when the current
+  tier matchups end and everyone gets shuffled into new pairings for the
+  following week — and to the season lockout. The relink countdown is
+  read straight off the match data already loaded for the standings
+  rails (each match's own `end_time`), so it needs no separate request
+  and refreshes on the same ~3-minute cadence as standings; the lockout
+  timestamp is re-fetched from the API about every 10 minutes. Hover
+  either figure for a tooltip explaining what it counts down to.
 - Once a season's lockout date has passed and the next one hasn't been
   published yet, the banner shows "Resumes after next relink" instead of
   a countdown stuck at zero.
@@ -89,9 +98,10 @@ guild list stays open on resize and just re-arranges its columns instead)
 
 1. Each guild name is resolved to an ID through the guild search endpoint.
 2. Guild-to-team mappings are fetched once from the WvW guilds endpoints
-   and reused for every guild you check, for up to about 10 minutes (the
-   same cadence as the relink timer, since that's the only thing that
-   changes this data) before the next check re-fetches it.
+   and reused for every guild you check, for up to about 10 minutes before
+   the next check re-fetches it. This mapping only actually changes at the
+   weekly relink, so the 10-minute cache is a conservative, deliberately
+   short-lived cache rather than an attempt to match that cadence exactly.
 3. The team ID is matched against the API's match data to find the current
    tier, score, and side. Match data includes a legacy "world" field and a
    modern Team ID mixed into an `all_worlds` list; Team IDs are always
@@ -101,17 +111,24 @@ guild list stays open on resize and just re-arranges its columns instead)
 4. Standings for every active match load when the page opens and then
    keep refreshing automatically in the background (see Features above),
    so most guild checks reuse data that's already cached and current.
-5. The relink and lockout timers come straight from the API's own timer
-   endpoints. The on-screen countdown ticks every minute; the underlying
-   timestamps themselves are re-fetched about every 10 minutes.
-6. The NA guild/alliance list behind the shield icon is fetched from a
+5. Each side's relink arrow comes from its rank by victory points within
+   the tier (1st up, 2nd flat, 3rd down), checked against the highest
+   tier active in that region so a 1st place already at tier 1, or a 3rd
+   place already at the bottom, shows flat instead.
+6. The relink countdown is the current match's own `end_time`, already
+   present in the standings data, so it needs no extra request and
+   updates on the same ~3-minute cadence as the standings rails. The
+   season lockout timestamp comes from the API's own timer endpoint and
+   is re-fetched about every 10 minutes. Both on-screen countdowns tick
+   every minute between refreshes.
+7. The NA guild/alliance list behind the shield icon is fetched from a
    public Google Sheet maintained by the NA WvW Discord (as a CSV export,
    no API key involved), cached for about 5 minutes, and only re-fetched
    when a shield icon is actually clicked. In the expanded view, alliance
    cards are measured after rendering and bin-packed into columns
    (largest card first, always into the currently shortest column), which
    keeps columns evenly filled even when alliance sizes vary a lot.
-7. The per-map K/D and Activity breakdowns use match data already loaded
+8. The per-map K/D and Activity breakdowns use match data already loaded
    on the page, so they open instantly with no extra request. The Skirmish
    trend uses the same match's per-skirmish score history.
 

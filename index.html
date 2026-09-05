@@ -69,6 +69,7 @@
   }
   .relink-stat{
     flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:2px;
+    cursor:help;
   }
   .relink-stat-title{
     font-size:.64rem;font-weight:700;color:var(--muted);
@@ -245,6 +246,18 @@
   .standing-vp{margin-left:auto;font-size:.72rem;white-space:nowrap;flex-shrink:0;}
   .standing-vp .stat-label{color:var(--muted);opacity:1;}
   .standing-vp .stat-value{color:#ffffff;font-weight:800;font-size:.85rem;}
+  .movement-indicator{
+    display:inline-flex;align-items:center;margin-left:8px;font-weight:400;
+    font-size:.78rem;line-height:1;vertical-align:middle;cursor:default;
+  }
+  .movement-up,.movement-down{font-size:.84rem;position:relative;top:-1px;}
+  .movement-up{color:var(--green);opacity:.8;}
+  .movement-down{color:var(--red);opacity:.8;}
+  .movement-bar{
+    display:inline-block;width:9px;height:3px;border-radius:1px;
+    background:var(--muted);
+  }
+  .movement-stay{color:var(--muted);opacity:.55;}
   .standing-side-top .rank-badge{width:20px;height:20px;font-size:.64rem;}
   .standing-side-top .dot{width:8px;height:8px;box-shadow:0 0 0 1px rgba(0,0,0,.35);}
   .standing-side-name{font-weight:600;}
@@ -263,17 +276,20 @@
   .rank-2{background:linear-gradient(160deg,#eef2f7,#a9b4c0 65%);color:#22262c;}
   .rank-3{background:linear-gradient(160deg,#f0c9a0,#a9673a 65%);color:#2b1704;}
 
-  /* Community guild list: small icon next to NA server names, opens a popover */
-  .server-guilds-btn{
+  /* Shared base for small icon-only buttons (guild list, K/D, activity).
+     Each subclass below only sets width/height/color. */
+  .icon-btn{
     display:inline-flex;align-items:center;justify-content:center;
-    width:19px;height:21px;padding:0;margin-left:1px;flex-shrink:0;
-    background:none;border:none;color:var(--accent);
-    opacity:.8;line-height:1;cursor:pointer;
+    padding:0;margin-left:1px;flex-shrink:0;line-height:1;
+    background:none;border:none;opacity:.8;cursor:pointer;
     filter:drop-shadow(0 0 3px rgba(127,214,242,.35));
     transition:opacity .15s ease, transform .15s ease;
   }
-  .server-guilds-btn:hover,.server-guilds-btn.active{opacity:1;transform:scale(1.15);}
-  .server-guilds-btn svg{display:block;}
+  .icon-btn:hover,.icon-btn.active{opacity:1;transform:scale(1.15);}
+  .icon-btn svg{display:block;}
+
+  /* Community guild list: small icon next to NA server names, opens a popover */
+  .server-guilds-btn{width:19px;height:21px;color:var(--accent);}
   .info-popover{
     position:fixed;z-index:60;width:280px;max-height:min(340px, 70vh);overflow-y:auto;
     background:var(--card);border:1px solid var(--border);border-radius:10px;
@@ -346,16 +362,7 @@
   }
 
   /* Per-map K/D breakdown: small crossed-swords icon next to the K/D value */
-  .map-kd-btn{
-    display:inline-flex;align-items:center;justify-content:center;
-    width:15px;height:16px;padding:0;margin-left:1px;flex-shrink:0;
-    background:none;border:none;color:var(--accent-bright);
-    opacity:.8;vertical-align:middle;cursor:pointer;
-    filter:drop-shadow(0 0 3px rgba(127,214,242,.35));
-    transition:opacity .15s ease, transform .15s ease;
-  }
-  .map-kd-btn:hover,.map-kd-btn.active{opacity:1;transform:scale(1.15);}
-  .map-kd-btn svg{display:block;}
+  .map-kd-btn{width:15px;height:16px;color:var(--accent-bright);vertical-align:middle;}
   .map-kd-row{
     display:flex;align-items:baseline;justify-content:space-between;
     padding:4px 0;font-size:.8rem;border-bottom:1px solid var(--border);
@@ -377,26 +384,7 @@
   .glyph-skull{display:inline-block;line-height:1;}
 
   /* Activity sparkline: subtle skirmish-score trend line under the stats */
-  .activity-btn{
-    display:inline-flex;align-items:center;justify-content:center;
-    width:14px;height:15px;padding:0;margin-left:1px;flex-shrink:0;
-    background:none;border:none;color:var(--accent-bright);
-    opacity:.8;vertical-align:middle;cursor:pointer;
-    filter:drop-shadow(0 0 3px rgba(127,214,242,.35));
-    transition:opacity .15s ease, transform .15s ease;
-  }
-  .activity-btn:hover,.activity-btn.active{opacity:1;transform:scale(1.15);}
-  .activity-btn svg{display:block;}
-  .activity-info-btn{
-    display:inline-flex;align-items:center;justify-content:center;
-    width:14px;height:15px;padding:0;margin-left:1px;flex-shrink:0;
-    background:none;border:none;color:var(--accent-bright);
-    opacity:.8;vertical-align:middle;cursor:pointer;
-    filter:drop-shadow(0 0 3px rgba(127,214,242,.35));
-    transition:opacity .15s ease, transform .15s ease;
-  }
-  .activity-info-btn:hover,.activity-info-btn.active{opacity:1;transform:scale(1.15);}
-  .activity-info-btn svg{display:block;}
+  .activity-btn,.activity-info-btn{width:14px;height:15px;color:var(--accent-bright);vertical-align:middle;}
   .activity-total{margin-bottom:8px;}
   .activity-total-row{
     display:flex;justify-content:space-between;font-size:.8rem;
@@ -667,14 +655,12 @@ const REQUEST_TIMEOUT_MS = 10000;
 const THROTTLE_MS = 200;       // gap between sequential lookups, to stay well under rate limits
 const MAX_RETRIES = 2;         // for 429 / transient network errors
 
-// Match data update cadence is unpredictable on ArenaNet's end, so no
-// interval guarantees freshness; 3 min balances freshness vs load.
-// Relink/lockout timestamps barely change, so they're checked less often.
-// Both stay well under the API's rate limit and only run while visible.
-const STANDINGS_REFRESH_MS = 3 * 60 * 1000;  // match scores, kills/deaths, VP
-const TIMERS_REFRESH_MS = 10 * 60 * 1000;    // relink schedule, season lockout
-// Community sheet is edited by hand and only re-fetched on click, so a
-// short TTL keeps edits visible quickly at no real cost.
+// Match data updates unpredictably on ArenaNet's end; 3 min balances
+// freshness vs load. Lockout barely changes, so it's checked less often.
+// Both stay under the API rate limit and only run while the tab is visible.
+const STANDINGS_REFRESH_MS = 3 * 60 * 1000;  // match scores, kills/deaths, VP, relink
+const TIMERS_REFRESH_MS = 10 * 60 * 1000;    // season lockout
+// Community sheet is edited by hand; re-fetched on click with a short TTL.
 const COMMUNITY_SHEET_TTL_MS = 5 * 60 * 1000;
 
 const guildInput  = document.getElementById('guildInput');
@@ -743,8 +729,9 @@ async function fetchJson(url, attempt = 0) {
   }
 }
 
-// Guild-to-team assignment only changes at relink, so the cache expires on
-// the same cadence as the relink timer instead of lasting the whole session.
+// Guild-to-team assignment only changes at the weekly relink, far less
+// often than this cache expires. Harmless over-fetching, kept simple by
+// reusing the same timer interval instead of tracking the relink date.
 async function getWvwMaps() {
   if (wvwMapCache && Date.now() - wvwMapCachedAt < TIMERS_REFRESH_MS) return wvwMapCache;
 
@@ -871,9 +858,10 @@ function formatCountdown(msRemaining) {
   return `${minutes}m`;
 }
 
-function buildRelinkStat(title, value, isPrimary) {
+function buildRelinkStat(title, value, isPrimary, tooltip) {
   const stat = document.createElement('div');
   stat.className = isPrimary ? 'relink-stat relink-stat--primary' : 'relink-stat';
+  if (tooltip) stat.title = tooltip;
   const titleEl = document.createElement('div');
   titleEl.className = 'relink-stat-title';
   titleEl.textContent = title;
@@ -911,37 +899,42 @@ function buildRelinkValue(naMs, euMs) {
 
 // Module-level so fetchTimers() and updateRelinkBanner() can run on
 // independent schedules and both read the latest values.
-let relinkNA = null;
-let relinkEU = null;
 let lockoutTime = null;
 let timersLoaded = false;
 
+// Weekly relink: when tier matchups end and everyone is shuffled into
+// new pairings. Read straight from the match data's own end_time, so
+// no separate request; refreshes on the same cadence as standings.
+let relinkNA = null;
+let relinkEU = null;
+
 async function fetchTimers() {
   try {
-    const [assignRaw, lockoutRaw] = await Promise.all([
-      fetchJson(`${API_BASE}/wvw/timers/teamAssignment`),
-      fetchJson(`${API_BASE}/wvw/timers/lockout`)
-    ]);
-    const assignment = Array.isArray(assignRaw) ? assignRaw[0] : assignRaw;
+    const lockoutRaw = await fetchJson(`${API_BASE}/wvw/timers/lockout`);
     const lockout = Array.isArray(lockoutRaw) ? lockoutRaw[0] : lockoutRaw;
-
-    relinkNA = assignment?.na ? new Date(assignment.na).getTime() : null;
-    relinkEU = assignment?.eu ? new Date(assignment.eu).getTime() : null;
     // NA and EU lockout timestamps are always identical, so only one is kept.
     lockoutTime = lockout?.na
       ? new Date(lockout.na).getTime()
       : (lockout?.eu ? new Date(lockout.eu).getTime() : null);
     timersLoaded = true;
   } catch {
-    // Keep showing the last known values; the banner just skips this cycle.
+    // Keep showing the last known value; the banner just skips this cycle.
   }
+  updateRelinkBanner();
+}
+
+// Reads each region's weekly matchup end_time straight off the match
+// objects already loaded for the standings rails.
+function updateRelinkFromMatches(naMatches, euMatches) {
+  relinkNA = naMatches?.[0]?.end_time ? new Date(naMatches[0].end_time).getTime() : null;
+  relinkEU = euMatches?.[0]?.end_time ? new Date(euMatches[0].end_time).getTime() : null;
+  updateRelinkBanner();
 }
 
 function updateRelinkBanner() {
-  if (!timersLoaded) return;
   const now = Date.now();
   const hasRelink = relinkNA !== null || relinkEU !== null;
-  const hasLockout = lockoutTime !== null;
+  const hasLockout = timersLoaded && lockoutTime !== null;
   relinkBanner.textContent = '';
   if (!hasRelink && !hasLockout) {
     relinkBanner.style.display = 'none';
@@ -954,7 +947,12 @@ function updateRelinkBanner() {
   if (hasRelink) {
     const naLeft = relinkNA !== null ? relinkNA - now : null;
     const euLeft = relinkEU !== null ? relinkEU - now : null;
-    inner.appendChild(buildRelinkStat('Next Relink', buildRelinkValue(naLeft, euLeft), false));
+    inner.appendChild(buildRelinkStat(
+      'Next Relink',
+      buildRelinkValue(naLeft, euLeft),
+      false,
+      'When the current tier matchups end and everyone is shuffled into new pairings for the week.'
+    ));
   }
   if (hasRelink && hasLockout) {
     const divider = document.createElement('div');
@@ -968,17 +966,20 @@ function updateRelinkBanner() {
     const lockoutValue = lockoutTime - now > 0
       ? formatCountdown(lockoutTime - now)
       : 'resumes after next relink';
-    inner.appendChild(buildRelinkStat('Season Lockout', lockoutValue, true));
+    inner.appendChild(buildRelinkStat(
+      'Season Lockout',
+      lockoutValue,
+      true,
+      'Deadline for the current WvW season, after which team assignments can change.'
+    ));
   }
   relinkBanner.style.display = 'block';
   relinkBanner.appendChild(inner);
 }
 
-// Fetches both timers once and renders the banner immediately. Used for
-// the initial page load; later refreshes call fetchTimers directly.
+// Fetches the lockout timer once; fetchTimers() renders the banner itself once
 async function loadTimers() {
   await fetchTimers();
-  updateRelinkBanner();
 }
 
 // Community guild list (NA WvW Discord sheet).
@@ -1011,11 +1012,10 @@ function parseCsv(text) {
   return rows;
 }
 
-// Splits "[TAG] Name (region)" into parts. Not one combined regex: a
-// pattern mixing a lazy match with an optional trailing group risks
-// catastrophic backtracking on adversarial input (this text comes from
-// an editable public sheet). Each step here is a simple anchored match,
-// so parsing stays linear regardless of input.
+// Splits "[TAG] Name (region)" into parts. Two simple anchored regexes
+// instead of one combined pattern, to avoid ReDoS on this untrusted
+// public-sheet text (a lazy match plus optional trailing group can
+// backtrack badly).
 const GUILD_TAG_RE = /^\[([^\]]+)\]/;
 const TRAILING_REGION_RE = /\(([^()]+)\)\s*$/;
 function parseGuildEntry(raw) {
@@ -1205,10 +1205,9 @@ function buildAllianceCard(alliance) {
   return block;
 }
 
-// Compact mode: plain stacked list. Expanded mode: real column
-// containers, bin-packed by measured card height (largest first, each
-// card going into the currently shortest column). Keeps columns evenly
-// filled even when alliance sizes are very uneven.
+// Compact mode: plain stacked list. Expanded mode: columns bin-packed
+// by measured card height (largest first, into the shortest column),
+// so columns stay even even when alliance sizes vary a lot.
 function layoutAllianceGrid(grid, alliances, expanded) {
   grid.textContent = '';
   if (!expanded) {
@@ -1408,7 +1407,7 @@ async function toggleGuildsPopover(teamName, triggerEl) {
 function buildServerGuildsButton(teamName) {
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'server-guilds-btn';
+  btn.className = 'icon-btn server-guilds-btn';
   btn.setAttribute('aria-label', `Show guilds on ${teamName}`);
   btn.title = `Show guilds on ${teamName}`;
   btn.innerHTML = '<svg width="17" height="19" viewBox="0 0 24 27" xmlns="http://www.w3.org/2000/svg">' +
@@ -1490,7 +1489,7 @@ function renderMapKdPopoverContent(popover, serverName, match, color) {
 function buildMapKdButton(serverName, match, color) {
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'map-kd-btn';
+  btn.className = 'icon-btn map-kd-btn';
   btn.setAttribute('aria-label', `Show K/D by map for ${serverName}`);
   btn.title = `Show K/D by map for ${serverName}`;
   btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
@@ -1606,7 +1605,7 @@ function buildSkirmishTrendButton(serverName, match, color) {
 
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'activity-btn';
+  btn.className = 'icon-btn activity-btn';
   btn.setAttribute('aria-label', `Show skirmish score trend for ${serverName}`);
   btn.title = `Show skirmish score trend for ${serverName}`;
   btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
@@ -1667,7 +1666,7 @@ function renderActivityInfoPopoverContent(popover, serverName, match, color) {
 function buildActivityInfoButton(serverName, match, color) {
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'activity-info-btn';
+  btn.className = 'icon-btn activity-info-btn';
   btn.setAttribute('aria-label', `What is Activity for ${serverName}?`);
   btn.title = `What is Activity for ${serverName}?`;
   btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
@@ -1733,6 +1732,7 @@ async function loadStandings() {
 
     renderStandingsRegion(standingsGridNA, naMatches);
     renderStandingsRegion(standingsGridEU, euMatches);
+    updateRelinkFromMatches(naMatches, euMatches);
     const syncedAt = `Synced ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     const naOk = naMatches.length > 0;
     const euOk = euMatches.length > 0;
@@ -1844,6 +1844,8 @@ function renderStandingSide(match, color, rankByColor, leaders, leaderScore) {
   const vpEl = document.createElement('span');
   vpEl.className = 'standing-vp';
   vpEl.innerHTML = `<span class="stat-label">VP </span><span class="stat-value">${vp}</span>`;
+  const [regionCode, tierNum] = match.id.split('-');
+  vpEl.appendChild(buildMovementIndicator(regionCode, tierNum, rank));
   top.appendChild(vpEl);
 
   const statsLine = buildStandingStats(match, color,
@@ -2027,6 +2029,55 @@ function rankMatchByVictoryPoints(match) {
   return rankByColor;
 }
 
+// Highest tier active in a region, so a 3rd place can tell whether it's
+// already at the bottom. Reads matches already cached by loadStandings,
+// so no extra request.
+function getMaxTierForRegion(regionCode) {
+  let max = null;
+  for (const id of matchDataCache.keys()) {
+    if (!id.startsWith(`${regionCode}-`)) continue;
+    const tier = Number(id.split('-')[1]);
+    if (!Number.isNaN(tier) && (max === null || tier > max)) max = tier;
+  }
+  return max;
+}
+
+const MOVEMENT_SYMBOLS = { up: '▲', down: '▼' };
+
+// Projects where a side lands after the next weekly relink from its
+// rank within the tier: 1st promotes, 2nd always stays, 3rd relegates,
+// unless there's nowhere further up or down to go.
+function getRelinkMovement(rank, tierNum, maxTierForRegion) {
+  const tier = Number(tierNum);
+  if (rank === 1) {
+    if (tier === 1) return { dir: 'stay', label: 'Already the top tier' };
+    return { dir: 'up', label: 'Moves up next relink' };
+  }
+  if (rank === 2) return { dir: 'stay', label: 'Stays in this tier next relink' };
+  if (maxTierForRegion != null && tier === maxTierForRegion) {
+    return { dir: 'stay', label: 'Already the bottom tier' };
+  }
+  return { dir: 'down', label: 'Moves down next relink' };
+}
+
+// Small movement badge next to a side's VP: arrow up, arrow down, or a
+// flat bar for "stays". Full wording lives in the tooltip only.
+function buildMovementIndicator(regionCode, tierNum, rank) {
+  const maxTier = getMaxTierForRegion(regionCode);
+  const { dir, label } = getRelinkMovement(rank, tierNum, maxTier);
+  const el = document.createElement('span');
+  el.className = `movement-indicator movement-${dir}`;
+  el.title = label;
+  if (dir === 'stay') {
+    const bar = document.createElement('span');
+    bar.className = 'movement-bar';
+    el.appendChild(bar);
+  } else {
+    el.textContent = MOVEMENT_SYMBOLS[dir];
+  }
+  return el;
+}
+
 function formatKd(kills, deaths) {
   if (deaths > 0) return (kills / deaths).toFixed(2);
   return kills > 0 ? '∞' : '0.00';
@@ -2100,6 +2151,7 @@ function renderMatchPanel(match, yourGuildsByColor) {
     const vpEl = document.createElement('span');
     vpEl.className = 'standing-vp';
     vpEl.innerHTML = `<span class="stat-label">VP </span><span class="stat-value">${vp}</span>`;
+    vpEl.appendChild(buildMovementIndicator(regionCode, tierNum, rank));
     head.appendChild(vpEl);
     col.appendChild(head);
 
@@ -2398,7 +2450,7 @@ refreshStandings();
 loadTimers();
 setInterval(updateRelinkBanner, 60000); // ticks the countdown display only
 schedulePeriodicRefresh(refreshStandings, STANDINGS_REFRESH_MS);
-schedulePeriodicRefresh(async () => { await fetchTimers(); updateRelinkBanner(); }, TIMERS_REFRESH_MS);
+schedulePeriodicRefresh(fetchTimers, TIMERS_REFRESH_MS);
 </script>
 </body>
 </html>
