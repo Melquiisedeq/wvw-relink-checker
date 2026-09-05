@@ -56,7 +56,8 @@ whole list of guilds at once, and shows live match data on top.
   leaderboard on gw2mists.com.
 
 **Detail popovers** (click the small icon next to a stat; closes on
-outside click, Escape, or if the window resizes)
+outside click, Escape, or if the window resizes, though an expanded
+guild list stays open on resize and just re-arranges its columns instead)
 - Trend icon on Skirmish: score per 2-hour block for the week, with the
   current and peak values.
 - Info icon on Activity: what the number means, plus the kills/deaths
@@ -64,7 +65,11 @@ outside click, Escape, or if the window resizes)
 - Crossed-swords icon on K/D: kills, deaths, and K/D broken down per map
   (EBG and each borderland).
 - Shield icon on NA server names: which alliances and solo guilds the
-  community has reported there, tag and name for each.
+  community has reported there, tag and name for each. An expand button
+  opens it as a large, screenshot-friendly centered view: alliances are
+  laid out as cards and auto-arranged (largest first, into whichever
+  column has the least content so far) so the list stays compact and
+  free of leftover blank space no matter how uneven alliance sizes are.
 
 **Relink and lockout timers**
 - A banner at the top counts down to the next weekly relink and to the
@@ -77,6 +82,8 @@ outside click, Escape, or if the window resizes)
 **No installation, no backend, no build step**
 - It's a single HTML file. No sign-in, no API key, no personal data
   collected or stored. Runs entirely in your browser.
+- No dependencies to install or version. Needs a modern evergreen browser
+  (Chrome, Firefox, Safari, Edge); no polyfills, no transpiling.
 
 ## How it works
 
@@ -100,7 +107,10 @@ outside click, Escape, or if the window resizes)
 6. The NA guild/alliance list behind the shield icon is fetched from a
    public Google Sheet maintained by the NA WvW Discord (as a CSV export,
    no API key involved), cached for about 5 minutes, and only re-fetched
-   when a shield icon is actually clicked.
+   when a shield icon is actually clicked. In the expanded view, alliance
+   cards are measured after rendering and bin-packed into columns
+   (largest card first, always into the currently shortest column), which
+   keeps columns evenly filled even when alliance sizes vary a lot.
 7. The per-map K/D and Activity breakdowns use match data already loaded
    on the page, so they open instantly with no extra request. The Skirmish
    trend uses the same match's per-skirmish score history.
@@ -152,6 +162,8 @@ repo root. No build pipeline required.
 - Input is capped and deduplicated on the client before any request fires,
   and each pasted line is capped at 64 characters so one absurdly long
   line can't turn into an oversized request.
+- Community sheet parsing avoids combined regexes with ambiguous
+  backtracking, so a crafted or malformed sheet row can't freeze the tab.
 - External links open with `rel="noopener noreferrer"`.
 
 ## Limitations

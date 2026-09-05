@@ -4,12 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!--
-  CSP notes: default-src 'none' denies everything by default.
-  connect-src only allows api.guildwars2.com and docs.google.com (the
-  community sheet, read-only, no API key). unsafe-inline is fine here since
-  this is a single file with no external scripts or CDN. img-src allows
-  only data: URIs (for the inline SVG favicon below), never external
-  images. base-uri and form-action are 'none': no <base> hijacking, no forms.
+  CSP: default-src 'none' denies everything by default. connect-src only
+  allows the GW2 API and the read-only community sheet on docs.google.com.
+  unsafe-inline is fine here since this is a single file, no CDN/scripts.
+  img-src only allows data: URIs (the inline favicon). base-uri and
+  form-action are 'none': no <base> hijacking, no forms.
 -->
 <meta http-equiv="Content-Security-Policy"
       content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://api.guildwars2.com https://docs.google.com; img-src data:; base-uri 'none'; form-action 'none';">
@@ -300,9 +299,7 @@
   }
   .info-popover-expand:hover{color:var(--text);background:rgba(255,255,255,.06);}
   .info-popover-expand svg{display:block;}
-  /* Expanded (screenshot-friendly) mode: centered modal instead of an
-     anchored popover, with a dimming backdrop and a multi-column layout
-     so long guild lists spread sideways instead of needing a tall scroll. */
+  /* Expanded (screenshot) mode: centered modal with a dimming backdrop. */
   .info-popover-backdrop{
     position:fixed;inset:0;z-index:59;background:rgba(4,6,9,.65);
     -webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px);
@@ -317,27 +314,9 @@
   .info-popover--expanded .info-popover-body{
     display:flex;flex-direction:column;gap:16px;
   }
-  /* Alliances become independent grid "cards" instead of flowing text
-     columns. A card can never be split or orphaned across a column break
-     the way a newspaper-style column would, and each card always carries
-     its own alliance name, so there's never any ambiguity about which
-     guilds belong to which alliance no matter how the grid wraps. */
-  /* Alliance cards use a masonry-style layout (CSS multi-column, like a
-     Pinterest-style board) instead of a CSS grid: a grid forces every card
-     in the same row to stretch to the tallest neighbor's height, which is
-     what left huge blank space inside small alliances sitting next to a
-     big one. Columns let each card keep its own natural height and simply
-     stack into whichever column has room, packing much tighter. Each card
-     is a fully self-contained unit (name + its members together, with a
-     visible border), so break-inside:avoid here just keeps one card from
-     being visually sliced by a column edge — it no longer risks orphaning
-     a bare header the way it did before cards had their own borders. */
-  /* Alliance cards use real DOM columns (built by JS, see layoutAllianceGrid)
-     rather than CSS `columns`: JS measures each card's actual height and
-     bin-packs them greedily, which keeps columns evenly filled regardless
-     of how lopsided alliance sizes are — something CSS's own column-height
-     search can only approximate. These rules just style whatever column
-     containers the script builds. */
+  /* Column containers are built in JS (see layoutAllianceGrid), which
+     measures real card heights and bin-packs them. These rules just
+     style whatever columns the script builds. */
   .info-popover--expanded .alliance-grid{
     display:flex;gap:12px;align-items:flex-start;
   }
@@ -688,20 +667,14 @@ const REQUEST_TIMEOUT_MS = 10000;
 const THROTTLE_MS = 200;       // gap between sequential lookups, to stay well under rate limits
 const MAX_RETRIES = 2;         // for 429 / transient network errors
 
-// Background refresh cadence for data that can change while a tab stays
-// open. ArenaNet's own match data is known to update inconsistently
-// (community reports of delays ranging from under a minute to over an
-// hour), so no client-side interval can guarantee freshness. 3 minutes
-// just balances "as current as the API allows" against not hammering it.
-// Relink and lockout timestamps only change roughly weekly, so they're
-// checked far less often. Both cadences are well under the API's
-// published rate limit (300 requests/minute per IP) and only run while
-// the tab is visible.
+// Match data update cadence is unpredictable on ArenaNet's end, so no
+// interval guarantees freshness; 3 min balances freshness vs load.
+// Relink/lockout timestamps barely change, so they're checked less often.
+// Both stay well under the API's rate limit and only run while visible.
 const STANDINGS_REFRESH_MS = 3 * 60 * 1000;  // match scores, kills/deaths, VP
 const TIMERS_REFRESH_MS = 10 * 60 * 1000;    // relink schedule, season lockout
-// Community sheet is edited by hand, not polled in the background (only
-// re-fetched when a shield icon is actually clicked), so a shorter TTL
-// costs nothing extra while keeping edits visible reasonably quickly.
+// Community sheet is edited by hand and only re-fetched on click, so a
+// short TTL keeps edits visible quickly at no real cost.
 const COMMUNITY_SHEET_TTL_MS = 5 * 60 * 1000;
 
 const guildInput  = document.getElementById('guildInput');
@@ -858,10 +831,9 @@ function colorForTeam(match, teamId) {
   return COLORS.find((c) => matchTeamId(match, c) === String(teamId)) || null;
 }
 
-// Runs `fn` on an interval while the tab is visible, and catches up right
-// away when the tab regains focus if enough time has passed. Skips a run
-// if the previous one is still in flight, so a slow network never stacks
-// up overlapping requests.
+// Runs `fn` on an interval while the tab is visible, and catches up
+// immediately when focus returns if enough time has passed. Skips a run
+// if the previous one is still in flight.
 function schedulePeriodicRefresh(fn, intervalMs) {
   let inFlight = false;
   let lastRun = 0;
@@ -937,9 +909,8 @@ function buildRelinkValue(naMs, euMs) {
   return frag;
 }
 
-// Timer state, module-level so fetchTimers() (periodic re-fetch) and
-// updateRelinkBanner() (60s display tick) can run on independent
-// schedules and both read the latest values.
+// Module-level so fetchTimers() and updateRelinkBanner() can run on
+// independent schedules and both read the latest values.
 let relinkNA = null;
 let relinkEU = null;
 let lockoutTime = null;
@@ -1011,8 +982,7 @@ async function loadTimers() {
 }
 
 // Community guild list (NA WvW Discord sheet).
-// Minimal CSV parser: handles quoted fields and embedded newlines (an
-// alliance's member list is packed into one cell as newline-separated lines).
+// Minimal CSV parser: handles quoted fields and embedded newlines.
 function parseCsv(text) {
   const rows = [];
   let row = [];
@@ -1041,15 +1011,11 @@ function parseCsv(text) {
   return rows;
 }
 
-// Splits "[TAG] Name (region)" into parts. Dash and region are optional,
-// since alliance header rows are just "[TAG] Alliance Name".
-// Deliberately NOT one combined regex: a single pattern mixing "\s*-?\s*"
-// with a lazy "(.+?)" and a trailing optional group is vulnerable to
-// catastrophic backtracking on adversarial input (e.g. a long run of
-// whitespace with no closing paren), which could freeze the tab for
-// every viewer since this text comes from an editable community sheet.
-// Each step below is a simple anchored match, so parsing stays linear
-// in the length of the input no matter what the sheet contains.
+// Splits "[TAG] Name (region)" into parts. Not one combined regex: a
+// pattern mixing a lazy match with an optional trailing group risks
+// catastrophic backtracking on adversarial input (this text comes from
+// an editable public sheet). Each step here is a simple anchored match,
+// so parsing stays linear regardless of input.
 const GUILD_TAG_RE = /^\[([^\]]+)\]/;
 const TRAILING_REGION_RE = /\(([^()]+)\)\s*$/;
 function parseGuildEntry(raw) {
@@ -1146,10 +1112,9 @@ function closePopover() {
   activeBackdrop = null;
 }
 
-// Toggles the guild-list popover between its normal anchored form and a
-// centered, larger "expanded" modal meant for taking a clean screenshot
-// to share (e.g. in Discord). Expanded mode gets its own backdrop and
-// stops following the trigger element's position.
+// Toggles the guild-list popover between its anchored form and a
+// centered "expanded" modal for screenshots. Expanded mode gets its own
+// backdrop and stops following the trigger element.
 function setPopoverExpanded(popover, triggerEl, expand) {
   popover.classList.toggle('info-popover--expanded', expand);
   const expandBtn = popover.querySelector('.info-popover-expand');
@@ -1240,14 +1205,10 @@ function buildAllianceCard(alliance) {
   return block;
 }
 
-// Lays out alliance cards into `grid`. In compact (non-expanded) mode this
-// is just a plain stacked list. In expanded mode it builds real column
-// containers and bin-packs cards into them: each card's true rendered
-// height is measured, cards are sorted largest-first, and each one goes
-// into whichever column currently holds the least content so far (the
-// classic greedy "longest processing time first" scheduling heuristic).
-// This keeps columns evenly filled even when alliance sizes are very
-// uneven, which a CSS `columns` layout can only approximate.
+// Compact mode: plain stacked list. Expanded mode: real column
+// containers, bin-packed by measured card height (largest first, each
+// card going into the currently shortest column). Keeps columns evenly
+// filled even when alliance sizes are very uneven.
 function layoutAllianceGrid(grid, alliances, expanded) {
   grid.textContent = '';
   if (!expanded) {
@@ -1816,9 +1777,8 @@ function buildStatsLine(pairs, className) {
   return container;
 }
 
-// Builds the "Skirmish · Activity · K/D" line with its trend/info/map icons
-// and leader underline. Shared by the standings rail and the match panel,
-// which both show the same three stats per side.
+// Builds the "Skirmish · Activity · K/D" line with icons and leader
+// underline. Shared by the standings rail and the match panel.
 function buildStandingStats(match, color, stats, className) {
   const { kills, deaths, kd, skirmish, serverName, leaders } = stats;
 
@@ -1988,9 +1948,8 @@ function renderRow({ originalName, tag, region, server, error }) {
   return null;
 }
 
-// The match's cumulative "scores" field isn't what trackers show. Players
-// look at the current skirmish score (resets every 2 hours) and victory
-// points, so this pulls the latest skirmish entry.
+// The match's cumulative "scores" field isn't what trackers show; players
+// look at the current skirmish score and victory points instead.
 function getSkirmishScore(match, color) {
   if (Array.isArray(match.skirmishes) && match.skirmishes.length > 0) {
     const last = match.skirmishes[match.skirmishes.length - 1];
@@ -2012,8 +1971,8 @@ function markStatLeader(valueEl) {
 }
 
 // Finds which color leads each stat, so that side's number can be
-// underlined as "standing out" in the tier. Independent per stat: a side
-// could lead Activity but not Skirmish, for example.
+// underlined. Independent per stat (a side can lead Activity but not
+// Skirmish).
 function getStatLeaders(match) {
   const best = (values) => {
     let leader = null, max = -Infinity;
@@ -2222,10 +2181,9 @@ function buildDetailedCommunityBlock(label, data) {
   return `${label}\n${lines.join('\n')}`;
 }
 
-// Builds both a compact summary for the character-limited in-game chat
-// (tags only) and a fuller one for Discord (names + alliance member tags).
-// Ally/enemy guild and alliance tags come from the community sheet, which
-// is NA-only, so EU blocks fall back to a plain "Fighting: ..." line.
+// Builds a compact summary for in-game chat (tags only) and a fuller
+// one for Discord (names + alliance tags). Ally/enemy data comes from
+// the community sheet, so EU falls back to a plain "Fighting: ..." line.
 async function buildSummaryText(entries) {
   const byTeam = new Map(); // teamId -> guild names
   for (const { name, teamId } of entries) {
