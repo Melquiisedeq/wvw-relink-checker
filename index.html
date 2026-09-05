@@ -285,13 +285,69 @@
   .info-popover--guilds{width:300px;max-height:85vh;min-height:120px;resize:vertical;}
   .info-popover-header{
     display:flex;align-items:center;justify-content:space-between;
-    font-weight:700;color:var(--text);margin-bottom:8px;
+    font-weight:700;color:var(--text);margin-bottom:8px;gap:4px;
   }
+  .info-popover-header-actions{display:flex;align-items:center;gap:2px;flex-shrink:0;}
   .info-popover-close{
     background:none;border:none;color:var(--muted);font-size:1.5rem;
     line-height:1;cursor:pointer;padding:0 4px;
   }
   .info-popover-close:hover{color:var(--text);}
+  .info-popover-expand{
+    display:inline-flex;align-items:center;justify-content:center;
+    background:none;border:none;color:var(--muted);cursor:pointer;padding:2px;
+    border-radius:4px;
+  }
+  .info-popover-expand:hover{color:var(--text);background:rgba(255,255,255,.06);}
+  .info-popover-expand svg{display:block;}
+  /* Expanded (screenshot-friendly) mode: centered modal instead of an
+     anchored popover, with a dimming backdrop and a multi-column layout
+     so long guild lists spread sideways instead of needing a tall scroll. */
+  .info-popover-backdrop{
+    position:fixed;inset:0;z-index:59;background:rgba(4,6,9,.65);
+    -webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px);
+  }
+  .info-popover--expanded{
+    position:fixed;z-index:61;
+    left:50% !important;top:50% !important;
+    transform:translate(-50%,-50%);
+    width:min(880px,92vw);max-width:92vw;
+    max-height:88vh;resize:none;
+  }
+  .info-popover--expanded .info-popover-body{
+    display:flex;flex-direction:column;gap:16px;
+  }
+  /* Alliances become independent grid "cards" instead of flowing text
+     columns. A card can never be split or orphaned across a column break
+     the way a newspaper-style column would, and each card always carries
+     its own alliance name, so there's never any ambiguity about which
+     guilds belong to which alliance no matter how the grid wraps. */
+  /* Alliance cards use a masonry-style layout (CSS multi-column, like a
+     Pinterest-style board) instead of a CSS grid: a grid forces every card
+     in the same row to stretch to the tallest neighbor's height, which is
+     what left huge blank space inside small alliances sitting next to a
+     big one. Columns let each card keep its own natural height and simply
+     stack into whichever column has room, packing much tighter. Each card
+     is a fully self-contained unit (name + its members together, with a
+     visible border), so break-inside:avoid here just keeps one card from
+     being visually sliced by a column edge — it no longer risks orphaning
+     a bare header the way it did before cards had their own borders. */
+  /* Alliance cards use real DOM columns (built by JS, see layoutAllianceGrid)
+     rather than CSS `columns`: JS measures each card's actual height and
+     bin-packs them greedily, which keeps columns evenly filled regardless
+     of how lopsided alliance sizes are — something CSS's own column-height
+     search can only approximate. These rules just style whatever column
+     containers the script builds. */
+  .info-popover--expanded .alliance-grid{
+    display:flex;gap:12px;align-items:flex-start;
+  }
+  .info-popover--expanded .alliance-grid-col{
+    display:flex;flex-direction:column;gap:12px;flex:1 1 0;min-width:0;
+  }
+  .info-popover--expanded .alliance-block{
+    margin-bottom:0;background:rgba(255,255,255,.03);
+    border:1px solid var(--border);border-radius:8px;padding:8px 10px;
+  }
   .info-popover-section-title{
     font-size:.72rem;font-weight:800;color:var(--muted);
     text-transform:uppercase;letter-spacing:.08em;
@@ -940,7 +996,7 @@ function updateRelinkBanner() {
     // relink, so show a static message instead of a stuck countdown.
     const lockoutValue = lockoutTime - now > 0
       ? formatCountdown(lockoutTime - now)
-      : 'resumes after next relink';
+      : 'Resumes after next relink';
     inner.appendChild(buildRelinkStat('Season Lockout', lockoutValue, true));
   }
   relinkBanner.style.display = 'block';
@@ -1079,12 +1135,43 @@ async function loadCommunityGuilds() {
 // outside click or Escape.
 let activePopover = null;
 let activeTrigger = null;
+let activeBackdrop = null;
 
 function closePopover() {
   if (activePopover) activePopover.remove();
+  if (activeBackdrop) activeBackdrop.remove();
   if (activeTrigger) activeTrigger.classList.remove('active');
   activePopover = null;
   activeTrigger = null;
+  activeBackdrop = null;
+}
+
+// Toggles the guild-list popover between its normal anchored form and a
+// centered, larger "expanded" modal meant for taking a clean screenshot
+// to share (e.g. in Discord). Expanded mode gets its own backdrop and
+// stops following the trigger element's position.
+function setPopoverExpanded(popover, triggerEl, expand) {
+  popover.classList.toggle('info-popover--expanded', expand);
+  const expandBtn = popover.querySelector('.info-popover-expand');
+  if (expandBtn) {
+    expandBtn.innerHTML = expand ? EXPAND_ICON_COLLAPSE : EXPAND_ICON_EXPAND;
+    expandBtn.setAttribute('aria-label', expand ? 'Shrink back to normal size' : 'Expand for a full-list screenshot');
+    expandBtn.title = expandBtn.getAttribute('aria-label');
+  }
+  if (expand) {
+    if (!activeBackdrop) {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'info-popover-backdrop';
+      document.body.insertBefore(backdrop, popover);
+      activeBackdrop = backdrop;
+    }
+  } else {
+    if (activeBackdrop) { activeBackdrop.remove(); activeBackdrop = null; }
+    positionPopover(popover, triggerEl);
+  }
+
+  const grid = popover.querySelector('.alliance-grid');
+  if (grid && popover.__allianceData) layoutAllianceGrid(grid, popover.__allianceData, expand);
 }
 
 document.addEventListener('click', (e) => {
@@ -1115,9 +1202,94 @@ function positionPopover(popover, triggerEl) {
   popover.style.top = `${Math.max(12, Math.min(top, vh - popover.offsetHeight - 12))}px`;
 }
 
+function closeUnlessExpanded() {
+  if (activePopover && activePopover.classList.contains('info-popover--expanded')) {
+    const grid = activePopover.querySelector('.alliance-grid');
+    if (grid && activePopover.__allianceData) {
+      layoutAllianceGrid(grid, activePopover.__allianceData, true);
+    }
+    return;
+  }
+  closePopover();
+}
 if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', closePopover);
-  window.visualViewport.addEventListener('scroll', closePopover);
+  window.visualViewport.addEventListener('resize', closeUnlessExpanded);
+  window.visualViewport.addEventListener('scroll', closeUnlessExpanded);
+}
+
+// Static icon markup (no user data involved), swapped in the expand button.
+const EXPAND_ICON_EXPAND = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+  '<path d="M15 4H20V9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+  '<path d="M9 20H4V15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+  '<path d="M20 4L13 11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+  '<path d="M4 20L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const EXPAND_ICON_COLLAPSE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+  '<path d="M20 9H15V4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+  '<path d="M4 15H9V20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+  '<path d="M15 9L21 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+  '<path d="M9 15L3 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+function buildAllianceCard(alliance) {
+  const block = document.createElement('div');
+  block.className = 'alliance-block';
+  const name = document.createElement('div');
+  name.className = 'alliance-name';
+  name.textContent = alliance.tag ? `[${alliance.tag}] ${alliance.name}` : alliance.name;
+  block.appendChild(name);
+  block.appendChild(buildGuildList(alliance.members));
+  return block;
+}
+
+// Lays out alliance cards into `grid`. In compact (non-expanded) mode this
+// is just a plain stacked list. In expanded mode it builds real column
+// containers and bin-packs cards into them: each card's true rendered
+// height is measured, cards are sorted largest-first, and each one goes
+// into whichever column currently holds the least content so far (the
+// classic greedy "longest processing time first" scheduling heuristic).
+// This keeps columns evenly filled even when alliance sizes are very
+// uneven, which a CSS `columns` layout can only approximate.
+function layoutAllianceGrid(grid, alliances, expanded) {
+  grid.textContent = '';
+  if (!expanded) {
+    for (const alliance of alliances) grid.appendChild(buildAllianceCard(alliance));
+    return;
+  }
+
+  const COL_WIDTH = 220, GAP = 12, MAX_COLS = 4;
+  const gridWidth = grid.getBoundingClientRect().width || 0;
+  const numCols = Math.max(1, Math.min(
+    MAX_COLS, alliances.length, Math.floor((gridWidth + GAP) / (COL_WIDTH + GAP)) || 1
+  ));
+
+  const columns = [];
+  for (let i = 0; i < numCols; i++) {
+    const col = document.createElement('div');
+    col.className = 'alliance-grid-col';
+    grid.appendChild(col);
+    columns.push(col);
+  }
+
+  if (numCols === 1) {
+    for (const alliance of alliances) columns[0].appendChild(buildAllianceCard(alliance));
+    return;
+  }
+
+  // Build every card into the first column so all of them share the same
+  // final column width, then read their real heights in one batch.
+  const cards = alliances.map(a => ({ el: buildAllianceCard(a), height: 0 }));
+  for (const c of cards) columns[0].appendChild(c.el);
+  for (const c of cards) c.height = c.el.getBoundingClientRect().height;
+  cards.sort((a, b) => b.height - a.height);
+
+  const colHeights = new Array(numCols).fill(0);
+  for (const c of cards) {
+    let target = 0;
+    for (let i = 1; i < numCols; i++) {
+      if (colHeights[i] < colHeights[target]) target = i;
+    }
+    columns[target].appendChild(c.el); // moves it out of column 0 automatically
+    colHeights[target] += c.height + GAP;
+  }
 }
 
 function buildGuildList(entries) {
@@ -1144,22 +1316,47 @@ function buildGuildList(entries) {
   return list;
 }
 
-function renderGuildsPopoverContent(popover, teamName, data) {
+function renderGuildsPopoverContent(popover, teamName, data, triggerEl) {
   popover.textContent = '';
+  popover.classList.remove('info-popover--expanded');
 
   const header = document.createElement('div');
   header.className = 'info-popover-header';
   const title = document.createElement('span');
   title.textContent = teamName;
+  header.appendChild(title);
+
+  const actions = document.createElement('div');
+  actions.className = 'info-popover-header-actions';
+
+  const expandBtn = document.createElement('button');
+  expandBtn.type = 'button';
+  expandBtn.className = 'info-popover-expand';
+  expandBtn.innerHTML = EXPAND_ICON_EXPAND;
+  expandBtn.setAttribute('aria-label', 'Expand for a full-list screenshot');
+  expandBtn.title = expandBtn.getAttribute('aria-label');
+  expandBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const nowExpanded = !popover.classList.contains('info-popover--expanded');
+    setPopoverExpanded(popover, triggerEl, nowExpanded);
+  });
+  actions.appendChild(expandBtn);
+
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'info-popover-close';
   closeBtn.textContent = '×';
   closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.addEventListener('click', closePopover);
-  header.appendChild(title);
-  header.appendChild(closeBtn);
+  actions.appendChild(closeBtn);
+
+  header.appendChild(actions);
   popover.appendChild(header);
+
+  // Everything except header/footer lives in this container so the
+  // expanded (screenshot) mode can lay it out in multiple columns.
+  const body = document.createElement('div');
+  body.className = 'info-popover-body';
 
   const hasAlliances = data && data.alliances.length > 0;
   const hasSolo = data && data.solo.length > 0;
@@ -1169,32 +1366,32 @@ function renderGuildsPopoverContent(popover, teamName, data) {
     empty.className = 'hint';
     empty.style.margin = '0';
     empty.textContent = 'No guilds listed for this server in the community sheet yet.';
-    popover.appendChild(empty);
+    body.appendChild(empty);
   } else {
     if (hasAlliances) {
+      const wrap = document.createElement('div');
       const sectionTitle = document.createElement('div');
       sectionTitle.className = 'info-popover-section-title';
       sectionTitle.textContent = 'Alliances';
-      popover.appendChild(sectionTitle);
-      for (const alliance of data.alliances) {
-        const block = document.createElement('div');
-        block.className = 'alliance-block';
-        const name = document.createElement('div');
-        name.className = 'alliance-name';
-        name.textContent = alliance.tag ? `[${alliance.tag}] ${alliance.name}` : alliance.name;
-        block.appendChild(name);
-        block.appendChild(buildGuildList(alliance.members));
-        popover.appendChild(block);
-      }
+      wrap.appendChild(sectionTitle);
+      const grid = document.createElement('div');
+      grid.className = 'alliance-grid';
+      wrap.appendChild(grid);
+      body.appendChild(wrap);
+      popover.__allianceData = data.alliances;
+      layoutAllianceGrid(grid, data.alliances, false);
     }
     if (hasSolo) {
+      const wrap = document.createElement('div');
       const sectionTitle = document.createElement('div');
       sectionTitle.className = 'info-popover-section-title';
       sectionTitle.textContent = 'Solo guilds';
-      popover.appendChild(sectionTitle);
-      popover.appendChild(buildGuildList(data.solo));
+      wrap.appendChild(sectionTitle);
+      wrap.appendChild(buildGuildList(data.solo));
+      body.appendChild(wrap);
     }
   }
+  popover.appendChild(body);
 
   const footer = document.createElement('p');
   footer.className = 'info-popover-footer';
@@ -1241,7 +1438,7 @@ async function toggleGuildsPopover(teamName, triggerEl) {
   }
 
   if (activeTrigger !== triggerEl) return; // closed while loading
-  renderGuildsPopoverContent(popover, teamName, byTeam.get(teamName));
+  renderGuildsPopoverContent(popover, teamName, byTeam.get(teamName), triggerEl);
   positionPopover(popover, triggerEl);
 }
 
