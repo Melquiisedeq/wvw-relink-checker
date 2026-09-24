@@ -1,7 +1,3 @@
-
-
-https://github.com/user-attachments/assets/372a3ade-0d54-4f39-aa1f-d4fc1354904d
-
 # WvW Relink Checker
 
 [![Live Demo](https://img.shields.io/badge/demo-live-7fd6f2?style=flat-square)](https://melquiisedeq.github.io/wvw-relink-checker/)
@@ -16,7 +12,7 @@ plus live tier standings and interactive maps for every NA and EU match.
 There is nothing to install and nothing to download — the link above is
 the tool.
 
-![WvW Relink Checker screenshot](assets/screenshot.webp)
+![The interactive tier maps, with every objective in its holder's colour](assets/demo-maps.gif)
 
 ## Why this exists
 
@@ -26,6 +22,10 @@ and cross referencing it against the API by hand. This tool does it for a
 whole list of guilds at once, and shows live match data on top.
 
 ## Features
+
+Every button on the page, in half a minute:
+
+https://github.com/user-attachments/assets/372a3ade-0d54-4f39-aa1f-d4fc1354904d
 
 **Guild lookup**
 - Paste guild names, one per line, and get the region, server, and current
