@@ -27,6 +27,25 @@
 <meta http-equiv="Content-Security-Policy"
       content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src https://api.guildwars2.com https://docs.google.com https://melquiisedeq.goatcounter.com; img-src 'self' data: https://render.guildwars2.com https://melquiisedeq.goatcounter.com; base-uri 'none'; form-action 'none';">
 <meta name="referrer" content="no-referrer">
+<!--
+  The two hosts this page always ends up talking to, and never at load
+  time: the API is first reached when a check runs or a map opens, and
+  the emblem host only when the first claimed objective draws its
+  shield. Measured cold, DNS+TCP+TLS to the API is ~575ms of a ~780ms
+  first call - all of it inside the click rather than before it. These
+  move the handshake to page load, where nobody is waiting on it.
+
+  crossorigin on one and not the other is not a slip. fetch() goes out
+  in CORS mode and lands in the anonymous connection pool, so the API
+  hint has to be anonymous to match; the emblems are plain <image>
+  loads that are not CORS, so that hint must not be. A hint in the
+  wrong pool opens a socket nothing ever reuses.
+
+  Neither is subject to the CSP above - preconnect is a connection
+  hint, not a fetch - and both hosts are already allowed there anyway.
+-->
+<link rel="preconnect" href="https://api.guildwars2.com" crossorigin>
+<link rel="preconnect" href="https://render.guildwars2.com">
 <title>WvW Relink Checker - guild teams, live standings and maps</title>
 <!--
   Link preview metadata. The tool circulates as a bare URL in Discord, so
