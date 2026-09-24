@@ -1,0 +1,45 @@
+# The API has no endpoint that resolves a 5-digit WvW Team ID to a name, so
+# js/config.js carries a hand-maintained TEAM_NAMES table. When ArenaNet adds
+# a team, the page quietly renders "Unknown team (ID 11013)" until somebody
+# happens to notice. This job notices instead.
+name: TEAM_NAMES drift
+
+on:
+  schedule:
+    # Mondays, well after both regions' weekly reset has settled.
+    - cron: '17 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare live team IDs against the table in js/config.js
+        run: |
+          set -euo pipefail
+
+          # Read all_worlds properly instead of grepping the raw JSON:
+          # scores and kill counts land in the same 5-digit range and would
+          # produce a stream of false alarms.
+          ids=$(curl -fsS 'https://api.guildwars2.com/v2/wvw/matches?ids=all' \
+            | jq -r '.[].all_worlds[][] | select(. >= 10000)' | sort -u)
+
+          if [ -z "$ids" ]; then
+            echo "::error::No team IDs came back from the API - the endpoint or its shape changed."
+            exit 1
+          fi
+
+          missing=""
+          for id in $ids; do
+            grep -q "\"$id\":" js/config.js || missing="$missing $id"
+          done
+
+          if [ -n "$missing" ]; then
+            echo "::error::TEAM_NAMES in js/config.js is missing team ID(s):$missing"
+            echo "Names are published at https://wiki.guildwars2.com/wiki/API:2/wvw/matches"
+            exit 1
+          fi
+
+          echo "All $(echo "$ids" | wc -l) live team IDs are present in TEAM_NAMES."
