@@ -28,7 +28,17 @@ body{
    added later without fighting over ::before/::after.
    ========================================================== */
 .fx{
-  position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden;
+  /* Not `inset:0`. On mobile Chromium a fixed element is sized by the
+     visual viewport, which grows when the URL bar hides and shrinks
+     when it comes back - and `cover` below recomputes its scale every
+     time the box changes height, so the photo visibly zoomed in and out
+     as the page was scrolled. Pinned to the large viewport instead,
+     which is the one height the URL bar cannot move. On desktop this is
+     what `inset:0` already resolved to, so nothing there changes. */
+  position:fixed;left:0;top:0;width:100%;
+  height:100vh;   /* Chromium already reads vh as the large viewport... */
+  height:100lvh;  /* ...and this says so by spec rather than by habit. */
+  pointer-events:none;z-index:0;overflow:hidden;
   /* Own stacking context, so the blend below has a defined backdrop
      and can never reach past this layer onto the page content. */
   isolation:isolate;
