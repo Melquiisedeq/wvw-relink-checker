@@ -130,3 +130,134 @@ body{
 .is-idle *,
 .is-idle *::before,
 .is-idle *::after{animation-play-state:paused !important;}
+
+/* ==========================================================
+   SCROLLBARS
+   Two surfaces on this page scroll - the popovers and the map's
+   detail column - and both were doing it with the browser's own
+   scrollbar: 15px, opaque, square, and the one grey on screen that
+   belongs to no palette here.
+
+   The -webkit- pseudo-elements rather than the standard
+   scrollbar-width/scrollbar-color pair, and that is a choice, not an
+   oversight: the standard properties offer only "thin" and two flat
+   colours, and declaring them in Chromium 121+ switches these rules
+   off entirely. Firefox falling back to its own scrollbar is the
+   trade.
+   ========================================================== */
+.info-popover::-webkit-scrollbar,
+.wvw-detail::-webkit-scrollbar{width:9px;}
+
+/* No track. The popover is already a lit gradient panel; a track would
+   draw a second box inside the first one. */
+.info-popover::-webkit-scrollbar-track,
+.wvw-detail::-webkit-scrollbar-track{background:transparent;}
+
+/* The white square at the foot of the scrollbar, and the thing that
+   actually had to be styled here. When an element is resizable AND
+   scrolls, Chromium shortens the scrollbar and reserves a square below
+   it for the resize grip to live in - and that square is painted by
+   this pseudo-element, not by ::-webkit-resizer, with an opaque
+   near-white default. Styling the track and the thumb never reached
+   it, which is why hiding the grip left the square exactly where it
+   was. */
+.info-popover::-webkit-scrollbar-corner,
+.wvw-detail::-webkit-scrollbar-corner{background:transparent;}
+
+/* Transparent border clipped to the padding box, so the thumb reads as
+   5px of colour with air either side instead of a 9px bar shoved
+   against the wall. It sits in the slate until you reach for it and
+   then picks up the accent - the same move every other control here
+   makes on hover. */
+.info-popover::-webkit-scrollbar-thumb,
+.wvw-detail::-webkit-scrollbar-thumb{
+  background-color:rgba(154,164,178,.30);
+  border:2px solid transparent;
+  background-clip:padding-box;
+  border-radius:99px;
+}
+.info-popover::-webkit-scrollbar-thumb:hover,
+.wvw-detail::-webkit-scrollbar-thumb:hover{
+  background-color:rgba(127,214,242,.55);
+}
+
+/* ==========================================================
+   THE REST OF THE BROWSER'S OWN CHROME
+   Everything below is something the user agent draws for itself, and
+   it arrives the same way every time: opaque, square, and in the
+   operating system's palette rather than this page's. That is the
+   opposite of all four things this design does everywhere else - lit
+   from above, translucent over artwork, slate at rest and accent on
+   reach, and a dark shadow under any text that sits on the photo. So
+   these are not four unrelated tweaks; they are the same rule applied
+   to the last four places the browser still had its own opinion.
+
+   Written as bare selectors on purpose. Scoping them to today's
+   elements would mean the next popover with `resize` on it, or the
+   next input, quietly gets the white one back - the same trap the
+   .is-idle rule above is written to avoid.
+   ========================================================== */
+
+/* The resize grip, and the one place in this block where a bare
+   selector was the wrong call. It was written bare on the same
+   reasoning as the rules around it - cover the next element that needs
+   it - but `resize` is on two elements that are not alike: the guild
+   popover, a small translucent panel floating over artwork, and the
+   textarea in the middle of the page, which is a solid sunken field
+   with a real border. The browser's own grip belongs on the second one
+   and was made worse by a drawn replacement, so the textarea keeps it.
+
+   And on the popover the grip is taken away rather than restyled. The
+   narrowed scrollbar leaves that corner 9px wide, and anything drawn
+   into 9px on a rounded translucent edge reads as a smudge, not as a
+   control. resize:vertical still works and the cursor still changes
+   over the corner, so the drag survives untouched; the expand button
+   in the header is the discoverable path either way. */
+.info-popover--guilds::-webkit-resizer{background:none;}
+
+/* Selected text. The default is the OS accent - a saturated blue that
+   belongs to Windows, not here. Background only, never a colour: one
+   rule on this page is that a colour means a team (see standings.css),
+   and forcing selected text to one shade would break it for as long as
+   the selection lasts. */
+::selection{background-color:rgba(127,214,242,.22);}
+
+/* The placeholder was the UA grey, close enough to real text to be read
+   as content. Dim enough to say "example", still clear at 4.99:1. */
+::placeholder{color:#79838f;opacity:1;}
+
+/* Keyboard focus. There was no rule for it at all, so every button and
+   link on the page fell back to the user agent's own ring - which in
+   Chromium is a white outer band with a dark inner one, the same opaque
+   white the resize grip was, in a dozen more places.
+
+   Deliberately on the element types rather than on the classes. There
+   are thirteen kinds of button here and more will be written; listing
+   them would mean the fourteenth silently gets the white one back.
+
+   Outline only, never box-shadow. The buttons and the popovers carry
+   their relief in stacked box-shadows, and a focus rule that set one
+   would wipe the lighting off whatever it touched.
+
+   The offset is what makes this legible on the cyan button: pushed
+   clear of the border box, the ring lands on the dark card behind it
+   rather than on the button's own face. And :focus-visible, not
+   :focus, so a mouse click never draws it - only reaching the control
+   by keyboard does. The textarea keeps its own :focus rule above,
+   which is higher specificity and correct for a text field, where the
+   caret should be announced however you got there.
+
+   .wvw-marker is the one exception and it stays one: it sets
+   outline:none and paints a white ring on the marker itself, in
+   maps.css, which loads after this file and wins. */
+button:focus-visible,
+a:focus-visible{
+  outline:2px solid var(--accent-bright);
+  outline-offset:2px;
+}
+
+/* Tapping a control on a phone flashed the Android default - a grey
+   black wash that belongs to the OS. Same accent every hover here uses,
+   at the weight a touch deserves. Set on the root because the property
+   inherits, so it covers what gets written next as well. */
+html{-webkit-tap-highlight-color:rgba(127,214,242,.18);}
