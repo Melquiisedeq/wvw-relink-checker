@@ -960,7 +960,12 @@ function buildTierMapButton(match, regionName, tierNum) {
   // are silhouette, which is all that survives at 17px - every earlier
   // attempt to help with fill, colour or a chip behind closed the shape
   // into a mass instead.
-  btn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+  // The word first, the glyph after it. This matches the "Skirmish 1.2k
+  // [chart]" line in the server cards, which is the pattern the page
+  // already teaches: quiet grey word, then a cyan glyph to its right.
+  // Icon-then-shouting-caps was the reverse of both halves of that.
+  btn.innerHTML = '<span class="tier-map-label">Maps</span>' +
+    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
     '<g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M3 6.5 9 3l6 3.5 6-3.5v14.5l-6 3.5-6-3.5-6 3.5Z"/>' +
     '<path d="M9 3v14.5M15 6.5V21"/>' +

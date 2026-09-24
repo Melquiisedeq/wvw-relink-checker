@@ -132,8 +132,37 @@
    did - at the cost of being the only button on the page with a body.
    Accent colour and the shared hover lift do the same job in the same
    language as the rest. */
-.tier-map-btn{width:17px;height:17px;color:var(--accent);}
-.tier-map-btn:hover,.tier-map-btn.active{color:var(--accent-bright);}
+.tier-map-btn{height:18px;gap:2px;color:var(--accent);}
+.tier-map-btn svg{width:18px;height:18px;}
+/* Deliberately the same as .stat-label two rules up - the muted grey at
+   regular weight, no caps, no tracking - because that is what "Skirmish"
+   is, and this was asked to read as its sibling. Caps and bold made it
+   shout at the "Tier N" heading it sits opposite instead of naming a
+   control.
+
+   The size is fixed rather than inherited: this button appears in two
+   places at two scales (.72rem in the standings card, .95rem in the
+   match panel header), and inheriting would have made the word grow in
+   one of them while "Skirmish" stayed put. */
+.tier-map-label{
+  font-size:.64rem;font-weight:400;color:#8d97a6;
+  line-height:1;
+  /* Optical, not geometric. Flex centres the label's box, but "Maps"
+     carries a descender, so the ink of the word sits high inside that
+     box and the word reads as floating above the glyph next to it.
+     Nudged down until the cap height lands on the glyph's own centre.
+     This is the number to change if it still sits wrong. */
+  transform:translateY(1px);
+}
+/* The word is what lights up. The glyph is already accent and has its
+   own brighten below, so the control answers as one piece. */
+.tier-map-btn:hover .tier-map-label,
+.tier-map-btn.active .tier-map-label{color:var(--text);}
+/* The shared 1.15 lift is sized for a bare 17px glyph; on a word it
+   reads as the text going soft rather than as the control rising. */
+.tier-map-btn:hover,.tier-map-btn.active{
+  color:var(--accent-bright);transform:scale(1.06);
+}
 
 /* Community guild list: small icon next to NA server names, opens a popover */
 .server-guilds-btn{width:19px;height:21px;color:var(--accent);}
