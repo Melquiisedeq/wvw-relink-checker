@@ -6,3 +6,8 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Working originals: full-size screenshots and model exports that get
+# cut down before anything ships. Git keeps every byte forever, so the
+# 4 MB versions stay out and only the optimised file in assets/ goes in.
+_source/
