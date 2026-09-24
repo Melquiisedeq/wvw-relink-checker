@@ -28,20 +28,20 @@ function retryAfterMs(header) {
  * (respecting Retry-After), 5xx server errors, and network failures.
  * Does not retry other 4xx codes since those won't succeed on retry.
  */
-async function fetchJson(url, attempt = 0) {
+async function fetchJson(url, attempt = 0, cacheMode = 'no-store') {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    const res = await fetch(url, { signal: controller.signal, cache: 'no-store' });
+    const res = await fetch(url, { signal: controller.signal, cache: cacheMode });
 
     if (res.status === 429 && attempt < MAX_RETRIES) {
       await sleep(retryAfterMs(res.headers.get('Retry-After')));
-      return fetchJson(url, attempt + 1);
+      return fetchJson(url, attempt + 1, cacheMode);
     }
     if (res.status >= 500 && attempt < MAX_RETRIES) {
       await sleep(500 * (attempt + 1));
-      return fetchJson(url, attempt + 1);
+      return fetchJson(url, attempt + 1, cacheMode);
     }
     if (!res.ok) {
       throw new Error(`API request failed (HTTP ${res.status})`);
@@ -53,13 +53,26 @@ async function fetchJson(url, attempt = 0) {
     }
     if (err instanceof TypeError && attempt < MAX_RETRIES) {
       await sleep(500 * (attempt + 1));
-      return fetchJson(url, attempt + 1);
+      return fetchJson(url, attempt + 1, cacheMode);
     }
     throw err;
   } finally {
     clearTimeout(timer);
   }
 }
+
+// The static catalogues - objectives, upgrades, sectors, tactics, emblem
+// foregrounds - are every one of them served with
+// `Cache-Control: public, max-age=3600`, and the blanket 'no-store'
+// above was throwing all of it away: every page load re-fetched the lot,
+// on an API where a cold round trip is most of a second and the bytes
+// are the cheap part. These go through 'default' instead, so the
+// browser's own cache answers for the hour the API says it may.
+//
+// Deliberately not everything. Live match data keeps 'no-store' and the
+// refresh cadence is untouched - and there was never anything to win
+// there anyway, since wvw/matches is served with max-age=1.
+const fetchJsonCached = (url) => fetchJson(url, 0, 'default');
 
 // Guild-to-team assignment only changes at the weekly relink, far less
 // often than this cache expires. Harmless over-fetching, kept simple by

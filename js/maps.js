@@ -153,7 +153,7 @@ const sectorCache = new Map();
 
 async function getObjectiveCatalogue() {
   if (objectiveCatalogue) return objectiveCatalogue;
-  const list = await fetchJson(`${API_BASE}/wvw/objectives?ids=all`);
+  const list = await fetchJsonCached(`${API_BASE}/wvw/objectives?ids=all`);
   const byId = new Map();
   for (const o of Array.isArray(list) ? list : []) byId.set(o.id, o);
   objectiveCatalogue = byId;
@@ -169,7 +169,7 @@ async function getUpgradeCatalogue() {
   if (upgradeCatalogue) return upgradeCatalogue;
   const byId = new Map();
   try {
-    const list = await fetchJson(`${API_BASE}/wvw/upgrades?ids=all`);
+    const list = await fetchJsonCached(`${API_BASE}/wvw/upgrades?ids=all`);
     for (const u of Array.isArray(list) ? list : []) byId.set(u.id, u);
   } catch { /* upgrades are a nicety; the map works without them */ }
   upgradeCatalogue = byId;
@@ -185,7 +185,7 @@ async function getTacticCatalogue(ids) {
   const want = [...new Set(ids)].filter((id) => !tacticCatalogue.has(id));
   if (!want.length) return tacticCatalogue;
   try {
-    const list = await fetchJson(`${API_BASE}/guild/upgrades?ids=${want.join(',')}`);
+    const list = await fetchJsonCached(`${API_BASE}/guild/upgrades?ids=${want.join(',')}`);
     for (const u of Array.isArray(list) ? list : []) tacticCatalogue.set(u.id, u);
   } catch { /* tactics are a nicety; the panel reads fine without them */ }
   return tacticCatalogue;
@@ -205,7 +205,7 @@ let emblemForegroundsPromise = null;
 function getEmblemForegrounds() {
   if (emblemForegrounds) return Promise.resolve(emblemForegrounds);
   if (!emblemForegroundsPromise) {
-    emblemForegroundsPromise = fetchJson(`${API_BASE}/emblem/foregrounds?ids=all`)
+    emblemForegroundsPromise = fetchJsonCached(`${API_BASE}/emblem/foregrounds?ids=all`)
       .then((list) => {
         const byId = new Map();
         for (const f of Array.isArray(list) ? list : []) byId.set(f.id, f);
@@ -238,7 +238,7 @@ function guildEmblem(guildId) {
 
 async function getSectors(mapId) {
   if (sectorCache.has(mapId)) return sectorCache.get(mapId);
-  const list = await fetchJson(
+  const list = await fetchJsonCached(
     `${API_BASE}/continents/2/floors/3/regions/7/maps/${mapId}/sectors?ids=all`);
   const arr = (Array.isArray(list) ? list : []).filter((x) => Array.isArray(x.bounds));
   sectorCache.set(mapId, arr);
