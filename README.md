@@ -12,7 +12,7 @@ plus live tier standings and interactive maps for every NA and EU match.
 There is nothing to install and nothing to download — the link above is
 the tool.
 
-![A tour of the tool: guild lookup, live standings, the tier maps and the score charts](assets/demo-tour.gif)
+https://github.com/user-attachments/assets/372a3ade-0d54-4f39-aa1f-d4fc1354904d
 
 ## Why this exists
 
