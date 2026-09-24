@@ -1,0 +1,222 @@
+/* Live objective maps, one tier at a time.
+
+   The terrain is a self-hosted picture; the rest is drawn over it from
+   the API. ArenaNet publishes no map tiles for WvW - sweeping the whole
+   Mists tile grid turns up imagery only around continent x 2048-8192,
+   while Eternal Battlegrounds sits at x 8958-12030 - so the pictures
+   are the wiki's map renders, cut down and served from assets/.
+
+   Alignment is solved rather than eyeballed. Those renders carry the
+   sector borders, and the API publishes the same borders as coordinate
+   polygons, so the right transform is whatever makes the two coincide:
+   a search over scale and offset, scored by how much drawn line the
+   polygons land on. See MAP_IMAGE in js/maps.js for the answer. */
+
+.wvw-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+.wvw-tab{
+  padding:5px 11px;font-size:.72rem;font-weight:700;cursor:pointer;
+  color:#8d97a6;background:linear-gradient(180deg,#2b323d,#1b212a);
+  border:none;border-radius:0;
+  clip-path:polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.14), inset 0 -1px 0 rgba(0,0,0,.45);
+  text-shadow:none;
+}
+.wvw-tab:hover{color:#dbe3ec;}
+.wvw-tab.is-active{
+  color:#06222c;
+  background:linear-gradient(180deg,#a3e2f6,#57b6d6);
+}
+
+.wvw-stage{display:flex;gap:12px;align-items:stretch;}
+@media (max-width:760px){ .wvw-stage{flex-direction:column;} }
+
+.wvw-plot-wrap{
+  position:relative;flex:1 1 auto;min-width:0;max-height:70vh;
+  border:1px solid var(--border);border-top-color:rgba(255,255,255,.12);
+  border-radius:10px;overflow:hidden;
+  background:radial-gradient(circle at 50% 42%, #18202a, #0c0f14 78%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06), inset 0 -1px 0 rgba(0,0,0,.5);
+  cursor:grab;touch-action:none;
+}
+.wvw-plot-wrap.is-panning{cursor:grabbing;}
+.wvw-plot{display:block;width:100%;height:auto;max-height:70vh;}
+
+/* Territory. Each sector is tinted by whoever holds the objective
+   inside it, which is what turns a diagram into a map you can read at a
+   glance: you see who owns which ground, not just which dots.
+
+   Fill and border are drawn in separate passes (see buildMapStage), so
+   these are fills only - the border rules are further down. */
+.wvw-sector{stroke:none;}
+.wvw-sector.own-red{fill:rgba(210,70,72,.2);}
+.wvw-sector.own-blue{fill:rgba(70,110,215,.2);}
+.wvw-sector.own-green{fill:rgba(50,170,110,.2);}
+.wvw-sector.own-neutral{fill:rgba(120,135,155,.07);}
+/* Over a painted map the tint is a wash on top of real terrain, not the
+   terrain itself, so it comes right down - enough to read territory at a
+   glance without burying what is underneath. */
+.over-terrain .wvw-sector.own-red{fill:rgba(225,60,62,.28);}
+.over-terrain .wvw-sector.own-blue{fill:rgba(60,105,235,.28);}
+.over-terrain .wvw-sector.own-green{fill:rgba(40,185,110,.28);}
+.over-terrain .wvw-sector.own-neutral{fill:rgba(140,155,175,.05);}
+
+/* Borders, in their own layers on top of every fill.
+
+   The dark pass is not decoration. The wiki renders have their own pale
+   sector borders printed into the picture, and that printed line was
+   what kept reading as a grey grid - our thinner coloured stroke sat on
+   top of it and left white showing on both sides. A wider dark stroke
+   underneath buries it, and the colour then reads as the only border
+   there is. It also stops two neighbouring colours from blurring into
+   one another at the line where they meet, which is the one place on
+   the map the border actually has to be legible. */
+/* Widths are set per map on the group, not here - see MAP_IMAGE.edge -
+   because how much has to be covered depends on the picture. */
+.wvw-edges-under polygon{
+  fill:none;stroke:rgba(0,0,0,.8);stroke-linejoin:round;
+}
+.wvw-edges polygon{fill:none;stroke-linejoin:round;}
+.wvw-edges .own-red{stroke:#ff8080;}
+.wvw-edges .own-blue{stroke:#8cb8ff;}
+.wvw-edges .own-green{stroke:#5fe89e;}
+.wvw-edges .own-neutral{stroke:rgba(198,212,232,.4);}
+
+.wvw-marker{cursor:pointer;}
+.wvw-marker .hit{fill:transparent;}
+/* Stroke widths are in map units, like the radii, so they are sized
+   against OBJ_SIZE rather than against pixels. */
+/* The icon is the game's own and already carries the team colour, so
+   there is nothing to draw behind it - only a shadow, so it lifts off
+   the terrain instead of dissolving into it. */
+.wvw-marker .pip{pointer-events:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.85));}
+/* The claim badge: a dark shield so the white emblem has something to
+   sit on whatever the terrain underneath is doing. */
+.wvw-claim{pointer-events:none;}
+.wvw-claim .claim-shield{
+  fill:#1b2029;stroke:rgba(232,238,248,.8);stroke-width:3.5;
+}
+.wvw-claim .claim-emblem{opacity:.96;}
+.wvw-marker .ring{fill:none;stroke:none;}
+.wvw-marker.is-selected .ring{stroke:#ffffff;stroke-width:5.5;}
+/* The browser's own focus ring is a rectangle around the marker's
+   bounding box, which on an <image> is the square edge of the PNG - so
+   clicking one drew a box around the picture. The selection ring already
+   says what is picked, so the default outline goes, and keyboard focus
+   borrows the same ring rather than a box. */
+.wvw-marker:focus{outline:none;}
+.wvw-marker:focus-visible{outline:none;}
+.wvw-marker:focus-visible .ring{stroke:#ffffff;stroke-width:5.5;}
+
+/* Upgrade tier, twice over: a ring that gets brighter and heavier as the
+   tier climbs, and a row of shields under the marker, one per tier. The
+   ring is what you read across the whole map - a fortified keep glows
+   gold and an unupgraded one is plain - and the shields are what you
+   read once you have picked it out. Tier 0 gets neither, on purpose:
+   plain has to mean something for bright to mean anything.
+
+   Lengths here are map units, like the marker radii, so the blur radius
+   is larger than it looks. */
+/* Three tiers have to be told apart at a glance, so they differ on
+   three axes at once, not just hue: colour, thickness and glow.
+
+   Bronze, white, gold - the ladder the game itself uses, and the one a
+   player already reads without being taught.
+
+   Getting bronze to work took the dark casing under every ring. A bronze
+   dark enough to look like bronze lands right on top of the team discs
+   in lightness and vanishes - the first attempt scored 1.04 contrast
+   against the red disc. The casing removes that constraint entirely, so
+   bronze can be bright and saturated instead of dark and muddy, which is
+   also what makes it read as bronze rather than as dirt. It is pushed as
+   far as it will go before it starts reading as the gold above it:
+   saturation 0.87, separation 2.33 from the white and 1.88 from the
+   gold. Below about 1.8 against the gold the two stop being separable
+   at a glance, which is the ceiling here, not taste.
+
+   Thickness and glow carry the rest: 6 flat, 8 with a whisper, 12 that
+   burns. */
+.wvw-marker .halo,.wvw-marker .halo-case{fill:none;stroke:none;}
+.tier-1 .halo-case,.tier-2 .halo-case,.tier-3 .halo-case{
+  stroke:rgba(9,11,15,.92);
+}
+.tier-1 .halo-case{stroke-width:11;}
+.tier-2 .halo-case{stroke-width:13;}
+.tier-3 .halo-case{stroke-width:17;}
+.tier-1 .halo{stroke:#ef7f18;stroke-width:6;}
+.tier-2 .halo{
+  stroke:#e6eefb;stroke-width:8;
+  filter:drop-shadow(0 0 8px rgba(215,230,255,.55));
+}
+.tier-3 .halo{
+  stroke:#ffd21e;stroke-width:12;
+  filter:drop-shadow(0 0 20px rgba(255,200,40,1));
+}
+.wvw-tierpips path{stroke:rgba(0,0,0,.82);stroke-width:3.5;}
+.tier-1 .wvw-tierpips path{fill:#ef7f18;}
+.tier-2 .wvw-tierpips path{fill:#e6eefb;}
+.tier-3 .wvw-tierpips path{fill:#ffd21e;}
+
+
+.wvw-zoom{
+  position:absolute;right:8px;bottom:8px;display:flex;gap:4px;
+}
+.wvw-zoom button{
+  width:26px;height:26px;padding:0;font-size:1rem;line-height:1;
+  border-radius:6px;
+}
+
+/* The detail panel: everything the API knows about one objective. */
+.wvw-detail{
+  flex:0 0 232px;min-width:0;
+  border:1px solid var(--border);border-top-color:rgba(255,255,255,.12);
+  border-radius:10px;padding:11px 12px;
+  background:linear-gradient(180deg, rgba(26,32,41,.72), rgba(14,18,24,.6));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.45);
+  font-size:.76rem;text-shadow:0 1px 2px rgba(0,0,0,.6);
+  overflow-y:auto;max-height:62vh;
+}
+@media (max-width:760px){ .wvw-detail{flex:1 1 auto;max-height:none;} }
+.wvw-detail-empty{color:#8d97a6;margin:0;}
+.wvw-detail-name{
+  font-size:.95rem;font-weight:700;color:#f2f6fa;
+  display:flex;align-items:center;gap:7px;margin-bottom:2px;
+}
+.wvw-detail-type{font-size:.7rem;color:#8d97a6;margin-bottom:9px;}
+.wvw-row{display:flex;justify-content:space-between;gap:10px;padding:2px 0;}
+.wvw-row dt{color:#8d97a6;}
+.wvw-row dd{margin:0;color:#f2f6fa;font-weight:700;text-align:right;}
+.wvw-detail dl{margin:0;}
+
+/* Upgrade tier in the panel: the same shields the map draws, in the same
+   colours, so there is one thing to learn rather than two. */
+.wvw-tierchip{display:inline-flex;gap:2px;flex-shrink:0;}
+.wvw-tierchip i{
+  width:11px;height:13px;display:block;
+  clip-path:polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
+  filter:drop-shadow(0 0 1px rgba(0,0,0,.95));
+}
+.tierchip-1 i{background:#ef7f18;}
+.tierchip-2 i{background:#e6eefb;}
+.tierchip-3 i{background:#ffd21e;}
+
+.wvw-upgrades{margin:10px 0 0;padding:0;list-style:none;}
+.wvw-upgrades li{
+  display:flex;align-items:center;gap:7px;
+  padding:3px 0;color:#cdd6e2;font-size:.72rem;
+}
+.wvw-upgrades img{
+  width:20px;height:20px;flex-shrink:0;border-radius:3px;
+  box-shadow:0 1px 2px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.14);
+}
+.wvw-upgrade-tier{
+  margin-top:9px;font-size:.66rem;font-weight:700;color:#8d97a6;
+  text-transform:uppercase;letter-spacing:.08em;
+}
+.wvw-claimed{color:#f0d78c;font-weight:700;}
+/* Guild emblems arrive in the game's neutral base red; flatten them the
+   same way the map does. */
+.wvw-emblem{
+  width:19px;height:19px;vertical-align:-4px;margin-right:5px;
+  filter:brightness(0) invert(1);opacity:.92;
+}
+

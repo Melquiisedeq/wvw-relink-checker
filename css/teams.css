@@ -1,0 +1,27 @@
+/* Team-tinted card: border and a faint background wash in the side's color */
+.standing-side{border:1px solid transparent;border-radius:8px;padding:6px 8px;margin:4px 0;}
+/* Edge/fill/rail split into variables so the notched-corner treatment
+   below can repaint border and background as two separate layers - a
+   clip-path cuts a real border open at the chamfer. */
+/* Colours live only as variables here. Painting them in this rule too
+   would out-specify the chamfer/rail rule further down (two classes
+   beats one regardless of order) and silently flatten both. */
+/* --side-fill is an opaque colour, not a wash. The team colours are
+   light, so stacking more of them over the page only raises the
+   background's brightness and swallows the text. These are the same
+   hues mixed *into* the dark base instead - roughly 22% - which reads
+   as a strongly coloured card while staying dark enough for the
+   numbers and icons to stay crisp. One value per team to tune.
+   These are that 12% mix at 62% alpha. Denser than the cards around
+   them on purpose: a side packs more text into less height than
+   anything else on the page, and it is the layer where thin grey
+   numbers were landing straight on top of the photograph. The
+   rest still lets the 45% team edge underneath - and the artwork
+   behind the card - come through, so the side reads as genuinely
+   translucent and picks up a little colour back for free. */
+.side-red,.col-red{--side-edge:rgba(225,92,92,.45);--side-fill:rgba(47,35,35,.62);--side-rail:var(--red);--side-glow:rgba(255,150,150,.9);}
+.side-blue,.col-blue{--side-edge:rgba(91,143,240,.45);--side-fill:rgba(31,41,56,.62);--side-rail:var(--blue);--side-glow:rgba(160,195,255,.9);}
+.side-green,.col-green{--side-edge:rgba(76,175,125,.45);--side-fill:rgba(29,45,44,.62);--side-rail:var(--green);--side-glow:rgba(150,235,195,.9);}
+
+/* Your guild's side: bolder name plus a bright pin badge */
+.team-col.is-yours .team-name{color:var(--accent);}

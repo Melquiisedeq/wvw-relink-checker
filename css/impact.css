@@ -1,0 +1,253 @@
+/* Played after a check finishes. This used to jolt the whole
+   viewport sideways, which moved everything the reader was about to
+   read. Now only the new panels move: they drop into place one after
+   another, so the motion points at the results instead of fighting
+   them. */
+.page.deploying .match-panel{
+  animation:panel-deploy .46s cubic-bezier(.18,.86,.32,1) backwards;
+}
+.page.deploying .match-panel:nth-child(1){animation-delay:.04s;}
+.page.deploying .match-panel:nth-child(2){animation-delay:.11s;}
+.page.deploying .match-panel:nth-child(3){animation-delay:.18s;}
+.page.deploying .match-panel:nth-child(4){animation-delay:.25s;}
+.page.deploying .match-panel:nth-child(n+5){animation-delay:.32s;}
+@keyframes panel-deploy{
+  0%{opacity:0;transform:translateY(-16px) scale(.985);}
+  60%{opacity:1;}
+  100%{opacity:1;transform:none;}
+}
+.impact-overlay{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  pointer-events:none;z-index:50;opacity:0;
+}
+.impact-overlay::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(circle, rgba(140,224,255,.4) 0%, transparent 60%);
+}
+.impact-stack{
+  position:relative;width:200px;height:200px;
+  filter:drop-shadow(0 0 26px rgba(140,224,255,.9));
+  transform:scale(.3) rotate(-20deg);
+}
+.impact-crest{position:absolute;left:50%;top:50%;width:150px;transform:translate(-50%,-50%);}
+
+/* The crest, twice, each clipped to one half. Identical markup on both
+   sides, so the break always falls exactly down the middle whatever
+   the artwork inside happens to be. */
+.crest-half{position:absolute;inset:0;}
+/* The break follows a jagged line, not a ruler. The two polygons are
+   exact complements of each other, so no matter how ragged the line
+   gets the halves still account for every pixel between them. */
+.crest-half--l{
+  clip-path:polygon(50% 0, 46% 18%, 54% 33%, 45% 48%, 52% 64%, 46% 80%, 50% 100%, 0 100%, 0 0);
+}
+.crest-half--r{
+  clip-path:polygon(50% 0, 100% 0, 100% 100%, 50% 100%, 46% 80%, 52% 64%, 45% 48%, 54% 33%, 46% 18%);
+}
+.impact-overlay.broken .crest-half--l{animation:half-l .95s cubic-bezier(.2,.7,.3,1) forwards;}
+.impact-overlay.broken .crest-half--r{animation:half-r .95s cubic-bezier(.2,.7,.3,1) forwards;}
+@keyframes half-l{
+  0%{transform:none;opacity:1;}
+  100%{transform:translate(-130px,30px) rotate(-24deg);opacity:0;}
+}
+@keyframes half-r{
+  0%{transform:none;opacity:1;}
+  100%{transform:translate(130px,30px) rotate(24deg);opacity:0;}
+}
+/* The fracture itself: the main split plus the branches running off
+   it, drawn white-hot and gone before the halves have travelled
+   anywhere. Its geometry matches the clip-paths above, so the light
+   comes out of the same line the shield actually breaks on. */
+.crest-crack{
+  /* Height stated rather than left to the intrinsic ratio: an inline
+     SVG with only a width can be laid out at zero height. */
+  position:absolute;left:50%;top:50%;width:150px;height:178px;
+  transform:translate(-50%,-50%);
+  opacity:0;
+  filter:drop-shadow(0 0 10px rgba(214,248,255,.95)) drop-shadow(0 0 24px rgba(127,214,242,.8));
+}
+.impact-overlay.broken .crest-crack{animation:crack-flash .55s ease-out forwards;}
+@keyframes crack-flash{
+  0%{opacity:0;}
+  10%{opacity:1;}
+  55%{opacity:1;}
+  100%{opacity:0;}
+}
+
+/* The blast, on the hit. Two layers: a hard white core that is gone in
+   under a fifth of a second, and a cyan shell that carries on
+   expanding. Both are driven by .broken, never by .play - the glow
+   used to ramp up during the flight, which announced the impact
+   before it happened. */
+/* An explosion rather than a light. Two perfectly round layers were
+   what made it read as a lamp switching on: a circle is the one shape
+   a detonation never makes. Three things replace it, and the silhouette
+   comes from all of them overlapping - a ragged core, billows pushing
+   out off-centre, and spikes thrown clear.
+
+   The core keeps its colour and loses its roundness: alternating long
+   and short radii, each one jittered, so the edge never closes into an
+   arc. It also turns slightly as it expands, which stops the spikes
+   from looking like a fixed decal being scaled up. */
+.crest-blast{
+  position:absolute;left:50%;top:50%;
+  width:200px;height:200px;margin:-100px 0 0 -100px;
+  background:radial-gradient(circle,#ffffff 5%,rgba(222,250,255,.95) 18%,
+    rgba(140,224,255,.62) 42%,rgba(127,214,242,.22) 66%,transparent 78%);
+  clip-path:polygon(99.3% 50.0%, 77.6% 56.8%, 99.5% 76.0%, 70.8% 68.4%, 78.5% 91.2%, 60.2% 76.8%, 55.5% 95.3%, 46.6% 77.9%, 31.6% 98.5%, 32.8% 74.9%, 16.8% 79.4%, 26.6% 62.3%, 7.0% 60.6%, 19.6% 50.0%, -1.2% 37.4%, 28.4% 38.7%, 7.5% 12.4%, 32.0% 24.0%, 31.5% 1.2%, 46.5% 21.3%, 55.4% 5.1%, 58.6% 27.4%, 78.6% 8.5%, 68.4% 33.7%, 90.4% 28.8%, 75.2% 43.8%);
+  opacity:0;
+}
+.impact-overlay.broken .crest-blast{animation:blast-core .44s cubic-bezier(.05,.85,.3,1) forwards;}
+@keyframes blast-core{
+  0%{opacity:0;transform:scale(.12) rotate(-16deg);}
+  9%{opacity:1;transform:scale(1) rotate(-4deg);}
+  100%{opacity:0;transform:scale(2.5) rotate(14deg);}
+}
+
+/* The billows. Each one is pushed out from the centre on its own
+   heading at its own size, so the fireball bulges unevenly instead of
+   swelling as one ball. Built in JS because the whole point is that no
+   two detonations have the same outline. */
+.blast-lobe{
+  position:absolute;left:50%;top:50%;border-radius:50%;
+  background:radial-gradient(circle, rgba(238,252,255,.95) 7%,
+    rgba(150,228,255,.7) 32%, rgba(90,175,255,.32) 56%, transparent 74%);
+  opacity:0;
+  animation:blast-lobe .66s cubic-bezier(.1,.8,.3,1) forwards;
+}
+@keyframes blast-lobe{
+  0%{opacity:0;transform:translate(0,0) scale(.18);}
+  14%{opacity:.95;}
+  100%{opacity:0;transform:translate(var(--bx,0px), var(--by,0px)) scale(1.55);}
+}
+
+/* The spikes: what actually reads as "blast" at a glance. Tapered, so
+   they are wide at the centre and come to a point, and short-lived -
+   they are the first frame of the explosion, not the whole of it. */
+.blast-ray{
+  position:absolute;left:50%;top:50%;
+  height:9px;margin-top:-4.5px;
+  transform-origin:0 50%;
+  background:linear-gradient(90deg, rgba(242,253,255,.95),
+    rgba(130,210,255,.62) 42%, rgba(90,170,255,0));
+  clip-path:polygon(0 0, 100% 50%, 0 100%);
+  filter:blur(1.2px);
+  opacity:0;
+  animation:blast-ray .4s ease-out forwards;
+}
+@keyframes blast-ray{
+  0%{opacity:0;transform:rotate(var(--a,0deg)) scaleX(.12);}
+  13%{opacity:1;}
+  100%{opacity:0;transform:rotate(var(--a,0deg)) scaleX(1);}
+}
+
+/* The round that breaks it: charged at the button, then lobbed at the
+   crest. Much bigger than a click round, and it gathers before it
+   goes - the wind-up is what makes the hit read as heavy. */
+/* Three layers, because three things happen at once and each needs its
+   own transform: the outer element carries X, the middle one carries Y,
+   and the ball itself carries size. Size had been living on the same
+   element as Y, which meant the flight keyframes reset whatever the
+   round had grown to while it waited. */
+.siege-charge{position:fixed;z-index:44;pointer-events:none;width:0;height:0;}
+.siege-charge i{position:absolute;display:block;left:0;top:0;width:0;height:0;}
+.siege-charge b{
+  position:absolute;display:block;
+  left:-26px;top:-26px;width:52px;height:52px;border-radius:50%;
+  /* Blue fire: a small white-hot centre and a body that is properly
+     blue. The old mix was white out to two thirds of the radius, which
+     is what made it read as a light rather than a burning thing. */
+  background:radial-gradient(circle,
+    #f0fbff 5%, #a5e6ff 17%, #4fb8ff 37%,
+    rgba(45,130,255,.78) 60%, rgba(30,90,235,.28) 76%, transparent 86%);
+  box-shadow:0 0 34px 10px rgba(90,180,255,.85), 0 0 78px 26px rgba(40,110,255,.5);
+  transform:scale(0);
+}
+/* Forms, then keeps gathering for as long as the check takes. A slow
+   run visibly loads a heavier round, which is the one honest way to
+   show waiting: the delay becomes the wind-up instead of dead air. */
+.siege-charge.charging b{
+  animation:charge-up .46s ease-out forwards,
+            charge-swell 6s .46s linear forwards;
+}
+@keyframes charge-up{
+  0%{transform:scale(0);}
+  72%{transform:scale(1.12);}
+  100%{transform:scale(1);}
+}
+@keyframes charge-swell{
+  0%{transform:scale(1);}
+  100%{transform:scale(2.4);}
+}
+/* Durations are mirrored in FLIGHT_MS. */
+.siege-charge.flying{animation:charge-x .56s linear forwards;}
+.siege-charge.flying i{animation:charge-y .56s linear forwards;}
+@keyframes charge-x{100%{transform:translateX(var(--dx,0));}}
+/* The same parabola as the mouse round, stop for stop - see click.css
+   for where the numbers come from. */
+/* The same parabola as the mouse round - see click.css. */
+@keyframes charge-y{
+  0%{transform:translateY(0);}
+  10%{transform:translateY(calc(var(--dy,0px) * 0.1 - var(--rise,0px) * 0.36));}
+  20%{transform:translateY(calc(var(--dy,0px) * 0.2 - var(--rise,0px) * 0.64));}
+  30%{transform:translateY(calc(var(--dy,0px) * 0.3 - var(--rise,0px) * 0.84));}
+  40%{transform:translateY(calc(var(--dy,0px) * 0.4 - var(--rise,0px) * 0.96));}
+  50%{transform:translateY(calc(var(--dy,0px) * 0.5 - var(--rise,0px) * 1));}
+  60%{transform:translateY(calc(var(--dy,0px) * 0.6 - var(--rise,0px) * 0.96));}
+  70%{transform:translateY(calc(var(--dy,0px) * 0.7 - var(--rise,0px) * 0.84));}
+  80%{transform:translateY(calc(var(--dy,0px) * 0.8 - var(--rise,0px) * 0.64));}
+  90%{transform:translateY(calc(var(--dy,0px) * 0.9 - var(--rise,0px) * 0.36));}
+  100%{transform:translateY(var(--dy,0));}
+}
+/* Whatever the wind-up reached is what leaves the corner. --grow is set
+   in JS at the moment of release and the round only ever gets bigger
+   from there, never smaller: a stone that shrinks on the way to the
+   wall undoes the entire point of having watched it load. */
+.siege-charge.flying b{animation:charge-hold .56s ease-in forwards;}
+@keyframes charge-hold{
+  0%{transform:scale(var(--grow,1));}
+  100%{transform:scale(calc(var(--grow,1) * 1.16));}
+}
+
+/* Back, and now it earns its keep. The shield being broken in half is
+   the one moment on this page big enough to justify moving the whole
+   viewport, and it fires on the hit rather than on "done". */
+.page.struck{animation:page-shake .5s ease-in-out;}
+@keyframes page-shake{
+  0%,100%{transform:translate(0,0);}
+  15%{transform:translate(-9px,3px);}
+  32%{transform:translate(8px,-2px);}
+  50%{transform:translate(-6px,2px);}
+  70%{transform:translate(4px,-1px);}
+  86%{transform:translate(-2px,0);}
+}
+
+/* Cyan sparks off the button the moment a check starts. */
+.btn-spark{
+  position:fixed;z-index:44;pointer-events:none;
+  width:4px;height:4px;border-radius:50%;
+  background:#dff7ff;box-shadow:0 0 8px 2px rgba(140,224,255,.9);
+  animation:spark-fly .7s cubic-bezier(.1,.7,.3,1) forwards;
+}
+@keyframes spark-fly{
+  0%{opacity:1;transform:translate3d(0,0,0) scale(1);}
+  100%{opacity:0;transform:translate3d(var(--sx),var(--sy),0) scale(.25);}
+}
+/* Held open for the wind-up and the flight, then dropped by JS once
+   the crest has broken. The full-screen wash fires on .broken, so it
+   lands on the hit instead of building up during the flight and
+   giving the impact away before it arrives. */
+.impact-overlay.play{opacity:1;}
+.impact-overlay::before{opacity:0;}
+.impact-overlay.broken::before{animation:overlay-flash .6s ease-out;}
+.impact-overlay.play .impact-stack{animation:fortress-rise .55s ease-out forwards;}
+@keyframes overlay-flash{
+  0%{opacity:0;}
+  7%{opacity:1;}
+  100%{opacity:0;}
+}
+@keyframes fortress-rise{
+  0%{transform:scale(.3) rotate(-25deg);}
+  55%{transform:scale(1.14) rotate(6deg);}
+  100%{transform:scale(1) rotate(0deg);}
+}

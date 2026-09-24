@@ -1,0 +1,180 @@
+/* ==========================================================
+   CARD GEOMETRY
+   The rank badge is already a hexagon; this carries that faceted
+   language into the cards themselves.
+   ========================================================== */
+.standing-side,.team-col{
+  --notch:10px;
+  --rail:3px;
+  border:none;border-radius:0;position:relative;
+  background:linear-gradient(90deg, var(--side-rail) 0 var(--rail), var(--side-edge) var(--rail));
+  clip-path:polygon(
+    var(--notch) 0, 100% 0,
+    100% calc(100% - var(--notch)), calc(100% - var(--notch)) 100%,
+    0 100%, 0 var(--notch));
+}
+.standing-side{padding:7px 9px;}
+.team-col{padding:11px;}
+.standing-side::after,.team-col::after{
+  content:'';position:absolute;z-index:0;
+  /* Held back by the rail's width on the left, by the 1px edge
+     everywhere else. Back when this was a 6% wash the rail showed
+     straight through it and still shows faintly at 60%, so the rail
+     is drawn at its real width anyway. */
+  inset:1px 1px 1px var(--rail);
+  /* Mostly opaque. A 6% wash let the 45% edge layer underneath flood
+     the interior with near-full-strength team colour and washed out
+     the numbers; 60% is where the colour comes back as a hint
+     rather than a flood, with the backdrop blur under it doing the
+     work of keeping text off the busy parts of the photo. */
+  background:linear-gradient(180deg,
+    color-mix(in srgb, #ffffff 7%, var(--side-fill)), var(--side-fill));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.09), inset 0 -1px 0 rgba(0,0,0,.3);
+  clip-path:polygon(
+    calc(var(--notch) - 1px) 0, 100% 0,
+    100% calc(100% - var(--notch) + 1px), calc(100% - var(--notch) + 1px) 100%,
+    0 100%, 0 calc(var(--notch) - 1px));
+}
+.standing-side > *,.team-col > *{position:relative;z-index:1;}
+
+/* Edge pulse when one of this side's numbers changes. Drawn as an
+   inset shadow on the fill layer rather than an outer glow, because
+   the card clips its own chamfered corners - anything painted outside
+   the shape is simply cut off. Peripheral vision catches this even
+   when you are reading a different card. */
+.standing-side.side-pulse::after{animation:side-pulse 1.1s ease-out;}
+/* Starts and ends on the card's resting shadow, not on `none`, or the
+   relief above would blink off for the length of the pulse. */
+@keyframes side-pulse{
+  0%{box-shadow:inset 0 1px 0 rgba(255,255,255,.09), inset 0 -1px 0 rgba(0,0,0,.3);}
+  16%{box-shadow:inset 0 0 0 2px var(--side-glow), inset 0 0 16px -2px var(--side-glow);}
+  100%{box-shadow:inset 0 1px 0 rgba(255,255,255,.09), inset 0 -1px 0 rgba(0,0,0,.3);}
+}
+.standing-match{
+  border-radius:0;
+  clip-path:polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+}
+
+/* Metal catching the light, on the first-place badge only. Identical
+   to the design-lab version: a 4.5s cycle whose sweep occupies only
+   the last 28% of it. If this ever looks frantic, the badges are
+   being rebuilt and restarting the animation - the fault is upstream,
+   not in these numbers. */
+.rank-1::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(115deg, transparent 38%, rgba(255,255,255,.8) 50%, transparent 62%);
+  transform:translateX(-130%);
+  animation:sheen 4.5s ease-in-out infinite;
+}
+@keyframes sheen{0%,72%{transform:translateX(-130%);}100%{transform:translateX(130%);}}
+
+/* ==========================================================
+   LIVE DATA
+   ========================================================== */
+@keyframes value-flash{
+  0%{background:rgba(127,214,242,.5);box-shadow:0 0 14px rgba(127,214,242,.55);}
+  100%{background:transparent;box-shadow:0 0 0 rgba(127,214,242,0);}
+}
+.value-changed{animation:value-flash 1.5s ease-out;border-radius:3px;padding:0 2px;margin:0 -2px;}
+/* Fixed, and parked on <body>, because the cards are clipped by their
+   own chamfer - a delta rising inside one would be sheared off at the
+   card's top edge. */
+.delta{
+  position:fixed;z-index:45;transform:translateX(-50%);
+  font-size:.64rem;font-weight:800;white-space:nowrap;pointer-events:none;
+  animation:delta-rise 1.7s ease-out forwards;
+}
+.delta-up{color:var(--green);}
+.delta-down{color:var(--red);}
+@keyframes delta-rise{
+  0%{opacity:0;transform:translate(-50%,6px);}
+  22%{opacity:1;}
+  100%{opacity:0;transform:translate(-50%,-14px);}
+}
+.standing-vp,.stat-value{position:relative;}
+
+/* Skeleton, in place of a bare "Loading…" */
+.skel-match{
+  border:1px solid rgba(255,255,255,.05);padding:9px 10px;margin-bottom:10px;
+  clip-path:polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+}
+.skel{
+  border-radius:4px;
+  background:linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(127,214,242,.13) 37%, rgba(255,255,255,.04) 55%);
+  background-size:280% 100%;
+  animation:skel-sweep 1.5s ease-in-out infinite;
+}
+@keyframes skel-sweep{0%{background-position:120% 0;}100%{background-position:-40% 0;}}
+.skel-title{height:9px;width:46px;margin-bottom:9px;}
+.skel-row{height:34px;margin:5px 0;border-radius:8px;}
+
+/* Relink inside six hours: the banner starts breathing. */
+.relink-banner.is-urgent{
+  border-color:rgba(127,214,242,.45);
+  animation:urgent-pulse 2.6s ease-in-out infinite;
+}
+@keyframes urgent-pulse{
+  0%,100%{
+    box-shadow:
+      inset 0 1px 0 rgba(200,240,255,.18),
+      inset 0 -1px 0 rgba(0,0,0,.4),
+      0 2px 3px rgba(0,0,0,.4),
+      0 16px 32px -16px rgba(0,0,0,.85),
+      0 0 0 0 rgba(127,214,242,0);
+  }
+  50%{
+    box-shadow:
+      inset 0 1px 0 rgba(200,240,255,.18),
+      inset 0 -1px 0 rgba(0,0,0,.4),
+      0 2px 3px rgba(0,0,0,.4),
+      0 16px 32px -16px rgba(0,0,0,.85),
+      0 0 26px -6px rgba(127,214,242,.5);
+  }
+}
+.relink-banner.is-urgent .relink-stat--primary .relink-stat-value{color:var(--accent-bright);}
+
+/* ==========================================================
+   TYPOGRAPHY
+   ========================================================== */
+/* Fixed-width digits: the countdown reflows every minute and the VP
+   numbers change under it. Without this they visibly jitter. */
+.stat-value,.relink-stat-value,.skirmish-bar-pct{
+  font-variant-numeric:tabular-nums;
+}
+/* drop-shadow, not text-shadow: the title is gradient-clipped text,
+   and text-shadow would paint a blur behind the transparent glyphs
+   instead of tracing their edges. */
+h1{filter:drop-shadow(0 1px 0 rgba(0,0,0,.9)) drop-shadow(0 0 16px rgba(127,214,242,.3));}
+
+/* ==========================================================
+   SIEGE IMPACT
+   The crest, plus what a trebuchet round actually does: a shockwave,
+   a second slower ring, and debris thrown outward. The screen shake
+   this used to carry is gone - the panels dropping in do that job
+   without moving the text the reader is aiming at.
+   ========================================================== */
+.impact-ring{
+  position:absolute;left:50%;top:50%;
+  width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;
+  border:2px solid rgba(140,224,255,.9);opacity:0;
+}
+.impact-overlay.play .impact-ring{animation:ring-out 1s cubic-bezier(.15,.85,.4,1) forwards;}
+.impact-overlay.play .impact-ring--slow{
+  animation-duration:1.35s;animation-delay:.12s;
+  border-color:rgba(127,214,242,.5);border-width:1px;
+}
+@keyframes ring-out{
+  0%{transform:scale(.25);opacity:0;}
+  12%{opacity:.95;}
+  100%{transform:scale(7);opacity:0;}
+}
+.impact-shard{
+  position:absolute;left:50%;top:50%;width:4px;height:4px;border-radius:50%;
+  background:#ffd9a3;box-shadow:0 0 8px 1px rgba(255,170,90,.8);
+  opacity:0;animation:shard-fly .9s cubic-bezier(.12,.72,.3,1) forwards;
+}
+.impact-shard--cold{background:#bdefff;box-shadow:0 0 8px 1px rgba(127,214,242,.85);}
+@keyframes shard-fly{
+  0%{opacity:1;transform:translate3d(0,0,0) scale(1);}
+  100%{opacity:0;transform:translate3d(var(--sx),var(--sy),0) scale(.3);}
+}

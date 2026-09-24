@@ -1,0 +1,77 @@
+/* Translucent, not opaque: now that there is artwork behind the page,
+   an opaque card would simply hide it. The blur is what keeps text
+   legible over a moving background - it flattens whatever is behind
+   into a smooth field instead of letting edges show through. */
+/* Relief comes from three things at once, none of which is the fill:
+   a top-down gradient so the card is lit from above, a bright inner
+   top edge and a dark inner bottom edge to give it a thickness, and a
+   shadow underneath to lift it off the page. A flat translucent panel
+   has none of those, which is why it read as a sticker. */
+.card{
+  background:linear-gradient(180deg, rgba(38,45,55,.52), rgba(18,22,28,.40));
+  -webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px);
+  border:1px solid var(--border);
+  border-top-color:rgba(255,255,255,.19);
+  border-radius:14px;padding:20px;margin-bottom:20px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.14),
+    inset 0 -1px 0 rgba(0,0,0,.5),
+    /* Contact shadow: tight and dark, right under the edge. This is
+       the one that says the card is sitting ON something. */
+    0 2px 3px rgba(0,0,0,.45),
+    /* Cast shadow: wide and soft, saying how far above it sits. */
+    0 20px 40px -16px rgba(0,0,0,.9);
+}
+label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:8px;}
+textarea{
+  width:100%;min-height:130px;resize:vertical;
+  background:#0c0f13;border:1px solid var(--border);border-radius:10px;
+  color:var(--text);padding:12px;font-size:.95rem;font-family:inherit;line-height:1.5;
+}
+textarea:focus{outline:2px solid var(--accent);}
+.row{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap;}
+#copyRow{padding-top:14px;border-top:1px solid var(--border);}
+/* The one surface on the page that should look raised the most, now
+   that the cards behind it are lifted too - a flat button sitting on
+   a card with a contact shadow reads as painted onto it. Same recipe
+   as the cards, in the accent's own hue: lighter along the top where
+   the light lands, darker at the bottom, and a tight contact shadow
+   under the edge. */
+button{
+  background:linear-gradient(180deg,#a3e2f6,#7fd6f2 46%,#57b6d6);
+  color:#062733;border:none;border-radius:8px;
+  padding:10px 18px;font-weight:600;font-size:.95rem;cursor:pointer;
+  text-shadow:0 1px 0 rgba(255,255,255,.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.6),
+    inset 0 -1px 0 rgba(0,0,0,.3),
+    0 2px 3px rgba(0,0,0,.42),
+    0 10px 20px -10px rgba(0,0,0,.85);
+  transition:filter .15s ease, transform .08s ease, box-shadow .08s ease;
+}
+button:hover{filter:brightness(1.08);}
+/* Pressed means pressed: it travels down onto the surface and the
+   shadow underneath it goes away, rather than shrinking in place. */
+button:active{
+  transform:translateY(2px);
+  box-shadow:
+    inset 0 2px 5px rgba(0,0,0,.38),
+    inset 0 -1px 0 rgba(255,255,255,.12),
+    0 1px 1px rgba(0,0,0,.3);
+}
+/* Held down for as long as the work takes. */
+button:disabled{
+  opacity:.8;cursor:wait;transform:translateY(1px);
+  box-shadow:
+    inset 0 2px 5px rgba(0,0,0,.32),
+    inset 0 -1px 0 rgba(255,255,255,.1),
+    0 1px 1px rgba(0,0,0,.28);
+}
+.btn-pips{display:inline-flex;align-items:center;gap:5px;height:1em;}
+.btn-pips span{
+  width:6px;height:6px;border-radius:50%;opacity:.35;
+  animation:pip-pulse 1s ease-in-out infinite;
+}
+.btn-pips span:nth-child(1){background:var(--red);animation-delay:0s;}
+.btn-pips span:nth-child(2){background:var(--blue);animation-delay:.2s;}
+.btn-pips span:nth-child(3){background:var(--green);animation-delay:.4s;}

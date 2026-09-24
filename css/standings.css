@@ -1,0 +1,406 @@
+/* Standings rails: secondary info, but headers still need to read clearly */
+.standings-card{background:rgba(255,255,255,.015);border-color:rgba(255,255,255,.06);}
+.standings-header{margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+.standings-header-left{display:flex;align-items:center;gap:6px;}
+.standings-status{margin-left:auto;display:inline-flex;align-items:center;gap:6px;position:relative;top:-3px;}
+.live-dot{
+  display:inline-block;width:5px;height:5px;border-radius:50%;flex-shrink:0;
+  background:var(--accent);opacity:.55;cursor:default;
+  animation:pip-pulse 2.4s ease-in-out infinite;
+}
+/* Shared with the button's three pips further up. */
+@keyframes pip-pulse{0%,100%{opacity:.3;transform:scale(.8);}50%{opacity:1;transform:scale(1.3);}}
+.standings-header h2{
+  margin:0;font-size:.82rem;font-weight:700;color:var(--accent);
+  text-transform:uppercase;letter-spacing:.06em;
+}
+.leaderboard-link{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:22px;height:22px;border-radius:50%;
+  background:var(--accent-soft);color:var(--accent);
+  opacity:.85;transition:opacity .15s ease, background .15s ease;
+}
+.leaderboard-link:hover{opacity:1;background:rgba(127,214,242,.28);}
+.leaderboard-link svg{display:block;}
+.standings-grid{display:flex;flex-direction:column;gap:10px;}
+.standing-match{border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:9px 10px;}
+.standing-match-title{
+  display:flex;align-items:center;justify-content:space-between;gap:6px;
+  font-size:.72rem;color:var(--text);margin-bottom:6px;font-weight:700;opacity:.9;
+}
+.standing-side{
+  display:flex;flex-direction:column;gap:2px;padding:5px 0;font-size:.8rem;
+  /* Every side sits over a translucent fill with a photo behind it.
+     A shadow this small does nothing visible on a flat background but
+     gives each glyph its own edge wherever the picture underneath
+     happens to be busy, which is what stops the smaller numbers from
+     reading as washed out. */
+  text-shadow:0 1px 2px rgba(0,0,0,.6);
+}
+.standing-side-top{display:flex;align-items:center;gap:7px;}
+.standing-vp{margin-left:auto;font-size:.72rem;white-space:nowrap;flex-shrink:0;}
+.standing-vp .stat-label{color:#8d97a6;opacity:1;font-weight:400;}
+.standing-vp .stat-value{color:#ffffff;font-weight:800;font-size:.85rem;}
+/* These are read-only marks, so they get the opposite relief to the
+   buttons: engraved rather than raised. No fill and no lit edge -
+   anything with a filled body and a bright top reads as pressable,
+   which is a promise the mark cannot keep. What is left is a dark
+   line under the glyph, so it looks cut into the row instead of
+   printed flat on it. */
+.movement-indicator{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:18px;margin-left:7px;flex-shrink:0;
+  font-size:.86rem;line-height:1;
+  vertical-align:middle;cursor:default;
+}
+/* Saturated rather than merely tinted. At this size the glyph is small
+   enough that a muted colour reads as grey, and the whole point of the
+   mark is that you catch which way it points without stopping on it. */
+.movement-up{color:#45c489;text-shadow:0 1px 1px rgba(0,0,0,.85);}
+.movement-down{color:#ff6b6e;text-shadow:0 1px 1px rgba(0,0,0,.85);}
+/* "Stays" is the absence of movement, so it keeps no hue at all - the
+   eye should skip it and land on the two that mean something. */
+.movement-bar{
+  display:inline-block;width:12px;height:3px;border-radius:1.5px;
+  background:#a3adba;box-shadow:0 1px 0 rgba(0,0,0,.55);
+}
+.standing-side-top .rank-badge{width:20px;height:20px;font-size:.64rem;}
+.standing-side-top .dot{width:8px;height:8px;box-shadow:0 0 0 1px rgba(0,0,0,.35);}
+/* "Lutgardis Conservatory" is the longest team name in play and used
+   to wrap to a second line, which broke the row rhythm down the whole
+   rail. It gets the leftover space and shrinks a step rather than
+   wrapping; the VP block beside it never shrinks. */
+.standing-side-name{
+  font-weight:600;color:#f2f6fa;min-width:0;flex:0 1 auto;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+@media (max-width:1499px){
+  .standing-side-name{font-size:.96em;}
+}
+/* Well clear of --muted, and no extra opacity knocked off the
+   labels: the grey that reads fine on the page reads thin once it is
+   inside a tinted card over a photograph. Same hue, higher tone. */
+.standing-side-stats{color:#8d97a6;font-size:.72rem;padding-left:27px;}
+/* The label names the number; the number is the point. Both have to
+   be legible over the photo, but only one should be loud - so the
+   label goes dim and small and the value goes bright and heavy,
+   rather than the two sharing a tone. */
+.stat-label{color:#8d97a6;opacity:1;font-weight:400;}
+.stat-value{color:#f2f6fa;font-weight:700;}
+.sep{opacity:.4;margin:0 2px;}
+.rank-badge{
+  width:26px;height:26px;flex-shrink:0;
+  clip-path:polygon(50% 0%, 100% 22%, 100% 68%, 50% 100%, 0% 68%, 0% 22%);
+  display:flex;align-items:center;justify-content:center;
+  font-size:.78rem;font-weight:800;font-family:Cambria,Georgia,serif;
+  background:#0c0f13;border:1px solid var(--border);color:var(--muted);
+  /* Anchors the first-place sheen to the badge. Without it the sweep's
+     absolutely-positioned box falls back to the card (which is
+     positioned for its chamfer) and becomes a card-wide white band. */
+  position:relative;
+}
+.rank-1{background:linear-gradient(160deg,#fff3c4,#c99a2e 65%);color:#3a2a05;}
+.rank-2{background:linear-gradient(160deg,#eef2f7,#a9b4c0 65%);color:#22262c;}
+.rank-3{background:linear-gradient(160deg,#f0c9a0,#a9673a 65%);color:#2b1704;}
+
+/* Shared base for small icon-only buttons (guild list, K/D, activity).
+   Each subclass below only sets width/height/color. */
+.icon-btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  padding:0;margin-left:1px;flex-shrink:0;line-height:1;
+  background:none;border:none;box-shadow:none;text-shadow:none;
+  opacity:.95;cursor:pointer;
+  transition:opacity .15s ease, transform .15s ease;
+}
+.icon-btn:hover,.icon-btn.active{opacity:1;transform:scale(1.15);}
+/* An icon has no body to light, so it can only be relieved along its
+   own outline. The offset is what makes this safe: a drop-shadow
+   with no offset and a blur spreads evenly in every direction and
+   closes into a disc at this size, which is the halo that had to be
+   taken off these icons before. Pushed straight down with almost no
+   blur, the same filter traces the shape instead of surrounding it. */
+.icon-btn svg{display:block;filter:drop-shadow(0 1px .5px rgba(0,0,0,.65));}
+.icon-btn:active{transform:translateY(1px) scale(1.05);}
+
+/* The maps button keeps a body, unlike the other icon buttons. Those sit
+   beside a name and are found by looking for them; this one has to say
+   "press me" on its own, next to a heading, so it gets a chamfered chip
+   in the same relief language as everything else. Written against
+   .icon-btn's own specificity because it is undoing what that rule
+   deliberately strips. */
+/* No chip. The chip was an attempt to make this look pressable, and it
+   did - at the cost of being the only button on the page with a body.
+   Accent colour and the shared hover lift do the same job in the same
+   language as the rest. */
+.tier-map-btn{width:17px;height:17px;color:var(--accent);}
+.tier-map-btn:hover,.tier-map-btn.active{color:var(--accent-bright);}
+
+/* Community guild list: small icon next to NA server names, opens a popover */
+.server-guilds-btn{width:19px;height:21px;color:var(--accent);}
+/* Pulled back over the row's 7px gap. That gap is right between the
+   badge, the dot and the name, but the shield belongs to the name it
+   sits beside, not to the row. */
+.standing-side-top .server-guilds-btn{margin-left:-5px;}
+/* Deliberately the densest surface on the page. A popover lands on
+   top of a card that is already translucent over a photograph, and
+   stacking transparency on transparency is how text becomes
+   unreadable - so this one is near-solid at 92-94%, which is enough
+   to hint at what it covers without any of it reaching the text, and
+   earns its separation from a hard shadow instead. The blur is turned
+   up rather than down: the less opaque the panel, the more work the
+   blur has to do. Same lit top edge as everything else. */
+.info-popover{
+  position:fixed;z-index:60;width:280px;max-height:min(340px, 70vh);overflow-y:auto;
+  background:linear-gradient(180deg, rgba(35,42,52,.94), rgba(21,26,33,.92) 62%);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  border:1px solid #333c48;
+  border-top-color:rgba(255,255,255,.17);
+  border-radius:10px;padding:12px 14px;font-size:.8rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.12),
+    inset 0 -1px 0 rgba(0,0,0,.5),
+    0 18px 44px -12px rgba(0,0,0,.85);
+}
+/* Guild/alliance list only: often long, so it gets more default room and
+   a manual resize handle. The other popovers stay compact. */
+.info-popover--guilds{width:300px;max-height:85vh;min-height:120px;resize:vertical;}
+.info-popover-header{
+  display:flex;align-items:center;justify-content:space-between;
+  font-weight:700;color:var(--text);margin-bottom:8px;gap:4px;
+}
+.info-popover-header-actions{display:flex;align-items:center;gap:2px;flex-shrink:0;}
+.info-popover-close{
+  background:none;border:none;box-shadow:none;color:var(--muted);
+  font-size:1.5rem;line-height:1;cursor:pointer;padding:0 4px;
+  text-shadow:0 1px 1px rgba(0,0,0,.6);
+}
+.info-popover-close:hover{color:var(--text);}
+.info-popover-expand{
+  display:inline-flex;align-items:center;justify-content:center;
+  background:none;border:none;box-shadow:none;text-shadow:none;
+  color:var(--muted);cursor:pointer;padding:2px;
+  border-radius:4px;
+}
+.info-popover-expand:hover{color:var(--text);background:rgba(255,255,255,.06);}
+.info-popover-expand svg{display:block;filter:drop-shadow(0 1px .5px rgba(0,0,0,.6));}
+/* Expanded (screenshot) mode: centered modal with a dimming backdrop. */
+.info-popover-backdrop{
+  position:fixed;inset:0;z-index:59;background:rgba(4,6,9,.65);
+  -webkit-backdrop-filter:blur(1px);backdrop-filter:blur(1px);
+}
+.info-popover--expanded{
+  position:fixed;z-index:61;
+  left:50% !important;top:50% !important;
+  transform:translate(-50%,-50%);
+  width:min(880px,92vw);max-width:92vw;
+  max-height:88vh;resize:none;
+}
+.info-popover--expanded .info-popover-body{
+  display:flex;flex-direction:column;gap:16px;
+}
+/* Column containers are built in JS (see layoutAllianceGrid), which
+   measures real card heights and bin-packs them. These rules just
+   style whatever columns the script builds. */
+.info-popover--expanded .alliance-grid{
+  display:flex;gap:12px;align-items:flex-start;
+}
+.info-popover--expanded .alliance-grid-col{
+  display:flex;flex-direction:column;gap:12px;flex:1 1 0;min-width:0;
+}
+.info-popover--expanded .alliance-block{
+  margin-bottom:0;background:rgba(255,255,255,.03);
+  border:1px solid var(--border);border-radius:8px;padding:8px 10px;
+}
+.info-popover-section-title{
+  font-size:.72rem;font-weight:800;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.08em;
+  margin:12px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border);
+}
+.info-popover-section-title:first-of-type{margin-top:0;}
+.alliance-block{margin-bottom:10px;}
+.alliance-name{font-weight:700;color:var(--blue);margin-bottom:2px;}
+.guild-list{display:flex;flex-direction:column;gap:1px;}
+.alliance-block .guild-list{padding-left:10px;}
+.guild-line{line-height:1.5;}
+.guild-tag{font-weight:700;color:var(--accent);}
+.guild-region{color:var(--muted);opacity:.75;}
+.info-popover-footer{
+  color:var(--muted);font-size:.7rem;margin-top:10px;
+  padding-top:8px;border-top:1px solid var(--border);line-height:1.5;
+}
+
+/* Per-map K/D breakdown: small crossed-swords icon next to the K/D value */
+.map-kd-btn{width:15px;height:16px;color:var(--accent-bright);vertical-align:middle;}
+.map-kd-label--gbl,.pop-bar-label.map-kd-label--gbl{color:var(--green);}
+.map-kd-label--bbl,.pop-bar-label.map-kd-label--bbl{color:var(--blue);}
+.map-kd-label--rbl,.pop-bar-label.map-kd-label--rbl{color:var(--red);}
+.map-kd-label--ebg{
+  background:linear-gradient(90deg,var(--red),var(--green),var(--blue));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+
+/* The skirmish-score chart and the buttons that open these popovers.
+   One rule for the chart, not two: the height used to be set here and
+   overridden forty lines below, so editing the first one did nothing. */
+.activity-btn,.activity-info-btn{width:14px;height:15px;color:var(--accent-bright);vertical-align:middle;}
+.activity-chart{width:100%;height:132px;display:block;margin-top:2px;}
+/* One rule across these popovers: a colour means a team, and cyan means
+   something you can touch or something happening now. The chosen side
+   used to be drawn in cyan, which broke it - the legend said green and
+   the line said accent. It is drawn in its own colour now, and told
+   apart from the other two by weight instead. */
+.activity-line{fill:none;stroke-width:2.4;}
+.activity-line--red{stroke:var(--red);}
+.activity-line--blue{stroke:var(--blue);}
+.activity-line--green{stroke:var(--green);}
+.activity-dot--red{fill:var(--red);}
+.activity-dot--blue{fill:var(--blue);}
+.activity-dot--green{fill:var(--green);}
+.activity-dot{stroke:rgba(10,13,17,.85);stroke-width:1.2;}
+/* This one carries a chart, a legend and a breakdown, so it gets the
+   room the compact popovers do not need. */
+/* The popovers that carry a chart or a breakdown, rather than three
+   lines of text. */
+.info-popover--trend{
+  width:430px;max-height:min(680px, 88vh);padding:14px 17px;
+}
+.info-popover--data{width:430px;max-height:min(560px, 86vh);padding:13px 16px;}
+@media (max-width:520px){ .info-popover--data{width:calc(100vw - 24px);} }
+/* On a narrow screen it takes the width it can get rather than
+   overflowing it. */
+@media (max-width:520px){ .info-popover--trend{width:calc(100vw - 24px);} }
+
+/* The two headline figures, label over value. */
+.pop-figures{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.pop-figures--three{grid-template-columns:repeat(3,1fr);gap:8px;}
+.pop-figures--three .pop-figure{padding:8px 9px;}
+.pop-figures--three .pop-figure-value{font-size:1.05rem;}
+.pop-figure{
+  border:1px solid var(--border);border-top-color:rgba(255,255,255,.12);
+  border-radius:8px;padding:9px 12px;
+  background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.14));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
+}
+.pop-figure-label{
+  display:block;font-size:.62rem;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:1px;
+}
+.pop-figure-value{font-size:1.2rem;color:var(--text);font-variant-numeric:tabular-nums;}
+.pop-figure--good .pop-figure-value{color:var(--ok);}
+.pop-figure--bad .pop-figure-value{color:var(--err);}
+
+
+/* The other two sides, for scale. Thin and dim on purpose: they are
+   there to say whether a dip was this server or the whole tier. */
+.trend-line{fill:none;stroke-width:1.4;opacity:.6;}
+.trend-line--red{stroke:var(--red);}
+.trend-line--blue{stroke:var(--blue);}
+.trend-line--green{stroke:var(--green);}
+/* The axis is fitted to the week, so the numbers have to be shown. */
+.trend-grid{stroke:rgba(255,255,255,.08);stroke-width:1;}
+/* One tick per day of the week, so a point on the line can be placed. */
+.trend-day{stroke:rgba(255,255,255,.055);stroke-width:1;}
+.trend-day-label{font-size:8px;opacity:.7;}
+.trend-scale{fill:var(--muted);font-size:9.5px;font-variant-numeric:tabular-nums;}
+
+.trend-legend{
+  display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:11px;
+  font-size:.73rem;color:var(--muted);
+}
+.trend-legend-item{display:inline-flex;align-items:center;gap:5px;}
+.trend-legend-item.is-mine{color:var(--text);font-weight:700;}
+.trend-legend-val{color:var(--text);font-variant-numeric:tabular-nums;}
+.trend-legend-dot{width:8px;height:2.5px;border-radius:2px;flex-shrink:0;}
+.trend-legend-dot--red{background:var(--red);}
+.trend-legend-dot--blue{background:var(--blue);}
+.trend-legend-dot--green{background:var(--green);}
+
+/* The block still being played, reported rather than plotted. */
+.trend-live{
+  display:flex;justify-content:space-between;align-items:center;gap:8px;
+  flex-wrap:wrap;margin-top:13px;padding:9px 12px;border-radius:8px;
+  background:rgba(127,214,242,.09);border:1px solid rgba(127,214,242,.2);
+  font-size:.72rem;color:var(--muted);
+}
+.trend-live b{color:var(--text);font-variant-numeric:tabular-nums;}
+.trend-live-head{display:inline-flex;align-items:center;gap:6px;color:var(--accent);font-weight:700;}
+.trend-live-dot{
+  width:6px;height:6px;border-radius:50%;background:var(--accent);
+  flex-shrink:0;animation:pip-pulse 2.4s ease-in-out infinite;
+}
+
+/* Where the last finished block's points came from. */
+.pop-section{
+  display:flex;justify-content:space-between;align-items:baseline;
+  margin:18px 0 7px;font-size:.66rem;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.08em;
+}
+.pop-section span{color:var(--text);font-size:.78rem;letter-spacing:0;}
+.pop-bar-row{display:flex;align-items:center;gap:11px;padding:5px 0;font-size:.78rem;}
+.pop-bar-label{font-weight:700;flex:0 0 68px;}
+.pop-bar-label--wide{
+  flex:0 0 108px;color:var(--text);font-weight:600;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* Same rule: the row for the side you opened is marked by weight, not
+   by a colour that would claim to be a team. */
+.pop-bar-row.is-mine .pop-bar-label{color:var(--text);font-weight:800;}
+.pop-bar-row.is-mine .pop-bar-value{font-weight:800;}
+.pop-bar-track{
+  flex:1 1 auto;height:9px;border-radius:5px;
+  background:rgba(255,255,255,.07);overflow:hidden;
+  box-shadow:inset 0 1px 1px rgba(0,0,0,.4);
+}
+.pop-bar-fill{display:block;height:100%;border-radius:5px;}
+.pop-bar-fill.own-red{background:var(--red);}
+.pop-bar-fill.own-blue{background:var(--blue);}
+.pop-bar-fill.own-green{background:var(--green);}
+.pop-bar-value{
+  flex:0 0 50px;text-align:right;color:var(--text);font-weight:700;
+  font-variant-numeric:tabular-nums;
+}
+.pop-bar-pct{flex:0 0 36px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;}
+
+/* The K/D row carries five things and nothing may wrap - that stacking
+   was what made it unreadable. The numbers are sized to their own
+   content and grouped; the bar takes whatever is left, which is how it
+   ends up the widest thing in the row rather than the numbers ending up
+   at opposite edges of it. */
+.pop-kd-row{gap:10px;white-space:nowrap;}
+.pop-kd-row .pop-bar-label{flex:0 0 62px;}
+.pop-bar-track--slim{flex:1 1 auto;min-width:40px;height:8px;}
+.pop-kd-nums{flex:0 0 auto;display:inline-flex;align-items:center;gap:11px;}
+.pop-kd-kills,.pop-kd-deaths{
+  width:66px;text-align:right;color:var(--text);font-weight:700;
+  font-variant-numeric:tabular-nums;
+  display:inline-flex;align-items:center;justify-content:flex-end;gap:4px;
+}
+.pop-kd-ratio{width:38px;text-align:right;font-weight:700;}
+.glyph-sword{font-size:1.15em;line-height:1;opacity:.75;font-style:normal;}
+.glyph-skull{font-size:.95em;line-height:1;opacity:.75;font-style:normal;}
+
+@media (max-width:520px){
+  .pop-kd-row{gap:7px;}
+  .pop-kd-row .pop-bar-label{flex:0 0 52px;}
+  .pop-kd-nums{gap:8px;}
+  .pop-kd-kills,.pop-kd-deaths{width:60px;}
+}
+.activity-axis{display:flex;justify-content:space-between;font-size:.66rem;color:var(--muted);margin-top:3px;}
+.activity-note{color:var(--muted);font-size:.72rem;margin-top:14px;line-height:1.55;}
+
+/* Skirmish score bar: current-skirmish score relative to the tier leader */
+.skirmish-bar-row{display:flex;align-items:center;gap:6px;margin-top:5px;}
+.skirmish-bar-track{flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden;}
+.skirmish-bar-fill{height:100%;border-radius:2px;transition:width .3s ease;}
+.skirmish-bar-pct{font-size:.66rem;color:#8d97a6;min-width:26px;text-align:right;flex-shrink:0;}
+.skirmish-bar-red{background:var(--red);}
+.skirmish-bar-blue{background:var(--blue);}
+.skirmish-bar-green{background:var(--green);}
+
+/* K/D value colored by who's winning the fight stat */
+.kd-good{color:var(--green)!important;}
+.kd-bad{color:var(--red)!important;}
+.stat-leader{
+  text-decoration:underline;
+  text-decoration-color:var(--accent);text-underline-offset:3px;
+}

@@ -1,0 +1,58 @@
+/* The siege engine the whole page has been pretending to have.
+
+   Two cutouts, not one picture: the frame and the beam are separate
+   images so the beam can turn on its pivot. Both were pulled off a flat
+   magenta backing by unmixing rather than thresholding, which is what
+   kept the sling ropes - a hard key eats a one-pixel rope every time.
+
+   It stands near the bottom-left because that is where every round on
+   this page is thrown from, and the launch point is read back off the
+   beam rather than assumed, so the two can never drift apart. */
+.trebuchet{
+  position:fixed;left:50px;bottom:6px;
+  /* Half the size it was drawn at. The images are left at their old
+     resolution and displayed at half, so the machine is effectively
+     served at 2x and stays crisp on a high-density screen instead of
+     going soft the way a downscaled export would - at this size they
+     are served at nearly 3x. */
+  width:50.25px;height:56.25px;
+  z-index:0;pointer-events:none;
+  /* The beam swings far outside this box at both ends. It passes behind
+     the content either way, because the page sits a layer above. */
+  overflow:visible;
+  opacity:.9;
+  /* Traverse. A trebuchet aims by turning on its base rather than by
+     swinging the beam like a turret, so this is the aiming and the beam
+     angle is only elevation. */
+  transform-origin:25.13px 56.25px;
+  transform:rotate(var(--yaw, 0deg));
+  transition:transform .5s cubic-bezier(.2,.7,.3,1);
+}
+/* No room for it beside the content until the window is wide. */
+@media (max-width:1100px){ .trebuchet{display:none;} }
+
+/* Behind the frame, so the beam reads as passing between the uprights
+   and its axle disappears under the iron cap at the apex. */
+.treb-arm{
+  position:absolute;left:-49.88px;top:-10.13px;
+  width:93.75px;height:37.5px;z-index:0;
+  transform-origin:75px 13.88px;
+  transform:rotate(var(--arm, -34deg));
+  transition:transform .45s cubic-bezier(.2,.7,.3,1);
+}
+.treb-arm img{display:block;width:100%;height:100%;}
+/* A zero-sized marker sitting in the sling head. Reading its rect gives
+   the launch point with the frame's traverse and the beam's rotation
+   already composed - the browser does that maths better than a pile of
+   trigonometry would, and it cannot fall out of step with the CSS. */
+.treb-sling{position:absolute;left:8.25px;top:13.5px;width:0;height:0;}
+.treb-frame{position:absolute;left:0;top:0;width:50.25px;height:56.25px;z-index:1;}
+
+/* The throw: all the way over, fast, and with no easing out - the beam
+   is stopped by the frame, not by slowing down. */
+.trebuchet.firing .treb-arm{transition:transform .17s cubic-bezier(.35,0,.75,1);}
+/* The long recovery afterwards. */
+.trebuchet.resetting .treb-arm{transition:transform .95s cubic-bezier(.15,.75,.3,1);}
+/* While a check runs the beam hauls back further, on the same clock as
+   the round gathering in the sling. */
+.trebuchet.cocking .treb-arm{transition:transform 5.5s cubic-bezier(.1,.5,.4,1);}

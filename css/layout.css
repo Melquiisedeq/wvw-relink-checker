@@ -1,0 +1,137 @@
+.page{
+  position:relative;z-index:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:24px;
+  padding:18px 16px 32px;
+}
+.wrap{width:100%;max-width:720px;order:0;}
+.rail{width:100%;max-width:720px;}
+.rail-left{order:1;}
+.rail-right{order:2;}
+@media (min-width:1400px){
+  .page{flex-direction:row;justify-content:center;align-items:flex-start;}
+  /* Deliberately NOT sticky. These rails hold every tier, so they are
+     always taller than the viewport, and position:sticky on an element
+     taller than its scrollport pins to a different edge depending on
+     scroll direction. With two rails of different heights that meant
+     NA and EU drifting out of line on the way up and only snapping
+     back at the very top. Plain flow columns stay aligned. */
+  /* Pulled up into the lower half of the banner. Only in the two-column
+     layout: below 1400px the rails sit under the content instead of
+     beside it, and raising them there would just overlap the cards. */
+  .rail{width:372px;flex:0 0 372px;max-width:none;margin-top:-40px;}
+  .rail-left{order:-1;}
+  .rail-right{order:1;}
+  .wrap{order:0;}
+}
+.title-row{display:flex;align-items:center;gap:12px;margin-bottom:8px;}
+/* A contained card rather than a full-bleed strip: the pulse needs a
+   closed contour to travel around, and a glow on a single bottom edge
+   reads as a stray line instead of an alert. */
+/* Same relief as the cards, in the banner's own cyan rather than the
+   neutral slate: lit along the top edge, darker underneath, and
+   sitting on a shadow so it reads as a bar laid over the page instead
+   of a tint painted onto it. */
+/* Still a bar - shrink-wrapping it to its contents made a small
+   deformed lozenge. The emptiness was never the amount of information,
+   it was that this was the only thing on the page spanning the whole
+   viewport while everything under it sits in a 720px column. Matched to
+   that column it stops announcing the space it is not using, and the
+   two stats spread out to fill what is left. */
+.relink-banner{
+  position:relative;z-index:1;
+  width:100%;max-width:720px;
+  margin:12px auto 0;padding:8px 22px;border-radius:10px;
+  /* Denser, for the same reason the team sides went from 42% to 62%:
+     a near-transparent wash puts thin text straight onto the photo. */
+  background:linear-gradient(180deg, rgba(44,76,90,.62), rgba(20,34,43,.52));
+  -webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px);
+  border:1px solid var(--accent-soft);
+  border-top-color:rgba(160,230,255,.32);
+  box-shadow:
+    inset 0 1px 0 rgba(200,240,255,.18),
+    inset 0 -1px 0 rgba(0,0,0,.4),
+    0 2px 3px rgba(0,0,0,.4),
+    0 16px 32px -16px rgba(0,0,0,.85);
+}
+.relink-inner{
+  display:flex;align-items:center;justify-content:center;
+}
+/* No cap: the two stats share the bar's width evenly through their own
+   flex:1, so the bar reads as full rather than as a shelf with a small
+   island parked in the middle of it. */
+.relink-stat{
+  flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:2px;
+  cursor:help;
+}
+/* The bar had an edge and its contents did not, so the label and the
+   clock inside it still read as printed on glass. Relief here is all
+   typographic: the labels are pushed into the surface and the numbers
+   are lifted off it, which is the same top-lit direction the cards
+   use. */
+.relink-stat-title{
+  font-size:.66rem;font-weight:700;color:#8d97a6;
+  text-transform:uppercase;letter-spacing:.1em;
+  text-shadow:0 1px 0 rgba(0,0,0,.55);
+}
+/* Same split as the team cards: the label names the number, the number
+   is the point. NA/EU is a label wearing a number's clothes, so it goes
+   down with the rest of them. */
+/* tabular-nums matters more here than anywhere else on the page: these
+   digits are replaced every minute, and proportional figures make the
+   whole line re-centre itself each time one changes width. Fixed-width
+   figures keep a ticking clock still - and cost no height. */
+.relink-stat-value{
+  font-size:.94rem;color:#f2f6fa;
+  font-variant-numeric:tabular-nums;
+  text-shadow:0 1px 2px rgba(0,0,0,.6);
+}
+.relink-stat-value .region{color:#8d97a6;font-weight:400;}
+.relink-stat-value .time{font-weight:700;color:#f2f6fa;}
+/* A groove, not a line: one dark pixel with a lit one beside it is the
+   whole trick to making a separator look cut rather than drawn. */
+.relink-divider{
+  width:2px;height:26px;margin:0 20px;border-radius:1px;
+  background:linear-gradient(90deg, rgba(0,0,0,.5), rgba(180,225,245,.13));
+}
+.relink-stat--primary .relink-stat-title{
+  color:var(--accent);
+  text-shadow:0 1px 0 rgba(0,0,0,.6);
+}
+/* The one number on the page that is allowed to glow: it is the
+   deadline everything else on the bar is measured against. */
+.relink-stat--primary .relink-stat-value{
+  font-size:1.18rem;font-weight:700;color:var(--accent);letter-spacing:.2px;
+  text-shadow:0 1px 2px rgba(0,0,0,.7), 0 0 14px rgba(127,214,242,.35);
+}
+@media (max-width:460px){
+  .relink-inner{flex-direction:column;gap:8px;}
+  .relink-divider{
+    width:50%;height:2px;margin:0;
+    background:linear-gradient(180deg, rgba(0,0,0,.5), rgba(180,225,245,.13));
+  }
+}
+.title-row svg{flex-shrink:0;filter:drop-shadow(0 0 5px rgba(140,224,255,.45));}
+h1{
+  font-family:Cambria,Georgia,'Times New Roman',serif;
+  font-size:1.7rem;margin:0;letter-spacing:1.5px;text-transform:uppercase;
+  background:linear-gradient(100deg,#e7ebf0 20%,var(--accent) 55%,#e7ebf0 85%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.header-rule{
+  height:2px;border-radius:2px;margin:0 0 22px;
+  background:linear-gradient(90deg,var(--red),var(--accent),var(--blue),var(--green),var(--red));
+  background-size:300% 100%;opacity:.55;
+  animation:rule-scan 7s linear infinite;
+}
+@keyframes rule-scan{0%{background-position:0% 0;}100%{background-position:300% 0;}}
+/* Scoped on purpose to the header's endless scan, the only motion that
+   runs forever while the page just sits there. The crest flash and the
+   panels dropping in after a finished check are a one-shot payoff, not
+   ambient motion, so they deliberately stay put even here. */
+@media (prefers-reduced-motion: reduce){
+  .header-rule{animation:none;}
+}
+.subtitle{color:var(--muted);font-size:.92rem;margin-bottom:24px;line-height:1.5;max-width:720px;}

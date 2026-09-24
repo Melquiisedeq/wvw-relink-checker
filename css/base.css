@@ -1,0 +1,122 @@
+:root{
+  --bg:#0f1216;
+  --card:#171b21;
+  --border:#262c35;
+  --text:#e7ebf0;
+  --muted:#9aa4b2;
+  --accent:#7fd6f2;
+  --accent-bright:#66f5ff;
+  --accent-soft:rgba(127,214,242,.14);
+  --ok:#4caf7d;
+  --err:#e15c5c;
+  --blue:#5b8ff0;
+  --green:#4caf7d;
+  --red:#e15c5c;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  padding:0;
+  background:radial-gradient(circle at top, #1a1f27, #0f1216 60%);
+  color:var(--text);
+  font-family:'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+/* ==========================================================
+   BACKGROUND EFFECTS
+   A fixed, non-interactive layer stack behind the page. Its own
+   div rather than a body pseudo-element, so more layers can be
+   added later without fighting over ::before/::after.
+   ========================================================== */
+.fx{
+  position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden;
+  /* Own stacking context, so the blend below has a defined backdrop
+     and can never reach past this layer onto the page content. */
+  isolation:isolate;
+}
+.fx-l{position:absolute;inset:0;}
+
+/* The page's own colour, repeated here as the surface the photo
+   blends into. */
+.fx-ground{background:radial-gradient(circle at top, #1a1f27, #0f1216 60%);}
+
+/* mix-blend-mode:luminosity is the whole trick. It keeps only the
+   light and dark of the screenshot and takes hue and saturation from
+   the layer underneath - so the grass, the fire and the sky all lose
+   their own colour and come back wearing the site's slate. That is
+   why a photo this busy can sit behind text at all, and why swapping
+   in a different screenshot needs no colour grading by hand. */
+.fx-photo{
+  /* Anchored left of centre: the castle sits in the left third of the
+     photo, and `center` was cropping most of it away on a tall window. */
+  background:url("../assets/wvw13-1.webp") 22% 42%/cover no-repeat;
+  filter:brightness(.72) contrast(1.04) blur(1.5px);
+  mix-blend-mode:luminosity;
+  opacity:.58;
+}
+
+/* Darkest through the middle where the text sits, lightest at the
+   edges where the picture is. The inverse of a vignette. */
+.fx-scrim{
+  background:
+    radial-gradient(ellipse 62% 56% at 50% 45%,
+      rgba(15,18,22,.84), rgba(15,18,22,.44) 62%, rgba(15,18,22,.10) 100%),
+    linear-gradient(180deg,
+      rgba(15,18,22,.55), transparent 28%, transparent 70%, rgba(15,18,22,.66));
+}
+
+/* Embers, the warm counterpoint to all that cold blue - the orange
+   bursts in a real zerg fight. Animated on transform and opacity
+   only, so the whole field stays on the compositor and costs
+   nothing to run. */
+.ember{
+  position:absolute;bottom:-12px;width:3px;height:3px;border-radius:50%;
+  background:#ffb765;box-shadow:0 0 7px 1px rgba(255,150,60,.75);
+  opacity:0;animation:ember-rise linear infinite;
+}
+/* One in four is cyan instead, to tie the field back to the accent. */
+.ember--cold{background:#9fe6ff;box-shadow:0 0 7px 1px rgba(127,214,242,.75);}
+
+/* The shockwave from a finished check reaches the background. The
+   whole field lifts and flares for a moment, then settles - which is
+   what ties the impact to the scenery instead of leaving them as two
+   unrelated animations happening at once. */
+.fx-embers.surge{animation:ember-surge 2.8s cubic-bezier(.15,.8,.35,1);}
+@keyframes ember-surge{
+  0%{filter:brightness(1);transform:translateY(0);}
+  7%{filter:brightness(2.5) saturate(1.3);transform:translateY(-12px);}
+  100%{filter:brightness(1);transform:translateY(0);}
+}
+/* Thrown up by the blast itself: faster, bigger, and gone afterwards,
+   rather than joining the permanent field. */
+.ember--blast{
+  width:4px;height:4px;
+  animation:ember-blast 2s cubic-bezier(.08,.72,.3,1) forwards;
+}
+@keyframes ember-blast{
+  0%{opacity:0;transform:translate3d(0,0,0) scale(.5);}
+  7%{opacity:1;}
+  100%{opacity:0;transform:translate3d(var(--drift,0),-108vh,0) scale(1.35);}
+}
+@keyframes ember-rise{
+  0%{opacity:0;transform:translate3d(0,0,0) scale(.6);}
+  12%{opacity:.85;}
+  70%{opacity:.5;}
+  100%{opacity:0;transform:translate3d(var(--drift,14px),-102vh,0) scale(1.15);}
+}
+
+/* Nothing loops while the window is not the one being watched.
+
+   This started as a list - embers, the header rule - and the list was
+   wrong by construction: the first-place sheen kept sweeping because it
+   was not on it, and the next looping thing added would have been
+   missed the same way. There are seven infinite animations across these
+   files and no reason for any of them to run when nobody is looking, so
+   the rule is everything, and a new one is covered the day it is
+   written.
+
+   Paused, not disabled: every animation keeps its position, so coming
+   back is instant and anything mid-flight simply carries on. See
+   idleWhenUnwatched in js/boot.js for what sets the class. */
+.is-idle *,
+.is-idle *::before,
+.is-idle *::after{animation-play-state:paused !important;}
