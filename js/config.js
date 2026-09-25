@@ -65,7 +65,11 @@ const GUID_RE = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/
 const SHEET_ID = '1Txjpcet-9FDVek6uJ0N3OciwgbpE0cfWozUK7ATfWx4';
 const SHEET_URL = (tab) =>
   `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
-const SHEET_HUMAN_URL = 'https://bit.ly/46pscDg';
+// The same sheet for a person to open, built from SHEET_ID rather than
+// kept as a bit.ly link: whoever owns a shortener can repoint it later,
+// and it hides where the link goes until after the click.
+const SHEET_HUMAN_URL =
+  `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit?usp=sharing`;
 
 const MAX_ENTRIES = 60;        // hard cap so a pasted wall of text can't hammer a public API
 const MAX_NAME_LENGTH = 64;    // real guild names and GUIDs are well under this

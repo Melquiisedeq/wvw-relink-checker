@@ -5,6 +5,10 @@
 // saved input and copy buttons around it.
 // ---------------------------------------------------------------------
 
+// Cleared before each run, so an earlier timeout cannot strip the class
+// off a drop that has only just started.
+let deployTimer = null;
+
 async function run() {
   const names = parseGuildNames(guildInput.value);
 
@@ -27,8 +31,8 @@ async function run() {
     runBtn.disabled = false;
     runBtn.textContent = 'Check';
     // Panels drop in straight away; the siege finale plays over the top
-    // of them. Dropped again once it has played, so panels rendered
-    // later by the background refresh do not replay the entrance.
+    // of them. The class comes off once it has played so it is not still
+    // set the next time a check runs.
     pageEl.classList.remove('deploying');
     void pageEl.offsetWidth;
     pageEl.classList.add('deploying');
@@ -168,10 +172,9 @@ function restoreGuildInput() {
 guildInput.addEventListener('input', saveGuildInput);
 restoreGuildInput();
 
-// execCommand('copy') is deprecated, but it's the only thing that works
-// over file://, which is not a secure context and therefore has no
-// navigator.clipboard at all - and opening index.html straight from disk
-// is a documented way to use this tool.
+// execCommand('copy') is deprecated, but navigator.clipboard does not
+// exist in a non-secure context and can be refused by permissions
+// policy. This is the only fallback that still works there.
 function legacyCopy(text) {
   const ta = document.createElement('textarea');
   ta.value = text;

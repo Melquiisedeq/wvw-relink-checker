@@ -43,16 +43,11 @@ function renderMapKdPopoverContent(popover, serverName, match, color) {
     label.className = `pop-bar-label ${MAP_LABEL_CLASS[r.type]}`;
     label.textContent = MAP_LABELS[r.type];
 
-    // The bar is how much of the week's fighting happened on this map,
-    // which is the question the heading above actually asks.
-    //
-    // It used to be the share of that map's fights this side won, with
-    // the volume smuggled into the bar's opacity: two unrelated
-    // quantities in one element, one of them encoded as a transparency
-    // nobody can read a number off. It also duplicated the K/D at the
-    // end of the row, which says the same thing exactly rather than
-    // approximately. So the bar drops the duplicate and takes over the
-    // part that had no representation at all.
+    // The bar is how much of the week's fighting happened on this map, which
+    // is what the heading asks. It used to be the share of that map's fights
+    // this side won, with the volume smuggled into the bar's opacity - two
+    // unrelated quantities in one element, one of them unreadable - and it
+    // duplicated the K/D at the end of the row.
     const share = fought / ((kills + deaths) || 1);
     const track = document.createElement('span');
     track.className = 'pop-bar-track pop-bar-track--slim';
@@ -128,16 +123,6 @@ function buildMapKdButton(serverName, match, color) {
   return btn;
 }
 
-// Skirmish score per 2-hour block over the week. Includes objective points,
-// not just kills, but tracks combat closely enough to be a useful proxy.
-// Which skirmish block the match is in, and how far through it.
-//
-// Skirmishes are two hours each, counted from the match start, and the
-// API publishes the running one alongside the finished ones with the
-// score it has accumulated so far. That is the whole reason this exists:
-// a block that is 30 minutes old holds about a quarter of what a
-// finished one holds, so anything that compares the last entry against
-// the others is comparing a part to a series of wholes.
 // How far into a block the projection is allowed to start. ArenaNet
 // publishes a running block's score about fifteen minutes late, so an
 // early estimate divides their lagging number by our honest clock and
@@ -147,6 +132,13 @@ function buildMapKdButton(serverName, match, color) {
 // minutes the same match projected 5,013 against that 4,771.
 const LIVE_PROJECT_AFTER = 0.375;  // 45 of the 120 minutes
 
+// Which skirmish block the match is in, and how far through it.
+// Skirmishes are two hours each, counted from the match start, and the
+// API publishes the running one alongside the finished ones with the
+// score it has gathered so far - so a block that is 30 minutes old
+// holds about a quarter of what a finished one holds, and anything
+// comparing the last entry against the others is comparing a part to a
+// series of wholes.
 function skirmishProgress(match) {
   const start = Date.parse(match.start_time);
   if (!Number.isFinite(start)) return null;
@@ -175,18 +167,15 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
   const sides = COLORS.map((c) => ({ color: c, series: getSkirmishSeries(match, c) }));
   const total = sides[0].series.length;
 
-  // The last block is usually still being played, and the API scores it
-  // as it goes. Plotting a part-scored block beside finished ones made
-  // every chart on the site end in a cliff - all 27 of them, every time.
-  // It is left off the line entirely and reported underneath instead.
+  // The last block is usually still being played and the API scores it as
+  // it goes, so plotting it beside finished ones ended every chart in a
+  // cliff. It is left off the line and reported underneath instead.
   //
   // But the API does not append that block to every match at the same
   // moment: measured at 10:12 UTC, one EU match carried 69 skirmishes
-  // while the other two still carried 68, all three on the same clock.
-  // So whether the block is being played and whether its score has been
-  // published are two different questions. Asking only the second one
-  // made the live band vanish on whichever match the API had not caught
-  // up with yet - which looked like a bug, because it was one.
+  // while the other two carried 68. So whether the block is being played
+  // and whether its score has been published are two different questions,
+  // and asking only the second made the live band vanish.
   const live = progress && progress.index >= total && progress.fraction > 0;
   const scored = live && progress.index === total;
   const cut = scored ? total - 1 : total;

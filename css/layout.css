@@ -15,32 +15,28 @@
   /* Deliberately NOT sticky. These rails hold every tier, so they are
      always taller than the viewport, and position:sticky on an element
      taller than its scrollport pins to a different edge depending on
-     scroll direction. With two rails of different heights that meant
-     NA and EU drifting out of line on the way up and only snapping
-     back at the very top. Plain flow columns stay aligned. */
-  /* Pulled up into the lower half of the banner. Only in the two-column
-     layout: below 1400px the rails sit under the content instead of
-     beside it, and raising them there would just overlap the cards. */
+     scroll direction - which had NA and EU drifting out of line on the
+     way up. The negative margin pulls them into the lower half of the
+     banner, and only here: below 1400px they sit under the content,
+     where raising them would overlap the cards. */
   .rail{width:372px;flex:0 0 372px;max-width:none;margin-top:-40px;}
   .rail-left{order:-1;}
   .rail-right{order:1;}
   .wrap{order:0;}
 }
 .title-row{display:flex;align-items:center;gap:12px;margin-bottom:8px;}
-/* A contained card rather than a full-bleed strip: the pulse needs a
-   closed contour to travel around, and a glow on a single bottom edge
-   reads as a stray line instead of an alert. */
-/* Same relief as the cards, in the banner's own cyan rather than the
-   neutral slate: lit along the top edge, darker underneath, and
-   sitting on a shadow so it reads as a bar laid over the page instead
-   of a tint painted onto it. */
-/* Still a bar - shrink-wrapping it to its contents made a small
-   deformed lozenge. The emptiness was never the amount of information,
-   it was that this was the only thing on the page spanning the whole
-   viewport while everything under it sits in a 720px column. Matched to
-   that column it stops announcing the space it is not using, and the
-   two stats spread out to fill what is left. */
+#matchPanelsContainer{display:flex;flex-direction:column;gap:16px;}
+/* A card, not a full-bleed strip, and still a bar - shrink-wrapping it
+   to its contents made a small deformed lozenge. The emptiness was
+   never the amount of information, it was being the only thing on the
+   page spanning the viewport while everything under it sits in a 720px
+   column. The closed contour earns its keep too: the urgency pulse
+   needs one to travel around. Same relief as the cards, in the banner's
+   own cyan. */
 .relink-banner{
+  /* Hidden until there is a timer to show; updateRelinkBanner sets
+     style.display itself from then on. */
+  display:none;
   position:relative;z-index:1;
   width:100%;max-width:720px;
   margin:12px auto 0;padding:8px 22px;border-radius:10px;
@@ -66,19 +62,13 @@
   flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:2px;
   cursor:help;
 }
-/* The bar had an edge and its contents did not, so the label and the
-   clock inside it still read as printed on glass. Relief here is all
-   typographic: the labels are pushed into the surface and the numbers
-   are lifted off it, which is the same top-lit direction the cards
-   use. */
+/* Relief here is typographic: labels pushed into the surface, numbers
+   lifted off it, same top-lit direction as the cards. */
 .relink-stat-title{
   font-size:.66rem;font-weight:700;color:#8d97a6;
   text-transform:uppercase;letter-spacing:.1em;
   text-shadow:0 1px 0 rgba(0,0,0,.55);
 }
-/* Same split as the team cards: the label names the number, the number
-   is the point. NA/EU is a label wearing a number's clothes, so it goes
-   down with the rest of them. */
 /* tabular-nums matters more here than anywhere else on the page: these
    digits are replaced every minute, and proportional figures make the
    whole line re-centre itself each time one changes width. Fixed-width
@@ -88,6 +78,9 @@
   font-variant-numeric:tabular-nums;
   text-shadow:0 1px 2px rgba(0,0,0,.6);
 }
+/* Same split as the team cards: the label names the number, the number
+   is the point. NA/EU is a label wearing a number's clothes, so it goes
+   down with the rest of them. */
 .relink-stat-value .region{color:#8d97a6;font-weight:400;}
 .relink-stat-value .time{font-weight:700;color:#f2f6fa;}
 /* A groove, not a line: one dark pixel with a lit one beside it is the

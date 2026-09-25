@@ -3,21 +3,14 @@
 // The siege engine
 // The trebuchet in the corner, the round it throws, and everything
 // that burns, sparks or shatters. Pure decoration.
+//
+// Measured off the two cutouts rather than guessed: the frame's pivot
+// boss sits at (67,10) in its image, the beam's axle at (200,37) in its
+// own, and the sling head is 178px along the beam from that axle.
+// Everything else is those three numbers plus trigonometry - see
+// slingTip(), which reads the launch point off the sling itself so the
+// beam and the fireball cannot drift apart.
 // ---------------------------------------------------------------------
-
-/* =========================================================================
-   The siege engine.
-
-   Measured off the two cutouts rather than guessed: the frame's pivot
-   boss sits at (67,10) in its image, the beam's axle at (200,37) in
-   its own, and the sling head is 178px along the beam from that axle.
-   Everything else here is those three numbers plus trigonometry.
-
-   The important one is slingTip(). The round is not thrown from "the
-   corner" any more - it is thrown from wherever the sling actually is
-   this frame, so the beam and the fireball cannot drift apart no
-   matter how the machine is resized or moved.
-   ========================================================================= */
 const trebuchet = document.getElementById('trebuchet');
 const trebArm = document.getElementById('trebArm');
 
@@ -123,14 +116,6 @@ function cockTrebuchet() {
 
 const SHOT_MS = 340;   // mirrored in click.css
 
-// Comet tail: two tapered wedges pinned to the back of the round and
-// re-aimed every frame. Position is measured off the live element
-// rather than recomputed from the curve, so the flame can never drift
-// away from the thing it is trailing.
-// Lays the flame down along the path the round actually travels: one
-// segment per frame, from the previous position to the current one.
-// Position is measured off the live element rather than recomputed from
-// the curve, so the trail can never drift away from its own head.
 // How high the round arcs over the straight line to its target. Scaled
 // to the distance, so a flick across the corner is a short toss and a
 // shot across the window is a lob, and clamped at both ends so neither
@@ -139,6 +124,10 @@ function arcRise(dx, dy) {
   return Math.min(280, Math.max(60, Math.hypot(dx, dy) * 0.28));
 }
 
+// Lays the flame down along the path the round actually travels: one
+// segment per frame, from the previous position to the current one.
+// Position is measured off the live element rather than recomputed from
+// the curve, so the trail can never drift away from its own head.
 function trailFrom(ball, untilMs, big, power) {
   // How heavily it burns. The finale passes the size the round actually
   // charged to, so a long wait does not just throw a bigger stone - it
@@ -345,14 +334,10 @@ function sparkFromButton() {
 }
 
 // The finale, in four beats: the crest appears, a heavy round gathers in
-// the corner, it is lobbed into the crest, and the crest splits.
-//
-// The wind-up has to happen HERE and not on the click, because a check
-// takes an unknown amount of time - a round launched on the click would
-// have to hang in the air waiting for the API to answer.
-//
-// It gathers in the sling of the machine in the corner and leaves it at
-// the top of the swing - see slingTip().
+// the corner, it is lobbed into the crest, and the crest splits. The
+// wind-up has to happen here and not on the click, because a check takes
+// an unknown amount of time - a round launched on the click would hang
+// in the air waiting for the API.
 const CHARGE_FORM_MS = 460;   // the round taking shape, mirrored in impact.css
 const CHARGE_SWELL_MS = 6000; // and then gathering, ditto
 const FLIGHT_MS = 560;        // sling to crest, ditto
@@ -485,8 +470,6 @@ function spawnEmberBlast() {
   }
 }
 
-// Debris thrown from the point of impact when a check lands. Rebuilt
-// each time so the scatter is never the same twice.
 // The irregular half of the explosion, rebuilt every time so the shape
 // is never the same twice.
 function spawnBlast() {

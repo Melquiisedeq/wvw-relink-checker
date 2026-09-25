@@ -44,7 +44,9 @@ async function fetchJson(url, attempt = 0, cacheMode = 'no-store') {
       return fetchJson(url, attempt + 1, cacheMode);
     }
     if (!res.ok) {
-      throw new Error(`API request failed (HTTP ${res.status})`);
+      const err = new Error(`API request failed (HTTP ${res.status})`);
+      err.status = res.status;   // so a caller can tell 404 from 503
+      throw err;
     }
     return await res.json();
   } catch (err) {
@@ -62,16 +64,12 @@ async function fetchJson(url, attempt = 0, cacheMode = 'no-store') {
 }
 
 // The static catalogues - objectives, upgrades, sectors, tactics, emblem
-// foregrounds - are every one of them served with
-// `Cache-Control: public, max-age=3600`, and the blanket 'no-store'
-// above was throwing all of it away: every page load re-fetched the lot,
-// on an API where a cold round trip is most of a second and the bytes
-// are the cheap part. These go through 'default' instead, so the
-// browser's own cache answers for the hour the API says it may.
-//
-// Deliberately not everything. Live match data keeps 'no-store' and the
-// refresh cadence is untouched - and there was never anything to win
-// there anyway, since wvw/matches is served with max-age=1.
+// foregrounds - are all served with `Cache-Control: public, max-age=3600`,
+// and the blanket 'no-store' above threw every bit of it away on each
+// page load. These go through 'default' so the browser's own cache can
+// answer for the hour the API says it may. Live match data keeps
+// 'no-store', and there was nothing to win there anyway: wvw/matches is
+// served with max-age=1.
 const fetchJsonCached = (url) => fetchJson(url, 0, 'default');
 
 // Guild-to-team assignment only changes at the weekly relink, far less
@@ -126,7 +124,13 @@ async function getGuildInfo(guildId) {
     guildNameCache.set(guildId, { ok: true, data: result });
     return result;
   } catch (err) {
-    guildNameCache.set(guildId, { ok: false, error: err.message || 'Guild lookup failed' });
+    // Only a definite answer is worth remembering. A timeout or a dropped
+    // connection says nothing about the guild, and caching those meant a
+    // single bad moment kept it failing until the page was reloaded -
+    // pressing Check again just replayed the cached error.
+    if (err.status >= 400 && err.status < 500) {
+      guildNameCache.set(guildId, { ok: false, error: err.message || 'Guild lookup failed' });
+    }
     throw err;
   }
 }

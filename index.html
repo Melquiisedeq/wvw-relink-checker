@@ -4,69 +4,55 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!--
-  CSP: default-src 'none' denies everything by default. connect-src
-  allows the GW2 API, the read-only community sheet on docs.google.com,
-  and the GoatCounter endpoint that counts one anonymous page view per
-  visit - count.js tries navigator.sendBeacon first, which is governed
-  by connect-src, and falls back to an image, which is why the same host
-  appears in img-src too.
-  script-src is 'self': every script is served from js/ in this repo, no
-  CDN - GoatCounter's count.js is vendored here rather than loaded from
-  gc.zgo.at, so no third-party script ever runs.
-  style-src still needs unsafe-inline for the few styles the script sets.
-  img-src is data:, 'self', render.guildwars2.com and the GoatCounter
-  endpoint above. The background,
-  the map renders and every game icon are copied into assets/ and served
-  from here. The one exception is guild emblems: those belong to the
-  guilds themselves, there are hundreds of thousands of them, and they
-  change - so a claimed objective loads that guild's emblem from
-  ArenaNet's own asset host. Same company as the API in connect-src, and
-  images only. base-uri and form-action are 'none': no <base> hijacking,
-  no forms.
+  default-src 'none' denies everything, then:
+
+  connect-src - the GW2 API, the read-only community sheet, and the
+  GoatCounter endpoint. count.js tries sendBeacon first, which this
+  governs, and falls back to an image, which is why that host is in
+  img-src too.
+
+  script-src 'self' - every script comes from js/, GoatCounter's
+  vendored copy included, so nothing is fetched elsewhere to be run.
+
+  style-src 'self' - no unsafe-inline. The five style="" attributes this
+  page used to carry are rules in css/ now. Styles set from JS are not
+  affected either way: el.style goes through the CSSOM, which no CSP
+  governs.
+
+  img-src - the background, map renders and game icons are all local.
+  Guild emblems are not: there are hundreds of thousands of them and
+  they change, so a claimed objective loads one from ArenaNet's asset
+  host. Same company as the API, and images only.
+
+  base-uri and form-action 'none' - no <base> hijacking, no forms.
 -->
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src https://api.guildwars2.com https://docs.google.com https://melquiisedeq.goatcounter.com; img-src 'self' data: https://render.guildwars2.com https://melquiisedeq.goatcounter.com; base-uri 'none'; form-action 'none';">
+      content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://api.guildwars2.com https://docs.google.com https://melquiisedeq.goatcounter.com; img-src 'self' data: https://render.guildwars2.com https://melquiisedeq.goatcounter.com; base-uri 'none'; form-action 'none';">
 <meta name="referrer" content="no-referrer">
 <!--
-  The two hosts this page always ends up talking to, and never at load
-  time: the API is first reached when a check runs or a map opens, and
-  the emblem host only when the first claimed objective draws its
-  shield. Measured cold, DNS+TCP+TLS to the API is ~575ms of a ~780ms
-  first call - all of it inside the click rather than before it. These
-  move the handshake to page load, where nobody is waiting on it.
+  Both hosts are reached on a click, never at load. Measured cold,
+  DNS+TCP+TLS to the API is ~575ms of a ~780ms first call, all of it
+  inside the click; this moves the handshake to page load instead.
 
   crossorigin on one and not the other is not a slip. fetch() goes out
   in CORS mode and lands in the anonymous connection pool, so the API
-  hint has to be anonymous to match; the emblems are plain <image>
-  loads that are not CORS, so that hint must not be. A hint in the
-  wrong pool opens a socket nothing ever reuses.
-
-  Neither is subject to the CSP above - preconnect is a connection
-  hint, not a fetch - and both hosts are already allowed there anyway.
+  hint has to match it; emblems are plain <image> loads that are not
+  CORS. A hint in the wrong pool opens a socket nothing reuses.
 -->
 <link rel="preconnect" href="https://api.guildwars2.com" crossorigin>
 <link rel="preconnect" href="https://render.guildwars2.com">
 <title>WvW Relink Checker - Guild Wars 2 World vs World Teams and Standings</title>
 <!--
-  Link preview metadata. The tool circulates as a bare URL in Discord, so
-  the unfurled card is most of the first impression. Discord fetches
-  og:image from its own servers, not from the page, so this page's img-src
-  CSP doesn't apply to it - but the URL has to be absolute for that same
-  reason.
+  The tool circulates as a bare URL in Discord, so the unfurled card is
+  most of the first impression. Discord fetches og:image from its own
+  servers, so the CSP above does not apply to it - but the URL has to be
+  absolute for that same reason.
 
-  og:image was a full-page screenshot, which failed at the only size it
-  is ever seen: an unfurl renders around 400px wide, and at that width a
-  standings table is texture rather than information - the card did not
-  even say the name of the tool. It is a purpose-built card now, drawn
-  from this page's own header so it is the same thing the visitor lands
-  on.
-
-  1200x630 because that is what every unfurl component is built around;
-  the 1280x640 twin that GitHub wants for its repository preview is a
-  separate render, not this file scaled. JPEG rather than PNG because
-  WhatsApp drops previews it judges too heavy and the PNG was 357 KB
-  against this file's 103 KB. Width and height are declared so a scraper
-  can lay the card out before the image finishes downloading.
+  1200x630 is the frame every unfurl component is built around. GitHub's
+  1280x640 repository preview is a separate render, not this one scaled.
+  JPEG because WhatsApp drops previews it judges too heavy: 103 KB here
+  against the PNG's 357 KB. Width and height are declared so a scraper
+  can lay the card out before the image arrives.
 -->
 <meta name="description" content="Guild Wars 2 WvW relink checker. Paste your guild names and see which WvW team each one landed on after the relink, with live NA and EU tier standings.">
 <meta name="theme-color" content="#0f1216">
@@ -81,19 +67,13 @@
 <meta property="og:image:alt" content="WvW Relink Checker - find out which WvW team your alliance landed on, in one paste.">
 <meta name="twitter:card" content="summary_large_image">
 <!--
-  Structured data. Renders nothing - it exists so a search engine can be
-  told in its own vocabulary what this page is and which game it is
-  about, which is the thing the page could not say without spending
-  screen on it.
+  Renders nothing. It tells a search engine, in its own vocabulary, what
+  this page is and which game it covers. application/ld+json is a data
+  block, so script-src never evaluates it.
 
-  A data block, not a script: type is application/ld+json, so nothing
-  here is executed and script-src never evaluates it. Worth confirming
-  in the console once anyway rather than taking it on faith.
-
-  Deliberately no FAQPage. Google requires FAQ structured data to match
-  question-and-answer text that is actually visible on the page, and
-  there is none - claiming it would be the kind of markup that earns a
-  manual action rather than a rich result.
+  No FAQPage on purpose: Google requires that markup to match
+  question-and-answer text visible on the page, and there is none.
+  Claiming it earns a manual action, not a rich result.
 -->
 <script type="application/ld+json">
 {
@@ -144,8 +124,7 @@
   <div class="fx-l fx-embers" id="fxEmbers"></div>
 </div>
 
-<!-- Siege engine. Two cutouts so the beam can turn; see
-     css/trebuchet.css and js/trebuchet.js. -->
+<!-- Two cutouts so the beam can turn. See css/trebuchet.css. -->
 <div class="trebuchet" id="trebuchet" aria-hidden="true">
   <div class="treb-arm" id="trebArm">
     <img src="assets/treb-arm.webp" alt="">
@@ -154,7 +133,7 @@
   <img class="treb-frame" src="assets/treb-frame.webp" alt="">
 </div>
 
-<div class="relink-banner" id="relinkBanner" style="display:none;"></div>
+<div class="relink-banner" id="relinkBanner"></div>
 <div class="page" id="page">
 <aside class="rail rail-left">
   <div class="card standings-card">
@@ -231,9 +210,9 @@ One More Guild Name"></textarea>
   </div>
 
   <div class="card" id="resultsPlaceholder">
-    <p class="muted" style="margin:0;">Paste some guild names above and hit Check. Results show up here.</p>
+    <p class="muted">Paste some guild names above and hit Check. Results show up here.</p>
   </div>
-  <div class="card" id="resultCard" style="display:none;">
+  <div class="card" id="resultCard">
     <table>
       <thead>
         <tr>
@@ -245,13 +224,13 @@ One More Guild Name"></textarea>
       </thead>
       <tbody id="resultBody"></tbody>
     </table>
-    <div class="row" id="copyRow" style="display:none;">
+    <div class="row" id="copyRow">
       <button id="copyChatBtn" type="button">Copy for chat</button>
       <button id="copyDiscordBtn" type="button">Copy for Discord</button>
       <span id="copyFeedback" class="hint" role="status" aria-live="polite"></span>
     </div>
   </div>
-  <div id="matchPanelsContainer" style="display:flex;flex-direction:column;gap:16px;"></div>
+  <div id="matchPanelsContainer"></div>
 
 </div>
 
@@ -277,20 +256,10 @@ One More Guild Name"></textarea>
 </aside>
 </div>
 
-<!-- The one place the page ends. It used to end twice - a <footer> with
-     the API credit inside the 720px column and this band under it -
-     which is most of why the bottom read as unresolved.
-
-     The crest is the mark, the same one in the title row. It was four
-     objective icons before, which put a second symbol against the one
-     the page already signs itself with; two marks competing is what
-     made the bottom look piled rather than finished. The gradients are
-     referenced by id from the title icon's <defs>, the way the impact
-     overlay does - they are document-scoped, so nothing is duplicated.
-
-     Brand left, links right: the pattern for a footer that has to stay
-     one screen and still carry a name. It collapses to a centred stack
-     below 560px. -->
+<!-- The one place the page ends. Brand left, links right, collapsing
+     to a centred stack below 560px. The crest is the same mark as the
+     title row and reuses its gradients by id, the way the impact
+     overlay does - they are document-scoped. -->
 <footer class="gw2-band">
   <div class="gw2-band-inner">
     <div class="gw2-band-brand">
@@ -378,10 +347,9 @@ One More Guild Name"></textarea>
   </div>
 </div>
 
-<!-- Plain scripts, loaded in order, the same way css/ is a list of plain
-     stylesheets: no build step, works straight off disk, and script-src
-     stays 'self'. Order matters: config and dom first because everything
-     reads them, boot last because it starts the page. -->
+<!-- Plain scripts, no build step, works straight off disk. Order
+     matters: config and dom first because everything reads them, boot
+     last because it starts the page. -->
 <script src="js/config.js"></script>
 <script src="js/dom.js"></script>
 <script src="js/api.js"></script>
@@ -399,10 +367,12 @@ One More Guild Name"></textarea>
 <script src="js/trebuchet.js"></script>
 <script src="js/boot.js"></script>
 
-<!-- Page views only: no cookies, no localStorage, no fingerprint. count.js is
-     served from this repo rather than gc.zgo.at, so script-src stays 'self'
-     and the only request that leaves is the hit itself. To exclude a browser
-     from the count, set localStorage.skipgc = 't' on this site. -->
+<!-- Page views only: no cookies, no fingerprint, nothing that identifies
+     a visitor between one request and the next. count.js is served from
+     this repo rather than gc.zgo.at, so script-src stays 'self' and the
+     only request that leaves is the hit itself. The one thing it stores
+     is the opt-out: set localStorage.skipgc = 't' on this site and this
+     browser stops being counted. -->
 <script data-goatcounter="https://melquiisedeq.goatcounter.com/count"
         async src="js/count.js"></script>
 </body>

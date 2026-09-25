@@ -10,20 +10,15 @@
 showStandingsSkeleton(standingsGridNA);
 showStandingsSkeleton(standingsGridEU);
 refreshStandings();
-loadTimers();
+fetchTimers();
 setInterval(updateRelinkBanner, 60000); // ticks the countdown display only
 schedulePeriodicRefresh(refreshStandings, STANDINGS_REFRESH_MS);
 schedulePeriodicRefresh(fetchTimers, TIMERS_REFRESH_MS);
-// Embers drifting up the page: 46 of them, one in four cyan instead of
-// warm. Each gets its own column, duration and sideways drift so the
-// field never resolves into a visible loop.
-
-// Ambient animation is for when someone is looking. A second monitor is
-// the case that matters here: the page is still visible, so
+// Ambient animation is for when someone is looking, and a second monitor
+// is the case that matters: the page is still visible, so
 // visibilitychange never fires and the ember field keeps compositing 46
-// shadowed sprites forever - enough to cost frames in whatever is
-// playing on the other screen. Focus is the signal that actually
-// distinguishes "on screen" from "being watched".
+// sprites forever. Focus is what distinguishes "on screen" from "being
+// watched".
 (function idleWhenUnwatched() {
   const root = document.documentElement;
   const update = () => {
@@ -36,6 +31,9 @@ schedulePeriodicRefresh(fetchTimers, TIMERS_REFRESH_MS);
   update();
 })();
 
+// Embers drifting up the page: 46 of them, one in four cyan instead of
+// warm. Each gets its own column, duration and sideways drift so the
+// field never resolves into a visible loop.
 (function seedEmbers() {
   const host = document.getElementById('fxEmbers');
   if (!host) return;

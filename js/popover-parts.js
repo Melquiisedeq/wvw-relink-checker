@@ -12,9 +12,8 @@ const MAP_LABEL_CLASS = Object.freeze({
   Center: 'map-kd-label--ebg', RedHome: 'map-kd-label--rbl',
   BlueHome: 'map-kd-label--bbl', GreenHome: 'map-kd-label--gbl'
 });
-// The pieces the data popovers share, so three of them cannot drift into
-// three different looks. A figure card is a label over a number; a bar
-// row is a label, a proportion, a number and its share.
+// A figure card is a label over a number; a bar row is a label, a
+// proportion, a number and its share.
 function popFigure(label, value, tone) {
   const box = document.createElement('div');
   box.className = `pop-figure${tone ? ` pop-figure--${tone}` : ''}`;

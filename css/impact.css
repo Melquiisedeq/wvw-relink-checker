@@ -1,8 +1,8 @@
-/* Played after a check finishes. This used to jolt the whole
-   viewport sideways, which moved everything the reader was about to
-   read. Now only the new panels move: they drop into place one after
-   another, so the motion points at the results instead of fighting
-   them. */
+/* Played after a check finishes. This used to jolt the whole viewport
+   sideways on "done", which moved everything the reader was about to
+   read. The panels drop in instead, so the motion points at the
+   results; the shake survives only on the hit itself - see
+   .page.struck at the bottom of this file. */
 .page.deploying .match-panel{
   animation:panel-deploy .46s cubic-bezier(.18,.86,.32,1) backwards;
 }
@@ -74,21 +74,16 @@
   100%{opacity:0;}
 }
 
-/* The blast, on the hit. Two layers: a hard white core that is gone in
-   under a fifth of a second, and a cyan shell that carries on
-   expanding. Both are driven by .broken, never by .play - the glow
-   used to ramp up during the flight, which announced the impact
-   before it happened. */
-/* An explosion rather than a light. Two perfectly round layers were
-   what made it read as a lamp switching on: a circle is the one shape
-   a detonation never makes. Three things replace it, and the silhouette
-   comes from all of them overlapping - a ragged core, billows pushing
-   out off-centre, and spikes thrown clear.
+/* An explosion, not a light. Two perfectly round layers were what made it
+   read as a lamp switching on - a circle is the one shape a detonation
+   never makes. Three things replace it and the silhouette comes from all
+   of them overlapping: a ragged core, billows pushing out off-centre, and
+   spikes thrown clear. The core keeps its colour and loses its roundness,
+   and turns slightly as it expands so the spikes are not a decal being
+   scaled up.
 
-   The core keeps its colour and loses its roundness: alternating long
-   and short radii, each one jittered, so the edge never closes into an
-   arc. It also turns slightly as it expands, which stops the spikes
-   from looking like a fixed decal being scaled up. */
+   Driven by .broken, never .play: the glow used to ramp up during the
+   flight, which announced the impact before it happened. */
 .crest-blast{
   position:absolute;left:50%;top:50%;
   width:200px;height:200px;margin:-100px 0 0 -100px;
@@ -141,10 +136,11 @@
   100%{opacity:0;transform:rotate(var(--a,0deg)) scaleX(1);}
 }
 
-/* The round that breaks it: charged at the button, then lobbed at the
-   crest. Much bigger than a click round, and it gathers before it
-   goes - the wind-up is what makes the hit read as heavy. */
-/* Three layers, because three things happen at once and each needs its
+/* The round that breaks the crest: charged at the button, then lobbed.
+   Much bigger than a click round, and it gathers before it goes - the
+   wind-up is what makes the hit read as heavy.
+
+   Three layers, because three things happen at once and each needs its
    own transform: the outer element carries X, the middle one carries Y,
    and the ball itself carries size. Size had been living on the same
    element as Y, which meant the flight keyframes reset whatever the
@@ -185,7 +181,6 @@
 @keyframes charge-x{100%{transform:translateX(var(--dx,0));}}
 /* The same parabola as the mouse round, stop for stop - see click.css
    for where the numbers come from. */
-/* The same parabola as the mouse round - see click.css. */
 @keyframes charge-y{
   0%{transform:translateY(0);}
   10%{transform:translateY(calc(var(--dy,0px) * 0.1 - var(--rise,0px) * 0.36));}

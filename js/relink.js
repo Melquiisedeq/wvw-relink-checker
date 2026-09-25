@@ -130,7 +130,7 @@ function updateRelinkBanner() {
     divider.className = 'relink-divider';
     inner.appendChild(divider);
   }
-  // Three days, against the relink's six hours, and the gap between
+  // Three days, against the relink's two hours, and the gap between
   // those two numbers is the whole point. Missing a relink costs you a
   // week of not knowing who you fight; missing the lockout can put you
   // on a different team from your guild for a month, and there is no
@@ -141,12 +141,10 @@ function updateRelinkBanner() {
     && lockoutLeft > 0 && lockoutLeft <= LOCKOUT_URGENT_MS;
 
   if (hasLockout) {
-    // Primary stat: larger, accent-colored text. Once the published
-    // timestamp is in the past there is no next value until teams are
-    // rebuilt, which is several days later - and in that window the
-    // game will not let you change your WvW guild at all. So the stat
-    // says it is shut rather than promising it will come back: "locked"
-    // is the part a player can act on, "resumes" is not.
+    // Once the published timestamp is in the past there is no next value
+    // until teams are rebuilt, several days later, and in that window the
+    // game will not let you change your WvW guild at all. So it says it is
+    // shut rather than promising it will come back.
     const lockoutValue = lockoutLeft > 0
       ? formatCountdown(lockoutLeft)
       : 'Locked until relink';
@@ -158,9 +156,9 @@ function updateRelinkBanner() {
       lockoutUrgent
     ));
   }
-  // Inside the last six hours the banner starts breathing, so the tab
+  // Inside the last two hours the banner starts breathing, so the tab
   // catches your eye from across the desk on reset night.
-  const URGENT_MS = 6 * 60 * 60 * 1000;
+  const URGENT_MS = 2 * 60 * 60 * 1000;
   const remaining = [relinkNA, relinkEU]
     .filter((t) => t !== null)
     .map((t) => t - now)
@@ -197,9 +195,4 @@ function updateRelinkBanner() {
     alert.appendChild(text);
     relinkBanner.appendChild(alert);
   }
-}
-
-// Fetches the lockout timer once; fetchTimers() renders the banner itself once
-async function loadTimers() {
-  await fetchTimers();
 }

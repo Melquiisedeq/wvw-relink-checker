@@ -1,12 +1,8 @@
-/* Translucent, not opaque: now that there is artwork behind the page,
-   an opaque card would simply hide it. The blur is what keeps text
-   legible over a moving background - it flattens whatever is behind
-   into a smooth field instead of letting edges show through. */
-/* Relief comes from three things at once, none of which is the fill:
-   a top-down gradient so the card is lit from above, a bright inner
-   top edge and a dark inner bottom edge to give it a thickness, and a
-   shadow underneath to lift it off the page. A flat translucent panel
-   has none of those, which is why it read as a sticker. */
+/* Translucent, with the blur doing the work of keeping text legible
+   over the artwork. Relief comes from three things, none of them the
+   fill: a top-down gradient, a bright inner top edge against a dark
+   inner bottom one, and a shadow underneath. Without them a translucent
+   panel reads as a sticker. */
 .card{
   background:linear-gradient(180deg, rgba(38,45,55,.52), rgba(18,22,28,.40));
   -webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px);
@@ -16,10 +12,9 @@
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.14),
     inset 0 -1px 0 rgba(0,0,0,.5),
-    /* Contact shadow: tight and dark, right under the edge. This is
-       the one that says the card is sitting ON something. */
+    /* Contact shadow - says the card is sitting ON something. */
     0 2px 3px rgba(0,0,0,.45),
-    /* Cast shadow: wide and soft, saying how far above it sits. */
+    /* Cast shadow - says how far above. */
     0 20px 40px -16px rgba(0,0,0,.9);
 }
 label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:8px;}
@@ -30,13 +25,15 @@ textarea{
 }
 textarea:focus{outline:2px solid var(--accent);}
 .row{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap;}
-#copyRow{padding-top:14px;border-top:1px solid var(--border);}
-/* The one surface on the page that should look raised the most, now
-   that the cards behind it are lifted too - a flat button sitting on
-   a card with a contact shadow reads as painted onto it. Same recipe
-   as the cards, in the accent's own hue: lighter along the top where
-   the light lands, darker at the bottom, and a tight contact shadow
-   under the edge. */
+/* Both start hidden and are shown by JS setting style.display. ID
+   selectors rather than a class: .row above already sets display:flex,
+   and at equal specificity the winner would be whichever file loads
+   last. An inline style still beats an id, which is what the JS needs. */
+#resultCard{display:none;}
+#copyRow{padding-top:14px;border-top:1px solid var(--border);display:none;}
+/* The most raised surface on the page: a flat button on a lifted card
+   reads as painted onto it. Same recipe as the cards, in the accent's
+   hue. */
 button{
   background:linear-gradient(180deg,#a3e2f6,#7fd6f2 46%,#57b6d6);
   color:#062733;border:none;border-radius:8px;
@@ -50,8 +47,8 @@ button{
   transition:filter .15s ease, transform .08s ease, box-shadow .08s ease;
 }
 button:hover{filter:brightness(1.08);}
-/* Pressed means pressed: it travels down onto the surface and the
-   shadow underneath it goes away, rather than shrinking in place. */
+/* Travels down onto the surface and loses its shadow, rather than
+   shrinking in place. */
 button:active{
   transform:translateY(2px);
   box-shadow:

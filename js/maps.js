@@ -3,26 +3,17 @@
 // Tier maps
 // The interactive WvW maps: sector polygons, objective markers, tiers,
 // claim emblems, tactics, pan and zoom. The big one.
+//
+// Three sources, all of them already paid for or tiny. Ownership comes
+// free with the match object the standings fetch anyway. Position and
+// name come from the objective catalogue, which never changes: one
+// request per session. The map itself is the sector polygons the API
+// publishes for every WvW map, in the same coordinate space as the
+// objectives - which is why the markers land where they belong by
+// construction rather than by fitting. There is no terrain image
+// because ArenaNet publishes no tiles for WvW; see the top of
+// css/maps.css.
 // ---------------------------------------------------------------------
-
-/* =========================================================================
-   Tier maps.
-
-   Three sources, all of them already paid for or tiny:
-
-   - Ownership comes free. Every match object already carries a `maps`
-     array with each objective and who holds it, and that is fetched for
-     the standings anyway.
-   - Position and name come from the objective catalogue, which never
-     changes: one request per session.
-   - The map itself comes from the sector polygons the API publishes for
-     every WvW map - the real outline of every region, in the same
-     coordinate space as the objectives. Which is why the markers land
-     where they belong by construction and not by fitting.
-
-   There is no terrain image because ArenaNet publishes no tiles for the
-   WvW maps; see the note at the top of css/maps.css.
-   ========================================================================= */
 // Tab order, left to right. Red last by request - it reads as the
 // heaviest of the three and sitting second made it fight EBG for the
 // eye, so it anchors the far end instead.
@@ -42,17 +33,12 @@ const MAP_SKIP_TYPES = new Set(['Spawn']);
 // Drawn biggest first: a camp painted over a keep would hide it, and the
 // smaller thing is the one that has to stay on top.
 const OBJ_DRAW_ORDER = ['Castle', 'Keep', 'Tower', 'Mercenary', 'Camp', 'Ruins'];
-// Marker radius in map units, by type. The map is a few thousand units
-// across, so these are read against that - and since markers are scaled
-// by the inverse of the zoom, this is also their size on screen at the
-// default view. Big enough to recognise the icon and to hit with a
-// mouse: the objectives are what the map is for, the terrain is
-// background.
-// These used to fan out a long way - a castle was more than twice a
-// camp - which left the small ones too small to hit or even recognise.
-// Type is already carried by the glyph, so size does not have to carry
-// it too; it only has to keep a hierarchy. Closest two objectives on any
-// map are 261 units apart, so 118 at the top leaves every pair clear.
+// Marker radius in map units - the map is a few thousand across, and
+// markers scale by the inverse of the zoom, so this is also their size
+// on screen at the default view. Type is already carried by the glyph,
+// so these only have to keep a hierarchy rather than spell one out. The
+// closest two objectives on any map are 261 units apart, so 118 at the
+// top leaves every pair clear.
 const OBJ_SIZE = Object.freeze({
   Castle: 118, Keep: 110, Tower: 100, Camp: 92, Mercenary: 92, Ruins: 80,
 });
@@ -67,22 +53,16 @@ const MARKER_FOLLOW = 0.2;
 // as the terrain has detail to show anyway.
 const MAX_ZOOM = 4.5;
 
-// Where each map picture sits in continent coordinates. Solved, not
-// eyeballed: the wiki renders carry the sector borders, the API gives
-// those same borders as polygons, so the transform is whatever makes
-// the two coincide. Search ran over scale and offset and scored each
-// candidate by how much drawn line the polygons landed on.
+// Where each picture sits in continent coordinates. Solved, not
+// eyeballed: the renders carry the sector borders and the API gives the
+// same borders as polygons, so the transform is whatever makes the two
+// coincide.
 //
-// `edge` is how wide our own border is drawn on that picture, in map
-// units. Every one of these renders has the sector borders printed into
-// it, and ours has to cover that printed line or you see both.
-//
-// Measuring across each border showed EBG printing a 23-unit line where
-// the borderlands print 5. Widening our border to bury it worked, but it
-// made EBG look nothing like the other three. So EBG's printed line was
-// taken out of the picture instead - the polygons say exactly where it
-// runs, so only the pixels brighter than the terrain on either side were
-// repainted - and every map can now use the same 14.
+// `edge` is how wide our own border is drawn, in map units, and it has
+// to cover the one already printed into the picture or you see both.
+// EBG printed a 23-unit line against the borderlands' 5, so EBG's was
+// painted out of the image rather than widening ours - which is why all
+// four can share the same 14.
 const MAP_IMAGE = Object.freeze({
   38: { src: 'assets/map-ebg.webp', x: 8846.4, y: 12710.9, w: 3308.0, h: 3293.5, edge: 14 },
   1099: { src: 'assets/map-rbl.webp', x: 9133.8, y: 8866.1, w: 3228.6, h: 3245.6, edge: 14 },
@@ -90,18 +70,13 @@ const MAP_IMAGE = Object.freeze({
   95: { src: 'assets/map-gbl.webp', x: 5534.1, y: 11493.7, w: 2693.0, h: 3638.3, edge: 14 },
 });
 
-// Map icons, by objective type and who holds it. These are the game's
-// own icons off the wiki, copied into assets/icons: a disc in the team
-// colour with the structure knocked out of it, which is exactly how the
-// objective reads on the in-game map.
-//
-// The wiki only publishes Keep and Tower in all four colours. Camp,
-// Castle and Ruins existed in grey alone, so the team versions were
-// rebuilt: the coloured variants turn out to be the same image with only
-// RGB changed - their alpha channels are pixel-identical to the grey -
-// so grey -> team was learned from the Keep and Tower pairs and applied
-// to the rest. Replaying it on the known pairs reproduces them to
-// within about 0.2/255.
+// The game's own icons off the wiki, copied into assets/icons: a disc in
+// the team colour with the structure knocked out of it. Only Keep and
+// Tower are published in all four colours, so Camp, Castle and Ruins
+// were rebuilt - the coloured variants are the same image with only RGB
+// changed, alpha pixel-identical, so grey -> team was learned from the
+// Keep and Tower pairs. Replaying it on those reproduces them to within
+// 0.2/255.
 const MARKER_ICON = Object.freeze({
   Castle: 'Event_Castle', Keep: 'Event_Keep', Tower: 'Event_Tower',
   Camp: 'Event_Camp', Ruins: 'Event_Ruins',
@@ -114,12 +89,9 @@ const MARKER_ICON = Object.freeze({
 });
 const TEAM_COLOURS = new Set(['red', 'blue', 'green']);
 let plotSerial = 0;
-// How often an open set of tier maps re-reads its own match. The API
-// serves match data with max-age=1, so it is effectively live and the
-// only lag is ours: a camp that flipped two minutes ago was still
-// showing its old owner here. One match is 82KB, so half a minute is
-// about 165KB a minute - and only while the maps are actually open and
-// the window is actually being looked at.
+// How often open tier maps re-read their own match. The API serves match
+// data with max-age=1, so the only lag is ours. One match is 82KB, and
+// this runs only while the maps are open and the window has focus.
 const MAP_REFRESH_MS = 30 * 1000;
 let mapPollTimer = null;
 
@@ -191,14 +163,11 @@ async function getTacticCatalogue(ids) {
   return tacticCatalogue;
 }
 
-// Guild emblems. The API hands out a foreground id per guild and a
-// catalogue of what each id draws, as layered PNGs. We take the first
-// layer only - it carries the whole design, and the rest are shading and
-// detail that turn to mush at the size this is drawn - and paint it
-// white, so one image per guild is enough instead of four.
-//
-// The catalogue is one request for the whole session, and the per-guild
-// lookup is the cache the guild checker already fills.
+// The API hands out a foreground id per guild and a catalogue of what
+// each id draws, as layered PNGs. Only the first layer is used - it
+// carries the design and the rest turn to mush at this size - painted
+// white, so one image per guild is enough. The catalogue is one request
+// per session.
 let emblemForegrounds = null;
 let emblemForegroundsPromise = null;
 
@@ -230,8 +199,13 @@ const emblemPending = new Map();
 
 function guildEmblem(guildId) {
   if (!emblemPending.has(guildId)) {
-    emblemPending.set(guildId, Promise.all([getGuildInfo(guildId), getEmblemForegrounds()])
-      .then(([info, fgs]) => ({ info, src: emblemSrc(info, fgs) })));
+    const pending = Promise.all([getGuildInfo(guildId), getEmblemForegrounds()])
+      .then(([info, fgs]) => ({ info, src: emblemSrc(info, fgs) }));
+    // Dropped again if it fails, so the next marker can retry. Keeping a
+    // rejected promise here blanked that guild's emblem for the rest of
+    // the session over one bad request.
+    pending.catch(() => emblemPending.delete(guildId));
+    emblemPending.set(guildId, pending);
   }
   return emblemPending.get(guildId);
 }
@@ -256,16 +230,12 @@ function flippedAgo(iso) {
   return `${Math.floor(hours / 24)}d ${hours % 24}h ago`;
 }
 
-// Tier is not in the objective data: it is how many upgrade steps the
-// yaks delivered so far have paid for.
-//
-// yaks_required is the cost of that step alone, not the running total -
-// which this read wrong, and so overstated the tier on a fifth of every
-// map. A tower's steps cost 15, 20 and 35, and the old reading called it
-// fortified at 35 yaks when 35 is only enough for the second step; it
-// actually takes 70. The API settles it: yaks_delivered stops at exactly
-// the sum of a line's three steps and never goes past it, on all four
-// lines - 60, 70, 100 and 190 - which is only true if the steps add up.
+// Tier is not in the objective data - it is how many upgrade steps the
+// yaks delivered have paid for. yaks_required is the cost of that step
+// alone and not the running total, which is why this sums as it goes: a
+// tower's steps cost 15, 20 and 35, so fortified is 70 yaks, not 35.
+// yaks_delivered stops at exactly the sum of a line's three steps on all
+// four lines - 60, 70, 100 and 190 - which only holds if they add up.
 function objectiveTier(meta, ob) {
   const line = upgradeCatalogue && upgradeCatalogue.get(meta.upgrade_id);
   if (!line || !Array.isArray(line.tiers)) return null;
@@ -286,23 +256,10 @@ const svgEl = (name, attrs) => {
   return el;
 };
 
-// The upgrade tier, as a row of little shields along the bottom of the
-// marker - one per tier, none at all for tier 0. A digit in a badge was
-// legible only once you were already looking at it; a count of shields
-// is something you can read across a whole map at a glance, without
-// reading anything. The marker also gets a tier-N class, which is what
-// lights the ring around it: brighter and heavier the higher it goes,
-// nothing at tier 0. That is the part that answers "which keeps are
-// fully built" from across the map.
-// Claimed by a guild: that guild's own emblem, on a shield in the
-// corner. Two stand-ins came before it - a gold ring, which collided
-// with the tier ring, and a generic crest, which said nothing - and the
-// thing they were both standing in for was this. It is the guild's real
-// emblem, the one they picked, which is what a claimed objective shows
-// in game.
-//
-// The shield is drawn straight away and the emblem drops in when the
-// lookup lands, so a slow guild call never holds up the map.
+// The guild's own emblem on a shield in the corner, which is what a
+// claimed objective shows in game. The shield is drawn straight away and
+// the emblem drops in when the lookup lands, so a slow guild call never
+// holds up the map.
 function claimBadge(r, guildId, whiteFilter) {
   const w = r * 0.86, h = w * 1.1;
   const x = r * 0.66 - w / 2, y = -r * 0.74 - h / 2;
@@ -325,6 +282,10 @@ function claimBadge(r, guildId, whiteFilter) {
   return g;
 }
 
+// One shield per tier along the bottom of the marker, none at tier 0. A
+// digit in a badge was only legible once you were already looking at it.
+// The marker also gets a tier-N class, which lights the ring around it -
+// that is the part you can read across a whole map.
 function tierShields(r, tier) {
   const g = svgEl('g', { class: 'wvw-tierpips' });
   if (!tier) return g;
@@ -349,13 +310,10 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
   for (const ob of mapData.objectives || []) {
     if (MAP_SKIP_TYPES.has(ob.type)) continue;
     const meta = catalogue.get(ob.id);
-    // label_coord, not coord. coord is the thing's position in the
-    // world - a lord's room, a gate - while label_coord is where the
-    // game itself writes the objective on the map. Measured against the
-    // centre of the sector each one sits in, label_coord is 42 units off
-    // on average and coord is 138, so coord was pulling markers off
-    // their own ground. Quentin Lake was the visible one, about 100
-    // units left of where it belongs.
+    // label_coord, not coord. coord is the thing's position in the world - a
+    // lord's room, a gate - while label_coord is where the game itself
+    // writes the objective. Measured against the centre of each one's own
+    // sector, label_coord is 42 units off on average and coord is 138.
     const at = meta && (meta.label_coord || meta.coord);
     if (!at) continue;
     pts.push({ ob, meta, x: at[0], y: at[1] });
@@ -386,17 +344,13 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
     preserveAspectRatio: 'xMidYMid meet',
   });
 
-  // Emblem layers ship in the neutral red every dyeable asset in the
-  // game starts from, and a guild's colours arrive as dye ids rather
-  // than as RGB. Turning those into the guild's real colours means
-  // implementing the game's own colour-shift maths - brightness,
-  // contrast, hue, saturation, lightness, applied in an order ArenaNet
-  // does not publish - and an emblem in the wrong colours is worse than
-  // one in no colours.
-  //
-  // Settled: these stay monochrome. The shape is the guild's real one,
-  // which is the part that identifies them, and flat white is legible
-  // on every team colour and over any terrain. Not a placeholder.
+  // Emblem layers ship in the game's neutral base red, and a guild's
+  // colours arrive as dye ids rather than RGB. Turning those into the real
+  // colours means implementing ArenaNet's own colour-shift maths in an
+  // order they do not publish, and an emblem in the wrong colours is worse
+  // than one in none. These stay monochrome: the shape is what identifies
+  // the guild, and white is legible on every team colour. Not a
+  // placeholder.
   const whiteFilter = `wvw-white-${++plotSerial}`;
   const defs = svgEl('defs', {});
   const filt = svgEl('filter', {
@@ -428,13 +382,10 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
     svg.appendChild(img);
   }
 
-  // Three passes, not one. A single pass lets the next sector's fill
-  // paint over the previous one's outline, which is exactly where the
-  // border matters most - the line between two different owners. So
-  // every fill goes down first, then a dark stroke under every border,
-  // then the coloured stroke on top of that. The dark pass does double
-  // duty: the wiki render has its own pale sector borders printed on it,
-  // and that is the white line that kept showing through.
+  // Three passes, not one. A single pass lets the next sector's fill paint
+  // over the previous one's outline, which is exactly where the border
+  // matters most - the line between two owners. The dark pass also buries
+  // the pale sector borders printed into the wiki render.
   const land = svgEl('g', { class: picture ? 'over-terrain' : '' });
   const edgeW = (picture && picture.edge) || 14;
   const tinted = [];
@@ -463,12 +414,10 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
   pts.sort((a, b) => OBJ_DRAW_ORDER.indexOf(a.ob.type) - OBJ_DRAW_ORDER.indexOf(b.ob.type));
   const nodes = [];
 
-  // Everything about a marker that can change while you are looking at
-  // it - who holds it, its tier, whether a guild has claimed it - in one
-  // function, so a live update is the same code as the first draw and
-  // the two cannot drift apart. The listeners live on the group itself,
-  // so emptying it is safe, and the selected class is carried across:
-  // repainting must not deselect what you were reading.
+  // Everything about a marker that can change while you are looking at it,
+  // in one function, so a live update runs the same code as the first
+  // draw. The listeners live on the group itself, so emptying it is safe,
+  // and the selected class is carried across.
   const paintMarker = (g, p) => {
     const r = OBJ_SIZE[p.ob.type] || 14;
     const owner = String(p.ob.owner || 'neutral').toLowerCase();
@@ -902,12 +851,10 @@ async function toggleTierMaps(match, regionName, tierNum, triggerEl) {
 
   let catalogue, sectorsByType;
   try {
-    // All of it at once. These ran one after another - objectives, then
-    // upgrades, then tactics, then four map outlines - which is four
-    // round trips on an API where a round trip is about a second and the
-    // payload barely matters. Only upgrades ever needed another one's
-    // answer, and that dependency is gone now, so the whole thing is one
-    // wait instead of four.
+    // All of it at once. These ran one after another - objectives, upgrades,
+    // tactics, then four map outlines - which is four round trips on an API
+    // where the trip costs about a second and the payload barely matters.
+    // Only upgrades ever needed another's answer, and that is gone.
     const wanted = (match.maps || []).filter((m) => MAP_PANEL_ORDER.includes(m.type));
     const tacticIds = [];
     for (const m of match.maps || []) {
@@ -950,20 +897,14 @@ function buildTierMapButton(match, regionName, tierNum) {
   btn.setAttribute('aria-label', `Show the objective maps for ${regionName} Tier ${tierNum}`);
   btn.title = `Objective maps · ${regionName} Tier ${tierNum}`;
   markPopoverTrigger(btn);
-  // The folded map, kept. A miniature of the territory itself was tried
-  // instead and came out worse - four coloured patches at this size read
-  // as a badge, not as a map - so this is the outline version with one
-  // change: a marker on the middle panel.
+  // The folded map. A miniature of the territory was tried and came out
+  // worse - four coloured patches at this size read as a badge, not a map.
+  // The dot does the same job as the zigzag: the zigzag says the sheet is
+  // folded, the dot says something is drawn on it. Both are silhouette,
+  // which is all that survives at 17px.
   //
-  // That dot is doing the same job the zigzag does. The zigzag says the
-  // sheet is folded; the dot says there is something drawn on it. Both
-  // are silhouette, which is all that survives at 17px - every earlier
-  // attempt to help with fill, colour or a chip behind closed the shape
-  // into a mass instead.
-  // The word first, the glyph after it. This matches the "Skirmish 1.2k
-  // [chart]" line in the server cards, which is the pattern the page
-  // already teaches: quiet grey word, then a cyan glyph to its right.
-  // Icon-then-shouting-caps was the reverse of both halves of that.
+  // Word first, glyph after, matching the "Skirmish 1.2k [chart]" line in
+  // the server cards.
   btn.innerHTML = '<span class="tier-map-label">Maps</span>' +
     '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
     '<g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +

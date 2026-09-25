@@ -1,13 +1,7 @@
-/* Tactical marker on click, the way an AoE lands in game. A hexagon
-   rather than a circle: the rank badge is a hexagon and every card is
-   chamfered, so a plain circle was the one round thing on the page.
-   Two of them, the second slower and wider, so it reads as a pulse
-   going out rather than a single shape growing. */
-/* The round itself, lobbed in from the bottom-left corner - roughly
-   where a trebuchet would be standing if the page had one. Two nested
-   elements: the outer one carries X at a constant rate, the inner one
-   carries Y on an ease-out. Linear across, decelerating up: that is
-   an arc, without a single path calculation in JS. */
+/* The round, lobbed in from the corner where the trebuchet stands. Two
+   nested elements because X and Y need transforms of their own: the
+   outer one carries X at a constant rate, the inner one carries Y
+   through the sampled parabola below. */
 .siege-shot{
   position:fixed;z-index:39;pointer-events:none;
   width:0;height:0;
@@ -25,30 +19,22 @@
   8%{opacity:1;}
   100%{opacity:1;transform:translateX(var(--dx,0));}
 }
-/* A real parabola, sampled, rather than an ease pretending to be one.
-   h(t) = 2.97321t - 1.97321t^2: vertical speed at its maximum the
-   instant the round leaves and falling away steadily from there, apex
-   12% above the target at three quarters of the way across.
-
-   Every eased version of this started the vertical motion slowly, which
-   is the opposite of what a throw does - the round set off nearly flat,
-   swung up through the middle and humped over the top. That S is what
-   kept reading as wrong, and moving the apex around could never fix it,
-   because the apex was never the problem. X stays linear: nothing
-   pushes the stone sideways once it is in the air. */
-/* A parabola written as a straight line plus a hump:
+/* A real parabola, sampled, rather than an ease pretending to be one:
 
      y(t) = dy*t - rise*4t(1-t)
 
-   The old form multiplied dy itself - "go 12% past the target, then
-   come back". That only means anything when the target is ABOVE the
-   launch point. Aim at something lower and 12% past meant 12% further
-   DOWN, so the round dipped below the target and climbed back up to it;
-   aim at something behind the machine and the whole curve inverted.
-   Written this way the hump is a height in pixels that is zero at both
-   ends, so it arcs over the top no matter where the target sits - and
-   the apex slides along on its own, exactly as it does when gravity is
-   constant and only the endpoints change. */
+   Every eased version started the vertical motion slowly, which is the
+   opposite of what a throw does - the round set off nearly flat, swung
+   up through the middle and humped over the top. That S is what kept
+   reading as wrong. X stays linear: nothing pushes the stone sideways
+   once it is in the air.
+
+   The hump is a height in pixels that is zero at both ends, so it arcs
+   over the top wherever the target sits. The earlier form multiplied dy
+   itself - "go 12% past the target, then come back" - which only means
+   anything when the target is ABOVE the launch point; aim lower and 12%
+   past meant 12% further DOWN, so the round dipped below the target and
+   climbed back up to it. */
 @keyframes shot-y{
   0%{transform:translateY(0) scale(0.700);}
   10%{transform:translateY(calc(var(--dy,0px) * 0.1 - var(--rise,0px) * 0.36)) scale(0.755);}
@@ -63,14 +49,11 @@
   100%{transform:translateY(var(--dy,0)) scale(1.250);}
 }
 
-/* The trail a comet leaves, rather than a shape towed behind one.
-   A single wedge re-aimed every frame is rigid by construction: it can
-   only ever be a straight line pointing back the way the round came,
-   so on a curved arc it cuts the corner and the flame looks detached.
-   This lays one short segment per frame from where the round was to
-   where it is now. The path itself becomes the flame, so it bends with
-   the arc, and each segment narrows and fades on its own clock, which
-   is what makes the whole thing taper from head to tip. */
+/* One short segment per frame, from where the round was to where it is
+   now. A single wedge re-aimed every frame is rigid by construction - it
+   can only point back the way the round came, so on a curve it cuts the
+   corner and looks detached. Here the path itself is the flame, and each
+   segment fades on its own clock, which is what tapers it. */
 .flame-seg{
   position:fixed;left:0;top:0;z-index:38;pointer-events:none;
   height:12px;margin-top:-6px;transform-origin:0 50%;
@@ -112,10 +95,9 @@
 .flame-head--big{width:104px;height:104px;margin:-52px 0 0 -52px;}
 
 /* What the flame leaves behind. The wedge alone is a clean streak that
-   vanishes the instant the round passes; these are the part that says
-   something was burning - smoke that swells and drifts as it cools,
-   and sparks thrown clear of it. Both are dropped at the round's live
-   position and then abandoned, so they fall behind on their own. */
+   vanishes the instant the round passes; these say something was burning.
+   Both are dropped at the round's live position and then abandoned, so
+   they fall behind on their own. */
 .trail-smoke{
   position:fixed;z-index:36;pointer-events:none;
   width:15px;height:15px;margin:-7.5px 0 0 -7.5px;border-radius:50%;
@@ -139,13 +121,12 @@
   100%{opacity:0;transform:translate(var(--sx,0px), var(--sy,0px)) scale(.3);}
 }
 
-/* The round going off where it lands. With the marker gone this is
-   the whole click feedback, so it is two layers: a hard core that is
-   over almost immediately, and a shell that keeps travelling. */
-/* Same construction as the shield blast, a size down: a ragged core,
-   a few billows off-centre and a handful of spikes. The perfect ring
-   that used to sit behind it is gone - it was the shape doing most of
-   the work to make this read as a lamp rather than a hit. */
+/* The round going off where it lands, and with the marker gone this is
+   the whole click feedback. Same construction as the shield blast, a
+   size down: a ragged core, a few billows off-centre and a handful of
+   spikes. The perfect ring that used to sit behind it is gone - it was
+   the shape doing most of the work to make this read as a lamp rather
+   than a hit. */
 .shot-bloom{
   position:fixed;z-index:41;pointer-events:none;
   width:52px;height:52px;margin:-26px 0 0 -26px;

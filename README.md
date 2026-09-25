@@ -96,8 +96,10 @@ in the developer console on the site.
 
 A strict Content Security Policy denies everything by default and allows
 only the four hosts above. Every script is served from this repository —
-no CDN, no third-party code. Anything the API or the community sheet
-returns is treated as text, never as markup.
+no CDN, nothing fetched from someone else's host to be run. The one piece
+of third-party code is GoatCounter's counter, vendored unmodified into
+`js/count.js`. Anything the API or the community sheet returns is treated
+as text, never as markup.
 
 The reasoning for each of these lives in a comment next to the code that
 does it.

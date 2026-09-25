@@ -5,7 +5,9 @@
 // of a tier: score, victory points, activity and the change flashes.
 // ---------------------------------------------------------------------
 
-// the rails have their eventual shape instead of collapsing to a word.
+// Grey blocks in the shape of the real thing while the first request is
+// in flight, so the rails have their eventual shape instead of
+// collapsing to a word.
 function showStandingsSkeleton(gridEl) {
   gridEl.textContent = '';
   for (let i = 0; i < 3; i++) {

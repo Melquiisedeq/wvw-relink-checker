@@ -22,13 +22,10 @@
   transition:opacity .15s ease, background .15s ease,
              color .15s ease, box-shadow .15s ease;
 }
-/* The same lighting as the icon buttons, translated for the one icon on
-   this page that has a body. Those are bare glyphs, so their glow is a
-   drop-shadow tracing the outline; inside a filled 22px disc the same
-   filter would bleed into its own background and read as a smudge. A
-   box-shadow on the disc is the body-shaped version of it, and the
-   colour step to --accent-bright is identical - that step is what the
-   whole family now means by lit. */
+/* The icon buttons are bare glyphs, so their glow is a drop-shadow
+   tracing the outline; inside a filled 22px disc the same filter bleeds
+   into its own background. A box-shadow is the body-shaped version, and
+   the step to --accent-bright is identical. */
 .leaderboard-link:hover{
   opacity:1;
   background:rgba(127,214,242,.28);
@@ -43,24 +40,18 @@
   font-size:.72rem;color:var(--text);margin-bottom:6px;font-weight:700;opacity:.9;
 }
 .standing-side{
-  display:flex;flex-direction:column;gap:2px;padding:5px 0;font-size:.8rem;
-  /* Every side sits over a translucent fill with a photo behind it.
-     A shadow this small does nothing visible on a flat background but
-     gives each glyph its own edge wherever the picture underneath
-     happens to be busy, which is what stops the smaller numbers from
-     reading as washed out. */
+  display:flex;flex-direction:column;gap:2px;font-size:.8rem;
+  /* Small enough to do nothing on a flat background, but it gives each
+     glyph its own edge wherever the photo underneath is busy. */
   text-shadow:0 1px 2px rgba(0,0,0,.6);
 }
 .standing-side-top{display:flex;align-items:center;gap:7px;}
 .standing-vp{margin-left:auto;font-size:.72rem;white-space:nowrap;flex-shrink:0;}
 .standing-vp .stat-label{color:#8d97a6;opacity:1;font-weight:400;}
 .standing-vp .stat-value{color:#ffffff;font-weight:800;font-size:.85rem;}
-/* These are read-only marks, so they get the opposite relief to the
-   buttons: engraved rather than raised. No fill and no lit edge -
-   anything with a filled body and a bright top reads as pressable,
-   which is a promise the mark cannot keep. What is left is a dark
-   line under the glyph, so it looks cut into the row instead of
-   printed flat on it. */
+/* Read-only marks, so they get the opposite relief to the buttons:
+   engraved, not raised. A filled body with a bright top reads as
+   pressable, which is a promise the mark cannot keep. */
 .movement-indicator{
   display:inline-flex;align-items:center;justify-content:center;
   width:18px;margin-left:7px;flex-shrink:0;
@@ -127,43 +118,32 @@
   transition:opacity .15s ease, transform .15s ease, color .15s ease;
 }
 /* Rest is --accent, hover is --accent-bright, on every one of them.
-   The lift alone said "this moved"; it never said "this is lit". The
-   colour step is what the maps button already does and what the rest
-   of the page means by cyan - the comment forty lines down puts it
-   plainly: cyan is something you can touch or something happening
-   now. The icons were spending that at rest and had nothing left to
-   spend on the hover. */
+   The lift alone said "this moved", never "this is lit" - and the icons
+   were spending the bright cyan at rest, leaving nothing for the
+   hover. */
 .icon-btn:hover,.icon-btn.active{
   opacity:1;transform:scale(1.15);color:var(--accent-bright);
 }
-/* An icon has no body to light, so it can only be relieved along its
-   own outline. The offset is what makes this safe: a drop-shadow
-   with no offset and a blur spreads evenly in every direction and
-   closes into a disc at this size, which is the halo that had to be
-   taken off these icons before. Pushed straight down with almost no
-   blur, the same filter traces the shape instead of surrounding it. */
+/* An icon can only be relieved along its outline. The offset is what
+   makes it safe: a drop-shadow with no offset spreads evenly and closes
+   into a disc at this size. Pushed straight down with almost no blur,
+   it traces the shape instead. */
 .icon-btn svg{
   display:block;
   filter:drop-shadow(0 1px .5px rgba(0,0,0,.65));
   transition:filter .15s ease;
 }
-/* The halo that was taken off these icons, brought back on the hover
-   only - and that is the whole difference. Held at rest it read as a
-   permanent disc around a 14px glyph, which is why it went. Spent
-   only while the pointer is on the control, the same blur reads as
-   the thing lighting up, because there is an unlit state on either
-   side of it to be read against. The offset shadow stays first in the
-   list so the glyph keeps its outline against the photo. */
+/* The halo, spent on hover only. Held at rest it read as a permanent
+   disc around a 14px glyph; with an unlit state either side of it, the
+   same blur reads as the thing lighting up. The offset shadow stays
+   first so the glyph keeps its outline against the photo. */
 .icon-btn:hover svg,.icon-btn.active svg{
   filter:drop-shadow(0 1px .5px rgba(0,0,0,.65))
          drop-shadow(0 0 4px rgba(127,214,242,.45));
 }
-/* The three small ones get more of it. A glow is spent on a shape's
-   outline, so the same blur on a 14px glyph covers a fraction of the
-   ink a 19px one does and simply reads as less light. These sit
-   inline beside a number rather than beside a name, which is the
-   harder place to be noticed, and they are the ones that were asked
-   to come up. Matched by eye against the shield, not by arithmetic. */
+/* The three small ones get more of it. A glow is spent on an outline,
+   so the same blur on a 14px glyph covers a fraction of the ink a 19px
+   one does. Matched by eye against the shield, not by arithmetic. */
 .map-kd-btn:hover svg,.map-kd-btn.active svg,
 .activity-btn:hover svg,.activity-btn.active svg,
 .activity-info-btn:hover svg,.activity-info-btn.active svg{
@@ -172,56 +152,39 @@
 }
 .icon-btn:active{transform:translateY(1px) scale(1.05);}
 
-/* The maps button keeps a body, unlike the other icon buttons. Those sit
-   beside a name and are found by looking for them; this one has to say
-   "press me" on its own, next to a heading, so it gets a chamfered chip
-   in the same relief language as everything else. Written against
-   .icon-btn's own specificity because it is undoing what that rule
-   deliberately strips. */
 /* No chip. The chip was an attempt to make this look pressable, and it
    did - at the cost of being the only button on the page with a body.
    Accent colour and the shared hover lift do the same job in the same
    language as the rest. */
 .tier-map-btn{height:18px;gap:2px;color:var(--accent);}
-.tier-map-btn svg{width:18px;height:18px;}
-/* It reads brighter than the other cyan glyphs at rest, and not because
-   it is a different cyan - it is the same var(--accent) they all are.
-   It carries more ink: the largest of them at 18px, and an outline that
-   encloses the whole box rather than tracing one line or a pair of
-   blades. Stroke weight is not the culprit either - the shield's
-   effective stroke is 1.56px against this one's 1.50px - it is the area
-   the ink covers. And it sits next to a muted grey word instead of a lit
-   number, so it has the dimmest neighbour on the row to be measured
-   against.
+/* Reads brighter than the other cyan glyphs at rest, and not because it
+   is a different cyan - it carries more ink. Largest of them at 18px,
+   with an outline enclosing the whole box rather than tracing one line.
+   Stroke weight is not it: the shield's effective stroke is 1.56px
+   against this one's 1.50px. It also sits next to a muted grey word
+   instead of a lit number, so it has the dimmest neighbour on the row.
 
-   Pulled back on opacity rather than on hue, because the hue is the
-   thing that carries meaning here - cyan is what can be touched - and a
-   duller cyan would say something the button does not mean. Handed back
-   in full on hover, alongside the colour step below. This is the number
-   to change if it still sits wrong. */
+   Pulled back on opacity, not hue - cyan means "you can touch it" here,
+   and a duller cyan would say something this button does not. Handed
+   back in full on hover. This is the number to change if it still sits
+   wrong. */
 .tier-map-btn svg{
+  width:18px;height:18px;
   opacity:.82;
   transition:opacity .15s ease, filter .15s ease;
 }
 .tier-map-btn:hover svg,.tier-map-btn.active svg{opacity:1;}
-/* Deliberately the same as .stat-label two rules up - the muted grey at
-   regular weight, no caps, no tracking - because that is what "Skirmish"
-   is, and this was asked to read as its sibling. Caps and bold made it
-   shout at the "Tier N" heading it sits opposite instead of naming a
-   control.
-
-   The size is fixed rather than inherited: this button appears in two
-   places at two scales (.72rem in the standings card, .95rem in the
-   match panel header), and inheriting would have made the word grow in
-   one of them while "Skirmish" stayed put. */
+/* Same as .stat-label on purpose: muted grey, regular weight, no caps.
+   That is what "Skirmish" is, and this was asked to read as its
+   sibling. Size is fixed rather than inherited because the button
+   appears at .72rem in the standings card and .95rem in the panel
+   header, and inheriting would grow the word in one of them. */
 .tier-map-label{
   font-size:.64rem;font-weight:400;color:#8d97a6;
   line-height:1;
-  /* Optical, not geometric. Flex centres the label's box, but "Maps"
-     carries a descender, so the ink of the word sits high inside that
-     box and the word reads as floating above the glyph next to it.
-     Nudged down until the cap height lands on the glyph's own centre.
-     This is the number to change if it still sits wrong. */
+  /* Optical, not geometric. Flex centres the label's box, but "Maps" has
+     a descender, so its ink sits high inside that box. Nudged down until
+     the cap height lands on the glyph's centre. */
   transform:translateY(1px);
 }
 /* The word is what lights up. The glyph is already accent and has its
@@ -240,14 +203,11 @@
    badge, the dot and the name, but the shield belongs to the name it
    sits beside, not to the row. */
 .standing-side-top .server-guilds-btn{margin-left:-5px;}
-/* Deliberately the densest surface on the page. A popover lands on
-   top of a card that is already translucent over a photograph, and
-   stacking transparency on transparency is how text becomes
-   unreadable - so this one is near-solid at 92-94%, which is enough
-   to hint at what it covers without any of it reaching the text, and
-   earns its separation from a hard shadow instead. The blur is turned
-   up rather than down: the less opaque the panel, the more work the
-   blur has to do. Same lit top edge as everything else. */
+/* The densest surface on the page. A popover lands on a card that is
+   already translucent over a photo, and stacking transparency on
+   transparency is how text becomes unreadable - so this is near-solid
+   at 92-94%, with the blur turned up rather than down, and earns its
+   separation from a hard shadow. */
 .info-popover{
   position:fixed;z-index:60;width:280px;max-height:min(340px, 70vh);overflow-y:auto;
   background:linear-gradient(180deg, rgba(35,42,52,.94), rgba(21,26,33,.92) 62%);
@@ -343,11 +303,9 @@
    overridden forty lines below, so editing the first one did nothing. */
 .activity-btn,.activity-info-btn{width:14px;height:15px;color:var(--accent);vertical-align:middle;}
 .activity-chart{width:100%;height:132px;display:block;margin-top:2px;}
-/* One rule across these popovers: a colour means a team, and cyan means
-   something you can touch or something happening now. The chosen side
-   used to be drawn in cyan, which broke it - the legend said green and
-   the line said accent. It is drawn in its own colour now, and told
-   apart from the other two by weight instead. */
+/* A colour means a team. The chosen side used to be drawn in cyan,
+   which broke that - the legend said green and the line said accent.
+   It is in its own colour now, told apart by weight. */
 .activity-line{fill:none;stroke-width:2.4;}
 .activity-line--red{stroke:var(--red);}
 .activity-line--blue{stroke:var(--blue);}
@@ -356,10 +314,8 @@
 .activity-dot--blue{fill:var(--blue);}
 .activity-dot--green{fill:var(--green);}
 .activity-dot{stroke:rgba(10,13,17,.85);stroke-width:1.2;}
-/* This one carries a chart, a legend and a breakdown, so it gets the
-   room the compact popovers do not need. */
 /* The popovers that carry a chart or a breakdown, rather than three
-   lines of text. */
+   lines of text: they get room the compact ones do not need. */
 .info-popover--trend{
   width:430px;max-height:min(680px, 88vh);padding:14px 17px;
 }
@@ -369,7 +325,8 @@
    overflowing it. */
 @media (max-width:520px){ .info-popover--trend{width:calc(100vw - 24px);} }
 
-/* The two headline figures, label over value. */
+/* Headline figures, label over value. The base is two columns; every
+   popover on the page uses the three-column variant under it. */
 .pop-figures{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
 .pop-figures--three{grid-template-columns:repeat(3,1fr);gap:8px;}
 .pop-figures--three .pop-figure{padding:8px 9px;}
@@ -460,11 +417,9 @@
 }
 .pop-bar-pct{flex:0 0 36px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;}
 
-/* The K/D row carries five things and nothing may wrap - that stacking
-   was what made it unreadable. The numbers are sized to their own
-   content and grouped; the bar takes whatever is left, which is how it
-   ends up the widest thing in the row rather than the numbers ending up
-   at opposite edges of it. */
+/* Five things in this row and nothing may wrap. The numbers are sized
+   to their content and grouped; the bar takes what is left, which is
+   why it ends up the widest thing here. */
 .pop-kd-row{gap:10px;white-space:nowrap;}
 .pop-kd-row .pop-bar-label{flex:0 0 62px;}
 .pop-bar-track--slim{flex:1 1 auto;min-width:40px;height:8px;}

@@ -180,15 +180,11 @@ function buildSkirmishBar(color, score, leaderScore, fromPct) {
   return row;
 }
 
-// Ranks the three sides by victory points, the same standing used for tier promotion.
-// Victory points decide the tier, and they tie often enough to matter -
-// especially early in the week, when two sides can sit on the same number
-// for hours. Sorting on VP alone left those two in whatever order COLORS
-// happens to list them, which is arbitrary and, worse, stable: the same
-// side would always be shown ahead for no reason at all. War score is
-// the natural second measure and is already in the match object, so it
-// breaks the tie; COLORS order remains the last resort, but only when
-// two sides are level on both.
+// Ranks the three sides by victory points, the standing that decides the
+// tier. They tie often enough to matter, especially early in the week,
+// and sorting on VP alone left those two in COLORS order - arbitrary and,
+// worse, stable. War score is the natural second measure and is already
+// in the match object.
 function rankMatchByVictoryPoints(match) {
   const ranked = COLORS
     .map((color) => ({

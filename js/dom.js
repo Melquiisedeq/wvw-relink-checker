@@ -9,7 +9,6 @@ const guildInput  = document.getElementById('guildInput');
 const runBtn      = document.getElementById('runBtn');
 const impactOverlay = document.getElementById('impactOverlay');
 const pageEl      = document.getElementById('page');
-let deployTimer = null;
 const statusMsg   = document.getElementById('statusMsg');
 const resultsPlaceholder = document.getElementById('resultsPlaceholder');
 const resultCard  = document.getElementById('resultCard');

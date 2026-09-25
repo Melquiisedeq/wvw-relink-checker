@@ -5,7 +5,6 @@
 // on outside click and on scroll. Shared by every popover on the page.
 // ---------------------------------------------------------------------
 
-// outside click or Escape.
 let activePopover = null;
 let activeTrigger = null;
 let activeBackdrop = null;
@@ -131,15 +130,11 @@ function closeUnlessExpanded() {
   }
   closePopover();
 }
-// Page scroll never reaches visualViewport's scroll event, so an anchored
-// popover used to sit frozen on screen while the icon it belongs to
-// scrolled out from under it.
-//
-// Deliberately NOT wired to closeUnlessExpanded: that function re-runs
-// layoutAllianceGrid, which would reshuffle the alliance columns on every
-// scroll tick and wreck the expanded screenshot view. Scrolling changes no
-// widths, so there is genuinely no layout to recompute here - only a
-// position to follow.
+// Page scroll never reaches visualViewport's scroll event, so an
+// anchored popover used to sit frozen while the icon it belongs to
+// scrolled away. Deliberately not wired to closeUnlessExpanded: that
+// re-runs layoutAllianceGrid, which would reshuffle the alliance columns
+// on every scroll tick. Scrolling changes no widths.
 function repositionOnScroll() {
   if (!activePopover || !activeTrigger) return;
   if (activePopover.classList.contains('info-popover--expanded')) return; // centred, follows nothing

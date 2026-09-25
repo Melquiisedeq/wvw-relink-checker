@@ -1,16 +1,13 @@
-/* Live objective maps, one tier at a time.
+/* Live objective maps, one tier at a time. The terrain is a self-hosted
+   picture and the rest is drawn over it from the API.
 
-   The terrain is a self-hosted picture; the rest is drawn over it from
-   the API. ArenaNet publishes no map tiles for WvW - sweeping the whole
-   Mists tile grid turns up imagery only around continent x 2048-8192,
-   while Eternal Battlegrounds sits at x 8958-12030 - so the pictures
-   are the wiki's map renders, cut down and served from assets/.
-
-   Alignment is solved rather than eyeballed. Those renders carry the
-   sector borders, and the API publishes the same borders as coordinate
-   polygons, so the right transform is whatever makes the two coincide:
-   a search over scale and offset, scored by how much drawn line the
-   polygons land on. See MAP_IMAGE in js/maps.js for the answer. */
+   ArenaNet publishes no map tiles for WvW - sweeping the Mists tile
+   grid turns up imagery only around continent x 2048-8192, while
+   Eternal Battlegrounds sits at x 8958-12030 - so the pictures are the
+   wiki's map renders, cut down into assets/. Those renders carry the
+   sector borders and the API publishes the same borders as polygons, so
+   the transform is whatever makes the two coincide. See MAP_IMAGE in
+   js/maps.js. */
 
 .wvw-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
 .wvw-tab{
@@ -41,12 +38,10 @@
 .wvw-plot-wrap.is-panning{cursor:grabbing;}
 .wvw-plot{display:block;width:100%;height:auto;max-height:70vh;}
 
-/* Territory. Each sector is tinted by whoever holds the objective
-   inside it, which is what turns a diagram into a map you can read at a
-   glance: you see who owns which ground, not just which dots.
-
-   Fill and border are drawn in separate passes (see buildMapStage), so
-   these are fills only - the border rules are further down. */
+/* Each sector is tinted by whoever holds the objective inside it, which
+   is what turns a diagram into a map you can read at a glance. Fill and
+   border are drawn in separate passes (see buildMapStage), so these are
+   fills only. */
 .wvw-sector{stroke:none;}
 .wvw-sector.own-red{fill:rgba(210,70,72,.2);}
 .wvw-sector.own-blue{fill:rgba(70,110,215,.2);}
@@ -60,18 +55,14 @@
 .over-terrain .wvw-sector.own-green{fill:rgba(40,185,110,.28);}
 .over-terrain .wvw-sector.own-neutral{fill:rgba(140,155,175,.05);}
 
-/* Borders, in their own layers on top of every fill.
-
-   The dark pass is not decoration. The wiki renders have their own pale
-   sector borders printed into the picture, and that printed line was
-   what kept reading as a grey grid - our thinner coloured stroke sat on
-   top of it and left white showing on both sides. A wider dark stroke
-   underneath buries it, and the colour then reads as the only border
-   there is. It also stops two neighbouring colours from blurring into
-   one another at the line where they meet, which is the one place on
-   the map the border actually has to be legible. */
-/* Widths are set per map on the group, not here - see MAP_IMAGE.edge -
-   because how much has to be covered depends on the picture. */
+/* Borders, in their own layers on top of every fill. The dark pass is
+   not decoration: the wiki renders have their own pale sector borders
+   printed in, and our thinner coloured stroke sat on top of that and
+   left white showing on both sides. A wider dark stroke underneath
+   buries it, and also stops two neighbouring colours from blurring into
+   each other where they meet. Widths are set per map on the group - see
+   MAP_IMAGE.edge - because how much has to be covered depends on the
+   picture. */
 .wvw-edges-under polygon{
   fill:none;stroke:rgba(0,0,0,.8);stroke-linejoin:round;
 }
@@ -83,8 +74,6 @@
 
 .wvw-marker{cursor:pointer;}
 .wvw-marker .hit{fill:transparent;}
-/* Stroke widths are in map units, like the radii, so they are sized
-   against OBJ_SIZE rather than against pixels. */
 /* The icon is the game's own and already carries the team colour, so
    there is nothing to draw behind it - only a shadow, so it lifts off
    the terrain instead of dissolving into it. */
@@ -98,43 +87,30 @@
 .wvw-claim .claim-emblem{opacity:.96;}
 .wvw-marker .ring{fill:none;stroke:none;}
 .wvw-marker.is-selected .ring{stroke:#ffffff;stroke-width:5.5;}
-/* The browser's own focus ring is a rectangle around the marker's
-   bounding box, which on an <image> is the square edge of the PNG - so
-   clicking one drew a box around the picture. The selection ring already
-   says what is picked, so the default outline goes, and keyboard focus
-   borrows the same ring rather than a box. */
+/* The UA focus ring is a rectangle around the bounding box, which on an
+   <image> is the square edge of the PNG. The selection ring already
+   says what is picked, so keyboard focus borrows it. */
 .wvw-marker:focus{outline:none;}
 .wvw-marker:focus-visible{outline:none;}
 .wvw-marker:focus-visible .ring{stroke:#ffffff;stroke-width:5.5;}
 
-/* Upgrade tier, twice over: a ring that gets brighter and heavier as the
-   tier climbs, and a row of shields under the marker, one per tier. The
-   ring is what you read across the whole map - a fortified keep glows
-   gold and an unupgraded one is plain - and the shields are what you
-   read once you have picked it out. Tier 0 gets neither, on purpose:
-   plain has to mean something for bright to mean anything.
+/* Upgrade tier, twice over: a ring that brightens and thickens as the
+   tier climbs, and a row of shields under the marker. The ring is what
+   you read across the whole map, the shields once you have picked one
+   out. Tier 0 gets neither - plain has to mean something for bright to
+   mean anything. Lengths are map units, like the marker radii, so the
+   blur radius is larger than it looks.
 
-   Lengths here are map units, like the marker radii, so the blur radius
-   is larger than it looks. */
-/* Three tiers have to be told apart at a glance, so they differ on
-   three axes at once, not just hue: colour, thickness and glow.
-
-   Bronze, white, gold - the ladder the game itself uses, and the one a
-   player already reads without being taught.
-
-   Getting bronze to work took the dark casing under every ring. A bronze
-   dark enough to look like bronze lands right on top of the team discs
-   in lightness and vanishes - the first attempt scored 1.04 contrast
-   against the red disc. The casing removes that constraint entirely, so
-   bronze can be bright and saturated instead of dark and muddy, which is
-   also what makes it read as bronze rather than as dirt. It is pushed as
-   far as it will go before it starts reading as the gold above it:
-   saturation 0.87, separation 2.33 from the white and 1.88 from the
-   gold. Below about 1.8 against the gold the two stop being separable
-   at a glance, which is the ceiling here, not taste.
-
-   Thickness and glow carry the rest: 6 flat, 8 with a whisper, 12 that
-   burns. */
+   The three tiers differ on colour, thickness and glow at once, not
+   just hue. Bronze, white, gold is the ladder the game itself uses.
+   Bronze only works because of the dark casing under every ring: a
+   bronze dark enough to look like bronze lands on top of the team discs
+   in lightness and vanishes, scoring 1.04 contrast against the red
+   disc. The casing removes that constraint, so it can be bright and
+   saturated - pushed as far as it goes before it reads as the gold,
+   separation 2.33 from the white and 1.88 from the gold, where below
+   about 1.8 the two stop being separable. Thickness and glow carry the
+   rest: 6 flat, 8 with a whisper, 12 that burns. */
 .wvw-marker .halo,.wvw-marker .halo-case{fill:none;stroke:none;}
 .tier-1 .halo-case,.tier-2 .halo-case,.tier-3 .halo-case{
   stroke:rgba(9,11,15,.92);

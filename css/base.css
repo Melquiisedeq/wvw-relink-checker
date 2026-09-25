@@ -8,11 +8,8 @@
   --accent-bright:#66f5ff;
   --accent-soft:rgba(127,214,242,.14);
   --ok:#4caf7d;
-  /* The ember colour, promoted to a token. It was already on the page -
-     the embers drifting up behind the header are #ffb765, written there
-     as "the warm counterpoint to all that cold blue". A deadline needs
-     to not be cyan, because cyan on this page means something you can
-     touch, and the warm counterpoint already existed. */
+  /* Not cyan - cyan means "you can touch it" here. This is the ember
+     orange already drifting behind the header. */
   --warn:#ffb765;
   --err:#e15c5c;
   --blue:#5b8ff0;
@@ -29,49 +26,41 @@ body{
 }
 /* ==========================================================
    BACKGROUND EFFECTS
-   A fixed, non-interactive layer stack behind the page. Its own
-   div rather than a body pseudo-element, so more layers can be
-   added later without fighting over ::before/::after.
+   Fixed layer stack behind the page, in its own div so layers can
+   be added without fighting over ::before/::after.
    ========================================================== */
 .fx{
   /* Not `inset:0`. On mobile Chromium a fixed element is sized by the
-     visual viewport, which grows when the URL bar hides and shrinks
-     when it comes back - and `cover` below recomputes its scale every
-     time the box changes height, so the photo visibly zoomed in and out
-     as the page was scrolled. Pinned to the large viewport instead,
-     which is the one height the URL bar cannot move. On desktop this is
-     what `inset:0` already resolved to, so nothing there changes. */
+     visual viewport, which changes height as the URL bar hides, and
+     `cover` rescales every time - so the photo zoomed in and out while
+     scrolling. lvh is the one height the URL bar cannot move. */
   position:fixed;left:0;top:0;width:100%;
   height:100vh;   /* Chromium already reads vh as the large viewport... */
   height:100lvh;  /* ...and this says so by spec rather than by habit. */
   pointer-events:none;z-index:0;overflow:hidden;
-  /* Own stacking context, so the blend below has a defined backdrop
-     and can never reach past this layer onto the page content. */
+  /* Own stacking context, so the blend below cannot reach the page. */
   isolation:isolate;
 }
 .fx-l{position:absolute;inset:0;}
 
-/* The page's own colour, repeated here as the surface the photo
-   blends into. */
+/* The page's own colour, as the surface the photo blends into. */
 .fx-ground{background:radial-gradient(circle at top, #1a1f27, #0f1216 60%);}
 
-/* mix-blend-mode:luminosity is the whole trick. It keeps only the
-   light and dark of the screenshot and takes hue and saturation from
-   the layer underneath - so the grass, the fire and the sky all lose
-   their own colour and come back wearing the site's slate. That is
-   why a photo this busy can sit behind text at all, and why swapping
-   in a different screenshot needs no colour grading by hand. */
+/* mix-blend-mode:luminosity keeps only the light and dark of the
+   screenshot and takes hue and saturation from the layer under it, so
+   the photo comes back in the site's slate. That is why one this busy
+   can sit behind text, and why swapping it needs no colour grading. */
 .fx-photo{
-  /* Anchored left of centre: the castle sits in the left third of the
-     photo, and `center` was cropping most of it away on a tall window. */
+  /* Left of centre: the castle is in the left third, and `center`
+     cropped it away on a tall window. */
   background:url("../assets/wvw13-1.webp") 22% 42%/cover no-repeat;
   filter:brightness(.72) contrast(1.04) blur(1.5px);
   mix-blend-mode:luminosity;
   opacity:.58;
 }
 
-/* Darkest through the middle where the text sits, lightest at the
-   edges where the picture is. The inverse of a vignette. */
+/* Darkest through the middle where the text sits. Inverse of a
+   vignette. */
 .fx-scrim{
   background:
     radial-gradient(ellipse 62% 56% at 50% 45%,
@@ -80,10 +69,8 @@ body{
       rgba(15,18,22,.55), transparent 28%, transparent 70%, rgba(15,18,22,.66));
 }
 
-/* Embers, the warm counterpoint to all that cold blue - the orange
-   bursts in a real zerg fight. Animated on transform and opacity
-   only, so the whole field stays on the compositor and costs
-   nothing to run. */
+/* Embers, the warm counterpoint to the cold blue. transform and
+   opacity only, so the field stays on the compositor. */
 .ember{
   position:absolute;bottom:-12px;width:3px;height:3px;border-radius:50%;
   background:#ffb765;box-shadow:0 0 7px 1px rgba(255,150,60,.75);
@@ -92,18 +79,15 @@ body{
 /* One in four is cyan instead, to tie the field back to the accent. */
 .ember--cold{background:#9fe6ff;box-shadow:0 0 7px 1px rgba(127,214,242,.75);}
 
-/* The shockwave from a finished check reaches the background. The
-   whole field lifts and flares for a moment, then settles - which is
-   what ties the impact to the scenery instead of leaving them as two
-   unrelated animations happening at once. */
+/* A finished check reaches the background: the field lifts, flares
+   and settles, so the impact and the scenery read as one event. */
 .fx-embers.surge{animation:ember-surge 2.8s cubic-bezier(.15,.8,.35,1);}
 @keyframes ember-surge{
   0%{filter:brightness(1);transform:translateY(0);}
   7%{filter:brightness(2.5) saturate(1.3);transform:translateY(-12px);}
   100%{filter:brightness(1);transform:translateY(0);}
 }
-/* Thrown up by the blast itself: faster, bigger, and gone afterwards,
-   rather than joining the permanent field. */
+/* Thrown up by the blast: faster, bigger, and gone afterwards. */
 .ember--blast{
   width:4px;height:4px;
   animation:ember-blast 2s cubic-bezier(.08,.72,.3,1) forwards;
@@ -120,61 +104,42 @@ body{
   100%{opacity:0;transform:translate3d(var(--drift,14px),-102vh,0) scale(1.15);}
 }
 
-/* Nothing loops while the window is not the one being watched.
+/* Nothing loops while the window is not being watched. `*` rather than
+   a list of the looping animations, because a list misses whatever gets
+   added next - it already missed the first-place sheen. Paused, not
+   disabled, so coming back is instant. Set in idleWhenUnwatched,
+   js/boot.js.
 
-   This started as a list - embers, the header rule - and the list was
-   wrong by construction: the first-place sheen kept sweeping because it
-   was not on it, and the next looping thing added would have been
-   missed the same way. There are seven infinite animations across these
-   files and no reason for any of them to run when nobody is looking, so
-   the rule is everything, and a new one is covered the day it is
-   written.
-
-   Paused, not disabled: every animation keeps its position, so coming
-   back is instant and anything mid-flight simply carries on. See
-   idleWhenUnwatched in js/boot.js for what sets the class. */
-.is-idle *,
+   The exceptions are the animations that run once and are supposed to
+   end. Freezing those mid-flight is not a pause, it is a stuck frame: a
+   value refreshed while you were away stayed lit until you came back,
+   and panels that deployed in the meantime sat at opacity 0. */
+.is-idle *:not(.value-changed):not(.delta):not(.match-panel),
 .is-idle *::before,
-.is-idle *::after{animation-play-state:paused !important;}
+.is-idle *:not(.side-pulse)::after{animation-play-state:paused !important;}
 
 /* ==========================================================
    SCROLLBARS
-   Two surfaces on this page scroll - the popovers and the map's
-   detail column - and both were doing it with the browser's own
-   scrollbar: 15px, opaque, square, and the one grey on screen that
-   belongs to no palette here.
-
-   The -webkit- pseudo-elements rather than the standard
-   scrollbar-width/scrollbar-color pair, and that is a choice, not an
-   oversight: the standard properties offer only "thin" and two flat
-   colours, and declaring them in Chromium 121+ switches these rules
-   off entirely. Firefox falling back to its own scrollbar is the
-   trade.
+   The popovers and the map's detail column. -webkit- pseudo-elements
+   and not scrollbar-width/scrollbar-color: declaring those in
+   Chromium 121+ turns these rules off entirely. Firefox keeps its
+   own scrollbar, which is the trade.
    ========================================================== */
 .info-popover::-webkit-scrollbar,
 .wvw-detail::-webkit-scrollbar{width:9px;}
 
-/* No track. The popover is already a lit gradient panel; a track would
-   draw a second box inside the first one. */
 .info-popover::-webkit-scrollbar-track,
 .wvw-detail::-webkit-scrollbar-track{background:transparent;}
 
-/* The white square at the foot of the scrollbar, and the thing that
-   actually had to be styled here. When an element is resizable AND
-   scrolls, Chromium shortens the scrollbar and reserves a square below
-   it for the resize grip to live in - and that square is painted by
-   this pseudo-element, not by ::-webkit-resizer, with an opaque
-   near-white default. Styling the track and the thumb never reached
-   it, which is why hiding the grip left the square exactly where it
-   was. */
+/* Not ::-webkit-resizer. When an element is resizable AND scrolls,
+   Chromium reserves a square below the scrollbar for the grip and
+   paints it here, opaque near-white. Styling the track and the thumb
+   never reached it. */
 .info-popover::-webkit-scrollbar-corner,
 .wvw-detail::-webkit-scrollbar-corner{background:transparent;}
 
-/* Transparent border clipped to the padding box, so the thumb reads as
-   5px of colour with air either side instead of a 9px bar shoved
-   against the wall. It sits in the slate until you reach for it and
-   then picks up the accent - the same move every other control here
-   makes on hover. */
+/* Transparent border clipped to the padding box: 5px of colour with
+   air either side, instead of a 9px bar against the wall. */
 .info-popover::-webkit-scrollbar-thumb,
 .wvw-detail::-webkit-scrollbar-thumb{
   background-color:rgba(154,164,178,.30);
@@ -187,83 +152,57 @@ body{
   background-color:rgba(127,214,242,.55);
 }
 
+/* Firefox, which has none of the above and was left with the 15px grey
+   OS scrollbar in the middle of a dark translucent panel. It cannot go
+   outside this @supports: declaring scrollbar-width in Chromium turns
+   every -webkit- rule above off. Firefox does not know
+   ::-webkit-scrollbar, so it is the only engine that gets here. */
+@supports not selector(::-webkit-scrollbar) {
+  .info-popover,
+  .wvw-detail{
+    scrollbar-width:thin;
+    scrollbar-color:rgba(154,164,178,.45) transparent;
+  }
+}
+
 /* ==========================================================
    THE REST OF THE BROWSER'S OWN CHROME
-   Everything below is something the user agent draws for itself, and
-   it arrives the same way every time: opaque, square, and in the
-   operating system's palette rather than this page's. That is the
-   opposite of all four things this design does everywhere else - lit
-   from above, translucent over artwork, slate at rest and accent on
-   reach, and a dark shadow under any text that sits on the photo. So
-   these are not four unrelated tweaks; they are the same rule applied
-   to the last four places the browser still had its own opinion.
-
-   Written as bare selectors on purpose. Scoping them to today's
-   elements would mean the next popover with `resize` on it, or the
-   next input, quietly gets the white one back - the same trap the
-   .is-idle rule above is written to avoid.
+   Four things the user agent still paints in the OS palette. Bare
+   selectors on purpose: scoping them to today's elements means the
+   next input quietly gets the white one back.
    ========================================================== */
 
-/* The resize grip, and the one place in this block where a bare
-   selector was the wrong call. It was written bare on the same
-   reasoning as the rules around it - cover the next element that needs
-   it - but `resize` is on two elements that are not alike: the guild
-   popover, a small translucent panel floating over artwork, and the
-   textarea in the middle of the page, which is a solid sunken field
-   with a real border. The browser's own grip belongs on the second one
-   and was made worse by a drawn replacement, so the textarea keeps it.
-
-   And on the popover the grip is taken away rather than restyled. The
-   narrowed scrollbar leaves that corner 9px wide, and anything drawn
-   into 9px on a rounded translucent edge reads as a smudge, not as a
-   control. resize:vertical still works and the cursor still changes
-   over the corner, so the drag survives untouched; the expand button
-   in the header is the discoverable path either way. */
+/* The resize grip, and the one rule here that is scoped: `resize` is
+   on two unalike elements. The textarea is a solid sunken field and
+   keeps the browser's grip, which a drawn replacement only made worse.
+   On the popover the narrowed scrollbar leaves that corner 9px wide,
+   where anything drawn reads as a smudge - so it goes. resize:vertical
+   and the cursor still work. */
 .info-popover--guilds::-webkit-resizer{background:none;}
 
-/* Selected text. The default is the OS accent - a saturated blue that
-   belongs to Windows, not here. Background only, never a colour: one
-   rule on this page is that a colour means a team (see standings.css),
-   and forcing selected text to one shade would break it for as long as
-   the selection lasts. */
+/* Background only, never a colour: a colour means a team on this page
+   (see standings.css), and forcing selected text to one shade would
+   break that for as long as the selection lasts. */
 ::selection{background-color:rgba(127,214,242,.22);}
 
-/* The placeholder was the UA grey, close enough to real text to be read
-   as content. Dim enough to say "example", still clear at 4.99:1. */
+/* The UA grey read as content. Dim enough to say "example", still
+   4.99:1. */
 ::placeholder{color:#79838f;opacity:1;}
 
-/* Keyboard focus. There was no rule for it at all, so every button and
-   link on the page fell back to the user agent's own ring - which in
-   Chromium is a white outer band with a dark inner one, the same opaque
-   white the resize grip was, in a dozen more places.
-
-   Deliberately on the element types rather than on the classes. There
-   are thirteen kinds of button here and more will be written; listing
-   them would mean the fourteenth silently gets the white one back.
-
-   Outline only, never box-shadow. The buttons and the popovers carry
-   their relief in stacked box-shadows, and a focus rule that set one
-   would wipe the lighting off whatever it touched.
-
-   The offset is what makes this legible on the cyan button: pushed
-   clear of the border box, the ring lands on the dark card behind it
-   rather than on the button's own face. And :focus-visible, not
-   :focus, so a mouse click never draws it - only reaching the control
-   by keyboard does. The textarea keeps its own :focus rule above,
-   which is higher specificity and correct for a text field, where the
-   caret should be announced however you got there.
-
-   .wvw-marker is the one exception and it stays one: it sets
-   outline:none and paints a white ring on the marker itself, in
-   maps.css, which loads after this file and wins. */
+/* Keyboard focus. On the element types and not the classes: there are
+   thirteen kinds of button here, and listing them means the fourteenth
+   gets Chromium's white ring back. Outline, never box-shadow - the
+   buttons carry their relief in stacked box-shadows and a focus rule
+   that set one would wipe it. The offset puts the ring on the dark card
+   behind the cyan button rather than on its face. The textarea keeps
+   its own :focus rule, and .wvw-marker opts out in maps.css, which
+   loads later and paints a ring on the marker itself. */
 button:focus-visible,
 a:focus-visible{
   outline:2px solid var(--accent-bright);
   outline-offset:2px;
 }
 
-/* Tapping a control on a phone flashed the Android default - a grey
-   black wash that belongs to the OS. Same accent every hover here uses,
-   at the weight a touch deserves. Set on the root because the property
-   inherits, so it covers what gets written next as well. */
+/* Android's default is a grey-black wash. On the root because the
+   property inherits, so it covers whatever gets written next. */
 html{-webkit-tap-highlight-color:rgba(127,214,242,.18);}
