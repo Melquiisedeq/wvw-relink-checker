@@ -8,6 +8,12 @@
   --accent-bright:#66f5ff;
   --accent-soft:rgba(127,214,242,.14);
   --ok:#4caf7d;
+  /* The ember colour, promoted to a token. It was already on the page -
+     the embers drifting up behind the header are #ffb765, written there
+     as "the warm counterpoint to all that cold blue". A deadline needs
+     to not be cyan, because cyan on this page means something you can
+     touch, and the warm counterpoint already existed. */
+  --warn:#ffb765;
   --err:#e15c5c;
   --blue:#5b8ff0;
   --green:#4caf7d;

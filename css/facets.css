@@ -108,13 +108,26 @@
 .skel-title{height:9px;width:46px;margin-bottom:9px;}
 .skel-row{height:34px;margin:5px 0;border-radius:8px;}
 
-/* Relink inside six hours: the banner starts breathing. */
+/* Relink inside six hours: the banner starts breathing.
+
+   The outline is what moves, not just a halo behind it. A cyan glow was
+   the first try and it could not be seen at all - this bar already has
+   a cyan border, a lit cyan top edge and a blue-grey fill, so cyan
+   light spilling off it lands on more of the same and reads as nothing.
+   Brightening the edge itself gives the pulse something to travel
+   along, and the spread is -2px rather than -8px because a negative
+   spread that large shrinks the glow back inside the shape it came
+   from.
+
+   Still the quieter of the two. The lockout below beats it on hue,
+   which is the axis a glance actually reads. */
 .relink-banner.is-urgent{
-  border-color:rgba(127,214,242,.45);
+  border-color:rgba(127,214,242,.32);
   animation:urgent-pulse 2.6s ease-in-out infinite;
 }
 @keyframes urgent-pulse{
   0%,100%{
+    border-color:rgba(127,214,242,.30);
     box-shadow:
       inset 0 1px 0 rgba(200,240,255,.18),
       inset 0 -1px 0 rgba(0,0,0,.4),
@@ -123,15 +136,81 @@
       0 0 0 0 rgba(127,214,242,0);
   }
   50%{
+    border-color:rgba(175,232,252,.72);
     box-shadow:
       inset 0 1px 0 rgba(200,240,255,.18),
       inset 0 -1px 0 rgba(0,0,0,.4),
       0 2px 3px rgba(0,0,0,.4),
       0 16px 32px -16px rgba(0,0,0,.85),
-      0 0 26px -6px rgba(127,214,242,.5);
+      0 0 22px -2px rgba(127,214,242,.55);
   }
 }
-.relink-banner.is-urgent .relink-stat--primary .relink-stat-value{color:var(--accent-bright);}
+/* The stat that lights is the one that is running out, and it was the
+   wrong one. This rule used to name .relink-stat--primary, which is the
+   Season Lockout - but the class it hangs off fires on the relink, so
+   six hours before a reset the page brightened a number that had four
+   days left on it. :not() rather than a new class because the bar holds
+   exactly two stats and one of them is primary by definition. */
+.relink-banner.is-urgent .relink-stat:not(.relink-stat--primary) .relink-stat-value .time{
+  color:var(--accent-bright);
+  /* Lit, not just recoloured. #f2f6fa to #66f5ff is a hue step at
+     almost the same lightness, so on its own it barely registers; the
+     halo is what makes the number read as switched on. */
+  text-shadow:0 1px 2px rgba(0,0,0,.6), 0 0 12px rgba(102,245,255,.55);
+}
+
+/* ---- Season lockout inside three days --------------------------- */
+/* Amber, not cyan. Cyan on this page means something you can touch or
+   something happening now, and a deadline is neither - it is the one
+   thing here you cannot click your way out of. The colour is the
+   ember's, already on the page behind the header.
+
+   Louder than the relink pulse on every axis: brighter border, wider
+   glow, shorter cycle. That ordering is the whole feature - a relink
+   costs you a week of not knowing who you fight, this costs a month on
+   a different team from your guild. */
+.relink-banner.is-lockout{
+  border-color:rgba(255,183,101,.5);
+  animation:lockout-pulse 2.1s ease-in-out infinite;
+}
+@keyframes lockout-pulse{
+  0%,100%{
+    border-color:rgba(255,183,101,.42);
+    box-shadow:
+      inset 0 1px 0 rgba(200,240,255,.18),
+      inset 0 -1px 0 rgba(0,0,0,.4),
+      0 2px 3px rgba(0,0,0,.4),
+      0 16px 32px -16px rgba(0,0,0,.85),
+      0 0 0 0 rgba(255,183,101,0);
+  }
+  50%{
+    border-color:rgba(255,206,150,.95);
+    box-shadow:
+      inset 0 1px 0 rgba(200,240,255,.18),
+      inset 0 -1px 0 rgba(0,0,0,.4),
+      0 2px 3px rgba(0,0,0,.4),
+      0 16px 32px -16px rgba(0,0,0,.85),
+      0 0 36px 0 rgba(255,183,101,.66);
+  }
+}
+.relink-banner.is-lockout .relink-stat--primary .relink-stat-title{
+  color:var(--warn);
+  display:inline-flex;align-items:center;gap:5px;
+}
+.relink-banner.is-lockout .relink-stat--primary .relink-stat-value{
+  color:var(--warn);
+  text-shadow:0 1px 2px rgba(0,0,0,.7), 0 0 16px rgba(255,183,101,.45);
+}
+/* What to do about it, which is the half a countdown cannot say. Sits
+   under a hairline so it reads as a consequence of the number above
+   rather than as a third stat beside it. */
+.relink-alert{
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  margin-top:7px;padding-top:7px;
+  border-top:1px solid rgba(255,183,101,.16);
+  color:#f5d9b4;font-size:.74rem;line-height:1.4;text-align:center;
+}
+.relink-alert svg{flex-shrink:0;color:var(--warn);}
 
 /* ==========================================================
    TYPOGRAPHY

@@ -19,13 +19,23 @@ function formatCountdown(msRemaining) {
   return `${minutes}m`;
 }
 
-function buildRelinkStat(title, value, isPrimary, tooltip) {
+// Feather's alert-triangle, at the weight the other glyphs on the page
+// are drawn. Used in two places - the stat's own label and the line
+// underneath - so it lives here rather than being typed twice.
+const WARN_ICON =
+  '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
+  'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>' +
+  '<path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+
+function buildRelinkStat(title, value, isPrimary, tooltip, warn) {
   const stat = document.createElement('div');
   stat.className = isPrimary ? 'relink-stat relink-stat--primary' : 'relink-stat';
   if (tooltip) stat.title = tooltip;
   const titleEl = document.createElement('div');
   titleEl.className = 'relink-stat-title';
   titleEl.textContent = title;
+  if (warn) titleEl.insertAdjacentHTML('afterbegin', WARN_ICON);
   const valueEl = document.createElement('div');
   valueEl.className = 'relink-stat-value';
   if (typeof value === 'string') {
@@ -120,18 +130,32 @@ function updateRelinkBanner() {
     divider.className = 'relink-divider';
     inner.appendChild(divider);
   }
+  // Three days, against the relink's six hours, and the gap between
+  // those two numbers is the whole point. Missing a relink costs you a
+  // week of not knowing who you fight; missing the lockout can put you
+  // on a different team from your guild for a month, and there is no
+  // way to undo it once it passes.
+  const LOCKOUT_URGENT_MS = 3 * 24 * 60 * 60 * 1000;
+  const lockoutLeft = hasLockout ? lockoutTime - now : null;
+  const lockoutUrgent = lockoutLeft !== null
+    && lockoutLeft > 0 && lockoutLeft <= LOCKOUT_URGENT_MS;
+
   if (hasLockout) {
     // Primary stat: larger, accent-colored text. Once the published
-    // timestamp is in the past, there's no next value until the next
-    // relink, so show a static message instead of a stuck countdown.
-    const lockoutValue = lockoutTime - now > 0
-      ? formatCountdown(lockoutTime - now)
-      : 'resumes after next relink';
+    // timestamp is in the past there is no next value until teams are
+    // rebuilt, which is several days later - and in that window the
+    // game will not let you change your WvW guild at all. So the stat
+    // says it is shut rather than promising it will come back: "locked"
+    // is the part a player can act on, "resumes" is not.
+    const lockoutValue = lockoutLeft > 0
+      ? formatCountdown(lockoutLeft)
+      : 'Locked until relink';
     inner.appendChild(buildRelinkStat(
       'Season Lockout',
       lockoutValue,
       true,
-      'Deadline for the current WvW season, after which team assignments can change.'
+      'The last moment to set your WvW guild. After it passes your team for the next month is fixed and cannot be changed.',
+      lockoutUrgent
     ));
   }
   // Inside the last six hours the banner starts breathing, so the tab
@@ -141,11 +165,38 @@ function updateRelinkBanner() {
     .filter((t) => t !== null)
     .map((t) => t - now)
     .filter((left) => left > 0);
-  relinkBanner.classList.toggle('is-urgent',
-    remaining.length > 0 && Math.min(...remaining) <= URGENT_MS);
+  const relinkUrgent = remaining.length > 0
+    && Math.min(...remaining) <= URGENT_MS;
+
+  // The lockout wins, and only one of the two ever runs. A three-day
+  // window contains a weekly reset about two cycles out of five, so the
+  // overlap is normal rather than freak - and two things pulsing at
+  // once reads as decoration instead of as an alarm. The relink stands
+  // down; its number is still on the bar, just not shouting.
+  relinkBanner.classList.toggle('is-lockout', lockoutUrgent);
+  relinkBanner.classList.toggle('is-urgent', relinkUrgent && !lockoutUrgent);
 
   relinkBanner.style.display = 'block';
   relinkBanner.appendChild(inner);
+
+  // The line only exists while it can still be acted on. A banner that
+  // tells you to do something you can no longer do is worse than no
+  // banner, so this is built from the same condition that lights the
+  // stat and disappears with it.
+  if (lockoutUrgent) {
+    const alert = document.createElement('div');
+    alert.className = 'relink-alert';
+    alert.innerHTML = WARN_ICON;
+    const text = document.createElement('span');
+    // Guild or team, not both: a player who has set a WvW guild cannot
+    // pick a team, and one who has not is the only one who can. Saying
+    // "guild or server" as though they were two options you choose
+    // between would send half the readers to a button they do not have.
+    text.textContent = 'Set your WvW guild before the lockout - or pick a team if you have none. '
+      + 'After it, your team is fixed for the month.';
+    alert.appendChild(text);
+    relinkBanner.appendChild(alert);
+  }
 }
 
 // Fetches the lockout timer once; fetchTimers() renders the banner itself once
