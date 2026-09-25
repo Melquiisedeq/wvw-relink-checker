@@ -184,6 +184,26 @@
    language as the rest. */
 .tier-map-btn{height:18px;gap:2px;color:var(--accent);}
 .tier-map-btn svg{width:18px;height:18px;}
+/* It reads brighter than the other cyan glyphs at rest, and not because
+   it is a different cyan - it is the same var(--accent) they all are.
+   It carries more ink: the largest of them at 18px, and an outline that
+   encloses the whole box rather than tracing one line or a pair of
+   blades. Stroke weight is not the culprit either - the shield's
+   effective stroke is 1.56px against this one's 1.50px - it is the area
+   the ink covers. And it sits next to a muted grey word instead of a lit
+   number, so it has the dimmest neighbour on the row to be measured
+   against.
+
+   Pulled back on opacity rather than on hue, because the hue is the
+   thing that carries meaning here - cyan is what can be touched - and a
+   duller cyan would say something the button does not mean. Handed back
+   in full on hover, alongside the colour step below. This is the number
+   to change if it still sits wrong. */
+.tier-map-btn svg{
+  opacity:.82;
+  transition:opacity .15s ease, filter .15s ease;
+}
+.tier-map-btn:hover svg,.tier-map-btn.active svg{opacity:1;}
 /* Deliberately the same as .stat-label two rules up - the muted grey at
    regular weight, no caps, no tracking - because that is what "Skirmish"
    is, and this was asked to read as its sibling. Caps and bold made it
