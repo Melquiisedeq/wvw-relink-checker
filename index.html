@@ -46,7 +46,7 @@
 -->
 <link rel="preconnect" href="https://api.guildwars2.com" crossorigin>
 <link rel="preconnect" href="https://render.guildwars2.com">
-<title>WvW Relink Checker - guild teams, live standings and maps</title>
+<title>WvW Relink Checker - Guild Wars 2 World vs World Teams and Standings</title>
 <!--
   Link preview metadata. The tool circulates as a bare URL in Discord, so
   the unfurled card is most of the first impression. Discord fetches
@@ -54,15 +54,55 @@
   CSP doesn't apply to it - but the URL has to be absolute for that same
   reason.
 -->
-<meta name="description" content="Paste your alliance's guild names and see which WvW team each one landed on after the relink, plus live NA and EU tier standings. Runs entirely in your browser.">
+<meta name="description" content="Guild Wars 2 WvW relink checker. Paste your guild names and see which WvW team each one landed on after the relink, with live NA and EU tier standings.">
 <meta name="theme-color" content="#0f1216">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="WvW Relink Checker">
-<meta property="og:title" content="WvW Relink Checker">
-<meta property="og:description" content="Paste your alliance's guild names and see which WvW team each one landed on after the relink, plus live NA and EU tier standings.">
+<meta property="og:title" content="WvW Relink Checker - Guild Wars 2 WvW">
+<meta property="og:description" content="Guild Wars 2 WvW relink checker. Paste your alliance's guild names and see which WvW team each one landed on after the relink, plus live NA and EU tier standings.">
 <meta property="og:url" content="https://wvwrelink.com/">
 <meta property="og:image" content="https://wvwrelink.com/assets/screenshot.webp">
 <meta name="twitter:card" content="summary_large_image">
+<!--
+  Structured data. Renders nothing - it exists so a search engine can be
+  told in its own vocabulary what this page is and which game it is
+  about, which is the thing the page could not say without spending
+  screen on it.
+
+  A data block, not a script: type is application/ld+json, so nothing
+  here is executed and script-src never evaluates it. Worth confirming
+  in the console once anyway rather than taking it on faith.
+
+  Deliberately no FAQPage. Google requires FAQ structured data to match
+  question-and-answer text that is actually visible on the page, and
+  there is none - claiming it would be the kind of markup that earns a
+  manual action rather than a rich result.
+-->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "WvW Relink Checker",
+  "alternateName": ["GW2 WvW Relink Checker", "Guild Wars 2 WvW Relink Checker"],
+  "url": "https://wvwrelink.com/",
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Any",
+  "browserRequirements": "Requires JavaScript",
+  "isAccessibleForFree": true,
+  "sameAs": "https://github.com/Melquiisedeq/wvw-relink-checker",
+  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+  "description": "Check which Guild Wars 2 WvW team your alliance's guilds landed on after the relink, with live NA and EU tier standings, scores and maps.",
+  "about": {
+    "@type": "VideoGame",
+    "name": "Guild Wars 2",
+    "alternateName": "GW2",
+    "url": "https://www.guildwars2.com/",
+    "sameAs": "https://en.wikipedia.org/wiki/Guild_Wars_2",
+    "publisher": {"@type": "Organization", "name": "ArenaNet"}
+  },
+  "keywords": "GW2 WvW relink, Guild Wars 2 WvW, WvW teams, WvW servers, WvW matchmaking, World Restructuring"
+}
+</script>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20160%20190%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22fiIceGrad%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23f2fdff%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%236fd8f5%22%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D%22fiShieldEdge%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%23eafcff%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%233fa9cc%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Cpath%20d%3D%22M10%2C10%20H150%20V95%20C150%2C145%20112%2C172%2080%2C188%20C48%2C172%2010%2C145%2010%2C95%20Z%22%20fill%3D%22%230f1216%22%20stroke%3D%22url%28%23fiShieldEdge%29%22%20stroke-width%3D%224%22%2F%3E%3Cpath%20d%3D%22M20%2C18%20H140%20V95%20C140%2C138%20108%2C162%2080%2C176%20C52%2C162%2020%2C138%2020%2C95%20Z%22%20fill%3D%22none%22%20stroke%3D%22%233fa9cc%22%20stroke-width%3D%221%22%20opacity%3D%220.5%22%2F%3E%3Cg%20fill%3D%22url%28%23fiIceGrad%29%22%20transform%3D%22translate%2838%2C55%29%22%3E%3Crect%20x%3D%220%22%20y%3D%2266%22%20width%3D%2284%22%20height%3D%2214%22%2F%3E%3Crect%20x%3D%2212%22%20y%3D%2230%22%20width%3D%2260%22%20height%3D%2238%22%2F%3E%3Crect%20x%3D%2212%22%20y%3D%2212%22%20width%3D%2210%22%20height%3D%2220%22%2F%3E%3Crect%20x%3D%2228%22%20y%3D%2212%22%20width%3D%2210%22%20height%3D%2220%22%2F%3E%3Crect%20x%3D%2244%22%20y%3D%2212%22%20width%3D%2210%22%20height%3D%2220%22%2F%3E%3Crect%20x%3D%2260%22%20y%3D%2212%22%20width%3D%2210%22%20height%3D%2220%22%2F%3E%3Crect%20x%3D%2238%22%20y%3D%22-8%22%20width%3D%226%22%20height%3D%2222%22%2F%3E%3Cpath%20d%3D%22M44%2C-8%20L64%2C-1%20L44%2C6%20Z%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E">
 <link rel="stylesheet" href="css/base.css">
 <link rel="stylesheet" href="css/layout.css">
