@@ -21,7 +21,7 @@ tr:last-child td{border-bottom:none;}
 .status-ok{color:var(--ok);}
 .status-err{color:var(--err);}
 .muted{color:#8d97a6;}
-footer{color:var(--muted);font-size:.78rem;text-align:center;margin-top:18px;line-height:1.6;}
+
 a{color:var(--accent);}
 .spinner{
   display:inline-block;width:14px;height:14px;border-radius:50%;
@@ -29,3 +29,71 @@ a{color:var(--accent);}
   animation:spin .7s linear infinite;vertical-align:-2px;margin-right:6px;
 }
 @keyframes spin{to{transform:rotate(360deg);}}
+
+/* The band that closes the page, and the only footer on it.
+
+   Brand on the left, links on the right - the pattern for a footer that
+   has to carry a name and still fit on one screen. The two earlier
+   attempts both failed by stacking: four centred rows the first time,
+   then three, which is how a one-page tool ends up with a footer you
+   scroll through.
+
+   The crest is the mark. Four objective icons sat here before and they
+   were the wrong symbol - the page signs itself with the shield, in the
+   title row, and a second mark underneath it only competed. */
+.gw2-band{
+  position:relative;z-index:1;
+  margin-top:6px;padding:11px 16px 13px;
+  background:linear-gradient(180deg, rgba(10,13,17,0), rgba(10,13,17,.66) 55%);
+  border-top:1px solid rgba(127,214,242,.09);
+}
+.gw2-band-inner{
+  max-width:860px;margin:0 auto;
+  display:flex;flex-wrap:wrap;align-items:center;
+  justify-content:space-between;gap:12px 24px;
+}
+.gw2-band-brand{display:flex;align-items:center;gap:10px;min-width:0;}
+/* Held back from full strength. It is the same crest as the title, and
+   at the bottom of the page it is signing off, not announcing. */
+.gw2-band-crest{flex-shrink:0;opacity:.8;}
+.gw2-band-words{display:flex;flex-direction:column;gap:1px;min-width:0;}
+.gw2-band-name{
+  font-size:.82rem;font-weight:700;color:var(--text);letter-spacing:.2px;
+}
+.gw2-band-tag{font-size:.74rem;color:var(--muted);line-height:1.35;}
+.gw2-band-links{display:flex;flex-wrap:wrap;align-items:center;}
+/* 24px tall, which is the floor WCAG 2.2 puts on a tap target that is
+   not inline in a sentence - and these are in a nav, so the sentence
+   exception does not cover them. It costs no height: the row is already
+   28px because of the crest beside it, so the links grow into space
+   that was being left empty. */
+.gw2-band-links a{
+  position:relative;
+  display:inline-flex;align-items:center;min-height:24px;
+  color:#8d97a6;text-decoration:none;font-size:.78rem;
+  padding:0 11px;line-height:1.2;
+  transition:color .15s ease;
+}
+/* Separators drawn between the links rather than typed into them, so
+   the first never carries a stray dot and a wrap never strands one at
+   the start of a line. Drawn as a pseudo-element rather than a border
+   because the border would now run the full 24px of the tap target and
+   turn the row into a table; this stays the height of the text. */
+.gw2-band-links a + a::before{
+  content:'';position:absolute;left:0;top:50%;
+  width:1px;height:11px;margin-top:-5.5px;
+  background:rgba(154,164,178,.22);
+}
+.gw2-band-links a:hover{color:var(--accent-bright);}
+/* Provenance and the trademark notice, below a hairline, at the
+   quietest weight on the page. */
+.gw2-band-fine{
+  max-width:900px;margin:9px auto 0;padding-top:8px;
+  border-top:1px solid rgba(255,255,255,.05);
+  color:#737c88;font-size:.68rem;line-height:1.5;text-align:center;
+}
+@media (max-width:560px){
+  .gw2-band-inner{flex-direction:column;justify-content:center;gap:12px;}
+  .gw2-band-brand{flex-direction:column;text-align:center;gap:7px;}
+  .gw2-band-words{align-items:center;}
+}

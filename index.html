@@ -236,12 +236,6 @@ One More Guild Name"></textarea>
   </div>
   <div id="matchPanelsContainer" style="display:flex;flex-direction:column;gap:16px;"></div>
 
-  <footer>
-    Data comes straight from the <a href="https://wiki.guildwars2.com/wiki/API:Main" target="_blank" rel="noopener noreferrer">Guild Wars 2 API</a>.
-    Team names aren't something the API can look up on its own, so those
-    come from ArenaNet's static team list, combined live with real match
-    data every time the page loads or you run a check.
-  </footer>
 </div>
 
 <aside class="rail rail-right">
@@ -265,6 +259,54 @@ One More Guild Name"></textarea>
   </div>
 </aside>
 </div>
+
+<!-- The one place the page ends. It used to end twice - a <footer> with
+     the API credit inside the 720px column and this band under it -
+     which is most of why the bottom read as unresolved.
+
+     The crest is the mark, the same one in the title row. It was four
+     objective icons before, which put a second symbol against the one
+     the page already signs itself with; two marks competing is what
+     made the bottom look piled rather than finished. The gradients are
+     referenced by id from the title icon's <defs>, the way the impact
+     overlay does - they are document-scoped, so nothing is duplicated.
+
+     Brand left, links right: the pattern for a footer that has to stay
+     one screen and still carry a name. It collapses to a centred stack
+     below 560px. -->
+<footer class="gw2-band">
+  <div class="gw2-band-inner">
+    <div class="gw2-band-brand">
+      <svg class="gw2-band-crest" width="24" height="28" viewBox="0 0 160 190" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+        <path d="M10,10 H150 V95 C150,145 112,172 80,188 C48,172 10,145 10,95 Z" fill="#0f1216" stroke="url(#shieldEdge)" stroke-width="4"/>
+        <g fill="url(#iceGrad)" transform="translate(38,55)">
+          <rect x="0" y="66" width="84" height="14"/>
+          <rect x="12" y="30" width="60" height="38"/>
+          <rect x="12" y="12" width="10" height="20"/>
+          <rect x="28" y="12" width="10" height="20"/>
+          <rect x="44" y="12" width="10" height="20"/>
+          <rect x="60" y="12" width="10" height="20"/>
+          <rect x="38" y="-8" width="6" height="22"/>
+          <path d="M44,-8 L64,-1 L44,6 Z"/>
+        </g>
+      </svg>
+      <span class="gw2-band-words">
+        <span class="gw2-band-name">WvW Relink Checker</span>
+        <span class="gw2-band-tag">A community tool for Guild Wars 2 World vs World</span>
+      </span>
+    </div>
+    <nav class="gw2-band-links" aria-label="Guild Wars 2 resources">
+      <a href="https://www.guildwars2.com/" target="_blank" rel="noopener noreferrer">Guild Wars 2</a>
+      <a href="https://wiki.guildwars2.com/wiki/World_versus_World" target="_blank" rel="noopener noreferrer">WvW Wiki</a>
+      <a href="https://wiki.guildwars2.com/wiki/API:Main" target="_blank" rel="noopener noreferrer">GW2 API</a>
+      <a href="https://github.com/Melquiisedeq/wvw-relink-checker" target="_blank" rel="noopener noreferrer">Source</a>
+    </nav>
+  </div>
+  <p class="gw2-band-fine">
+    Live data from the Guild Wars 2 API, team names from ArenaNet's static list.
+    Unofficial fan site; Guild Wars 2 and ArenaNet are trademarks of NCSOFT.
+  </p>
+</footer>
 
 <div class="impact-overlay" id="impactOverlay">
   <!-- Reuses the #iceGrad and #shieldEdge gradients defined in the title icon's <defs> above -->
