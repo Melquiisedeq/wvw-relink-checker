@@ -23,5 +23,14 @@
 .side-blue,.col-blue{--side-edge:rgba(91,143,240,.45);--side-fill:rgba(31,41,56,.62);--side-rail:var(--blue);--side-glow:rgba(160,195,255,.9);}
 .side-green,.col-green{--side-edge:rgba(76,175,125,.45);--side-fill:rgba(29,45,44,.62);--side-rail:var(--green);--side-glow:rgba(150,235,195,.9);}
 
-/* Your guild's side: bolder name plus a bright pin badge */
-.team-col.is-yours .team-name{color:var(--accent);}
+/* Your guild's side. The comment here always promised "bolder name",
+   but the rule only ever changed the colour - and the colour it changed
+   it to was the accent, which on this page means something you can
+   touch. A team name is not a control, so it was borrowing a meaning
+   that was not its own and dissolving into every other cyan thing on
+   screen at the same time.
+
+   Weight instead, which is what was written down. Nothing is lost by
+   dropping the colour: the pin badge below already names the guild that
+   put you in this column, so the column was never ambiguous. */
+.team-col.is-yours .team-name{font-weight:800;}
