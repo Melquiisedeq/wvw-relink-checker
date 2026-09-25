@@ -125,7 +125,7 @@ GitHub Pages needs in order to serve it.
 index.html   markup, the CSP, and the ordered list of scripts
 css/         one stylesheet per concern
 js/          one file per concern, loaded in order; boot.js runs last
-assets/      map renders, game icons, and the screenshot
+assets/      map renders, game icons, and the link-preview card
 ```
 
 The scripts are plain (non-module) and share one global scope, so the

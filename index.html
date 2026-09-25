@@ -53,6 +53,20 @@
   og:image from its own servers, not from the page, so this page's img-src
   CSP doesn't apply to it - but the URL has to be absolute for that same
   reason.
+
+  og:image was a full-page screenshot, which failed at the only size it
+  is ever seen: an unfurl renders around 400px wide, and at that width a
+  standings table is texture rather than information - the card did not
+  even say the name of the tool. It is a purpose-built card now, drawn
+  from this page's own header so it is the same thing the visitor lands
+  on.
+
+  1200x630 because that is what every unfurl component is built around;
+  the 1280x640 twin that GitHub wants for its repository preview is a
+  separate render, not this file scaled. JPEG rather than PNG because
+  WhatsApp drops previews it judges too heavy and the PNG was 357 KB
+  against this file's 103 KB. Width and height are declared so a scraper
+  can lay the card out before the image finishes downloading.
 -->
 <meta name="description" content="Guild Wars 2 WvW relink checker. Paste your guild names and see which WvW team each one landed on after the relink, with live NA and EU tier standings.">
 <meta name="theme-color" content="#0f1216">
@@ -61,7 +75,10 @@
 <meta property="og:title" content="WvW Relink Checker - Guild Wars 2 WvW">
 <meta property="og:description" content="Guild Wars 2 WvW relink checker. Paste your alliance's guild names and see which WvW team each one landed on after the relink, plus live NA and EU tier standings.">
 <meta property="og:url" content="https://wvwrelink.com/">
-<meta property="og:image" content="https://wvwrelink.com/assets/screenshot.webp">
+<meta property="og:image" content="https://wvwrelink.com/assets/social-card.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="WvW Relink Checker - find out which WvW team your alliance landed on, in one paste.">
 <meta name="twitter:card" content="summary_large_image">
 <!--
   Structured data. Renders nothing - it exists so a search engine can be
