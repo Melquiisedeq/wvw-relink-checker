@@ -18,9 +18,23 @@
   display:inline-flex;align-items:center;justify-content:center;
   width:22px;height:22px;border-radius:50%;
   background:var(--accent-soft);color:var(--accent);
-  opacity:.85;transition:opacity .15s ease, background .15s ease;
+  opacity:.85;
+  transition:opacity .15s ease, background .15s ease,
+             color .15s ease, box-shadow .15s ease;
 }
-.leaderboard-link:hover{opacity:1;background:rgba(127,214,242,.28);}
+/* The same lighting as the icon buttons, translated for the one icon on
+   this page that has a body. Those are bare glyphs, so their glow is a
+   drop-shadow tracing the outline; inside a filled 22px disc the same
+   filter would bleed into its own background and read as a smudge. A
+   box-shadow on the disc is the body-shaped version of it, and the
+   colour step to --accent-bright is identical - that step is what the
+   whole family now means by lit. */
+.leaderboard-link:hover{
+  opacity:1;
+  background:rgba(127,214,242,.28);
+  color:var(--accent-bright);
+  box-shadow:0 0 10px -1px rgba(127,214,242,.55);
+}
 .leaderboard-link svg{display:block;}
 .standings-grid{display:flex;flex-direction:column;gap:10px;}
 .standing-match{border:1px solid rgba(255,255,255,.05);border-radius:10px;padding:9px 10px;}
