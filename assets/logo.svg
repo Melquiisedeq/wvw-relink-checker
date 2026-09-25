@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 190" width="160" height="190" role="img" aria-labelledby="t">
+  <title id="t">WvW Relink Checker</title>
+  <defs>
+    <linearGradient id="iceGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f2fdff"/>
+      <stop offset="100%" stop-color="#6fd8f5"/>
+    </linearGradient>
+    <linearGradient id="shieldEdge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#eafcff"/>
+      <stop offset="100%" stop-color="#3fa9cc"/>
+    </linearGradient>
+  </defs>
+  <path d="M10,10 H150 V95 C150,145 112,172 80,188 C48,172 10,145 10,95 Z" fill="#0f1216" stroke="url(#shieldEdge)" stroke-width="4"/>
+  <path d="M20,18 H140 V95 C140,138 108,162 80,176 C52,162 20,138 20,95 Z" fill="none" stroke="#3fa9cc" stroke-width="1" opacity="0.5"/>
+  <g fill="url(#iceGrad)" transform="translate(38,55)">
+    <rect x="0" y="66" width="84" height="14"/>
+    <rect x="12" y="30" width="60" height="38"/>
+    <rect x="12" y="12" width="10" height="20"/>
+    <rect x="28" y="12" width="10" height="20"/>
+    <rect x="44" y="12" width="10" height="20"/>
+    <rect x="60" y="12" width="10" height="20"/>
+    <rect x="38" y="-8" width="6" height="22"/>
+    <path d="M44,-8 L64,-1 L44,6 Z"/>
+  </g>
+</svg>

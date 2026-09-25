@@ -1,6 +1,8 @@
 <div align="center">
 
-# ⚔️ WvW Relink Checker
+<img src="assets/logo.svg" width="100" alt="WvW Relink Checker">
+
+# WvW Relink Checker
 
 **Find out which WvW team your alliance landed on — in one paste.**
 
