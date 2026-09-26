@@ -294,7 +294,17 @@ const emberField = (function () {
 
   resize();
   draw();
-  window.addEventListener('resize', resize);
+  // One per frame. Dragging a window edge fires resize continuously, and
+  // each call reallocates the whole backing store - some 14MB at 1440p -
+  // and rasterises the four sprites again, for frames the canvas never
+  // gets to show. If the tab is hidden the frame never comes and the
+  // flag simply stays up until it does, which is when the size matters.
+  let resizeQueued = false;
+  window.addEventListener('resize', () => {
+    if (resizeQueued) return;
+    resizeQueued = true;
+    requestAnimationFrame(() => { resizeQueued = false; resize(); });
+  });
 
   return {
     start() {
