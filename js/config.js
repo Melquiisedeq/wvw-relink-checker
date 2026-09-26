@@ -57,6 +57,18 @@ function matchTeamId(match, color) {
   return teamId !== undefined ? String(teamId) : null;
 }
 
+// A match whose end_time has passed describes a week that is over: the
+// scores are final, the objectives are frozen where they stood and the
+// maps are last week's. ArenaNet republishes the tiers one at a time and
+// not always forwards - during the relink of 26/09 tier 4 was on the new
+// week while 1, 2 and 3 were still on the old, and tier 2 published the
+// new week and then went back to the old one. So this is asked of a
+// single match, never of a region.
+function matchIsLive(match) {
+  const end = Date.parse(match && match.end_time);
+  return Number.isFinite(end) && end > Date.now();
+}
+
 const API_BASE = "https://api.guildwars2.com/v2";
 const GUID_RE = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i;
 

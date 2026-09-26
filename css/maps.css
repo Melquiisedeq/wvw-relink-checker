@@ -36,6 +36,16 @@
   cursor:grab;touch-action:none;
 }
 .wvw-plot-wrap.is-panning{cursor:grabbing;}
+/* Sits over the bottom of the plot while a map has no owners yet. The
+   ground, the sectors and the objective positions are all still right -
+   only the colours are late - so this explains rather than apologises. */
+.wvw-waiting{
+  position:absolute;left:0;right:0;bottom:0;margin:0;
+  padding:6px 10px;text-align:center;
+  font-size:.68rem;font-style:italic;color:#8d97a6;
+  background:linear-gradient(180deg, rgba(12,15,20,0), rgba(12,15,20,.82) 55%);
+  pointer-events:none;
+}
 .wvw-plot{display:block;width:100%;height:auto;max-height:70vh;}
 
 /* Each sector is tinted by whoever holds the objective inside it, which

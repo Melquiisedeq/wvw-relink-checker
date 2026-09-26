@@ -51,11 +51,39 @@ function buildRelinkStat(title, value, isPrimary, tooltip, warn) {
 // Inside the last two hours the banner starts breathing, so the tab
 // catches your eye from across the desk on reset night.
 const RELINK_URGENT_MS = 2 * 60 * 60 * 1000;
+// How long after a week is published before its maps are up and you can
+// get on one. Measured across four matches - EU mid-week, NA at a fresh
+// reset and NA a full week old - and every one opened at start_time plus
+// 3m37s to 3m46s. Five minutes covers that with room, and the line dies
+// with it: "get in early" is no use once the doors are open and the
+// queue is the queue.
+const RELINK_OPENING_MS = 5 * 60 * 1000;
+// Only reached when nothing has been published anywhere. A tier normally
+// turns up within minutes, so this is the fuse for an API that has
+// stopped answering, not a window anyone is meant to see the end of.
+const RELINK_STUCK_MS = 30 * 60 * 1000;
 
-// Which of the two is actually running out. NA and EU relink at
-// different times, so this is per region rather than per banner.
-function relinkIsUrgent(ms) {
-  return ms !== null && ms > 0 && ms <= RELINK_URGENT_MS;
+// Whether a region's relink is close enough to shout about. Three ways
+// in, handing over to each other so the bar never blinks out in the
+// middle of a reset:
+//
+//   before   the countdown is inside two hours
+//   during   every tier is still on the week that just ended, so the
+//            new one has not been published anywhere yet
+//   opening  the new week is published but its maps are not up
+//
+// NA and EU relink at different times, so this is asked per region.
+function regionIsUrgent(relinkAt, resetAt, hasLive, now) {
+  if (relinkAt !== null) {
+    const left = relinkAt - now;
+    if (left > 0 && left <= RELINK_URGENT_MS) return true;
+    if (!hasLive && left <= 0 && left > -RELINK_STUCK_MS) return true;
+  }
+  if (resetAt !== null) {
+    const since = now - resetAt;
+    if (since >= 0 && since < RELINK_OPENING_MS) return true;
+  }
+  return false;
 }
 
 // Crossed swords, at the weight the other glyphs on the page are drawn.
@@ -70,13 +98,13 @@ const SWORDS_ICON =
 
 // Dims the region labels (NA/EU) and emphasizes the countdown values,
 // since the time is what the person actually came to read.
-function buildRelinkValue(naMs, euMs) {
+function buildRelinkValue(naMs, euMs, naNow, euNow) {
   const frag = document.createDocumentFragment();
   const naRegion = document.createElement('span');
-  naRegion.className = relinkIsUrgent(naMs) ? 'region is-now' : 'region';
+  naRegion.className = naNow ? 'region is-now' : 'region';
   naRegion.textContent = 'NA ';
   const naTime = document.createElement('span');
-  naTime.className = relinkIsUrgent(naMs) ? 'time is-now' : 'time';
+  naTime.className = naNow ? 'time is-now' : 'time';
   naTime.textContent = formatCountdown(naMs);
   // The dot is its own element so that it never lights: folded into
   // ' . EU ' as it used to be, the separator would carry EU's is-now and
@@ -85,10 +113,10 @@ function buildRelinkValue(naMs, euMs) {
   sep.className = 'region';
   sep.textContent = ' · ';
   const euRegion = document.createElement('span');
-  euRegion.className = relinkIsUrgent(euMs) ? 'region is-now' : 'region';
+  euRegion.className = euNow ? 'region is-now' : 'region';
   euRegion.textContent = 'EU ';
   const euTime = document.createElement('span');
-  euTime.className = relinkIsUrgent(euMs) ? 'time is-now' : 'time';
+  euTime.className = euNow ? 'time is-now' : 'time';
   euTime.textContent = formatCountdown(euMs);
   frag.append(naRegion, naTime, sep, euRegion, euTime);
   return frag;
@@ -104,6 +132,10 @@ let timersLoaded = false;
 // no separate request; refreshes on the same cadence as standings.
 let relinkNA = null;
 let relinkEU = null;
+let resetNA = null;
+let resetEU = null;
+let liveNA = false;
+let liveEU = false;
 
 async function fetchTimers() {
   try {
@@ -122,9 +154,31 @@ async function fetchTimers() {
 
 // Reads each region's weekly matchup end_time straight off the match
 // objects already loaded for the standings rails.
+// The latest of a field across a region's matches. Reading one match -
+// naMatches[0], which is tier 1 - is a coin toss for as long as a relink
+// takes: on 26/09 tier 4 had been running the new week for forty minutes
+// while tiers 1 and 3 were still serving the old one, and tier 2
+// published the new week and then went back to the old. Whichever tier
+// is furthest ahead is the one that has seen the relink.
+function latestOf(matches, field) {
+  const times = (matches || [])
+    .map((m) => Date.parse(m && m[field]))
+    .filter(Number.isFinite);
+  return times.length ? Math.max(...times) : null;
+}
+
 function updateRelinkFromMatches(naMatches, euMatches) {
-  relinkNA = naMatches?.[0]?.end_time ? new Date(naMatches[0].end_time).getTime() : null;
-  relinkEU = euMatches?.[0]?.end_time ? new Date(euMatches[0].end_time).getTime() : null;
+  relinkNA = latestOf(naMatches, 'end_time');
+  relinkEU = latestOf(euMatches, 'end_time');
+  // The far side of the same event: when the newest published week
+  // began. It is what says the maps are about to open, which end_time
+  // cannot - by then end_time is a week away again.
+  resetNA = latestOf(naMatches, 'start_time');
+  resetEU = latestOf(euMatches, 'start_time');
+  // One tier still running the week it published is enough to know the
+  // new data exists somewhere.
+  liveNA = (naMatches || []).some(matchIsLive);
+  liveEU = (euMatches || []).some(matchIsLive);
   updateRelinkBanner();
 }
 
@@ -141,12 +195,15 @@ function updateRelinkBanner() {
   const inner = document.createElement('div');
   inner.className = 'relink-inner';
 
+  const naUrgent = regionIsUrgent(relinkNA, resetNA, liveNA, now);
+  const euUrgent = regionIsUrgent(relinkEU, resetEU, liveEU, now);
+
   if (hasRelink) {
     const naLeft = relinkNA !== null ? relinkNA - now : null;
     const euLeft = relinkEU !== null ? relinkEU - now : null;
     inner.appendChild(buildRelinkStat(
       'Next Relink',
-      buildRelinkValue(naLeft, euLeft),
+      buildRelinkValue(naLeft, euLeft, naUrgent, euUrgent),
       false,
       'When the current tier matchups end and everyone is shuffled into new pairings for the week.'
     ));
@@ -182,8 +239,7 @@ function updateRelinkBanner() {
       lockoutUrgent
     ));
   }
-  const relinkUrgent = [relinkNA, relinkEU]
-    .some((t) => t !== null && relinkIsUrgent(t - now));
+  const relinkUrgent = naUrgent || euUrgent;
 
   // The lockout wins, and only one of the two ever runs: two things
   // pulsing at once reads as decoration instead of as an alarm, and of
@@ -227,8 +283,8 @@ function updateRelinkBanner() {
     // Named rather than pointed at. A glyph beside one of two numbers
     // has to be noticed and then interpreted; the word is read.
     const where = [];
-    if (relinkNA !== null && relinkIsUrgent(relinkNA - now)) where.push('NA');
-    if (relinkEU !== null && relinkIsUrgent(relinkEU - now)) where.push('EU');
+    if (naUrgent) where.push('NA');
+    if (euUrgent) where.push('EU');
     const text = document.createElement('span');
     text.textContent = `${where.join(' and ')} reset night. `
       + 'Big fight, and the queue that comes with it.';

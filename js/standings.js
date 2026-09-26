@@ -30,6 +30,62 @@ function showStandingsSkeleton(gridEl) {
 // scratch on every refresh, so the numbers have to outlive the elements.
 const prevSideStats = new Map(); // `${matchId}:${color}` -> { vp, skirmish, pct }
 
+// Dropped the moment a tier's week ends, so the first refresh of the new
+// one has nothing to compare against. Kept, it would have measured a
+// fresh zero against last week's closing figures and floated a -2,116 VP
+// over every side, with all three cards pulsing a collapse that never
+// happened.
+function forgetSideStats(matchId) {
+  for (const color of COLORS) prevSideStats.delete(`${matchId}:${color}`);
+}
+
+// A tier between weeks still has to be usable. Someone opening the site
+// to look up who plays on a server should not be met with a shimmer, and
+// nothing about that question went stale: team names survive a relink -
+// it is which three are matched together that does not - and the guild
+// list behind the shield is keyed by team name and edited by hand.
+//
+// Dropped is everything that would read as a standing: rank, colour,
+// victory points, the stats line, the bar. Those are last week's and
+// there is no honest way to show them. What is left is labelled rather
+// than hidden, because the lie was never the data - it was last week's
+// passing for this week's.
+// `yoursByColor` is only passed by the match panel, where one of the
+// three is the team that was just looked up and saying so is the whole
+// point of the screen.
+function buildStandingsStale(match, yoursByColor) {
+  const wrap = document.createElement('div');
+  const isNA = match.id.startsWith('1-');
+  for (const color of COLORS) {
+    const teamId = matchTeamId(match, color);
+    if (!teamId) continue;
+    const name = getTeamName(teamId);
+    const row = document.createElement('div');
+    row.className = 'standing-stale';
+    const label = document.createElement('span');
+    label.className = 'standing-side-name';
+    label.textContent = name;
+    row.appendChild(label);
+    // Same rule as everywhere else: the community sheet is NA only.
+    if (isNA) row.appendChild(buildServerGuildsButton(name));
+    const yours = (yoursByColor && yoursByColor[color]) || [];
+    if (yours.length) {
+      row.classList.add('is-yours');
+      const pin = document.createElement('span');
+      pin.className = 'pin-badge';
+      pin.textContent = `📍 ${yours.join(', ')}`;
+      row.appendChild(pin);
+    }
+    wrap.appendChild(row);
+  }
+  const note = document.createElement('p');
+  note.className = 'standings-waiting';
+  note.textContent = "Last week's line-up - the new matchup isn't published yet";
+  wrap.appendChild(note);
+  return wrap;
+}
+
+
 // Flashes a number that just changed and floats the delta above it, so a
 // refresh reads as movement rather than a silent swap.
 function flashValue(el, delta) {

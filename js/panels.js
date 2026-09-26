@@ -14,9 +14,6 @@ function renderStandingsRegion(gridEl, matches) {
   for (const match of sorted) {
     const [regionCode, tierNum] = match.id.split('-');
     const regionName = REGION_NAMES[regionCode] || `Region ${regionCode}`;
-    const rankByColor = rankMatchByVictoryPoints(match);
-    const leaders = getStatLeaders(match);
-    const leaderScore = getSkirmishLeaderScore(match);
 
     const box = document.createElement('div');
     box.className = 'standing-match';
@@ -28,6 +25,22 @@ function renderStandingsRegion(gridEl, matches) {
     label.appendChild(tierText);
     label.appendChild(buildTierMapButton(match, regionName, tierNum || '?'));
     box.appendChild(label);
+
+    // Last week's score is not an answer to what is happening this week,
+    // and a stale one sat here looking exactly like a live one. The tier
+    // keeps its name and its maps button - the ground has not moved,
+    // only who holds it - and so do the team names and the guild lists
+    // hanging off them. Only the numbers wait.
+    if (!matchIsLive(match)) {
+      forgetSideStats(match.id);
+      box.appendChild(buildStandingsStale(match));
+      gridEl.appendChild(box);
+      continue;
+    }
+
+    const rankByColor = rankMatchByVictoryPoints(match);
+    const leaders = getStatLeaders(match);
+    const leaderScore = getSkirmishLeaderScore(match);
 
     const ranked = [...COLORS].sort((a, b) => rankByColor[a] - rankByColor[b]);
     for (const color of ranked) {
@@ -284,6 +297,17 @@ function renderMatchPanel(match, yourGuildsByColor) {
   header.appendChild(tierEl);
   header.appendChild(buildTierMapButton(match, regionName, tierNum || '?'));
   panel.appendChild(header);
+
+  // The same rule the standings rail follows, and the same answer: the
+  // three teams and their guild lists stay, everything that would read
+  // as a standing goes. The pin travels with it, because which of the
+  // three is yours is the question this screen was opened to answer and
+  // that part is not in doubt - the team comes from wvw/guilds, which
+  // turns over with the relink.
+  if (!matchIsLive(match)) {
+    panel.appendChild(buildStandingsStale(match, yourGuildsByColor));
+    return panel;
+  }
 
   const cols = document.createElement('div');
   cols.className = 'team-cols';

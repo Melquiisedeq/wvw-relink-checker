@@ -306,17 +306,36 @@ function tierShields(r, tier) {
 // One map, drawn. Returns the wrapper plus a redraw hook, so the caller
 // can swap maps without rebuilding the whole popover.
 function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
+  // Who holds what, and only that. Empty means nobody knows yet, which
+  // is a real state and not an error: during the relink of 26/09 the API
+  // published the new match with the objective lists blank while the
+  // maps came up - tier 4 blank on all four, tier 2 blank on three and
+  // full on the Green borderland - and a tier that has not turned over
+  // yet is still serving last week's owners.
+  const ownersOf = (data, isLive) => {
+    const byId = new Map();
+    if (isLive) for (const ob of (data && data.objectives) || []) byId.set(ob.id, ob);
+    return byId;
+  };
+  let owners = ownersOf(mapData, matchIsLive(match));
+
+  // The markers come from the catalogue, never from the match. The
+  // catalogue knows what exists on a map and where it sits, and neither
+  // of those changes at a relink - so the map is always whole, and
+  // ownership is the only thing that has to wait. An objective with no
+  // owner is drawn Neutral, which is the game's own uncoloured icon.
+  const blank = (meta) => ({ id: meta.id, type: meta.type, owner: 'Neutral' });
   const pts = [];
-  for (const ob of mapData.objectives || []) {
-    if (MAP_SKIP_TYPES.has(ob.type)) continue;
-    const meta = catalogue.get(ob.id);
+  for (const meta of catalogue.values()) {
+    if (meta.map_id !== mapData.id) continue;
+    if (MAP_SKIP_TYPES.has(meta.type)) continue;
     // label_coord, not coord. coord is the thing's position in the world - a
     // lord's room, a gate - while label_coord is where the game itself
     // writes the objective. Measured against the centre of each one's own
     // sector, label_coord is 42 units off on average and coord is 138.
-    const at = meta && (meta.label_coord || meta.coord);
+    const at = meta.label_coord || meta.coord;
     if (!at) continue;
-    pts.push({ ob, meta, x: at[0], y: at[1] });
+    pts.push({ ob: owners.get(meta.id) || blank(meta), meta, x: at[0], y: at[1] });
   }
 
   // The viewBox comes from the sector outlines, so the drawing defines
@@ -589,19 +608,29 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
   zoomBox.appendChild(reset);
   wrap.appendChild(zoomBox);
 
+  // Says which half is missing. The map is drawn and readable either
+  // way, so this is not an error state - it is the colours being late.
+  const waiting = document.createElement('p');
+  waiting.className = 'wvw-waiting';
+  waiting.textContent = "Reset - ArenaNet hasn't published this map yet";
+  waiting.hidden = owners.size > 0;
+  wrap.appendChild(waiting);
+
   // Repaint from fresher objective data without rebuilding anything.
   // Nothing about the drawing moves - same nodes, same viewBox - so the
   // zoom you set and the objective you had selected both survive, which
   // is the whole point of doing it this way instead of re-rendering.
-  wrap.applyLive = (freshMapData) => {
-    const byId = new Map();
-    for (const ob of freshMapData.objectives || []) byId.set(ob.id, ob);
+  wrap.applyLive = (freshMapData, isLive) => {
+    owners = ownersOf(freshMapData, isLive);
     for (let i = 0; i < pts.length; i++) {
-      const fresh = byId.get(pts[i].ob.id);
-      if (!fresh) continue;
-      pts[i].ob = fresh;   // the detail panel reads this too
+      // Back to Neutral when an owner goes away, rather than keeping the
+      // last one seen: the API has handed back a blank list mid-relink,
+      // and holding on to what was there would leave a map claiming an
+      // ownership nobody is asserting any more.
+      pts[i].ob = owners.get(pts[i].meta.id) || blank(pts[i].meta);
       paintMarker(nodes[i], pts[i]);
     }
+    waiting.hidden = owners.size > 0;
     const ownerNow = new Map();
     for (const p of pts) {
       if (p.meta.sector_id) ownerNow.set(p.meta.sector_id, p.ob.owner);
@@ -819,7 +848,10 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue, s
     if (activeTrigger !== triggerEl || !fresh || !Array.isArray(fresh.maps)) return;
     for (const m of fresh.maps) if (byType.has(m.type)) byType.set(m.type, m);
     const now = byType.get(current);
-    if (plotWrap && plotWrap.applyLive && now) plotWrap.applyLive(now);
+    // Asked of the answer that just arrived, not of the match this
+    // popover opened with: a tier turns over while the maps are open,
+    // and it has also been seen turning back.
+    if (plotWrap && plotWrap.applyLive && now) plotWrap.applyLive(now, matchIsLive(fresh));
   }, MAP_REFRESH_MS);
 
   for (const type of available) {

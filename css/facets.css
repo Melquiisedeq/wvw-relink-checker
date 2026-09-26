@@ -106,6 +106,29 @@
 @keyframes skel-sweep{0%{background-position:120% 0;}100%{background-position:-40% 0;}}
 .skel-title{height:9px;width:46px;margin-bottom:9px;}
 .skel-row{height:34px;margin:5px 0;border-radius:8px;}
+/* A team on a tier between weeks: a name and its guild list, and
+   deliberately none of the furniture a standing carries. No chamfer, no
+   team tint, no rank - the row has to read as a list of servers rather
+   than as an order they finished in, because that order is not known. */
+.standing-stale{
+  display:flex;align-items:center;gap:7px;
+  margin:4px 0;padding:7px 9px;
+  font-size:.8rem;
+  background:rgba(255,255,255,.035);
+  border-left:3px solid rgba(154,164,178,.3);
+  text-shadow:0 1px 2px rgba(0,0,0,.6);
+}
+.standing-stale .standing-side-name{color:#c3ccd8;font-weight:600;}
+/* The one the check was about. Cyan on the rail only, the way every
+   other "this is yours" mark on the page reads. */
+.standing-stale.is-yours{border-left-color:var(--accent);background:rgba(127,214,242,.06);}
+.standing-stale .pin-badge{margin:0 0 0 auto;}
+/* Under the shimmer while a tier is between weeks. Quiet on purpose:
+   nothing is wrong, the week simply has not been published yet. */
+.standings-waiting{
+  margin:7px 0 2px;text-align:center;
+  font-size:.68rem;color:#8d97a6;font-style:italic;
+}
 
 /* Relink inside two hours: the banner starts breathing. The outline
    moves, not a halo behind it - a cyan glow could not be seen at all,

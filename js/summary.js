@@ -124,15 +124,30 @@ async function buildSummaryText(entries) {
       continue;
     }
 
+    // A week that has ended says nothing about the tier anyone is in now
+    // or who they are fighting, so both drop out of the block until the
+    // new one is published - measured during the relink of 26/09, five
+    // of the twelve NA teams had nothing but a finished week behind them
+    // for the best part of an hour.
+    //
+    // Two things survive it. The team, because that comes from
+    // wvw/guilds and turns over with the relink, and it is the answer
+    // anyone pasting this actually wants. And the community sheet, which
+    // is edited by hand and has no idea a reset happened.
+    const live = matchIsLive(match);
     const [regionCode, tierNum] = match.id.split('-');
     const regionName = REGION_NAMES[regionCode] || `Region ${regionCode}`;
     const myColor = colorForTeam(match, teamId);
-    const enemyTeams = COLORS.filter((c) => c !== myColor).map((c) => {
+    const enemyTeams = !live ? [] : COLORS.filter((c) => c !== myColor).map((c) => {
       const enemyTeamId = matchTeamId(match, c);
       return { teamId: enemyTeamId, name: getTeamName(enemyTeamId) };
     });
 
-    const header = `${names.join(', ')} landed on ${server} (${regionName} Tier ${tierNum})`;
+    // Both shapes were already here: the one with the tier, and the bare
+    // one the branch above uses when there is no match at all.
+    const header = live
+      ? `${names.join(', ')} landed on ${server} (${regionName} Tier ${tierNum})`
+      : `${names.join(', ')} landed on ${server}`;
     let compact = header;
     let detailed = header;
 

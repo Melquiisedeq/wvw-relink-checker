@@ -41,7 +41,7 @@ the answer.
 | 📊 | **Live standings** — every NA and EU tier, refreshing on their own |
 | 🗺️ | **Interactive maps** — all four battlegrounds, objectives live |
 | 📈 | **Match detail** — weekly skirmish scores, per-map K/D, alliances per server |
-| ⏱️ | **Timers** — relink and season lockout, with an alert before the lockout closes |
+| ⏱️ | **Timers** — relink and season lockout, each with its own warning beforehand |
 
 > [!NOTE]
 > Guild names must match **exactly** — the API only does exact search, not
