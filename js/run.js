@@ -11,6 +11,10 @@ let deployTimer = null;
 
 async function run() {
   const names = parseGuildNames(guildInput.value);
+  // Cleared up front rather than at each message: every line that goes
+  // through statusMsg after this one is progress or success, and any of
+  // them would otherwise inherit the last failure's colour.
+  statusMsg.classList.remove('status-err');
 
   if (names.length === 0) {
     statusMsg.textContent = 'Paste at least one guild name first.';
@@ -24,6 +28,11 @@ async function run() {
   statusMsg.innerHTML = '<span class="spinner"></span>Talking to the GW2 API…';
   resultBody.textContent = '';
   matchPanelsContainer.textContent = '';
+  // Goes with them. It used to be touched only at the end of a run, so
+  // the previous run's buttons sat there through the whole of the next
+  // one - still holding the previous run's summary, and copying it if
+  // pressed. A run that ended early left them up for good.
+  copyRow.style.display = 'none';
   resultsPlaceholder.style.display = 'none';
   resultCard.style.display = 'block';
 
@@ -42,102 +51,118 @@ async function run() {
     playFinale();
   };
 
-  let maps;
+  // Everything past the setup is inside the try. finish() used to be
+  // called by hand on each way out, so anything that threw in between
+  // left the page needing a reload: the button stays disabled, the
+  // trebuchet stays hauled back, and followSling keeps a rAF loop alive
+  // with the charge still lit in the corner.
   try {
-    maps = await getWvwMaps();
-  } catch {
-    statusMsg.textContent = "Couldn't load WvW data right now, give it another try in a bit.";
-    finish();
-    return;
-  }
-
-  // teamId -> list of your queried guild names that landed there
-  const teamsFound = new Map();
-  // teamId -> list of dot elements in the table waiting to be colored in
-  const dotsByTeam = new Map();
-  // Every successfully resolved guild, kept around to build the copy summary
-  const successEntries = [];
-
-  // Sequential with a small delay between lookups, gentler on the public API.
-  for (const originalName of names) {
+    let maps;
     try {
-      const guildId = await resolveGuildId(originalName);
-      const info = await getGuildInfo(guildId);
-      const link = findLink(guildId, maps);
-
-      if (!link) {
-        renderRow({ originalName, error: 'No WvW link registered yet' });
-      } else {
-        const server = getTeamName(link.teamId);
-        const dot = renderRow({ originalName, tag: info.tag, region: link.region, server });
-
-        if (!teamsFound.has(link.teamId)) teamsFound.set(link.teamId, []);
-        teamsFound.get(link.teamId).push(info.name);
-
-        if (!dotsByTeam.has(link.teamId)) dotsByTeam.set(link.teamId, []);
-        dotsByTeam.get(link.teamId).push(dot);
-
-        successEntries.push({ name: info.name, teamId: link.teamId });
-      }
-    } catch (e) {
-      renderRow({ originalName, error: e.message || 'Lookup failed' });
+      maps = await getWvwMaps();
+    } catch {
+      statusMsg.classList.add('status-err');
+      statusMsg.textContent = "Couldn't load WvW data right now, give it another try in a bit.";
+      return;
     }
 
-    await sleep(THROTTLE_MS);
-  }
+    // teamId -> list of your queried guild names that landed there
+    const teamsFound = new Map();
+    // teamId -> list of dot elements in the table waiting to be colored in
+    const dotsByTeam = new Map();
+    // Every successfully resolved guild, kept around to build the copy summary
+    const successEntries = [];
 
-  // Fetches match/score context for every distinct team found. Usually
-  // instant since these are already in the standings cache.
-  if (teamsFound.size > 0) {
-    statusMsg.innerHTML = '<span class="spinner"></span>Pulling in match details…';
-
-    const panelsByMatchId = new Map(); // matchId -> { match, yourGuildsByColor }
-
-    for (const [teamId, yourGuildNames] of teamsFound) {
-      let match;
+    // Sequential with a small delay between lookups, gentler on the public API.
+    for (const originalName of names) {
       try {
-        match = await getMatchForTeam(teamId);
-      } catch {
-        const note = document.createElement('p');
-        note.className = 'panel-note';
-        note.textContent = `Match data unavailable for team ${getTeamName(teamId)}.`;
-        matchPanelsContainer.appendChild(note);
-        await sleep(THROTTLE_MS);
-        continue;
+        const guildId = await resolveGuildId(originalName);
+        const info = await getGuildInfo(guildId);
+        const link = findLink(guildId, maps);
+
+        if (!link) {
+          renderRow({ originalName, error: 'No WvW link registered yet' });
+        } else {
+          const server = getTeamName(link.teamId);
+          const dot = renderRow({ originalName, tag: info.tag, region: link.region, server });
+
+          if (!teamsFound.has(link.teamId)) teamsFound.set(link.teamId, []);
+          teamsFound.get(link.teamId).push(info.name);
+
+          if (!dotsByTeam.has(link.teamId)) dotsByTeam.set(link.teamId, []);
+          dotsByTeam.get(link.teamId).push(dot);
+
+          successEntries.push({ name: info.name, teamId: link.teamId });
+        }
+      } catch (e) {
+        renderRow({ originalName, error: e.message || 'Lookup failed' });
       }
 
-      const color = colorForTeam(match, teamId);
-      if (!panelsByMatchId.has(match.id)) {
-        panelsByMatchId.set(match.id, { match, yourGuildsByColor: { red: [], blue: [], green: [] } });
+      await sleep(THROTTLE_MS);
+    }
+
+    // Fetches match/score context for every distinct team found. Usually
+    // instant since these are already in the standings cache.
+    if (teamsFound.size > 0) {
+      statusMsg.innerHTML = '<span class="spinner"></span>Pulling in match details…';
+
+      const panelsByMatchId = new Map(); // matchId -> { match, yourGuildsByColor }
+
+      for (const [teamId, yourGuildNames] of teamsFound) {
+        let match;
+        try {
+          match = await getMatchForTeam(teamId);
+        } catch {
+          const note = document.createElement('p');
+          note.className = 'panel-note';
+          note.textContent = `Match data unavailable for team ${getTeamName(teamId)}.`;
+          matchPanelsContainer.appendChild(note);
+          await sleep(THROTTLE_MS);
+          continue;
+        }
+
+        const color = colorForTeam(match, teamId);
+        if (!panelsByMatchId.has(match.id)) {
+          panelsByMatchId.set(match.id, { match, yourGuildsByColor: { red: [], blue: [], green: [] } });
+        }
+        if (color) {
+          panelsByMatchId.get(match.id).yourGuildsByColor[color].push(...yourGuildNames);
+          const dots = dotsByTeam.get(teamId) || [];
+          dots.forEach((dot) => {
+            if (!dot) return;
+            dot.className = `dot dot-${color}`;
+            dot.title = `${color[0].toUpperCase()}${color.slice(1)} side`;
+          });
+        }
       }
-      if (color) {
-        panelsByMatchId.get(match.id).yourGuildsByColor[color].push(...yourGuildNames);
-        const dots = dotsByTeam.get(teamId) || [];
-        dots.forEach((dot) => {
-          if (!dot) return;
-          dot.className = `dot dot-${color}`;
-          dot.title = `${color[0].toUpperCase()}${color.slice(1)} side`;
-        });
+
+      for (const { match, yourGuildsByColor } of panelsByMatchId.values()) {
+        matchPanelsContainer.appendChild(renderMatchPanel(match, yourGuildsByColor));
       }
     }
 
-    for (const { match, yourGuildsByColor } of panelsByMatchId.values()) {
-      matchPanelsContainer.appendChild(renderMatchPanel(match, yourGuildsByColor));
+    if (successEntries.length > 0) {
+      const { compact, detailed } = await buildSummaryText(successEntries);
+      copyChatBtn.dataset.summary = compact;
+      copyDiscordBtn.dataset.summary = detailed;
+      copyRow.style.display = 'flex';
+      copyFeedback.textContent = '';
+    } else {
+      copyRow.style.display = 'none';
     }
-  }
 
-  if (successEntries.length > 0) {
-    const { compact, detailed } = await buildSummaryText(successEntries);
-    copyChatBtn.dataset.summary = compact;
-    copyDiscordBtn.dataset.summary = detailed;
-    copyRow.style.display = 'flex';
-    copyFeedback.textContent = '';
-  } else {
-    copyRow.style.display = 'none';
+    statusMsg.textContent = `Done, checked ${names.length} guild(s).`;
+  } catch (err) {
+    // Not a path, a net: every call above that can fail is already
+    // guarded. Without this the run would just stop with the spinner's
+    // last words still on screen. Rethrown so a real bug still reaches
+    // the console instead of being swallowed by the message.
+    statusMsg.classList.add('status-err');
+    statusMsg.textContent = 'Something went wrong partway through. Give it another try.';
+    throw err;
+  } finally {
+    finish();
   }
-
-  statusMsg.textContent = `Done, checked ${names.length} guild(s).`;
-  finish();
 }
 
 runBtn.addEventListener('click', run);
