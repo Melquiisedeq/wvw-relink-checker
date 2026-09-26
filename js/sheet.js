@@ -64,6 +64,7 @@ function parseGuildEntry(raw) {
 // layout as last verified, kept only as a fallback so an unexpected header
 // rename degrades to the old behaviour rather than to an empty list.
 const SOLO_WORLD_FALLBACK = 21;
+const SOLO_MISMATCH_FALLBACK = 19;
 const ALLIANCE_MEMBERS_FALLBACK = 2;
 const ALLIANCE_WORLD_FALLBACK = 22;
 
@@ -119,15 +120,23 @@ async function loadCommunityGuilds() {
   const allianceRows = parseCsv(allianceText);
 
   const soloWorldCol = findColumn(soloRows[0], ['World'], SOLO_WORLD_FALLBACK);
+  const soloMismatchCol = findColumn(soloRows[0], ['API Mismatch'], SOLO_MISMATCH_FALLBACK);
   const allianceWorldCol = findColumn(allianceRows[0], ['World ID', 'World'], ALLIANCE_WORLD_FALLBACK);
   const allianceMembersCol = findColumn(allianceRows[0], ['Guilds'], ALLIANCE_MEMBERS_FALLBACK);
 
   const byTeam = new Map();
 
+  // A flagged guild is one the maintainers cannot place: it shows up on
+  // several teams, or it is repping something they have not identified.
+  // The row keeps whatever World it was last sorted into, but the sheet
+  // leaves it out of that team's own tab - so reading the column alone
+  // put guilds on a server the sheet itself does not put them on.
+  // Checked against the Mosswood tab: with this, the two lists match.
   for (const row of soloRows.slice(1)) {
     const world = (row[soloWorldCol] || '').trim();
     const raw = (row[0] || '').trim();
     if (!world || !raw) continue;
+    if ((row[soloMismatchCol] || '').trim().toUpperCase() === 'TRUE') continue;
     addToTeam(byTeam, world).solo.push(parseGuildEntry(raw));
   }
 
