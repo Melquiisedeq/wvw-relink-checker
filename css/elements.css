@@ -72,11 +72,13 @@ a{color:var(--accent);}
   background:rgba(154,164,178,.22);
 }
 .gw2-band-links a:hover{color:var(--accent-bright);}
-/* Provenance and trademarks, at the quietest weight on the page. */
+/* Provenance and trademarks, at the quietest weight on the page - but
+   not quieter than the floor. #737c88 measured 4.41:1 against the band
+   over the photo, just under AA; this is the same grey one step up. */
 .gw2-band-fine{
   max-width:900px;margin:9px auto 0;padding-top:8px;
   border-top:1px solid rgba(255,255,255,.05);
-  color:#737c88;font-size:.68rem;line-height:1.5;text-align:center;
+  color:#757f8b;font-size:.68rem;line-height:1.5;text-align:center;
 }
 @media (max-width:560px){
   .gw2-band-inner{flex-direction:column;justify-content:center;gap:12px;}

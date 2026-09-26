@@ -11,7 +11,13 @@
   /* Not cyan - cyan means "you can touch it" here. This is the ember
      orange already drifting behind the header. */
   --warn:#ffb765;
-  --err:#e15c5c;
+  /* Not the same value as --red below any more, and the difference is
+     load-bearing: this one carries the "Guild not found" line on a card
+     over the photo, where #e15c5c measured 4.27:1 at the photo's
+     brightest point - under the 4.5 AA floor. Two steps of lightness,
+     same hue and saturation, put it at 4.58. --red is a team colour and
+     answers to nothing but the team. */
+  --err:#e36565;
   --blue:#5b8ff0;
   --green:#4caf7d;
   --red:#e15c5c;
