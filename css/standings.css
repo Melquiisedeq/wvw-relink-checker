@@ -54,19 +54,41 @@
    pressable, which is a promise the mark cannot keep. */
 .movement-indicator{
   display:inline-flex;align-items:center;justify-content:center;
-  width:18px;margin-left:7px;flex-shrink:0;
-  font-size:.86rem;line-height:1;
+  width:20px;margin-left:7px;flex-shrink:0;
+  font-size:1rem;line-height:1;
   vertical-align:middle;cursor:default;
+  /* It rides in the top row, next to the rank and the name, but what it
+     says is about the whole card - so it drops towards the middle of
+     one. Six pixels, just under a third of the rank badge beside it:
+     enough to read as belonging to the card rather than to the row, and
+     short of the stats line under it. A transform rather than a margin,
+     so the row it sits in does not move with it.
+     This figure is the up arrow's. The other two take their own below,
+     for the reason given there. */
+  transform:translateY(6px);
 }
 /* Saturated rather than merely tinted. At this size the glyph is small
    enough that a muted colour reads as grey, and the whole point of the
    mark is that you catch which way it points without stopping on it. */
 .movement-up{color:#45c489;text-shadow:0 1px 1px rgba(0,0,0,.85);}
 .movement-down{color:#ff6b6e;text-shadow:0 1px 1px rgba(0,0,0,.85);}
+/* Three marks, three drops. The shapes say why: a triangle carries its
+   weight at the base and its centroid sits a third of the way up from
+   it, so centred on its box the ▲ reads low and the ▼ reads high, while
+   the bar is a rectangle whose centroid is its centre. That is what
+   rules out one shared figure, and it fixes the order - the ▼ furthest,
+   the bar between.
+   The figures themselves were set on screen, not derived. Working them
+   out from the glyph's height put the ▼ at 9 and it still read high:
+   the outline the system font actually draws is not the ideal triangle
+   the arithmetic assumes. Geometry for the shape of the problem, the
+   eye for the size of it. */
+.movement-down{transform:translateY(12px);}
+.movement-stay{transform:translateY(8px);}
 /* "Stays" is the absence of movement, so it keeps no hue at all - the
    eye should skip it and land on the two that mean something. */
 .movement-bar{
-  display:inline-block;width:12px;height:3px;border-radius:1.5px;
+  display:inline-block;width:14px;height:3px;border-radius:1.5px;
   background:#a3adba;box-shadow:0 1px 0 rgba(0,0,0,.55);
 }
 .standing-side-top .rank-badge{width:20px;height:20px;font-size:.64rem;}
@@ -293,10 +315,14 @@
 .map-kd-label--gbl,.pop-bar-label.map-kd-label--gbl{color:var(--green);}
 .map-kd-label--bbl,.pop-bar-label.map-kd-label--bbl{color:var(--blue);}
 .map-kd-label--rbl,.pop-bar-label.map-kd-label--rbl{color:var(--red);}
-.map-kd-label--ebg{
-  background:linear-gradient(90deg,var(--red),var(--green),var(--blue));
-  -webkit-background-clip:text;background-clip:text;color:transparent;
-}
+/* EBG is nobody's map, so it gets a colour no team owns: the amber the
+   lockout banner pulses in. Not cyan - cyan on this page means
+   something you can touch. It used to be the three team colours across
+   the word, and three colours do not fit in three letters: blended, a
+   gradient washes out at this size, because contrast changes along the
+   word and the worst point is the one that counts; split, one colour
+   per letter reads as a ransom note. */
+.map-kd-label--ebg,.pop-bar-label.map-kd-label--ebg{color:var(--warn);}
 
 /* The skirmish-score chart and the buttons that open these popovers.
    One rule for the chart, not two: the height used to be set here and
@@ -319,7 +345,7 @@
 .info-popover--trend{
   width:430px;max-height:min(680px, 88vh);padding:14px 17px;
 }
-.info-popover--data{width:430px;max-height:min(560px, 86vh);padding:13px 16px;}
+.info-popover--data{width:470px;max-height:min(560px, 86vh);padding:13px 16px;}
 @media (max-width:520px){ .info-popover--data{width:calc(100vw - 24px);} }
 /* On a narrow screen it takes the width it can get rather than
    overflowing it. */
@@ -342,8 +368,13 @@
   text-transform:uppercase;letter-spacing:.08em;margin-bottom:1px;
 }
 .pop-figure-value{font-size:1.2rem;color:var(--text);font-variant-numeric:tabular-nums;}
-.pop-figure--good .pop-figure-value{color:var(--ok);}
-.pop-figure--bad .pop-figure-value{color:var(--err);}
+/* K/D is the only figure that takes a tone, and it is the same figure
+   the cards outside carry - so it is the same green and red, down to
+   the value. This used to be --ok and --err: the green matched by
+   accident and the red did not, which put three reds on screen for one
+   number. */
+.pop-figure--good .pop-figure-value{color:var(--green);}
+.pop-figure--bad .pop-figure-value{color:var(--red);}
 
 
 /* The other two sides, for scale. Thin and dim on purpose: they are
@@ -387,21 +418,39 @@
 
 /* Where the last finished block's points came from. */
 .pop-section{
-  display:flex;justify-content:space-between;align-items:baseline;
-  margin:18px 0 7px;font-size:.66rem;font-weight:700;color:var(--muted);
+  display:flex;align-items:baseline;gap:11px;
+  margin:16px 0 4px;font-size:.66rem;font-weight:700;color:var(--muted);
   text-transform:uppercase;letter-spacing:.08em;
 }
-.pop-section span{color:var(--text);font-size:.78rem;letter-spacing:0;}
+.pop-section-title{flex:1 1 auto;min-width:0;}
+/* The column words, on the heading's own line. A size down from it, and
+   each one carrying its column's width from the rows below - which is
+   what puts a word over its own number instead of near it. */
+.pop-section .pop-bar-value,.pop-section .pop-bar-pct,
+.pop-section .pop-kd-kills,.pop-section .pop-kd-deaths{
+  color:var(--muted);font-size:.6rem;font-weight:700;letter-spacing:.07em;
+}
+.pop-section .pop-kd-nums{flex:0 0 auto;}
 .pop-bar-row{display:flex;align-items:center;gap:11px;padding:5px 0;font-size:.78rem;}
 .pop-bar-label{font-weight:700;flex:0 0 68px;}
+/* Wide enough for the longest team name there is - Lutgardis
+   Conservatory, 22 characters - so the ellipsis is the exception and
+   not the rule. */
 .pop-bar-label--wide{
-  flex:0 0 108px;color:var(--text);font-weight:600;
+  flex:0 0 146px;color:var(--text);font-weight:600;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
-/* Same rule: the row for the side you opened is marked by weight, not
-   by a colour that would claim to be a team. */
-.pop-bar-row.is-mine .pop-bar-label{color:var(--text);font-weight:800;}
-.pop-bar-row.is-mine .pop-bar-value{font-weight:800;}
+/* The row you opened is marked as a row - a rail and a tint, in the
+   page's own accent rather than a colour that would claim to be a team.
+   Bolding the name was the whole mark before, and next to two names
+   already in full white it just read as a heavier word.
+   The negative margin is paid back by the padding, so the label still
+   starts where the other rows' labels start. */
+.pop-bar-row.is-mine{
+  margin:0 -8px;padding:5px 8px;border-radius:6px;
+  background:rgba(127,214,242,.07);
+  box-shadow:inset 2px 0 0 var(--accent);
+}
 .pop-bar-track{
   flex:1 1 auto;height:9px;border-radius:5px;
   background:rgba(255,255,255,.07);overflow:hidden;
@@ -416,6 +465,22 @@
   font-variant-numeric:tabular-nums;
 }
 .pop-bar-pct{flex:0 0 36px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;}
+/* The number the rows add up to, at the foot of the column they add up
+   in - the eye goes down the values adding them, and the total closes
+   it. Beside the heading it had nothing to line up with. */
+/* Baseline, not centre: the label is .66rem and the number .78rem, and
+   centring two different sizes leaves their baselines a pixel apart -
+   which reads as the number sitting low. The empty track has no text to
+   have a baseline, so it keeps centring. */
+.pop-bar-total{
+  align-items:baseline;
+  margin-top:6px;padding:4px 0 0;border-top:1px solid var(--border);
+}
+.pop-bar-total .pop-bar-label{
+  color:var(--muted);font-size:.66rem;font-weight:700;
+  text-transform:uppercase;letter-spacing:.08em;
+}
+.pop-bar-total .pop-bar-track{background:none;box-shadow:none;align-self:center;}
 
 /* Five things in this row and nothing may wrap. The numbers are sized
    to their content and grouped; the bar takes what is left, which is
@@ -430,10 +495,24 @@
   display:inline-flex;align-items:center;justify-content:flex-end;gap:4px;
 }
 .pop-kd-ratio{width:38px;text-align:right;font-weight:700;}
-.glyph-sword{font-size:1.15em;line-height:1;opacity:.75;font-style:normal;}
-.glyph-skull{font-size:.95em;line-height:1;opacity:.75;font-style:normal;}
+/* The words over the three numbers, on the same grid as the rows so
+   each sits above what it names. The label and track slots are empty
+   and are here to hold the columns, not to draw anything. */
+/* Vector, not emoji - the two came from different system fonts, each
+   with its own ascent.
+   The nudge is not a fudge: align-items:center centres the icon on the
+   line box, and in Segoe UI that box runs 1.079em above the baseline
+   and 0.251em below it, so its middle sits 0.414em up. Digits have no
+   descender, so their ink is centred at half the cap height, 0.35em up.
+   The 0.064em between the two is why a centred icon reads as floating
+   above the number. */
+.glyph-sword,.glyph-skull{
+  display:block;flex:0 0 auto;opacity:.85;
+  transform:translateY(0.064em);
+}
 
 @media (max-width:520px){
+  .pop-bar-label--wide{flex:0 0 108px;}
   .pop-kd-row{gap:7px;}
   .pop-kd-row .pop-bar-label{flex:0 0 52px;}
   .pop-kd-nums{gap:8px;}

@@ -28,15 +28,33 @@ function popFigure(label, value, tone) {
   return box;
 }
 
-function popSection(title, aside) {
+// A section heading, and on the same line the words that name the
+// columns of the rows under it. On two lines they left a band of empty
+// space the width of the popover between the heading and the data. The
+// heading runs along the left, over the label and the bar; each column
+// word keeps its own column's width, so it lands on what it names.
+function popSection(title, cells) {
   const el = document.createElement('div');
   el.className = 'pop-section';
-  el.appendChild(document.createTextNode(title));
-  if (aside !== undefined) {
-    const a = document.createElement('span');
-    a.textContent = aside;
-    el.appendChild(a);
-  }
+  el.appendChild(popCell('pop-section-title', title));
+  for (const cell of cells || []) el.appendChild(cell);
+  return el;
+}
+
+function popCell(className, text) {
+  const el = document.createElement('span');
+  el.className = className;
+  if (text) el.textContent = text;
+  return el;
+}
+
+// One place a row label is built, so the bar rows and the total row
+// under them line up by construction rather than by two lists of the
+// same class names staying in step.
+function popBarLabel(text, labelClass) {
+  const el = document.createElement('span');
+  el.className = `pop-bar-label ${labelClass || ''}`.trim();
+  el.textContent = text;
   return el;
 }
 
@@ -45,9 +63,7 @@ function popSection(title, aside) {
 function popBarRow(label, labelClass, fraction, value, pct, fillClass) {
   const row = document.createElement('div');
   row.className = 'pop-bar-row';
-  const l = document.createElement('span');
-  l.className = `pop-bar-label ${labelClass || ''}`.trim();
-  l.textContent = label;
+  const l = popBarLabel(label, labelClass);
   const track = document.createElement('span');
   track.className = 'pop-bar-track';
   const fill = document.createElement('span');
@@ -66,6 +82,26 @@ function popBarRow(label, labelClass, fraction, value, pct, fillClass) {
     pc.textContent = pct;
     row.appendChild(pc);
   }
+  return row;
+}
+
+// What the rows above add up to, on the same grid so the number lands
+// under the numbers. The track slot is kept and emptied rather than
+// dropped: that is what holds the columns in place.
+function popBarTotal(label, labelClass, value) {
+  const row = document.createElement('div');
+  row.className = 'pop-bar-row pop-bar-total';
+  const track = document.createElement('span');
+  track.className = 'pop-bar-track';
+  const v = document.createElement('span');
+  v.className = 'pop-bar-value';
+  v.textContent = value;
+  const pc = document.createElement('span');
+  pc.className = 'pop-bar-pct';
+  row.appendChild(popBarLabel(label, labelClass));
+  row.appendChild(track);
+  row.appendChild(v);
+  row.appendChild(pc);
   return row;
 }
 

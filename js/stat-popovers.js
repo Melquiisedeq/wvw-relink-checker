@@ -5,6 +5,40 @@
 // Built from the pieces in popover-parts.js.
 // ---------------------------------------------------------------------
 
+// Drawn and not typed. As emoji the two landed in different system
+// fonts, each with its own idea of where the baseline is, and no amount
+// of centring gets those onto the same line.
+//
+// "swords" and "skull" from Lucide (https://lucide.dev), ISC licence:
+// Copyright (c) 2026 Lucide Icons and Contributors. Same 24x24 grid and
+// 2px round stroke the buttons on this page are already drawn on, so
+// nothing new is being introduced here except the shapes.
+const GLYPH_ATTRS = ' viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+  + 'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+const GLYPH_SWORD = '<svg class="glyph-sword" width="15" height="15"' + GLYPH_ATTRS
+  + '<path d="m13 19 6-6"/>'
+  + '<path d="M14.5 17.5 3.586 6.586A2 2 0 0 1 3 5.172V3h2.172a2 2 0 0 1 1.414.586L17.5 14.5"/>'
+  + '<path d="m14.828 6.172 2.586-2.586A2 2 0 0 1 18.828 3H21v2.172a2 2 0 0 1-.586 1.414'
+  + 'l-2.586 2.586"/>'
+  + '<path d="m16 16 4 4"/><path d="m19 21 2-2"/>'
+  + '<path d="m5 14 4 4"/><path d="m5 21-2-2"/><path d="M7.5 16.5 4 20"/></svg>';
+const GLYPH_SKULL = '<svg class="glyph-skull" width="15" height="15"' + GLYPH_ATTRS
+  + '<path d="m12.5 17-.5-1-.5 1h1z"/>'
+  + '<path d="M15 22a1 1 0 0 0 1-1v-1a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20v1'
+  + 'a1 1 0 0 0 1 1z"/>'
+  + '<circle cx="15" cy="12" r="1"/><circle cx="9" cy="12" r="1"/></svg>';
+
+// The three column words travel as one group, the same group the three
+// numbers travel in on every row below - which is what keeps a word over
+// its own number.
+function kdHeadCells() {
+  const nums = popCell('pop-kd-nums');
+  nums.appendChild(popCell('pop-kd-kills', 'Kills'));
+  nums.appendChild(popCell('pop-kd-deaths', 'Deaths'));
+  nums.appendChild(popCell('pop-bar-pct pop-kd-ratio', 'K/D'));
+  return nums;
+}
+
 function renderMapKdPopoverContent(popover, serverName, match, color) {
   popover.textContent = '';
   popHeader(popover, `${serverName} · K/D by map`);
@@ -33,15 +67,16 @@ function renderMapKdPopoverContent(popover, serverName, match, color) {
   // say how it went. A K/D on its own hides the difference between a
   // 2.0 over six fights and a 2.0 over six hundred - the bar is what
   // puts that back.
-  popover.appendChild(popSection('Where the fighting was', `${(kills + deaths).toLocaleString()} total`));
+  // No total beside the heading: the three column headings under it are
+  // what that space is for now, and the cards at the top of the popover
+  // already carry the kills and the deaths this would be adding up.
+  popover.appendChild(popSection('Where the fighting was', [kdHeadCells()]));
   for (const r of rows) {
     const fought = r.kills + r.deaths;
     const row = document.createElement('div');
     row.className = 'pop-bar-row pop-kd-row';
 
-    const label = document.createElement('span');
-    label.className = `pop-bar-label ${MAP_LABEL_CLASS[r.type]}`;
-    label.textContent = MAP_LABELS[r.type];
+    const label = popBarLabel(MAP_LABELS[r.type], MAP_LABEL_CLASS[r.type]);
 
     // The bar is how much of the week's fighting happened on this map, which
     // is what the heading asks. It used to be the share of that map's fights
@@ -62,10 +97,10 @@ function renderMapKdPopoverContent(popover, serverName, match, color) {
 
     const killsEl = document.createElement('span');
     killsEl.className = 'pop-kd-kills';
-    killsEl.innerHTML = `<i class="glyph-sword">\u2694</i>${r.kills.toLocaleString()}`;
+    killsEl.innerHTML = GLYPH_SWORD + r.kills.toLocaleString();
     const deathsEl = document.createElement('span');
     deathsEl.className = 'pop-kd-deaths';
-    deathsEl.innerHTML = `<i class="glyph-skull">\ud83d\udc80</i>${r.deaths.toLocaleString()}`;
+    deathsEl.innerHTML = GLYPH_SKULL + r.deaths.toLocaleString();
 
     const ratio = document.createElement('span');
     ratio.className = 'pop-bar-pct pop-kd-ratio';
@@ -394,13 +429,14 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     const sum = values.reduce((a, b) => a + b, 0) || 1;
 
     popover.appendChild(popSection(
-      liveOnly ? 'This block by map' : 'Last block by map', sum.toLocaleString()));
-
+      liveOnly ? 'This block by map' : 'Last block by map',
+      [popCell('pop-bar-value', 'Points'), popCell('pop-bar-pct', 'Share')]));
     MAP_ORDER.forEach((type, i) => {
       popover.appendChild(popBarRow(MAP_LABELS[type], MAP_LABEL_CLASS[type],
         values[i] / top, values[i].toLocaleString(),
         `${Math.round((values[i] / sum) * 100)}%`, `own-${color}`));
     });
+    popover.appendChild(popBarTotal('Total', null, sum.toLocaleString()));
   }
 
   // The last sentence is about the chart, so it goes only where the
@@ -468,7 +504,8 @@ function renderActivityInfoPopoverContent(popover, serverName, match, color) {
   const top = Math.max(...sides.map((x) => x.total)) || 1;
   const all = sides.reduce((a, x) => a + x.total, 0) || 1;
 
-  popover.appendChild(popSection('Against the tier', `${all.toLocaleString()} total`));
+  popover.appendChild(popSection('Against the tier',
+    [popCell('pop-bar-value', 'Fights'), popCell('pop-bar-pct', 'Share')]));
   for (const side of sides) {
     const teamId = matchTeamId(match, side.color);
     const row = popBarRow(teamId ? getTeamName(teamId) : side.color, 'pop-bar-label--wide',
@@ -477,6 +514,10 @@ function renderActivityInfoPopoverContent(popover, serverName, match, color) {
     if (side.color === color) row.classList.add('is-mine');
     popover.appendChild(row);
   }
+  // "Tier total" and not "Total": the three cards at the top of this
+  // popover are one side's, and this is all three added up.
+  popover.appendChild(popBarTotal('Tier total', 'pop-bar-label--wide',
+    all.toLocaleString()));
 
   popover.appendChild(popNote('Activity is kills + deaths this week - a straightforward measure '
     + 'of combat, with none of the PPT ambiguity skirmish score has. It counts fights, not '
