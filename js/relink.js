@@ -52,11 +52,11 @@ function buildRelinkStat(title, value, isPrimary, tooltip, warn) {
 // catches your eye from across the desk on reset night.
 const RELINK_URGENT_MS = 2 * 60 * 60 * 1000;
 // How long after a week is published before its maps are up and you can
-// get on one. Measured across four matches - EU mid-week, NA at a fresh
-// reset and NA a full week old - and every one opened at start_time plus
-// 3m37s to 3m46s. Five minutes covers that with room, and the line dies
-// with it: "get in early" is no use once the doors are open and the
-// queue is the queue.
+// get on one. Measured across nine matches in both regions - EU mid-week,
+// NA at a fresh reset and NA a full week old - and every one opened at
+// start_time plus 3m37s to 3m47s. Five minutes covers that with room,
+// and the line dies with it: "get in early" is no use once the doors
+// are open and the queue is the queue.
 const RELINK_OPENING_MS = 5 * 60 * 1000;
 // Only reached when nothing has been published anywhere. A tier normally
 // turns up within minutes, so this is the fuse for an API that has

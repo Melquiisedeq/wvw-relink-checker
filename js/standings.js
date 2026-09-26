@@ -85,7 +85,6 @@ function buildStandingsStale(match, yoursByColor) {
   return wrap;
 }
 
-
 // Flashes a number that just changed and floats the delta above it, so a
 // refresh reads as movement rather than a silent swap.
 function flashValue(el, delta) {
@@ -290,7 +289,7 @@ function renderStandingSide(match, color, rankByColor, leaders, leaderScore) {
   const badge = document.createElement('span');
   const rank = rankByColor[color];
   badge.className = `rank-badge rank-${rank}`;
-  badge.textContent = RANK_LABELS[rank] || `#${rank}`;
+  badge.textContent = String(rank);
 
   const dot = document.createElement('span');
   dot.className = `dot dot-${color}`;

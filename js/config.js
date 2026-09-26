@@ -45,8 +45,9 @@ function getTeamName(teamId) {
 }
 
 const REGION_NAMES = Object.freeze({ '1': 'NA', '2': 'EU' });
-const COLORS = ['red', 'blue', 'green'];
-const RANK_LABELS = Object.freeze({ 1: '1', 2: '2', 3: '3' });
+// The three sides of every match, and the only spelling of them -
+// maps.js used to carry a Set and a literal saying the same thing.
+const COLORS = Object.freeze(['red', 'blue', 'green']);
 
 // "all_worlds" mixes legacy 4-digit world numbers with the modern 5-digit
 // Team ID in no fixed order, so >= 10000 reliably picks out the Team ID.
@@ -89,7 +90,7 @@ const REQUEST_TIMEOUT_MS = 10000;
 const THROTTLE_MS = 200;       // gap between sequential lookups, to stay well under rate limits
 const MAX_RETRIES = 2;         // for 429 / transient network errors
 
-// Match data updates unpredictably on ArenaNet's end; 3 min balances
+// Match data updates unpredictably on ArenaNet's end; 5 min balances
 // freshness vs load. Lockout barely changes, so it's checked less often.
 // Both stay under the API rate limit and only run while the tab is visible.
 const STANDINGS_REFRESH_MS = 5 * 60 * 1000;  // match scores, kills/deaths, VP, relink

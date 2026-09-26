@@ -336,7 +336,7 @@ function renderMatchPanel(match, yourGuildsByColor) {
     const rankBadge = document.createElement('span');
     const rank = rankByColor[color];
     rankBadge.className = `rank-badge rank-${rank}`;
-    rankBadge.textContent = RANK_LABELS[rank] || `#${rank}`;
+    rankBadge.textContent = String(rank);
     const dot = document.createElement('span');
     dot.className = `dot dot-${color}`;
     const name = document.createElement('span');

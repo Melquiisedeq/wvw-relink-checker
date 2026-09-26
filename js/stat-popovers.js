@@ -202,16 +202,27 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     figures.className = 'pop-figures pop-figures--three';
     const fLast = popFigure('Last block', mine.done[mine.done.length - 1].toLocaleString());
     fLast.title = 'The most recent block that has finished - not the one being played now.';
-    const fAvg = popFigure('Average', avg.toLocaleString());
-    fAvg.title = `Mean score across the ${mine.done.length} finished blocks this week.`;
-    const fPeak = popFigure('Peak', Math.max(...mine.done).toLocaleString());
-    fPeak.title = 'The best single block this week.';
+    // An average needs something to average over and a peak needs
+    // something to stand out from. With one finished block both report
+    // that same block's score under labels that promise a comparison, so
+    // they hold a dash instead - the same one the results table uses for
+    // a value it does not have. The cards stay rather than disappearing:
+    // they say the tool measures this, and that it is worth coming back
+    // once the week has a few blocks in it.
+    const comparable = finished >= 2;
+    const waiting = 'Needs two finished blocks to mean anything. There is one so far.';
+    const fAvg = popFigure('Average', comparable ? avg.toLocaleString() : '—');
+    fAvg.title = comparable
+      ? `Mean score across the ${finished} finished blocks this week.`
+      : waiting;
+    const fPeak = popFigure('Peak',
+      comparable ? Math.max(...mine.done).toLocaleString() : '—');
+    fPeak.title = comparable ? 'The best single block this week.' : waiting;
     figures.appendChild(fLast);
     figures.appendChild(fAvg);
     figures.appendChild(fPeak);
     popover.appendChild(figures);
   }
-
 
   if (finished >= 2) {
     let min = Infinity;
@@ -316,25 +327,28 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     why.className = 'hint';
     why.style.margin = '0';
     why.textContent = finished === 1
-      ? 'One block has finished so far. The chart needs two - a line through a single point has no direction.'
-      : 'No block has finished yet this week. The first one is still being played.';
+      ? 'Only one block done so far. The chart shows up once there are two.'
+      : 'First block of the week is still being played.';
     popover.appendChild(why);
   }
 
   if (live) {
     // Reported as a pace rather than a total: "697 so far" invites a
     // comparison with finished blocks that is not a fair one, and what
-    // it is on course for is. The clock is in minutes, not a percentage. A percentage next to "block 64" gets
-    // read as the week; this one is about these two hours and has to be
-    // unmistakable about it.
+    // it is on course for is. The clock is in minutes, not a percentage:
+    // a percentage next to "block 64" gets read as the week, and this one
+    // is about these two hours and has to be unmistakable about it.
     const mins = Math.round(progress.fraction * 120);
     const running = scored ? mine.series[total - 1] : null;
     const now = document.createElement('div');
     now.className = 'trend-live';
+    // Says "the finished ones" rather than "the chart": this band is on
+    // screen from the first minutes of a week, when there is no chart to
+    // point at yet.
     now.title = 'A skirmish is a 2-hour block, 84 of them from reset to reset. This one '
-      + 'is still being played, so its score cannot be compared with the finished blocks '
-      + 'on the chart - the projection can. ArenaNet publishes a running block late, so '
-      + 'no projection is offered before the 45-minute mark.';
+      + 'is still being played, so its score cannot be compared with the finished ones - '
+      + 'the projection can. ArenaNet publishes a running block late, so no projection '
+      + 'is offered before the 45-minute mark.';
     const head = document.createElement('span');
     head.className = 'trend-live-head';
     head.innerHTML = `<i class="trend-live-dot"></i>Block ${progress.index} playing · `
@@ -347,9 +361,10 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
       // delay it is stops the gap reading as a fault in this page.
       body.textContent = "ArenaNet hasn't posted this block yet";
     } else if (progress.fraction >= LIVE_PROJECT_AFTER) {
-      // Two segments, not three. The reference the projection needs is
-      // the Average card at the top of this popover - repeating it here
-      // bought nothing and cost the line its shape.
+      // Two segments, not three. What the projection is read against is
+      // the Average card above - repeating it here bought nothing and
+      // cost the line its shape. In the first hours of a week there is no
+      // Average yet, and the pace still stands on its own.
       body.innerHTML = `<b>${running.toLocaleString()}</b> so far · on pace for `
         + `<b>${Math.round(running / progress.fraction).toLocaleString()}</b>`;
     } else {
@@ -388,10 +403,15 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     });
   }
 
-  popover.appendChild(popNote('A skirmish is a 2-hour block, and the week is 84 of them. Most '
-    + 'of the score comes from holding objectives over time, plus a small bonus per kill, so a '
-    + 'high number usually means good map control rather than one big fight. The chart shows '
-    + 'finished blocks only.'));
+  // The last sentence is about the chart, so it goes only where the
+  // chart went. Without this the popover ended by explaining a panel
+  // that is not on the screen - which is how it read all morning for
+  // every NA side, one finished block into the week.
+  const note = 'A skirmish is a 2-hour block - 84 of them in a week. Most of the score '
+    + 'comes from holding objectives, not from kills, so a big number usually means '
+    + 'map control.';
+  popover.appendChild(popNote(
+    finished >= 2 ? `${note} The chart shows finished blocks only.` : note));
 }
 
 // Trend icon on the Skirmish stat, opening the score-over-time chart we

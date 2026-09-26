@@ -87,7 +87,6 @@ const MARKER_ICON = Object.freeze({
   // knocked into it, the way every other marker is drawn.
   Mercenary: 'Event_Mercenary',
 });
-const TEAM_COLOURS = new Set(['red', 'blue', 'green']);
 let plotSerial = 0;
 // How often open tier maps re-read their own match. The API serves match
 // data with max-age=1, so the only lag is ours. One match is 82KB, and
@@ -99,7 +98,7 @@ function markerIcon(type, owner) {
   const base = MARKER_ICON[type];
   if (!base) return null;
   const c = String(owner || '').toLowerCase();
-  return `assets/icons/${base}${TEAM_COLOURS.has(c) ? `_${c}` : ''}.png`;
+  return `assets/icons/${base}${COLORS.includes(c) ? `_${c}` : ''}.png`;
 }
 
 // The twenty guild tactics, likewise copied in. Serving every picture
@@ -157,7 +156,7 @@ async function getTacticCatalogue(ids) {
   const want = [...new Set(ids)].filter((id) => !tacticCatalogue.has(id));
   if (!want.length) return tacticCatalogue;
   try {
-    const list = await fetchJsonCached(`${API_BASE}/guild/upgrades?ids=${want.join(',')}`);
+    const list = await fetchJsonCached(`${API_BASE}/guild/upgrades?ids=${want.map(encodeURIComponent).join(',')}`);
     for (const u of Array.isArray(list) ? list : []) tacticCatalogue.set(u.id, u);
   } catch { /* tactics are a nicety; the panel reads fine without them */ }
   return tacticCatalogue;
@@ -217,7 +216,7 @@ function guildEmblem(guildId) {
 async function getSectors(mapId) {
   if (sectorCache.has(mapId)) return sectorCache.get(mapId);
   const list = await fetchJsonCached(
-    `${API_BASE}/continents/2/floors/3/regions/7/maps/${mapId}/sectors?ids=all`);
+    `${API_BASE}/continents/2/floors/3/regions/7/maps/${encodeURIComponent(mapId)}/sectors?ids=all`);
   const arr = (Array.isArray(list) ? list : []).filter((x) => Array.isArray(x.bounds));
   // Only a real answer is worth keeping, the same rule getGuildInfo
   // follows. Empty means the response came back malformed, and cached it
@@ -695,7 +694,7 @@ function renderObjectiveDetail(panel, p, match) {
 
   const dl = document.createElement('dl');
   const ownerColor = String(ob.owner || '').toLowerCase();
-  const teamId = ['red', 'blue', 'green'].includes(ownerColor)
+  const teamId = COLORS.includes(ownerColor)
     ? matchTeamId(match, ownerColor) : null;
   row(dl, 'Owned by', teamId ? getTeamName(teamId) : (ob.owner || 'Nobody'));
   const ago = flippedAgo(ob.last_flipped);
@@ -852,7 +851,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue, s
     if (document.visibilityState === 'hidden' || !document.hasFocus()) return;
     let fresh;
     try {
-      fresh = await fetchJson(`${API_BASE}/wvw/matches?id=${match.id}`);
+      fresh = await fetchJson(`${API_BASE}/wvw/matches?id=${encodeURIComponent(match.id)}`);
     } catch { return; }
     if (activeTrigger !== triggerEl || !fresh || !Array.isArray(fresh.maps)) return;
     for (const m of fresh.maps) if (byType.has(m.type)) byType.set(m.type, m);

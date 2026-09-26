@@ -113,7 +113,7 @@ async function getGuildInfo(guildId) {
   }
 
   try {
-    const info = await fetchJson(`${API_BASE}/guild/${guildId}`);
+    const info = await fetchJson(`${API_BASE}/guild/${encodeURIComponent(guildId)}`);
     if (!info || typeof info.tag !== 'string' || typeof info.name !== 'string') {
       throw new Error('Unexpected guild data from API');
     }

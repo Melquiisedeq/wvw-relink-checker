@@ -39,9 +39,6 @@ const emberField = (function () {
   // blur's standard deviation, spread how far the lit disc is grown
   // before blurring, alpha how strong the halo is - the three numbers
   // box-shadow 0 0 7px 1px encodes.
-  // What box-shadow 0 0 7px 1px encodes: a halo blurred with a standard
-  // deviation of half the 7px radius, over the dot grown by the 1px
-  // spread, at the shadow colour's own alpha.
   const GLOW = { sigma: 3.5, spread: 1, alpha: .75 };
   // The wind. `eddy` is how wide a gust is in pixels, `churn` how fast the
   // field itself changes, `push` how hard it shoves, `drag` how much
@@ -90,12 +87,10 @@ const emberField = (function () {
   // the scale it follows is decided.
   let SS = 1;
 
-  // One ember, glow and core together, rasterised once per colour and
-  // size. Together is the point: CSS composites the box-shadow and the
-  // background into a group and fades the group, so the core stays its
-  // own pure colour the whole way. Drawing the two separately at the
-  // same alpha lets the core blend with its own halo and come out a
-  // duller orange, which is what stopped it reading as a spark.
+  // The halo, and only the halo, rasterised once per colour and size.
+  // The core is not in here: it is drawn live in put(), for the reason
+  // given there - an ember is at two thirds of its size at the moment it
+  // is brightest, and a bitmap shrunk by a third loses exactly that peak.
   //
   // blur(3.5px) and not 7: a box-shadow radius is twice the standard
   // deviation, and ctx.filter is the CSS filter path, which takes the
