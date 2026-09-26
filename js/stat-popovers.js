@@ -182,128 +182,144 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
   for (const side of sides) side.done = side.series.slice(0, cut);
 
   const mine = sides.find((x) => x.color === color);
-  if (!mine || mine.done.length < 2) {
-    const empty = document.createElement('p');
-    empty.className = 'hint';
-    empty.style.margin = '0';
-    empty.textContent = 'Not enough finished skirmishes yet this week.';
-    popover.appendChild(empty);
-    return;
+  if (!mine) return;
+
+  // How much of this can be drawn. Only the chart needs two finished
+  // blocks; the figures need one, and the band reporting the block being
+  // played needs none. They used to share one gate, so for the first
+  // four hours of every week the whole popover said there was nothing
+  // here while the live band underneath had the only number anyone
+  // wanted.
+  const finished = mine.done.length;
+
+  if (finished >= 1) {
+    // Three figures, all about finished blocks; the running one is reported
+    // separately below, where it cannot be mistaken for them. The average
+    // is what gives the other two a meaning - a peak of 2,000 reads very
+    // differently against an average of 1,900 than against one of 900.
+    const avg = Math.round(mine.done.reduce((a, b) => a + b, 0) / mine.done.length);
+    const figures = document.createElement('div');
+    figures.className = 'pop-figures pop-figures--three';
+    const fLast = popFigure('Last block', mine.done[mine.done.length - 1].toLocaleString());
+    fLast.title = 'The most recent block that has finished - not the one being played now.';
+    const fAvg = popFigure('Average', avg.toLocaleString());
+    fAvg.title = `Mean score across the ${mine.done.length} finished blocks this week.`;
+    const fPeak = popFigure('Peak', Math.max(...mine.done).toLocaleString());
+    fPeak.title = 'The best single block this week.';
+    figures.appendChild(fLast);
+    figures.appendChild(fAvg);
+    figures.appendChild(fPeak);
+    popover.appendChild(figures);
   }
 
-  let min = Infinity;
-  let max = -Infinity;
-  for (const side of sides) {
-    for (const v of side.done) {
-      if (v < min) min = v;
-      if (v > max) max = v;
+
+  if (finished >= 2) {
+    let min = Infinity;
+    let max = -Infinity;
+    for (const side of sides) {
+      for (const v of side.done) {
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
     }
-  }
 
-  // Three figures, all about finished blocks; the running one is reported
-  // separately below, where it cannot be mistaken for them. The average
-  // is what gives the other two a meaning - a peak of 2,000 reads very
-  // differently against an average of 1,900 than against one of 900.
-  const avg = Math.round(mine.done.reduce((a, b) => a + b, 0) / mine.done.length);
-  const figures = document.createElement('div');
-  figures.className = 'pop-figures pop-figures--three';
-  const fLast = popFigure('Last block', mine.done[mine.done.length - 1].toLocaleString());
-  fLast.title = 'The most recent block that has finished - not the one being played now.';
-  const fAvg = popFigure('Average', avg.toLocaleString());
-  fAvg.title = `Mean score across the ${mine.done.length} finished blocks this week.`;
-  const fPeak = popFigure('Peak', Math.max(...mine.done).toLocaleString());
-  fPeak.title = 'The best single block this week.';
-  figures.appendChild(fLast);
-  figures.appendChild(fAvg);
-  figures.appendChild(fPeak);
-  popover.appendChild(figures);
+    // A plot area inset from the box, so the scale numbers have somewhere
+    // to live that is not on top of the lines.
+    const W = 380;
+    const H = 132;
+    const X0 = 50;
+    const X1 = W - 8;
+    const Y0 = 12;
+    const Y1 = H - 18;
+    const range = max - min || 1;
+    const plot = (values) => values
+      .map((v, i) => {
+        const x = X0 + (i / (values.length - 1)) * (X1 - X0);
+        const y = Y1 - ((v - min) / range) * (Y1 - Y0);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(' ');
 
-  // A plot area inset from the box, so the scale numbers have somewhere
-  // to live that is not on top of the lines.
-  const W = 380;
-  const H = 132;
-  const X0 = 50;
-  const X1 = W - 8;
-  const Y0 = 12;
-  const Y1 = H - 18;
-  const range = max - min || 1;
-  const plot = (values) => values
-    .map((v, i) => {
-      const x = X0 + (i / (values.length - 1)) * (X1 - X0);
-      const y = Y1 - ((v - min) / range) * (Y1 - Y0);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(' ');
+    const chart = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    chart.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    chart.setAttribute('class', 'activity-chart');
+    let markup = '';
+    for (const [value, y] of [[max, Y0], [Math.round((max + min) / 2), (Y0 + Y1) / 2], [min, Y1]]) {
+      markup += `<line x1="${X0}" y1="${y}" x2="${X1}" y2="${y}" class="trend-grid"/>`
+        + `<text x="${X0 - 7}" y="${(y + 3).toFixed(1)}" class="trend-scale" text-anchor="end">`
+        + `${value.toLocaleString()}</text>`;
+    }
+    // A day is 12 blocks, and sixty-odd unlabelled points along an axis is
+    // not something anyone can place in time. The ticks turn "somewhere in
+    // the middle" into "Sunday".
+    const BLOCKS_PER_DAY = 12;
+    for (let b = BLOCKS_PER_DAY; b < mine.done.length; b += BLOCKS_PER_DAY) {
+      const x = (X0 + ((b - 1) / (mine.done.length - 1)) * (X1 - X0)).toFixed(1);
+      markup += `<line x1="${x}" y1="${Y0}" x2="${x}" y2="${Y1}" class="trend-day"/>`
+        + `<text x="${x}" y="${Y1 + 12}" class="trend-scale trend-day-label" `
+        + `text-anchor="middle">${b / BLOCKS_PER_DAY}d</text>`;
+    }
+    for (const side of sides) {
+      if (side.color === color) continue;
+      markup += `<polyline points="${plot(side.done)}" class="trend-line trend-line--${side.color}"/>`;
+    }
+    markup += `<polyline points="${plot(mine.done)}" class="activity-line activity-line--${color}"/>`;
+    const lastX = X1;
+    const lastY = Y1 - ((mine.done[mine.done.length - 1] - min) / range) * (Y1 - Y0);
+    markup += `<circle cx="${lastX}" cy="${lastY.toFixed(1)}" r="3.5" class="activity-dot activity-dot--${color}"/>`;
+    chart.innerHTML = markup;
+    popover.appendChild(chart);
 
-  const chart = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  chart.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  chart.setAttribute('class', 'activity-chart');
-  let markup = '';
-  for (const [value, y] of [[max, Y0], [Math.round((max + min) / 2), (Y0 + Y1) / 2], [min, Y1]]) {
-    markup += `<line x1="${X0}" y1="${y}" x2="${X1}" y2="${y}" class="trend-grid"/>`
-      + `<text x="${X0 - 7}" y="${(y + 3).toFixed(1)}" class="trend-scale" text-anchor="end">`
-      + `${value.toLocaleString()}</text>`;
-  }
-  // A day is 12 blocks, and sixty-odd unlabelled points along an axis is
-  // not something anyone can place in time. The ticks turn "somewhere in
-  // the middle" into "Sunday".
-  const BLOCKS_PER_DAY = 12;
-  for (let b = BLOCKS_PER_DAY; b < mine.done.length; b += BLOCKS_PER_DAY) {
-    const x = (X0 + ((b - 1) / (mine.done.length - 1)) * (X1 - X0)).toFixed(1);
-    markup += `<line x1="${x}" y1="${Y0}" x2="${x}" y2="${Y1}" class="trend-day"/>`
-      + `<text x="${x}" y="${Y1 + 12}" class="trend-scale trend-day-label" `
-      + `text-anchor="middle">${b / BLOCKS_PER_DAY}d</text>`;
-  }
-  for (const side of sides) {
-    if (side.color === color) continue;
-    markup += `<polyline points="${plot(side.done)}" class="trend-line trend-line--${side.color}"/>`;
-  }
-  markup += `<polyline points="${plot(mine.done)}" class="activity-line activity-line--${color}"/>`;
-  const lastX = X1;
-  const lastY = Y1 - ((mine.done[mine.done.length - 1] - min) / range) * (Y1 - Y0);
-  markup += `<circle cx="${lastX}" cy="${lastY.toFixed(1)}" r="3.5" class="activity-dot activity-dot--${color}"/>`;
-  chart.innerHTML = markup;
-  popover.appendChild(chart);
+    // The right-hand label is about the week, not about the block being
+    // played - those are two different clocks, and a percentage sitting
+    // next to "of 84" was being read as one.
+    const hoursIn = progress ? (progress.index - 1) * 2 + progress.fraction * 2 : cut * 2;
+    const weekPct = Math.min(100, Math.round((hoursIn / 168) * 100));
+    const axis = document.createElement('div');
+    axis.className = 'activity-axis';
+    // Counted as blocks finished, not as "block N", because the band below
+    // names the block being played right now - and "Block 64 of 84" next to
+    // "Block 65" reads as a contradiction when it is simply the difference
+    // between the last one that ended and the one in progress.
+    axis.innerHTML = '<span>Reset</span>'
+      + `<span title="The chart plots finished blocks only. ${cut} of the week's 84 have `
+      + `ended; the one being played is reported below.">`
+      + `${cut} of 84 finished · week ${weekPct}%</span>`;
+    popover.appendChild(axis);
 
-  // The right-hand label is about the week, not about the block being
-  // played - those are two different clocks, and a percentage sitting
-  // next to "of 84" was being read as one.
-  const hoursIn = progress ? (progress.index - 1) * 2 + progress.fraction * 2 : cut * 2;
-  const weekPct = Math.min(100, Math.round((hoursIn / 168) * 100));
-  const axis = document.createElement('div');
-  axis.className = 'activity-axis';
-  // Counted as blocks finished, not as "block N", because the band below
-  // names the block being played right now - and "Block 64 of 84" next to
-  // "Block 65" reads as a contradiction when it is simply the difference
-  // between the last one that ended and the one in progress.
-  axis.innerHTML = '<span>Reset</span>'
-    + `<span title="The chart plots finished blocks only. ${cut} of the week's 84 have `
-    + `ended; the one being played is reported below.">`
-    + `${cut} of 84 finished · week ${weekPct}%</span>`;
-  popover.appendChild(axis);
-
-  // Which line is whose. Without this the two thin lines are decoration.
-  const legend = document.createElement('div');
-  legend.className = 'trend-legend';
-  for (const side of sides) {
-    const teamId = matchTeamId(match, side.color);
-    const item = document.createElement('span');
-    item.className = `trend-legend-item${side.color === color ? ' is-mine' : ''}`;
-    const dot = document.createElement('i');
-    dot.className = `trend-legend-dot trend-legend-dot--${side.color}`;
-    item.appendChild(dot);
-    item.appendChild(document.createTextNode(teamId ? getTeamName(teamId) : side.color));
-    // The lines say who is higher; this says by how much, across the
-    // whole week rather than at whatever point the eye happens to land.
-    const sideAvg = Math.round(side.done.reduce((a, b) => a + b, 0) / side.done.length);
-    const val = document.createElement('b');
-    val.className = 'trend-legend-val';
-    val.textContent = sideAvg.toLocaleString();
-    item.appendChild(val);
-    item.title = 'Average score per finished block this week';
-    legend.appendChild(item);
+    // Which line is whose. Without this the two thin lines are decoration.
+    const legend = document.createElement('div');
+    legend.className = 'trend-legend';
+    for (const side of sides) {
+      const teamId = matchTeamId(match, side.color);
+      const item = document.createElement('span');
+      item.className = `trend-legend-item${side.color === color ? ' is-mine' : ''}`;
+      const dot = document.createElement('i');
+      dot.className = `trend-legend-dot trend-legend-dot--${side.color}`;
+      item.appendChild(dot);
+      item.appendChild(document.createTextNode(teamId ? getTeamName(teamId) : side.color));
+      // The lines say who is higher; this says by how much, across the
+      // whole week rather than at whatever point the eye happens to land.
+      const sideAvg = Math.round(side.done.reduce((a, b) => a + b, 0) / side.done.length);
+      const val = document.createElement('b');
+      val.className = 'trend-legend-val';
+      val.textContent = sideAvg.toLocaleString();
+      item.appendChild(val);
+      item.title = 'Average score per finished block this week';
+      legend.appendChild(item);
+    }
+    popover.appendChild(legend);
+  } else {
+    // Says which panel is missing and why, rather than letting a gap
+    // read as a fault. The rest of the popover carries on underneath.
+    const why = document.createElement('p');
+    why.className = 'hint';
+    why.style.margin = '0';
+    why.textContent = finished === 1
+      ? 'One block has finished so far. The chart needs two - a line through a single point has no direction.'
+      : 'No block has finished yet this week. The first one is still being played.';
+    popover.appendChild(why);
   }
-  popover.appendChild(legend);
 
   if (live) {
     // Reported as a pace rather than a total: "697 so far" invites a
@@ -347,14 +363,23 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
   // Where the last finished block's points came from. This is the part
   // that tells a guild where to go: a side can be level on the total and
   // be getting all of it from one borderland.
-  const mapScores = (match.skirmishes[cut - 1] || {}).map_scores;
+  //
+  // The last finished block when there is one, and the block being
+  // played when there is not. Breaking a running block down by map is
+  // fair in a way that comparing its total against finished ones is
+  // not - these are shares of itself - which is why it can be shown
+  // here while the chart still leaves it out.
+  const liveOnly = cut < 1 && scored;
+  const block = match.skirmishes[(liveOnly ? total : cut) - 1];
+  const mapScores = (block || {}).map_scores;
   if (Array.isArray(mapScores) && mapScores.length) {
     const byType = new Map(mapScores.map((x) => [x.type, x.scores]));
     const values = MAP_ORDER.map((t) => Number(byType.get(t)?.[color] ?? 0));
     const top = Math.max(...values) || 1;
     const sum = values.reduce((a, b) => a + b, 0) || 1;
 
-    popover.appendChild(popSection('Last block by map', sum.toLocaleString()));
+    popover.appendChild(popSection(
+      liveOnly ? 'This block by map' : 'Last block by map', sum.toLocaleString()));
 
     MAP_ORDER.forEach((type, i) => {
       popover.appendChild(popBarRow(MAP_LABELS[type], MAP_LABEL_CLASS[type],
@@ -373,7 +398,13 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
 // already built.
 function buildSkirmishTrendButton(serverName, match, color) {
   const series = getSkirmishSeries(match, color);
-  if (series.length < 2) return null;
+  // One block is enough to open this. The chart inside needs two that
+  // have finished, but it is one panel of several - the block being
+  // played right now is reported whatever the chart can do, and that is
+  // the part worth reading in the first hours of a week. Hiding the
+  // whole control because one panel is short answered the wrong
+  // question.
+  if (!series.length) return null;
 
   const btn = document.createElement('button');
   btn.type = 'button';
