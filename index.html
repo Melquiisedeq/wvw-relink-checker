@@ -136,31 +136,15 @@
 
 <div class="relink-banner" id="relinkBanner"></div>
 <div class="page" id="page">
-<aside class="rail rail-left">
-  <div class="card standings-card">
-    <div class="standings-header">
-      <span class="standings-header-left">
-        <h2>NA standings</h2>
-        <a class="leaderboard-link" href="https://gw2mists.com/en/leaderboards/player?region=1"
-           target="_blank" rel="noopener noreferrer" title="NA player kill leaderboard (gw2mists.com)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-               stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
-            <path d="M8 21h8"/><path d="M12 17v4"/>
-            <path d="M7 4h10v5a5 5 0 0 1-10 0V4Z"/>
-            <path d="M7 5H4a2 2 0 0 0 0 4h1.5"/><path d="M17 5h3a2 2 0 0 1 0 4h-1.5"/>
-          </svg>
-        </a>
-      </span>
-      <span id="standingsStatusNA" class="hint standings-status" role="status" aria-live="polite"><span class="spinner"></span>Loading…</span>
-    </div>
-    <div class="standings-grid" id="standingsGridNA"></div>
-  </div>
-</aside>
-
+<!-- The central column comes first on purpose: it is what the page is
+     for, so it is where Tab and a screen reader should start, and the
+     h1 has to precede the rails' h2s. The rails are put back around it
+     by `order` in css/layout.css, which is also what flexbox paints by -
+     so nothing about the layout depends on this order. -->
 <div class="wrap">
 
   <div class="title-row">
-    <svg width="27" height="32" viewBox="0 0 160 190" xmlns="http://www.w3.org/2000/svg">
+    <svg width="27" height="32" viewBox="0 0 160 190" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="iceGrad" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stop-color="#f2fdff"/>
@@ -235,6 +219,27 @@ One More Guild Name"></textarea>
 
 </div>
 
+<aside class="rail rail-left">
+  <div class="card standings-card">
+    <div class="standings-header">
+      <span class="standings-header-left">
+        <h2>NA standings</h2>
+        <a class="leaderboard-link" href="https://gw2mists.com/en/leaderboards/player?region=1"
+           target="_blank" rel="noopener noreferrer" title="NA player kill leaderboard (gw2mists.com)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 21h8"/><path d="M12 17v4"/>
+            <path d="M7 4h10v5a5 5 0 0 1-10 0V4Z"/>
+            <path d="M7 5H4a2 2 0 0 0 0 4h1.5"/><path d="M17 5h3a2 2 0 0 1 0 4h-1.5"/>
+          </svg>
+        </a>
+      </span>
+      <span id="standingsStatusNA" class="hint standings-status" role="status" aria-live="polite"><span class="spinner"></span>Loading…</span>
+    </div>
+    <div class="standings-grid" id="standingsGridNA"></div>
+  </div>
+</aside>
+
 <aside class="rail rail-right">
   <div class="card standings-card">
     <div class="standings-header">
@@ -243,7 +248,7 @@ One More Guild Name"></textarea>
         <a class="leaderboard-link" href="https://gw2mists.com/en/leaderboards/player"
            target="_blank" rel="noopener noreferrer" title="EU player kill leaderboard (gw2mists.com)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-               stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
             <path d="M8 21h8"/><path d="M12 17v4"/>
             <path d="M7 4h10v5a5 5 0 0 1-10 0V4Z"/>
             <path d="M7 5H4a2 2 0 0 0 0 4h1.5"/><path d="M17 5h3a2 2 0 0 1 0 4h-1.5"/>
@@ -295,7 +300,7 @@ One More Guild Name"></textarea>
   </p>
 </footer>
 
-<div class="impact-overlay" id="impactOverlay">
+<div class="impact-overlay" id="impactOverlay" aria-hidden="true">
   <!-- Reuses the #iceGrad and #shieldEdge gradients defined in the title icon's <defs> above -->
   <div class="impact-ring"></div>
   <div class="impact-ring impact-ring--slow"></div>
