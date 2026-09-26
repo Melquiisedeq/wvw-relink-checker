@@ -43,7 +43,7 @@
   /* Denser, for the same reason the team sides went from 42% to 62%:
      a near-transparent wash puts thin text straight onto the photo. */
   background:linear-gradient(180deg, rgba(44,76,90,.62), rgba(20,34,43,.52));
-  -webkit-backdrop-filter:blur(7px);backdrop-filter:blur(7px);
+  -webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
   border:1px solid var(--accent-soft);
   border-top-color:rgba(160,230,255,.32);
   box-shadow:

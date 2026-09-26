@@ -80,17 +80,19 @@ body{
       rgba(15,18,22,.55), transparent 28%, transparent 70%, rgba(15,18,22,.66));
 }
 
-/* The ember field's own box, deliberately a sibling of .fx and not a
-   layer inside it. Same geometry, so the embers are positioned against
-   exactly the box they were before, and it sits between .fx and the
-   trebuchet in source order - which is where it was painted anyway.
+/* The canvas the ember field is drawn into, deliberately a sibling of
+   .fx and not a layer inside it. It sits between .fx and the trebuchet
+   in source order, which is where the embers were painted anyway.
 
    Being outside is the whole point. .fx is an isolated group with a
    full-viewport mix-blend-mode layer in it, and a blend has to re-read
-   its backdrop: while the embers lived in there, one of them moving
-   meant composing the group again, photo and blur and blend, 144 times
-   a second. They carry no blend mode and were painted last, on top of
-   the finished group, so from out here they land on the same pixels. */
+   its backdrop: while the embers lived in there, anything moving meant
+   composing the group again, photo and blur and blend, 144 times a
+   second. Nothing here carries a blend mode, and it was painted last on
+   top of the finished group, so from out here it lands on the same
+   pixels.
+
+   Everything drawn inside is in js/boot.js. */
 .fx-embers{
   position:fixed;left:0;top:0;width:100%;
   height:100vh;   /* lvh for the same reason as .fx above. */
@@ -98,16 +100,6 @@ body{
   pointer-events:none;z-index:0;overflow:hidden;
   contain:layout paint style;
 }
-
-/* Embers, the warm counterpoint to the cold blue. transform and
-   opacity only, so the field stays on the compositor. */
-.ember{
-  position:absolute;bottom:-12px;width:3px;height:3px;border-radius:50%;
-  background:#ffb765;box-shadow:0 0 7px 1px rgba(255,150,60,.75);
-  opacity:0;animation:ember-rise linear infinite;
-}
-/* One in four is cyan instead, to tie the field back to the accent. */
-.ember--cold{background:#9fe6ff;box-shadow:0 0 7px 1px rgba(127,214,242,.75);}
 
 /* A finished check reaches the background: the field lifts, flares
    and settles, so the impact and the scenery read as one event. */
@@ -117,23 +109,6 @@ body{
   7%{filter:brightness(2.5) saturate(1.3);transform:translateY(-12px);}
   100%{filter:brightness(1);transform:translateY(0);}
 }
-/* Thrown up by the blast: faster, bigger, and gone afterwards. */
-.ember--blast{
-  width:4px;height:4px;
-  animation:ember-blast 2s cubic-bezier(.08,.72,.3,1) forwards;
-}
-@keyframes ember-blast{
-  0%{opacity:0;transform:translate3d(0,0,0) scale(.5);}
-  7%{opacity:1;}
-  100%{opacity:0;transform:translate3d(var(--drift,0),-108vh,0) scale(1.35);}
-}
-@keyframes ember-rise{
-  0%{opacity:0;transform:translate3d(0,0,0) scale(.6);}
-  12%{opacity:.85;}
-  70%{opacity:.5;}
-  100%{opacity:0;transform:translate3d(var(--drift,14px),-102vh,0) scale(1.15);}
-}
-
 /* Nothing loops while the window is not being watched. `*` rather than
    a list of the looping animations, because a list misses whatever gets
    added next - it already missed the first-place sheen. Paused, not

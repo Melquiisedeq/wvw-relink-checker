@@ -459,15 +459,7 @@ function spawnEmberBlast() {
   host.classList.add('surge');
   setTimeout(() => host.classList.remove('surge'), 2900);
 
-  for (let i = 0; i < 12; i++) {
-    const ember = document.createElement('span');
-    ember.className = i % 3 === 0 ? 'ember ember--cold ember--blast' : 'ember ember--blast';
-    ember.style.left = `${Math.random() * 100}%`;
-    ember.style.animationDelay = `${(Math.random() * 0.25).toFixed(2)}s`;
-    ember.style.setProperty('--drift', `${Math.round(Math.random() * 160 - 80)}px`);
-    host.appendChild(ember);
-    setTimeout(() => ember.remove(), 2400);
-  }
+  emberField.blast();
 }
 
 // The irregular half of the explosion, rebuilt every time so the shape
