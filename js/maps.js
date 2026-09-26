@@ -181,7 +181,11 @@ function getEmblemForegrounds() {
         emblemForegrounds = byId;
         return byId;
       })
-      .catch(() => { emblemForegrounds = new Map(); return emblemForegrounds; });
+      // Dropped rather than remembered as an empty catalogue: kept, it
+      // would blank every claim emblem until the page was reloaded,
+      // because the answer is only ever fetched once. Clearing the
+      // promise is what lets the next claimed objective ask again.
+      .catch(() => { emblemForegroundsPromise = null; return new Map(); });
   }
   return emblemForegroundsPromise;
 }
@@ -215,7 +219,12 @@ async function getSectors(mapId) {
   const list = await fetchJsonCached(
     `${API_BASE}/continents/2/floors/3/regions/7/maps/${mapId}/sectors?ids=all`);
   const arr = (Array.isArray(list) ? list : []).filter((x) => Array.isArray(x.bounds));
-  sectorCache.set(mapId, arr);
+  // Only a real answer is worth keeping, the same rule getGuildInfo
+  // follows. Empty means the response came back malformed, and cached it
+  // would blank that map for the rest of the session: the popover would
+  // report no objective data for the tier, with nothing left to retry
+  // against short of a reload.
+  if (arr.length) sectorCache.set(mapId, arr);
   return arr;
 }
 
