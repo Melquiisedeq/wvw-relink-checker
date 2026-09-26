@@ -48,23 +48,49 @@ function buildRelinkStat(title, value, isPrimary, tooltip, warn) {
   return stat;
 }
 
+// Inside the last two hours the banner starts breathing, so the tab
+// catches your eye from across the desk on reset night.
+const RELINK_URGENT_MS = 2 * 60 * 60 * 1000;
+
+// Which of the two is actually running out. NA and EU relink at
+// different times, so this is per region rather than per banner.
+function relinkIsUrgent(ms) {
+  return ms !== null && ms > 0 && ms <= RELINK_URGENT_MS;
+}
+
+// Crossed swords, at the weight the other glyphs on the page are drawn.
+// Deliberately not the lockout's warning triangle: a relink is an event
+// you turn up for, not a deadline you can miss, and giving both the same
+// glyph would leave hue as the only thing telling them apart.
+const SWORDS_ICON =
+  '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M4.5 19.5 L19 5"/><path d="M19.5 19.5 L5 5"/>' +
+  '<path d="M5.5 15.5 L8.5 18.5"/><path d="M18.5 15.5 L15.5 18.5"/></svg>';
+
 // Dims the region labels (NA/EU) and emphasizes the countdown values,
 // since the time is what the person actually came to read.
 function buildRelinkValue(naMs, euMs) {
   const frag = document.createDocumentFragment();
   const naRegion = document.createElement('span');
-  naRegion.className = 'region';
+  naRegion.className = relinkIsUrgent(naMs) ? 'region is-now' : 'region';
   naRegion.textContent = 'NA ';
   const naTime = document.createElement('span');
-  naTime.className = 'time';
+  naTime.className = relinkIsUrgent(naMs) ? 'time is-now' : 'time';
   naTime.textContent = formatCountdown(naMs);
+  // The dot is its own element so that it never lights: folded into
+  // ' . EU ' as it used to be, the separator would carry EU's is-now and
+  // brighten along with the region it does not belong to.
+  const sep = document.createElement('span');
+  sep.className = 'region';
+  sep.textContent = ' · ';
   const euRegion = document.createElement('span');
-  euRegion.className = 'region';
-  euRegion.textContent = ' · EU ';
+  euRegion.className = relinkIsUrgent(euMs) ? 'region is-now' : 'region';
+  euRegion.textContent = 'EU ';
   const euTime = document.createElement('span');
-  euTime.className = 'time';
+  euTime.className = relinkIsUrgent(euMs) ? 'time is-now' : 'time';
   euTime.textContent = formatCountdown(euMs);
-  frag.append(naRegion, naTime, euRegion, euTime);
+  frag.append(naRegion, naTime, sep, euRegion, euTime);
   return frag;
 }
 
@@ -156,21 +182,17 @@ function updateRelinkBanner() {
       lockoutUrgent
     ));
   }
-  // Inside the last two hours the banner starts breathing, so the tab
-  // catches your eye from across the desk on reset night.
-  const URGENT_MS = 2 * 60 * 60 * 1000;
-  const remaining = [relinkNA, relinkEU]
-    .filter((t) => t !== null)
-    .map((t) => t - now)
-    .filter((left) => left > 0);
-  const relinkUrgent = remaining.length > 0
-    && Math.min(...remaining) <= URGENT_MS;
+  const relinkUrgent = [relinkNA, relinkEU]
+    .some((t) => t !== null && relinkIsUrgent(t - now));
 
-  // The lockout wins, and only one of the two ever runs. A three-day
-  // window contains a weekly reset about two cycles out of five, so the
-  // overlap is normal rather than freak - and two things pulsing at
-  // once reads as decoration instead of as an alarm. The relink stands
-  // down; its number is still on the bar, just not shouting.
+  // The lockout wins, and only one of the two ever runs: two things
+  // pulsing at once reads as decoration instead of as an alarm, and of
+  // the two the lockout is the one you can still act on. How often the
+  // windows overlap is not measured - the arithmetic for a randomly
+  // placed three-day window would say two weeks in five, but the
+  // lockout is scheduled rather than random, and has been landing after
+  // the NA relink rather than across it. The relink stands down; its
+  // number is still on the bar, just not shouting.
   relinkBanner.classList.toggle('is-lockout', lockoutUrgent);
   relinkBanner.classList.toggle('is-urgent', relinkUrgent && !lockoutUrgent);
 
@@ -192,6 +214,24 @@ function updateRelinkBanner() {
     // between would send half the readers to a button they do not have.
     text.textContent = 'Set your WvW guild before the lockout - or pick a team if you have none. '
       + 'After it, your team is fixed for the month.';
+    alert.appendChild(text);
+    relinkBanner.appendChild(alert);
+  } else if (relinkUrgent) {
+    // Two hours out, so this is a heads-up to get set rather than a
+    // report of something already under way. Same slot and same shape as
+    // the lockout's line, in the relink's own colour - only one of the
+    // two is ever on the bar.
+    const alert = document.createElement('div');
+    alert.className = 'relink-alert relink-alert--relink';
+    alert.innerHTML = SWORDS_ICON;
+    // Named rather than pointed at. A glyph beside one of two numbers
+    // has to be noticed and then interpreted; the word is read.
+    const where = [];
+    if (relinkNA !== null && relinkIsUrgent(relinkNA - now)) where.push('NA');
+    if (relinkEU !== null && relinkIsUrgent(relinkEU - now)) where.push('EU');
+    const text = document.createElement('span');
+    text.textContent = `${where.join(' and ')} reset night. `
+      + 'Big fight, and the queue that comes with it.';
     alert.appendChild(text);
     relinkBanner.appendChild(alert);
   }

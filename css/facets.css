@@ -138,17 +138,59 @@
       0 0 22px -2px rgba(127,214,242,.55);
   }
 }
-/* The stat that lights has to be the one running out. This used to name
-   .relink-stat--primary, the Season Lockout, while the class it hangs off
-   fires on the relink - so the page brightened a number with four days
-   left on it. */
-.relink-banner.is-urgent .relink-stat:not(.relink-stat--primary) .relink-stat-value .time{
+/* The region that lights has to be the one running out, which is what
+   .is-now marks. This was every .time span, and NA and EU relink at
+   different times - so the one with four days left lit up beside the one
+   with minutes. Still under .is-urgent, so when the lockout is also
+   running and takes the bar, this stays dark. */
+.relink-banner.is-urgent .relink-stat:not(.relink-stat--primary) .relink-stat-value .time.is-now{
   color:var(--accent-bright);
   /* Lit, not just recoloured. #f2f6fa to #66f5ff is a hue step at
      almost the same lightness, so on its own it barely registers; the
      halo is what makes the number read as switched on. */
   text-shadow:0 1px 2px rgba(0,0,0,.6), 0 0 12px rgba(102,245,255,.55);
 }
+/* The label lifts with its number, or NA and EU read the same while one
+   of them is the whole point. White, not the accent: in the accent
+   colour it read as a hyperlink, which is what the accent means
+   everywhere else on the page, and a cyan halo on a grey letter was too
+   close to the grey beside it to register. This is the number's own
+   colour, so nothing new enters the palette. */
+.relink-banner.is-urgent .relink-stat:not(.relink-stat--primary) .relink-stat-value .region.is-now{
+  /* Weight, and only a nudge of tone. Every hue on this line is already
+     somebody's: grey belongs to the other region label, white to the
+     other number, and cyan to the number two characters away - which is
+     what made a quieter cyan here read as the value bleeding into its
+     own label. So this stays in the grey it shares with EU, one step
+     brighter, and does the separating by weight instead. 400 against
+     600 is plain at a glance and borrows nothing. */
+  color:#a8b3c0;font-weight:600;
+}
+/* A rule under the word. Three things were tried on this label first
+   and each failed the same way - at .66rem with .1em of tracking there
+   is not enough letter to work with. A halo smudged it, a text-stroke
+   closed its counters, a chip put a box round it. This is drawn clear
+   of the glyphs altogether, and as text-decoration rather than a border
+   it adds no height, so the bar does not jump when it lights. */
+.relink-banner.is-urgent .relink-stat:not(.relink-stat--primary) .relink-stat-title{
+  /* A tinted white, and deliberately neither of the two colours already
+     spoken for: #f2f6fa is what the numbers wear and the accent is both
+     the lockout's title and every link on the page. This sits in the
+     cyan family the bar is pulsing in, which is what says at a glance
+     which of the two alarms is running.
+
+     The tracking opens up as well. Widening small caps is a change of
+     shape rather than of brightness, and shape is what survives being
+     seen out of the corner of the eye. */
+  color:#bfe9f7;
+  letter-spacing:.14em;
+  text-decoration:underline;
+  text-decoration-color:var(--accent-bright);
+  text-decoration-thickness:1px;
+  text-underline-offset:4px;
+}
+
+
 
 /* ---- Season lockout inside three days --------------------------- */
 /* Amber, not cyan. Cyan here means something you can touch or something
@@ -198,6 +240,20 @@
   color:#f5d9b4;font-size:.74rem;line-height:1.4;text-align:center;
 }
 .relink-alert svg{flex-shrink:0;color:var(--warn);}
+/* The relink's own. Quieter than the lockout's amber on every axis, the
+   same ordering the two pulses already keep. */
+.relink-alert--relink{
+  border-top-color:rgba(127,214,242,.16);
+  color:#cfe8f4;
+  gap:5px;
+}
+/* Bigger than the lockout's triangle and closer to its text: this one
+   is a silhouette rather than a symbol, and it needs the room to read
+   as two blades instead of a cross. */
+.relink-alert--relink svg{
+  width:1.35em;height:1.35em;color:var(--accent-bright);
+  filter:drop-shadow(0 0 6px rgba(102,245,255,.55));
+}
 
 /* ==========================================================
    TYPOGRAPHY
