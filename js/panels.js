@@ -75,7 +75,10 @@ function renderRow({ originalName, tag, region, server, error }) {
     tr.appendChild(regionCell);
 
     const serverCell = document.createElement('td');
-    serverCell.className = 'server-cell';
+    // The flex lives on a span inside the cell, never on the cell
+    // itself - see .server-cell in css/panels.css for why.
+    const serverInner = document.createElement('span');
+    serverInner.className = 'server-cell';
 
     const dot = document.createElement('span');
     dot.className = 'dot dot-pending';
@@ -85,9 +88,10 @@ function renderRow({ originalName, tag, region, server, error }) {
     serverText.className = 'status-ok';
     serverText.textContent = server;
 
-    serverCell.appendChild(dot);
-    serverCell.appendChild(serverText);
-    if (region === 'NA') serverCell.appendChild(buildServerGuildsButton(server));
+    serverInner.appendChild(dot);
+    serverInner.appendChild(serverText);
+    if (region === 'NA') serverInner.appendChild(buildServerGuildsButton(server));
+    serverCell.appendChild(serverInner);
     tr.appendChild(serverCell);
 
     resultBody.appendChild(tr);

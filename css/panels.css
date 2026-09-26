@@ -35,7 +35,15 @@
 .dot-blue{background:radial-gradient(circle at 30% 30%, #b8cdff, var(--blue));color:var(--blue);}
 .dot-green{background:radial-gradient(circle at 30% 30%, #b3ecce, var(--green));color:var(--green);}
 .dot-pending{background:#4b5563;box-shadow:none;}
-.server-cell{display:flex;align-items:center;gap:8px;}
+/* inline-flex on a span inside the cell, deliberately not flex on the
+   <td>. A cell told to be a flex container stops being a table cell:
+   the row wraps it in an anonymous one, and with align-items:center no
+   item offers a baseline, so the flex box synthesises one from its own
+   bottom edge. That bottom then lined up with the text baseline of the
+   other three columns, which pushed this one up and stretched the row.
+   The dot is a bare span and only gets its 10px by being a flex item,
+   so the flex moves inward rather than away. */
+.server-cell{display:inline-flex;align-items:center;gap:8px;vertical-align:middle;}
 .team-name{font-weight:600;font-size:.88rem;color:#f2f6fa;}
 /* Chips carry their own dark-on-light text, and a drop shadow meant for
    light-on-dark only muddies them. */
