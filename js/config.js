@@ -59,12 +59,11 @@ function matchTeamId(match, color) {
 }
 
 // A match whose end_time has passed describes a week that is over: the
-// scores are final, the objectives are frozen where they stood and the
-// maps are last week's. ArenaNet republishes the tiers one at a time and
-// not always forwards - during the relink of 26/09 tier 4 was on the new
-// week while 1, 2 and 3 were still on the old, and tier 2 published the
-// new week and then went back to the old one. So this is asked of a
-// single match, never of a region.
+// scores are final and the maps are last week's. ArenaNet republishes
+// the tiers one at a time and not always forwards - during the relink of
+// 26/09 tier 4 was on the new week while 1, 2 and 3 were still on the
+// old, and tier 2 published the new week and then went back. So this is
+// asked of a single match, never of a region.
 function matchIsLive(match) {
   const end = Date.parse(match && match.end_time);
   return Number.isFinite(end) && end > Date.now();
@@ -99,26 +98,21 @@ const TIMERS_REFRESH_MS = 10 * 60 * 1000;    // season lockout
 const COMMUNITY_SHEET_TTL_MS = 5 * 60 * 1000;
 
 // Kills history. The GW2 API publishes kills and deaths only as running
-// totals for the week, so "which map is busy now" cannot be read from
-// one answer - it takes two, apart in time. A visitor arriving cold has
-// no earlier reading and nowhere to get one.
+// totals for the week, so "which map is busy now" cannot be read from one
+// answer - and a visitor arriving cold has no earlier reading. So a
+// Google Apps Script trigger takes a snapshot every five minutes and
+// appends it here, trimming to a rolling two hours. Read through the gviz
+// CSV export, the same trick the community guild sheet uses: no API key,
+// and docs.google.com is already in the CSP. Measured at 449ms for the
+// whole file, faster than the GW2 call the popover already waits on.
 //
-// So a Google Apps Script trigger takes a snapshot every five minutes
-// and appends it here, trimming to a rolling two hours. Reading it is
-// the same trick the community guild sheet already uses: the gviz CSV
-// export, no API key, and docs.google.com is already in the CSP.
-// Measured 26/09: 449ms for the whole file, which is faster than the
-// GW2 API call the popover already waits on.
-//
-// The sheet and the script that fills it are part of this project, not
-// a third-party feed. So the shape below is a decision, not a
-// constraint: if this ever needs another column, a different cadence or
-// a different unit, change it at the source rather than working around
-// it here.
+// The sheet and the script that fills it are part of this project, not a
+// third-party feed, so the shape below is a decision rather than a
+// constraint: change it at the source, not around it here.
 //
 // Columns, in this order and with no header row:
 //   epoch ms | match id | Center | RedHome | BlueHome | GreenHome
-// The four numbers are player kills, summed over all three sides - see
+// The four numbers are player kills summed over all three sides - see
 // fightTotals in js/maps.js for why deaths are left out.
 const KILLS_SHEET_ID = '1Lh6dGhlYVvvKlXT_tofEUKZhYGW71Jij1IstbdPF2fg';
 const KILLS_SHEET_URL =

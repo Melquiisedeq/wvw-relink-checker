@@ -6,25 +6,18 @@
 <!--
   default-src 'none' denies everything, then:
 
-  connect-src - the GW2 API, two read-only Google Sheets, and the
-  GoatCounter endpoint. One sheet is the community guild list, fetched
-  when a shield icon is clicked; the other is this project's own kills
-  history, fetched when a tier's maps are opened. count.js tries
-  sendBeacon first, which this governs, and falls back to an image,
-  which is why that host is in img-src too.
+  connect-src - the GW2 API, two read-only Google Sheets (the community
+  guild list when a shield is clicked, this project's own kills history
+  when a tier's maps are opened) and GoatCounter, which falls back from
+  sendBeacon to an image - hence that host in img-src too.
 
-  script-src 'self' - every script comes from js/, GoatCounter's
-  vendored copy included, so nothing is fetched elsewhere to be run.
+  script-src and style-src 'self', no unsafe-inline: every script comes
+  from js/, GoatCounter's vendored copy included, and styles set from JS
+  go through the CSSOM, which no CSP governs.
 
-  style-src 'self' - no unsafe-inline. The five style="" attributes this
-  page used to carry are rules in css/ now. Styles set from JS are not
-  affected either way: el.style goes through the CSSOM, which no CSP
-  governs.
-
-  img-src - the background, map renders and game icons are all local.
-  Guild emblems are not: there are hundreds of thousands of them and
-  they change, so a claimed objective loads one from ArenaNet's asset
-  host. Same company as the API, and images only.
+  img-src - everything local except guild emblems, which come from
+  ArenaNet's asset host; there are hundreds of thousands of them and
+  they change.
 
   base-uri and form-action 'none' - no <base> hijacking, no forms.
 -->
@@ -34,12 +27,11 @@
 <!--
   Both hosts are reached on a click, never at load. Measured cold,
   DNS+TCP+TLS to the API is ~575ms of a ~780ms first call, all of it
-  inside the click; this moves the handshake to page load instead.
-
-  crossorigin on one and not the other is not a slip. fetch() goes out
-  in CORS mode and lands in the anonymous connection pool, so the API
-  hint has to match it; emblems are plain <image> loads that are not
-  CORS. A hint in the wrong pool opens a socket nothing reuses.
+  inside the click; this moves the handshake to page load. crossorigin
+  on one and not the other is not a slip - fetch() lands in the
+  anonymous connection pool while emblems are plain <image> loads that
+  are not CORS, and a hint in the wrong pool opens a socket nothing
+  reuses.
 -->
 <link rel="preconnect" href="https://api.guildwars2.com" crossorigin>
 <link rel="preconnect" href="https://render.guildwars2.com">
@@ -47,22 +39,18 @@
 <!--
   The tool circulates as a bare URL in Discord, so the unfurled card is
   most of the first impression. Discord fetches og:image from its own
-  servers, so the CSP above does not apply to it - but the URL has to be
-  absolute for that same reason.
-
-  1200x630 is the frame every unfurl component is built around. GitHub's
-  1280x640 repository preview is a separate render, not this one scaled.
-  JPEG because WhatsApp drops previews it judges too heavy: 103 KB here
-  against the PNG's 357 KB. Width and height are declared so a scraper
-  can lay the card out before the image arrives.
+  servers, so the CSP does not apply to it - and the URL has to be
+  absolute for the same reason. 1200x630 is the frame every unfurl is
+  built around. JPEG because WhatsApp drops previews it judges too
+  heavy: 103 KB here against the PNG's 357 KB.
 -->
 <!--
   One address for this page, named in the page itself. GitHub Pages
-  already redirects plain http and the github.io URL here, so there is
-  no duplicate to settle - what this answers is a crawler still holding
-  an older URL, which is not hypothetical: the result Google shows today
-  still carries a title this site stopped using several commits ago.
-  js/count.js reads this same tag to normalise the path it reports.
+  already redirects plain http and the github.io URL here, so this is
+  for a crawler still holding an older one - not hypothetical, since the
+  result Google shows still carries a title this site dropped several
+  commits ago. js/count.js reads the same tag to normalise the path it
+  reports.
 -->
 <link rel="canonical" href="https://wvwrelink.com/">
 <meta name="description" content="Guild Wars 2 WvW relink checker. Paste your guild names and see which WvW team each one landed on after the relink, with live NA and EU tier standings.">
@@ -80,11 +68,9 @@
 <!--
   Renders nothing. It tells a search engine, in its own vocabulary, what
   this page is and which game it covers. application/ld+json is a data
-  block, so script-src never evaluates it.
-
-  No FAQPage on purpose: Google requires that markup to match
-  question-and-answer text visible on the page, and there is none.
-  Claiming it earns a manual action, not a rich result.
+  block, so script-src never evaluates it. No FAQPage on purpose: Google
+  requires that markup to match question-and-answer text visible on the
+  page, and claiming it earns a manual action rather than a rich result.
 -->
 <script type="application/ld+json">
 {
@@ -112,20 +98,16 @@
 }
 </script>
 <!--
-  Files at real addresses, where this used to be a data: URI. Google
-  will not show an icon it cannot crawl and a data: URI gives it nothing
-  to fetch, which is what left the search result carrying a generic
-  globe. Their accepted formats are BMP, GIF, ICO, PNG, JPEG, PPM and
-  TIFF - SVG is not among them, whatever browsers make of it - and the
-  icon has to be square, while the crest is 160x190. So both files are
-  that crest centred on a square rather than squashed onto one, drawn
-  from the same assets/logo.svg the title row and the footer use.
+  Files at real addresses, where this used to be a data: URI - Google
+  will not show an icon it cannot crawl, and a data: URI gives it
+  nothing to fetch. Its formats are BMP, GIF, ICO, PNG, JPEG, PPM and
+  TIFF, not SVG, and the icon has to be square while the crest is
+  160x190 - so both files are that crest centred on a square, drawn from
+  the same assets/logo.svg the page already uses.
 
-  The third is for a home screen on iOS, which ignores transparency and
-  fills whatever is clear with black - so that one carries the page's
-  own background instead, and sits smaller in its square because iOS
-  rounds the corners itself and the shield's point would be inside the
-  cut.
+  The third is for a home screen on iOS, which fills transparency with
+  black - so it carries the page's own background, and sits smaller in
+  its square because iOS rounds the corners itself.
 -->
 <link rel="icon" type="image/png" sizes="192x192" href="assets/favicon-192.png">
 <link rel="icon" sizes="16x16 32x32 48x48" href="favicon.ico">
@@ -405,10 +387,8 @@ One More Guild Name"></textarea>
 
 <!-- Page views only: no cookies, no fingerprint, nothing that identifies
      a visitor between one request and the next. count.js is served from
-     this repo rather than gc.zgo.at, so script-src stays 'self' and the
-     only request that leaves is the hit itself. The one thing it stores
-     is the opt-out: set localStorage.skipgc = 't' on this site and this
-     browser stops being counted. -->
+     this repo rather than gc.zgo.at, so script-src stays 'self'. Opt out
+     with localStorage.skipgc = 't'. -->
 <script data-goatcounter="https://melquiisedeq.goatcounter.com/count"
         async src="js/count.js"></script>
 </body>

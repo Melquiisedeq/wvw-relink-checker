@@ -1,8 +1,7 @@
 /* Played after a check finishes. This used to jolt the whole viewport
-   sideways on "done", which moved everything the reader was about to
-   read. The panels drop in instead, so the motion points at the
-   results; the shake survives only on the hit itself - see
-   .page.struck at the bottom of this file. */
+   sideways, which moved everything the reader was about to read. The
+   panels drop in instead, so the motion points at the results; the
+   shake survives only on the hit itself - see .page.struck below. */
 .page.deploying .match-panel{
   animation:panel-deploy .46s cubic-bezier(.18,.86,.32,1) backwards;
 }
@@ -74,16 +73,12 @@
   100%{opacity:0;}
 }
 
-/* An explosion, not a light. Two perfectly round layers were what made it
-   read as a lamp switching on - a circle is the one shape a detonation
-   never makes. Three things replace it and the silhouette comes from all
-   of them overlapping: a ragged core, billows pushing out off-centre, and
-   spikes thrown clear. The core keeps its colour and loses its roundness,
-   and turns slightly as it expands so the spikes are not a decal being
-   scaled up.
-
-   Driven by .broken, never .play: the glow used to ramp up during the
-   flight, which announced the impact before it happened. */
+/* An explosion, not a light. Two perfectly round layers were what made
+   it read as a lamp switching on - a circle is the one shape a
+   detonation never makes. Three overlapping things replace it: a ragged
+   core, billows pushing out off-centre, and spikes thrown clear. Driven
+   by .broken, never .play: the glow used to ramp up during the flight,
+   which announced the impact before it happened. */
 .crest-blast{
   position:absolute;left:50%;top:50%;
   width:200px;height:200px;margin:-100px 0 0 -100px;
@@ -137,13 +132,10 @@
 }
 
 /* The round that breaks the crest: charged at the button, then lobbed.
-   Much bigger than a click round, and it gathers before it goes - the
-   wind-up is what makes the hit read as heavy.
-
-   Three layers, because three things happen at once and each needs its
-   own transform: the outer element carries X, the middle one carries Y,
-   and the ball itself carries size. Size had been living on the same
-   element as Y, which meant the flight keyframes reset whatever the
+   The wind-up is what makes the hit read as heavy. Three layers, because
+   three things happen at once and each needs its own transform - the
+   outer carries X, the middle Y, and the ball itself size. Size had been
+   on the same element as Y, so the flight keyframes reset whatever the
    round had grown to while it waited. */
 .siege-charge{position:fixed;z-index:44;pointer-events:none;width:0;height:0;}
 .siege-charge i{position:absolute;display:block;left:0;top:0;width:0;height:0;}

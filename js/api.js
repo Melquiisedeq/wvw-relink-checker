@@ -10,8 +10,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // Retry-After comes as either a number of seconds or an HTTP date, and a
 // server is free to name a delay longer than anyone will sit through.
 // Both forms are read; the wait is capped, because past half a minute
-// the honest thing is to fail and let the next background refresh try
-// again, rather than hold a page that looks frozen.
+// the honest thing is to fail and let the next background refresh try.
 const RETRY_AFTER_FALLBACK_MS = 1500;
 const RETRY_AFTER_MAX_MS = 30000;
 
@@ -64,19 +63,16 @@ async function fetchJson(url, attempt = 0, cacheMode = 'no-store') {
 }
 
 // The static catalogues - objectives, upgrades, sectors, tactics, emblem
-// foregrounds - are all served with `Cache-Control: public, max-age=3600`,
-// and the blanket 'no-store' above threw every bit of it away on each
-// page load. These go through 'default' so the browser's own cache can
-// answer for the hour the API says it may. Live match data keeps
-// 'no-store', and there was nothing to win there anyway: wvw/matches is
-// served with max-age=1.
+// foregrounds - are served with max-age=3600, and the blanket 'no-store'
+// threw all of it away on every page load. These go through 'default' so
+// the browser's own cache can answer for the hour the API says it may.
+// Live match data keeps 'no-store'; wvw/matches is served max-age=1.
 const fetchJsonCached = (url) => fetchJson(url, 0, 'default');
 
-// Guild-to-team assignment only changes at the monthly relink - the
-// first Friday of the month, which the API publishes at
-// wvw/timers/teamAssignment - so this is far less volatile than the
-// cache it sits behind. Harmless over-fetching, kept simple by reusing
-// the same timer interval instead of tracking that date.
+// Guild-to-team assignment only changes at the monthly relink, so this is
+// far less volatile than the cache it sits behind. Harmless
+// over-fetching, kept simple by reusing the same timer interval instead
+// of tracking that date.
 async function getWvwMaps() {
   if (wvwMapCache && Date.now() - wvwMapCachedAt < TIMERS_REFRESH_MS) return wvwMapCache;
 
@@ -107,17 +103,12 @@ async function resolveGuildId(rawName) {
   return ids[0];
 }
 
-// Guild name, tag and emblem, kept between visits.
-//
-// These are about as static as this API gets - a guild changes its
-// emblem when somebody redesigns it, which happens about once - and the
-// maps ask for a great many of them at once. Measured on a real session
-// on 26/09: opening the popover and walking the four tabs made 42 of
-// these lookups, a median of 294ms each, 14.2 seconds of summed waiting,
-// three quarters of everything that popover asked for.
-//
-// The API sends them no-store, so the browser's own cache never keeps
-// one. This does.
+// Guild name, tag and emblem, kept between visits. About as static as
+// this API gets, and the maps ask for a great many at once: measured on
+// a real session, opening the popover and walking the four tabs made 42
+// lookups at a median of 294ms - 14.2 seconds of summed waiting, three
+// quarters of everything that popover asked for. The API sends them
+// no-store, so the browser's own cache never keeps one. This does.
 const GUILD_STORE_KEY = 'wvw-guilds-v1';
 const GUILD_STORE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // Enough for a season of WvW without the entry growing without bound:
@@ -169,13 +160,11 @@ async function getGuildInfo(guildId, allowStored = false) {
     throw new Error(cached.error);
   }
 
-  // Only for callers that said so - the maps, which want the emblem.
-  // The relink checker is not one of them: it resolves a name the user
-  // typed into an id and then prints the name back, and a guild that
-  // renamed last week would have it printed as it was a month ago.
-  //
-  // A hit here deliberately does not fill guildNameCache, so a stored
-  // answer never becomes the one the checker reads later in the session.
+  // Only for callers that said so - the maps, which want the emblem. The
+  // relink checker is not one: it resolves a name the user typed into an
+  // id and prints the name back, and a guild that renamed last week
+  // would have it printed as it was a month ago. A hit here deliberately
+  // does not fill guildNameCache.
   if (allowStored) {
     const kept = guildStoreRead().get(guildId);
     if (kept) return { name: kept.n, tag: kept.t, emblem: kept.e || null };

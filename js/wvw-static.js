@@ -1,35 +1,23 @@
 'use strict';
 // ---------------------------------------------------------------------
 // The two static catalogues the objective maps are built from, written
-// out instead of fetched.
-//
-// Both sit on the popover's critical path - no map can be drawn until
-// the objectives and that map's sector outlines have arrived - and
-// neither changes: the list of keeps, towers and camps on the four WvW
-// maps, and the polygons of the sectors they stand in. ArenaNet last
-// moved any of this when the Desert Borderlands was rebuilt.
-//
-// Measured in a real session on 26/09: the four requests these replace
-// went out together and took 349ms before the first map could start
-// drawing. From here it is nothing - the file comes down with the rest
-// of the site, on a connection that is already open.
+// out instead of fetched: the keeps, towers and camps on the four WvW
+// maps, and the polygons of the sectors they stand in. Both sit on the
+// popover's critical path, and neither changes - ArenaNet last moved any
+// of it when the Desert Borderlands was rebuilt. The four requests these
+// replace took 349ms before the first map could start drawing.
 //
 // Only the fields the drawing code reads are kept, and coordinates are
 // rounded to one decimal: the smallest marker has a radius of 80 map
-// units, so a tenth of a unit is smaller than anything that can be seen.
+// units. Not a fork of the API - getObjectiveCatalogue and getSectors
+// still fetch the live lists in the background and take over for the
+// next opening, so a change on ArenaNet's side lands on its own.
 //
-// Not a fork of the API: getObjectiveCatalogue and getSectors still ask
-// for the live lists in the background and take those over for the next
-// opening, so a change on ArenaNet's side lands on its own without this
-// file being touched.
-//
-// To rebuild it by hand, the whole of it is these five answers:
-//   /v2/wvw/objectives?ids=all                         (kept: map_id 38,
-//       1099, 96 and 95; fields id, name, type, map_id, coord,
-//       label_coord, sector_id, upgrade_id)
-//   /v2/continents/2/floors/3/regions/7/maps/<id>/sectors?ids=all
-//       for each of those four maps (fields id, name, bounds)
-// Coordinates rounded to one decimal, keys in the shape below.
+// To rebuild by hand, the whole of it is:
+//   /v2/wvw/objectives?ids=all  (maps 38, 1099, 96 and 95; fields id,
+//       name, type, map_id, coord, label_coord, sector_id, upgrade_id)
+//   /v2/continents/2/floors/3/regions/7/maps/<id>/sectors?ids=all for
+//       each of those four (fields id, name, bounds)
 //
 // Generated 26/09/2026 from the live API.
 // ---------------------------------------------------------------------

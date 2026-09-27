@@ -52,11 +52,10 @@ function buildRelinkStat(title, value, isPrimary, tooltip, warn) {
 // catches your eye from across the desk on reset night.
 const RELINK_URGENT_MS = 2 * 60 * 60 * 1000;
 // How long after a week is published before its maps are up and you can
-// get on one. Measured across nine matches in both regions - EU mid-week,
-// NA at a fresh reset and NA a full week old - and every one opened at
-// start_time plus 3m37s to 3m47s. Five minutes covers that with room,
-// and the line dies with it: "get in early" is no use once the doors
-// are open and the queue is the queue.
+// get on one. Measured across nine matches in both regions and every one
+// opened at start_time plus 3m37s to 3m47s, so five minutes covers it
+// with room. The line dies with it: "get in early" is no use once the
+// doors are open and the queue is the queue.
 const RELINK_OPENING_MS = 5 * 60 * 1000;
 // Only reached when nothing has been published anywhere. A tier normally
 // turns up within minutes, so this is the fuse for an API that has
@@ -64,12 +63,10 @@ const RELINK_OPENING_MS = 5 * 60 * 1000;
 const RELINK_STUCK_MS = 30 * 60 * 1000;
 
 // Whether a region's relink is close enough to shout about. Three ways
-// in, handing over to each other so the bar never blinks out in the
-// middle of a reset:
+// in, handing over to each other so the bar never blinks out mid-reset:
 //
 //   before   the countdown is inside two hours
-//   during   every tier is still on the week that just ended, so the
-//            new one has not been published anywhere yet
+//   during   every tier is still on the week that just ended
 //   opening  the new week is published but its maps are not up
 //
 // NA and EU relink at different times, so this is asked per region.
@@ -152,14 +149,12 @@ async function fetchTimers() {
   updateRelinkBanner();
 }
 
-// Reads each region's weekly matchup end_time straight off the match
-// objects already loaded for the standings rails.
 // The latest of a field across a region's matches. Reading one match -
 // naMatches[0], which is tier 1 - is a coin toss for as long as a relink
 // takes: on 26/09 tier 4 had been running the new week for forty minutes
 // while tiers 1 and 3 were still serving the old one, and tier 2
-// published the new week and then went back to the old. Whichever tier
-// is furthest ahead is the one that has seen the relink.
+// published the new week and then went back. Whichever tier is furthest
+// ahead is the one that has seen the relink.
 function latestOf(matches, field) {
   const times = (matches || [])
     .map((m) => Date.parse(m && m[field]))
@@ -169,15 +164,12 @@ function latestOf(matches, field) {
 
 // start_time is the far side of the event end_time names: when the
 // newest published week began, which is what says the maps are about to
-// open. end_time cannot say that - by then it is a week away again. And
-// one tier still running the week it published is enough to know the new
-// data exists somewhere.
+// open. end_time cannot say that - by then it is a week away again.
 //
 // A region whose request failed arrives as null and keeps the figures it
 // had. Read as an empty list it would set its countdown to null and take
 // that half of the banner down over a single refresh that did not
-// answer - which is how one failed request used to reach three different
-// parts of the page.
+// answer.
 function updateRelinkFromMatches(naMatches, euMatches) {
   if (naMatches) {
     relinkNA = latestOf(naMatches, 'end_time');
@@ -253,12 +245,8 @@ function updateRelinkBanner() {
 
   // The lockout wins, and only one of the two ever runs: two things
   // pulsing at once reads as decoration instead of as an alarm, and of
-  // the two the lockout is the one you can still act on. How often the
-  // windows overlap is not measured - the arithmetic for a randomly
-  // placed three-day window would say two weeks in five, but the
-  // lockout is scheduled rather than random, and has been landing after
-  // the NA relink rather than across it. The relink stands down; its
-  // number is still on the bar, just not shouting.
+  // the two the lockout is the one you can still act on. The relink
+  // stands down; its number is still on the bar, just not shouting.
   relinkBanner.classList.toggle('is-lockout', lockoutUrgent);
   relinkBanner.classList.toggle('is-urgent', relinkUrgent && !lockoutUrgent);
 

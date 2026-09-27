@@ -19,14 +19,11 @@ schedulePeriodicRefresh(fetchTimers, TIMERS_REFRESH_MS);
 // warm, each with its own column, duration and sideways drift so the
 // field never resolves into a visible loop.
 //
-// One canvas, where this used to be 46 elements. Every animated element
-// became its own compositor layer and its own draw call, and a trace put
-// the GPU process main thread at 98.6% with them running against 4.4%
-// with them hidden - that 4.4% being the whole rest of the page.
-//
-// What it costs is the clock. CSS was running these, so the timing curves
-// below are the keyframes written out by hand, and pausing while nobody
-// is watching is now something this has to do for itself.
+// One canvas, where this used to be 46 elements - each its own
+// compositor layer and draw call, which put the GPU process main thread
+// at 98.6% against 4.4% with them hidden. The cost is the clock: the
+// timing curves below are the CSS keyframes written out by hand, and
+// pausing while nobody is watching is now this file's own job.
 const emberField = (function () {
   const canvas = document.getElementById('fxEmbers');
   if (!canvas || !canvas.getContext) return { start() {}, stop() {}, blast() {} };
@@ -35,33 +32,28 @@ const emberField = (function () {
   const WARM = { core: '#ffb765', glow: '255,150,60' };
   const COLD = { core: '#9fe6ff', glow: '127,214,242' };
   // The glow's shape, kept in one place so it can be turned from the
-  // console against the real thing rather than guessed at. sigma is the
-  // blur's standard deviation, spread how far the lit disc is grown
-  // before blurring, alpha how strong the halo is - the three numbers
-  // box-shadow 0 0 7px 1px encodes.
+  // console against the real thing. sigma is the blur's standard
+  // deviation, spread how far the lit disc grows before blurring, alpha
+  // how strong the halo is - what box-shadow 0 0 7px 1px encodes.
   const GLOW = { sigma: 3.5, spread: 1, alpha: .75 };
-  // The wind. `eddy` is how wide a gust is in pixels, `churn` how fast the
-  // field itself changes, `push` how hard it shoves, `drag` how much
+  // The wind. `eddy` is how wide a gust is in pixels, `churn` how fast
+  // the field itself changes, `push` how hard it shoves, `drag` how much
   // sideways speed survives a second - which is what gives an ember the
-  // feel of having mass rather than being placed.
-  // `gust` is what keeps this from being a fan pointed at the screen.
-  // A noise field hands out roughly even energy everywhere, so raising
-  // push alone just makes everything restless at once. Raised to a power
-  // first, the small values collapse towards nothing and only the rare
-  // large ones survive - long calm, brief shove, which is what air
-  // actually does. At 1 it is the even breeze again.
+  // feel of having mass rather than being drawn along a line.
   //
-  // push is sized against what the noise really delivers: interpolating
-  // eight hashed values lands around a third of the way out, and a third
-  // cubed is a fortieth, so the number has to be large for the quiet
-  // stretches to stay quiet and the gusts to still move something.
+  // `gust` is the exponent that keeps this from being a fan pointed at
+  // the screen: noise hands out roughly even energy everywhere, so
+  // raising push alone makes everything restless at once. Raised to a
+  // power first, the small values collapse and only the rare large ones
+  // survive - long calm, brief shove. At 1 it is the even breeze again,
+  // and push is large to compensate: interpolated noise only reaches
+  // about a third of the way out, and a third cubed is a fortieth.
   const WIND = { eddy: 220, churn: .08, push: 280, gust: 4, drag: .45 };
 
   // Value noise: a lattice of hashed numbers with smooth interpolation
-  // between them. Not as good as Perlin and it does not need to be - the
-  // whole point is only that neighbouring samples agree, so two embers in
-  // the same patch of air drift together instead of each doing its own
-  // private wobble. That agreement is what a sum of sines cannot fake.
+  // between them. Not as good as Perlin and it does not need to be - all
+  // that matters is that neighbouring samples agree, so two embers in the
+  // same patch of air drift together. A sum of sines cannot fake that.
   function hash(x, y, z) {
     let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 1274126177);
     h = Math.imul(h ^ (h >>> 13), 1274126177);
@@ -81,45 +73,77 @@ const emberField = (function () {
   }
   const PAD = 14;   // room for the glow, which reaches 8px past the dot
   // The sprite is built at the backing store's scale, so drawing it at
-  // rest is 1:1 and no resampling happens at all. Anything higher is not
-  // headroom, it is a shrink on every single draw, and shrinking is the
-  // one thing canvas does badly. Set from resize(), which is also where
-  // the scale it follows is decided.
+  // rest is 1:1 and no resampling happens. Anything higher is not
+  // headroom, it is a shrink on every single draw. Set from resize().
   let SS = 1;
 
   // The halo, and only the halo, rasterised once per colour and size.
-  // The core is not in here: it is drawn live in put(), for the reason
-  // given there - an ember is at two thirds of its size at the moment it
-  // is brightest, and a bitmap shrunk by a third loses exactly that peak.
+  // The core is drawn live in put(): an ember is at two thirds of its
+  // size at the moment it is brightest, and a bitmap shrunk by a third
+  // loses exactly that peak.
   //
   // blur(3.5px) and not 7: a box-shadow radius is twice the standard
   // deviation, and ctx.filter is the CSS filter path, which takes the
-  // deviation. shadowBlur was the wrong tool for this - the spec leaves
-  // both the algorithm and the meaning of the number to the engine.
+  // deviation. shadowBlur was the wrong tool - the spec leaves both the
+  // algorithm and the meaning of the number to the engine.
+  //
+  // CAN_BLUR because Safari has never shipped ctx.filter, on the desktop
+  // or on iOS - which is every browser on an iPhone. The assignment
+  // fails silently there and the halo comes out a hard-edged disc, so it
+  // is set and read back rather than trusted.
+  const CAN_BLUR = (() => {
+    const c = document.createElement('canvas').getContext('2d');
+    c.filter = 'blur(4px)';
+    return c.filter === 'blur(4px)';
+  })();
+
   function sprite(colour, size) {
     const d = (size + PAD * 2) * SS;
     const s = document.createElement('canvas');
     s.width = d; s.height = d;
     const c = s.getContext('2d');
     const m = d / 2;
-    c.filter = 'blur(' + (GLOW.sigma * SS) + 'px)';
-    c.fillStyle = 'rgba(' + colour.glow + ',' + GLOW.alpha + ')';
-    c.beginPath();
-    c.arc(m, m, (size / 2 + GLOW.spread) * SS, 0, Math.PI * 2);
-    c.fill();
+    const r = (size / 2 + GLOW.spread) * SS;
+    if (CAN_BLUR) {
+      c.filter = 'blur(' + (GLOW.sigma * SS) + 'px)';
+      c.fillStyle = 'rgba(' + colour.glow + ',' + GLOW.alpha + ')';
+      c.beginPath();
+      c.arc(m, m, r, 0, Math.PI * 2);
+      c.fill();
+    } else {
+      c.fillStyle = blob(c, m, r, colour);
+      c.fillRect(0, 0, d, d);
+    }
     return s;
   }
-  // Three quarters of the dot's own radius, which is not a taste call:
-  // rendering the real .ember beside this one and measuring both, the
-  // CSS core falls to half brightness at .80, 1.00 and 1.40 px across
-  // the three phases worth measuring, and .75 reproduces all three
-  // exactly. A full radius came out half again too wide - which is the
-  // "slightly bigger and blurrier" that was visible and unexplained for
-  // a long time. The halo needed nothing: its profile already matched to
-  // within a couple of points at every distance.
+  // The same halo, drawn instead of blurred.
   //
-  // The same number serves the cold ones. Their colours differ, their
-  // geometry does not, and the CSS pair measure identically.
+  // A disc blurred by a Gaussian has no tidy formula, but when the disc
+  // is about as wide as the blur - 2.5px against 3.5 here - it comes out
+  // indistinguishable from a plain Gaussian blob carrying the disc's ink.
+  // Variances add, so the blob's width is sqrt(sigma^2 + r^2/4). Checked
+  // against the real convolution at every pixel of both ember sizes: the
+  // worst gap is .002 of an alpha, under one step of the 0-255 the canvas
+  // stores it in. The min() covers a disc much wider than the blur, which
+  // this file does not have. 17 stops because a gradient runs straight
+  // lines between them.
+  function blob(c, m, r, colour) {
+    const sd = Math.sqrt(GLOW.sigma * SS * (GLOW.sigma * SS) + r * r / 4);
+    const peak = Math.min(GLOW.alpha, GLOW.alpha * r * r / (2 * sd * sd));
+    const g = c.createRadialGradient(m, m, 0, m, m, m);
+    for (let i = 0; i <= 16; i++) {
+      const x = m * i / 16;
+      g.addColorStop(i / 16, 'rgba(' + colour.glow + ',' +
+        (peak * Math.exp(-x * x / (2 * sd * sd))).toFixed(4) + ')');
+    }
+    return g;
+  }
+  // Three quarters of the dot's own radius, measured rather than chosen:
+  // rendering the real .ember beside this one, the CSS core falls to half
+  // brightness at .80, 1.00 and 1.40px across the three phases worth
+  // measuring, and .75 reproduces all three exactly. A full radius came
+  // out half again too wide. The same number serves the cold ones -
+  // different colours, same geometry.
   function look(colour, size) {
     return { halo: sprite(colour, size), core: colour.core,
              r: size / 2 * .75 };
@@ -173,13 +197,11 @@ const emberField = (function () {
   function resize() {
     W = canvas.clientWidth;
     H = canvas.clientHeight;
-    // No cap, and capping was never the saving it looked like. Zoom raises
-    // devicePixelRatio and shrinks the CSS viewport by the same factor, so
-    // clientWidth * ratio comes to the screen's own pixels whatever the
-    // zoom - 381css x 5 and 1524css x 1.25 are both 1905. A cap does not
-    // buy fewer pixels, it just hands back fewer than the display has,
-    // and the browser stretches the difference. At 400% that was a third
-    // of the real resolution, and everything drawn here went soft.
+    // No cap, and capping was never the saving it looked like. Zoom
+    // raises devicePixelRatio and shrinks the CSS viewport by the same
+    // factor, so clientWidth * ratio comes to the screen's own pixels
+    // whatever the zoom. A cap just hands back fewer pixels than the
+    // display has and lets the browser stretch the difference.
     const scale = window.devicePixelRatio || 1;
     canvas.width = Math.round(W * scale);
     canvas.height = Math.round(H * scale);
@@ -229,10 +251,8 @@ const emberField = (function () {
       e.was = p;
       if (dt) {
         // Read the wind where this ember actually is, so two of them in
-        // the same gust go the same way. Force, not position: what makes
-        // it look like something being blown rather than something drawn
-        // along a wavy line is that it has to be got moving, and then
-        // keeps moving after the gust has passed.
+        // the same gust go the same way. Force, not position: it has to
+        // be got moving, and then keeps moving after the gust passes.
         const n = noise3((x + e.ox) / WIND.eddy, y / WIND.eddy, clock * WIND.churn);
         // Not scaled by how far up it is: the ember is at its brightest
         // barely off the bottom, and holding the wind back until later
@@ -267,13 +287,11 @@ const emberField = (function () {
     }
   }
 
-  // The fastest ember climbs about 105px a second, which is under two
-  // pixels a frame at 60 - slow enough that drawing it more often cannot
-  // show anything an eye could catch. Chromium drives frames at the rate
-  // of the fastest display attached, so a window sitting on a 60Hz screen
-  // next to a 144Hz one is asked to draw 144 times a second and shown 60
-  // of them (crbug 40386822). This number draws every frame at 60Hz and
-  // every second frame at 144, which is the waste and nothing else.
+  // The fastest ember climbs about 105px a second, under two pixels a
+  // frame at 60. Chromium drives frames at the rate of the fastest
+  // display attached, so a window on a 60Hz screen beside a 144Hz one is
+  // asked to draw 144 times a second and shown 60 (crbug 40386822). This
+  // draws every frame at 60Hz and every second frame at 144.
   const MIN_FRAME_MS = 1000 / 85;
 
   let clock = 0, last = 0, running = false;
@@ -292,8 +310,7 @@ const emberField = (function () {
   // One per frame. Dragging a window edge fires resize continuously, and
   // each call reallocates the whole backing store - some 14MB at 1440p -
   // and rasterises the four sprites again, for frames the canvas never
-  // gets to show. If the tab is hidden the frame never comes and the
-  // flag simply stays up until it does, which is when the size matters.
+  // gets to show.
   let resizeQueued = false;
   window.addEventListener('resize', () => {
     if (resizeQueued) return;

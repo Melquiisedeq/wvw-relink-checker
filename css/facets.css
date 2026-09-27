@@ -131,12 +131,10 @@
 }
 
 /* Relink inside two hours: the banner starts breathing. The outline
-   moves, not a halo behind it - a cyan glow could not be seen at all,
-   because the bar already has a cyan border and a lit cyan top edge, so
-   the light landed on more of the same. The spread is -2px rather than
-   -8px because a negative spread that large shrinks the glow back inside
-   the shape. Still the quieter of the two: the lockout below beats it on
-   hue, which is the axis a glance reads. */
+   moves, not a halo behind it - the bar already has a cyan border and a
+   lit cyan top edge, so a glow landed on more of the same. The spread is
+   -2px because a larger negative one shrinks the glow back inside the
+   shape. Quieter than the lockout below, which beats it on hue. */
 .relink-banner.is-urgent{
   border-color:rgba(127,214,242,.32);
   animation:urgent-pulse 2.6s ease-in-out infinite;
@@ -162,10 +160,8 @@
   }
 }
 /* The region that lights has to be the one running out, which is what
-   .is-now marks. This was every .time span, and NA and EU relink at
-   different times - so the one with four days left lit up beside the one
-   with minutes. Still under .is-urgent, so when the lockout is also
-   running and takes the bar, this stays dark. */
+   .is-now marks. This was every .time span, so the one with four days
+   left lit up beside the one with minutes. */
 .relink-banner.is-urgent .relink-stat:not(.relink-stat--primary) .relink-stat-value .time.is-now{
   color:var(--accent-bright);
   /* Lit, not just recoloured. #f2f6fa to #66f5ff is a hue step at
@@ -174,37 +170,26 @@
   text-shadow:0 1px 2px rgba(0,0,0,.6), 0 0 12px rgba(102,245,255,.55);
 }
 /* The label lifts with its number, or NA and EU read the same while one
-   of them is the whole point. White, not the accent: in the accent
-   colour it read as a hyperlink, which is what the accent means
-   everywhere else on the page, and a cyan halo on a grey letter was too
-   close to the grey beside it to register. This is the number's own
-   colour, so nothing new enters the palette. */
+   of them is the whole point. White, not the accent: in the accent it
+   read as a hyperlink, which is what the accent means everywhere else. */
 .relink-banner.is-urgent .relink-stat:not(.relink-stat--primary) .relink-stat-value .region.is-now{
   /* Weight, and only a nudge of tone. Every hue on this line is already
-     somebody's: grey belongs to the other region label, white to the
-     other number, and cyan to the number two characters away - which is
-     what made a quieter cyan here read as the value bleeding into its
-     own label. So this stays in the grey it shares with EU, one step
-     brighter, and does the separating by weight instead. 400 against
-     600 is plain at a glance and borrows nothing. */
+     somebody's - grey the other region label, white the other number,
+     cyan the number two characters away - so this stays in its grey, one
+     step brighter, and separates by weight instead. 400 against 600. */
   color:#a8b3c0;font-weight:600;
 }
-/* A rule under the word. Three things were tried on this label first
-   and each failed the same way - at .66rem with .1em of tracking there
-   is not enough letter to work with. A halo smudged it, a text-stroke
-   closed its counters, a chip put a box round it. This is drawn clear
-   of the glyphs altogether, and as text-decoration rather than a border
-   it adds no height, so the bar does not jump when it lights. */
+/* A rule under the word. At .66rem with .1em of tracking there is not
+   enough letter to work with: a halo smudged it, a text-stroke closed
+   its counters, a chip put a box round it. As text-decoration rather
+   than a border it adds no height, so the bar does not jump. */
 .relink-banner.is-urgent .relink-stat:not(.relink-stat--primary) .relink-stat-title{
-  /* A tinted white, and deliberately neither of the two colours already
-     spoken for: #f2f6fa is what the numbers wear and the accent is both
-     the lockout's title and every link on the page. This sits in the
-     cyan family the bar is pulsing in, which is what says at a glance
-     which of the two alarms is running.
-
-     The tracking opens up as well. Widening small caps is a change of
-     shape rather than of brightness, and shape is what survives being
-     seen out of the corner of the eye. */
+  /* A tinted white, and neither of the two colours already spoken for:
+     #f2f6fa is what the numbers wear and the accent is the lockout's
+     title. This sits in the cyan family the bar is pulsing in, which is
+     what says which alarm is running. The tracking opens up as well -
+     widening small caps is a change of shape, and shape is what survives
+     being seen out of the corner of the eye. */
   color:#bfe9f7;
   letter-spacing:.14em;
   text-decoration:underline;
@@ -218,9 +203,9 @@
 /* ---- Season lockout inside three days --------------------------- */
 /* Amber, not cyan. Cyan here means something you can touch or something
    happening now, and a deadline is neither. Louder than the relink pulse
-   on every axis - brighter border, wider glow, shorter cycle - and that
-   ordering is the feature: a relink costs you a week of not knowing who
-   you fight, this costs a month on a different team from your guild. */
+   on every axis, and that ordering is the feature: a relink costs you a
+   week of not knowing who you fight, this costs a month on a different
+   team from your guild. */
 .relink-banner.is-lockout{
   border-color:rgba(255,183,101,.5);
   animation:lockout-pulse 2.1s ease-in-out infinite;

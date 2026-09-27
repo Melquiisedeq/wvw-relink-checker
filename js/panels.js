@@ -231,13 +231,12 @@ function getMaxTierForRegion(regionCode) {
 
 const MOVEMENT_SYMBOLS = { up: '▲', down: '▼' };
 
-// Projects where a side lands after the next weekly reset from its
-// rank within the tier: 1st promotes, 2nd always stays, 3rd relegates,
-// unless there's nowhere further up or down to go.
-//
-// Reset, not relink. Tiers turn over every week, at the end of the
-// matchup; the relink is the monthly rebuild of the teams themselves and
-// moves nobody between tiers.
+// Projects where a side lands after the next weekly reset from its rank
+// within the tier: 1st promotes, 2nd always stays, 3rd relegates, unless
+// there is nowhere further up or down to go. Reset, not relink: tiers
+// turn over every week at the end of the matchup, while the relink is
+// the monthly rebuild of the teams themselves and moves nobody between
+// tiers.
 function getRelinkMovement(rank, tierNum, maxTierForRegion) {
   const tier = Number(tierNum);
   if (rank === 1) {
@@ -304,10 +303,9 @@ function renderMatchPanel(match, yourGuildsByColor) {
 
   // The same rule the standings rail follows, and the same answer: the
   // three teams and their guild lists stay, everything that would read
-  // as a standing goes. The pin travels with it, because which of the
-  // three is yours is the question this screen was opened to answer and
-  // that part is not in doubt - the team comes from wvw/guilds, which
-  // turns over with the relink.
+  // as a standing goes. The pin travels with it - the team comes from
+  // wvw/guilds, which turns over with the relink, so which of the three
+  // is yours is not in doubt.
   if (!matchIsLive(match)) {
     panel.appendChild(buildStandingsStale(match, yourGuildsByColor));
     return panel;

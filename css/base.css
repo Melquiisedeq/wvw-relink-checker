@@ -11,30 +11,23 @@
   /* Not cyan - cyan means "you can touch it" here. This is the ember
      orange already drifting behind the header. */
   --warn:#ffb765;
-  /* Not the same value as --red below any more, and the difference is
+  /* Not the same value as --red below, and the difference is
      load-bearing: this one carries the "Guild not found" line on a card
      over the photo, where #e15c5c measured 4.27:1 at the photo's
      brightest point - under the 4.5 AA floor. Two steps of lightness,
-     same hue and saturation, put it at 4.58. --red is a team colour and
-     answers to nothing but the team. */
+     same hue and saturation, put it at 4.58. */
   --err:#e36565;
   --blue:#5b8ff0;
   --green:#4caf7d;
   --red:#e15c5c;
-  /* The same two colours again, for the job the pair above cannot do.
-     A fill may be dark - there is nothing in a dot or a bar to read -
-     but --red as small text on the popover measures 3.49:1, under the
-     4.5 AA wants, and there is no darker red that would clear it: on a
-     dark surface every legible red is a lighter one. So shapes keep
-     --red and --green and letters take these. The green is the one the
-     promotion arrow already used, so only the red actually moves.
-     Saturation is what decides whether a lighter red still reads as red
-     rather than as salmon, so this one stays near the top of it and
-     spends only the lightness it has to. Measured against the surface
-     the K/D figure actually sits on it clears the floor by a tenth,
-     which is as dark as it goes - a step further is 4.09 and fails.
-     css/maps.css hit the same wall and picked its own lighter pair
-     before this existed; those two are still its own. */
+  /* The same two colours again, for the job the pair above cannot do. A
+     fill may be dark - there is nothing in a dot or a bar to read - but
+     --red as small text measures 3.49:1, and on a dark surface every
+     legible red is a lighter one. So shapes keep --red and --green, and
+     letters take these. Saturation, not lightness, is what keeps a
+     lighter red reading as red rather than as salmon: this one clears
+     4.5 by a tenth where the K/D figure actually sits, and a step darker
+     is 4.09 and fails. css/maps.css has its own lighter pair. */
   --red-ink:#fb6a68;
   --green-ink:#3fbd83;
 }
@@ -86,9 +79,8 @@ body{
   opacity:.58;
   /* Its own layer. A full-viewport blur under a blend mode is the most
      expensive thing on the page, and the embers moving in the same box
-     were dirtying it - so it was being recomputed for a picture that
-     never changes. transform, not filter: naming filter here would say
-     the blur is about to change, which is the opposite of the point. */
+     were dirtying it. transform, not filter: naming filter here would
+     say the blur is about to change. */
   will-change:transform;
 }
 
@@ -103,18 +95,12 @@ body{
 }
 
 /* The canvas the ember field is drawn into, deliberately a sibling of
-   .fx and not a layer inside it. It sits between .fx and the trebuchet
-   in source order, which is where the embers were painted anyway.
-
-   Being outside is the whole point. .fx is an isolated group with a
-   full-viewport mix-blend-mode layer in it, and a blend has to re-read
-   its backdrop: while the embers lived in there, anything moving meant
-   composing the group again, photo and blur and blend, 144 times a
-   second. Nothing here carries a blend mode, and it was painted last on
-   top of the finished group, so from out here it lands on the same
-   pixels.
-
-   Everything drawn inside is in js/boot.js. */
+   .fx and not a layer inside it. .fx is an isolated group with a
+   full-viewport mix-blend-mode layer, and a blend has to re-read its
+   backdrop: while the embers lived in there, anything moving meant
+   composing the group again - photo, blur and blend - 144 times a
+   second. Out here nothing carries a blend mode and it lands on the same
+   pixels. Everything drawn inside is in js/boot.js. */
 .fx-embers{
   position:fixed;left:0;top:0;width:100%;
   height:100vh;   /* lvh for the same reason as .fx above. */
@@ -131,16 +117,12 @@ body{
   7%{filter:brightness(2.5) saturate(1.3);transform:translateY(-12px);}
   100%{filter:brightness(1);transform:translateY(0);}
 }
-/* Nothing loops while the window is not being watched. `*` rather than
-   a list of the looping animations, because a list misses whatever gets
+/* Nothing loops while the window is not being watched. `*` rather than a
+   list of the looping animations, because a list misses whatever gets
    added next - it already missed the first-place sheen. Paused, not
    disabled, so coming back is instant. Set in idleWhenUnwatched,
-   js/boot.js.
-
-   The exceptions are the animations that run once and are supposed to
-   end. Freezing those mid-flight is not a pause, it is a stuck frame: a
-   value refreshed while you were away stayed lit until you came back,
-   and panels that deployed in the meantime sat at opacity 0. */
+   js/boot.js. The exceptions are the animations that run once and are
+   supposed to end: freezing those is a stuck frame, not a pause. */
 .is-idle *:not(.value-changed):not(.delta):not(.match-panel),
 .is-idle *::before,
 .is-idle *:not(.side-pulse)::after{animation-play-state:paused !important;}
@@ -179,11 +161,10 @@ body{
   background-color:rgba(127,214,242,.55);
 }
 
-/* Firefox, which has none of the above and was left with the 15px grey
-   OS scrollbar in the middle of a dark translucent panel. It cannot go
-   outside this @supports: declaring scrollbar-width in Chromium turns
-   every -webkit- rule above off. Firefox does not know
-   ::-webkit-scrollbar, so it is the only engine that gets here. */
+/* Firefox, which has none of the above. It cannot go outside this
+   @supports: declaring scrollbar-width in Chromium turns every -webkit-
+   rule above off, and Firefox does not know ::-webkit-scrollbar, so it
+   is the only engine that gets here. */
 @supports not selector(::-webkit-scrollbar) {
   .info-popover,
   .wvw-detail{
@@ -199,12 +180,10 @@ body{
    next input quietly gets the white one back.
    ========================================================== */
 
-/* The resize grip, and the one rule here that is scoped: `resize` is
-   on two unalike elements. The textarea is a solid sunken field and
-   keeps the browser's grip, which a drawn replacement only made worse.
-   On the popover the narrowed scrollbar leaves that corner 9px wide,
-   where anything drawn reads as a smudge - so it goes. resize:vertical
-   and the cursor still work. */
+/* The resize grip, and the one rule here that is scoped: `resize` is on
+   two unalike elements. The textarea is a solid sunken field and keeps
+   the browser's grip. On the popover the narrowed scrollbar leaves that
+   corner 9px wide, where anything drawn reads as a smudge. */
 .info-popover--guilds::-webkit-resizer{background:none;}
 
 /* Background only, never a colour: a colour means a team on this page
@@ -221,9 +200,7 @@ body{
    gets Chromium's white ring back. Outline, never box-shadow - the
    buttons carry their relief in stacked box-shadows and a focus rule
    that set one would wipe it. The offset puts the ring on the dark card
-   behind the cyan button rather than on its face. The textarea keeps
-   its own :focus rule, and .wvw-marker opts out in maps.css, which
-   loads later and paints a ring on the marker itself. */
+   behind the button. .wvw-marker opts out in maps.css. */
 button:focus-visible,
 a:focus-visible{
   outline:2px solid var(--accent-bright);

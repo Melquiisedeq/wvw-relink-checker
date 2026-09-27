@@ -42,17 +42,13 @@ function forgetSideStats(matchId) {
 // A tier between weeks still has to be usable. Someone opening the site
 // to look up who plays on a server should not be met with a shimmer, and
 // nothing about that question went stale: team names survive a relink -
-// it is which three are matched together that does not - and the guild
-// list behind the shield is keyed by team name and edited by hand.
+// it is which three are matched together that does not.
 //
 // Dropped is everything that would read as a standing: rank, colour,
-// victory points, the stats line, the bar. Those are last week's and
-// there is no honest way to show them. What is left is labelled rather
-// than hidden, because the lie was never the data - it was last week's
-// passing for this week's.
-// `yoursByColor` is only passed by the match panel, where one of the
-// three is the team that was just looked up and saying so is the whole
-// point of the screen.
+// victory points, the stats line, the bar. The lie was never the data,
+// it was last week's passing for this week's. `yoursByColor` comes only
+// from the match panel, where saying which of the three is yours is the
+// whole point of the screen.
 function buildStandingsStale(match, yoursByColor) {
   const wrap = document.createElement('div');
   const isNA = match.id.startsWith('1-');
@@ -162,12 +158,12 @@ async function loadStandings() {
       throw new Error('No active matches returned');
     }
 
-    // One request per region, and the answers are kept apart all the way
-    // down. null means that region's request failed; [] means it
-    // answered and has no matches. They used to be the same thing, and
-    // collapsing them is what let one region take the other down with
-    // it - Promise.all rejects whole, so a single 500 on EU threw away
-    // an NA answer that had already arrived and blanked both columns.
+    // One request per region, and the answers are kept apart all the
+    // way down. null means that region's request failed; [] means it
+    // answered and has no matches. Collapsing the two is what let one
+    // region take the other down with it - Promise.all rejects whole, so
+    // a single 500 on EU threw away an NA answer that had already
+    // arrived and blanked both columns.
     const naIds = idList.filter((id) => id.startsWith('1-'));
     const euIds = idList.filter((id) => id.startsWith('2-'));
 

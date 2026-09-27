@@ -57,34 +57,24 @@
   width:20px;margin-left:7px;flex-shrink:0;
   font-size:1rem;line-height:1;
   vertical-align:middle;cursor:default;
-  /* It rides in the top row, next to the rank and the name, but what it
-     says is about the whole card - so it drops towards the middle of
-     one. Six pixels, just under a third of the rank badge beside it:
-     enough to read as belonging to the card rather than to the row, and
-     short of the stats line under it. A transform rather than a margin,
-     so the row it sits in does not move with it.
-     This figure is the up arrow's. The other two take their own below,
-     for the reason given there. */
-  transform:translateY(6px);
 }
 /* Saturated rather than merely tinted. At this size the glyph is small
    enough that a muted colour reads as grey, and the whole point of the
    mark is that you catch which way it points without stopping on it. */
-.movement-up{color:var(--green-ink);text-shadow:0 1px 1px rgba(0,0,0,.85);}
-.movement-down{color:var(--red-ink);text-shadow:0 1px 1px rgba(0,0,0,.85);}
-/* Three marks, three drops. The shapes say why: a triangle carries its
-   weight at the base and its centroid sits a third of the way up from
-   it, so centred on its box the ▲ reads low and the ▼ reads high, while
-   the bar is a rectangle whose centroid is its centre. That is what
-   rules out one shared figure, and it fixes the order - the ▼ furthest,
-   the bar between.
-   The figures themselves were set on screen, not derived. Working them
-   out from the glyph's height put the ▼ at 9 and it still read high:
-   the outline the system font actually draws is not the ideal triangle
-   the arithmetic assumes. Geometry for the shape of the problem, the
-   eye for the size of it. */
-.movement-down{transform:translateY(12px);}
-.movement-stay{transform:translateY(8px);}
+.movement-up{
+  color:var(--green-ink);text-shadow:0 1px 1px rgba(0,0,0,.85);
+  transform:translateY(-6px);
+}
+.movement-down{
+  color:var(--red-ink);text-shadow:0 1px 1px rgba(0,0,0,.85);
+  transform:translateY(1px);
+}
+/* Optical centring: a triangle carries its weight at the base, so the up
+   arrow reads low and the down arrow reads high, while the bar is a
+   rectangle and reads true - hence transforms on the first two and none
+   on it. Set by eye; derived from the glyph's height they came out
+   wrong. Keep them small, or on a phone the mark lands on the stats
+   line under it. */
 /* "Stays" is the absence of movement, so it keeps no hue at all - the
    eye should skip it and land on the two that mean something. */
 .movement-bar{
@@ -179,28 +169,20 @@
    Accent colour and the shared hover lift do the same job in the same
    language as the rest. */
 .tier-map-btn{height:18px;gap:2px;color:var(--accent);}
-/* Reads brighter than the other cyan glyphs at rest, and not because it
-   is a different cyan - it carries more ink. Largest of them at 18px,
-   with an outline enclosing the whole box rather than tracing one line.
-   Stroke weight is not it: the shield's effective stroke is 1.56px
-   against this one's 1.50px. It also sits next to a muted grey word
-   instead of a lit number, so it has the dimmest neighbour on the row.
-
-   Pulled back on opacity, not hue - cyan means "you can touch it" here,
-   and a duller cyan would say something this button does not. Handed
-   back in full on hover. This is the number to change if it still sits
-   wrong. */
+/* Reads brighter than the other cyan glyphs at rest because it carries
+   more ink - largest at 18px, with an outline enclosing the whole box -
+   and it sits next to a muted grey word rather than a lit number. Pulled
+   back on opacity, not hue: a duller cyan would stop meaning "you can
+   touch it". This is the number to change if it still sits wrong. */
 .tier-map-btn svg{
   width:18px;height:18px;
   opacity:.82;
   transition:opacity .15s ease, filter .15s ease;
 }
 .tier-map-btn:hover svg,.tier-map-btn.active svg{opacity:1;}
-/* Same as .stat-label on purpose: muted grey, regular weight, no caps.
-   That is what "Skirmish" is, and this was asked to read as its
-   sibling. Size is fixed rather than inherited because the button
-   appears at .72rem in the standings card and .95rem in the panel
-   header, and inheriting would grow the word in one of them. */
+/* Same as .stat-label on purpose - that is what "Skirmish" is. The size
+   is fixed rather than inherited because the button appears at .72rem in
+   the standings card and .95rem in the panel header. */
 .tier-map-label{
   font-size:.64rem;font-weight:400;color:#8d97a6;
   line-height:1;
@@ -225,12 +207,9 @@
    badge, the dot and the name, but the shield belongs to the name it
    sits beside, not to the row. */
 .standing-side-top .server-guilds-btn{margin-left:-5px;}
-/* The one opaque surface on the page. A popover lands on a card that is
-   already translucent over a photo, and at 92-94% the Check button still
-   read through it - a large bright cyan shape behind small text, which
-   no amount of blur fixes. Opaque retires the backdrop-filter too:
-   nothing shows through to blur. Separation now comes entirely from the
-   hard shadow, which is what was carrying it anyway. */
+/* The one opaque surface on the page. At 92-94% the Check button still
+   read through it, and no amount of blur fixes a large bright shape
+   behind small text. Opaque retires the backdrop-filter too. */
 .info-popover{
   position:fixed;z-index:60;width:280px;max-height:min(340px, 70vh);overflow-y:auto;
   background:linear-gradient(180deg, #232a34, #151a21 62%);
@@ -315,13 +294,10 @@
 .map-kd-label--gbl,.pop-bar-label.map-kd-label--gbl{color:var(--green-ink);}
 .map-kd-label--bbl,.pop-bar-label.map-kd-label--bbl{color:var(--blue);}
 .map-kd-label--rbl,.pop-bar-label.map-kd-label--rbl{color:var(--red-ink);}
-/* EBG is nobody's map, so it gets a colour no team owns: the amber the
-   lockout banner pulses in. Not cyan - cyan on this page means
-   something you can touch. It used to be the three team colours across
-   the word, and three colours do not fit in three letters: blended, a
-   gradient washes out at this size, because contrast changes along the
-   word and the worst point is the one that counts; split, one colour
-   per letter reads as a ransom note. */
+/* EBG is nobody's map, so it takes a colour no team owns: the lockout
+   banner's amber. Not cyan - cyan on this page means something you can
+   touch. Three team colours across three letters was tried: blended it
+   washes out, split it reads as a ransom note. */
 .map-kd-label--ebg,.pop-bar-label.map-kd-label--ebg{color:var(--warn);}
 
 /* The skirmish-score chart and the buttons that open these popovers.
@@ -369,9 +345,8 @@
 }
 .pop-figure-value{font-size:1.2rem;color:var(--text);font-variant-numeric:tabular-nums;}
 /* K/D is the only figure that takes a tone, and it is the same figure
-   the cards outside carry - so it is the same green and red, down to
-   the value. This used to be --ok and --err: the green matched by
-   accident and the red did not, which put three reds on screen for one
+   the cards outside carry - so the same green and red, down to the value.
+   It used to be --ok and --err, which put three reds on screen for one
    number. */
 .pop-figure--good .pop-figure-value{color:var(--green-ink);}
 .pop-figure--bad .pop-figure-value{color:var(--red-ink);}
@@ -440,12 +415,10 @@
   flex:0 0 146px;color:var(--text);font-weight:600;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
-/* The row you opened is marked as a row - a rail and a tint, in the
-   page's own accent rather than a colour that would claim to be a team.
-   Bolding the name was the whole mark before, and next to two names
-   already in full white it just read as a heavier word.
-   The negative margin is paid back by the padding, so the label still
-   starts where the other rows' labels start. */
+/* The row you opened, marked as a row - a rail and a tint in the page's
+   own accent rather than a colour that would claim to be a team. The
+   negative margin is paid back by the padding, so the label still starts
+   where the other rows' labels start. */
 .pop-bar-row.is-mine{
   margin:0 -8px;padding:5px 8px;border-radius:6px;
   background:rgba(127,214,242,.07);
@@ -499,13 +472,10 @@
    each sits above what it names. The label and track slots are empty
    and are here to hold the columns, not to draw anything. */
 /* Vector, not emoji - the two came from different system fonts, each
-   with its own ascent.
-   The nudge is not a fudge: align-items:center centres the icon on the
-   line box, and in Segoe UI that box runs 1.079em above the baseline
-   and 0.251em below it, so its middle sits 0.414em up. Digits have no
-   descender, so their ink is centred at half the cap height, 0.35em up.
-   The 0.064em between the two is why a centred icon reads as floating
-   above the number. */
+   with its own ascent. The nudge is not a fudge: align-items:center puts
+   the icon's middle 0.414em above the baseline in Segoe UI, while digits
+   have no descender and centre at 0.35em. That 0.064em is why a centred
+   icon reads as floating above the number. */
 .glyph-sword,.glyph-skull{
   display:block;flex:0 0 auto;opacity:.85;
   transform:translateY(0.064em);

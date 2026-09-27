@@ -1,15 +1,15 @@
 'use strict';
 // ---------------------------------------------------------------------
 // The siege engine
-// The trebuchet in the corner, the round it throws, and everything
-// that burns, sparks or shatters. Pure decoration.
+// The trebuchet in the corner, the round it throws, and everything that
+// burns, sparks or shatters. Pure decoration.
 //
 // Measured off the two cutouts rather than guessed: the frame's pivot
-// boss sits at (67,10) in its image, the beam's axle at (200,37) in its
-// own, and the sling head is 178px along the beam from that axle.
-// Everything else is those three numbers plus trigonometry - see
-// slingTip(), which reads the launch point off the sling itself so the
-// beam and the fireball cannot drift apart.
+// boss at (67,10) in its image, the beam's axle at (200,37) in its own,
+// and the sling head 178px along the beam from that axle. Everything
+// else is those three numbers plus trigonometry - see slingTip(), which
+// reads the launch point off the sling so the beam and the fireball
+// cannot drift apart.
 // ---------------------------------------------------------------------
 const trebuchet = document.getElementById('trebuchet');
 const trebArm = document.getElementById('trebArm');
@@ -32,10 +32,9 @@ function setArm(deg) {
 }
 
 // Where the sling is right now, in screen coordinates. Measured off the
-// marker rather than recomputed, so the traverse of the frame and the
-// rotation of the beam are both already in it. Falls back to the old
-// fixed corner when the machine is hidden, which it is on any window
-// too narrow to have room for it.
+// marker rather than recomputed, so the frame's traverse and the beam's
+// rotation are both already in it. Falls back to the old fixed corner
+// when the machine is hidden, which it is on any narrow window.
 function slingTip() {
   const r = trebSling.getBoundingClientRect();
   const box = trebuchet.getBoundingClientRect();
@@ -335,9 +334,9 @@ function sparkFromButton() {
 
 // The finale, in four beats: the crest appears, a heavy round gathers in
 // the corner, it is lobbed into the crest, and the crest splits. The
-// wind-up has to happen here and not on the click, because a check takes
-// an unknown amount of time - a round launched on the click would hang
-// in the air waiting for the API.
+// wind-up happens here and not on the click, because a check takes an
+// unknown time and a round launched on the click would hang in the air
+// waiting for the API.
 const CHARGE_FORM_MS = 460;   // the round taking shape, mirrored in impact.css
 const CHARGE_SWELL_MS = 6000; // and then gathering, ditto
 const FLIGHT_MS = 560;        // sling to crest, ditto
