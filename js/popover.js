@@ -29,6 +29,8 @@ function closePopover() {
   activeBackdrop = null;
   clearInterval(mapPollTimer);
   mapPollTimer = null;
+  clearInterval(mapTickTimer);
+  mapTickTimer = null;
 }
 
 // Every icon opened its popover with the same twelve lines of bookkeeping,

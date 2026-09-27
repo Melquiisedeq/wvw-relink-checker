@@ -72,9 +72,11 @@ async function fetchJson(url, attempt = 0, cacheMode = 'no-store') {
 // served with max-age=1.
 const fetchJsonCached = (url) => fetchJson(url, 0, 'default');
 
-// Guild-to-team assignment only changes at the weekly relink, far less
-// often than this cache expires. Harmless over-fetching, kept simple by
-// reusing the same timer interval instead of tracking the relink date.
+// Guild-to-team assignment only changes at the monthly relink - the
+// first Friday of the month, which the API publishes at
+// wvw/timers/teamAssignment - so this is far less volatile than the
+// cache it sits behind. Harmless over-fetching, kept simple by reusing
+// the same timer interval instead of tracking that date.
 async function getWvwMaps() {
   if (wvwMapCache && Date.now() - wvwMapCachedAt < TIMERS_REFRESH_MS) return wvwMapCache;
 
@@ -105,11 +107,78 @@ async function resolveGuildId(rawName) {
   return ids[0];
 }
 
-async function getGuildInfo(guildId) {
+// Guild name, tag and emblem, kept between visits.
+//
+// These are about as static as this API gets - a guild changes its
+// emblem when somebody redesigns it, which happens about once - and the
+// maps ask for a great many of them at once. Measured on a real session
+// on 26/09: opening the popover and walking the four tabs made 42 of
+// these lookups, a median of 294ms each, 14.2 seconds of summed waiting,
+// three quarters of everything that popover asked for.
+//
+// The API sends them no-store, so the browser's own cache never keeps
+// one. This does.
+const GUILD_STORE_KEY = 'wvw-guilds-v1';
+const GUILD_STORE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// Enough for a season of WvW without the entry growing without bound:
+// 42 guilds in one sitting, and a guild seen once and never again is
+// dropped by the trim below before it costs anything.
+const GUILD_STORE_MAX = 400;
+
+let guildStore = null;
+let guildStoreDirty = false;
+let guildStoreTimer = null;
+
+function guildStoreRead() {
+  if (guildStore) return guildStore;
+  guildStore = new Map();
+  try {
+    const cut = Date.now() - GUILD_STORE_TTL_MS;
+    for (const [id, v] of Object.entries(JSON.parse(localStorage.getItem(GUILD_STORE_KEY)) || {})) {
+      // Shape-checked on the way in. What comes out of storage was
+      // written by an older version of this file, or by anything else
+      // with the same origin.
+      if (v && typeof v.n === 'string' && typeof v.t === 'string'
+        && typeof v.at === 'number' && v.at > cut) guildStore.set(id, v);
+    }
+  } catch { /* off, full, or corrupt - an empty store is the right answer */ }
+  return guildStore;
+}
+
+// One write per burst, not one per guild: those 42 lookups land within
+// a second of each other and each would serialise the whole store.
+function guildStoreFlush() {
+  if (guildStoreTimer) return;
+  guildStoreTimer = setTimeout(() => {
+    guildStoreTimer = null;
+    if (!guildStoreDirty || !guildStore) return;
+    guildStoreDirty = false;
+    try {
+      // Newest first, so a trim drops whatever has gone longest unseen.
+      const rows = [...guildStore.entries()].sort((a, b) => b[1].at - a[1].at);
+      localStorage.setItem(GUILD_STORE_KEY,
+        JSON.stringify(Object.fromEntries(rows.slice(0, GUILD_STORE_MAX))));
+    } catch { /* storage off or full; the session cache still answers */ }
+  }, 2000);
+}
+
+async function getGuildInfo(guildId, allowStored = false) {
   if (guildNameCache.has(guildId)) {
     const cached = guildNameCache.get(guildId);
     if (cached.ok) return cached.data;
     throw new Error(cached.error);
+  }
+
+  // Only for callers that said so - the maps, which want the emblem.
+  // The relink checker is not one of them: it resolves a name the user
+  // typed into an id and then prints the name back, and a guild that
+  // renamed last week would have it printed as it was a month ago.
+  //
+  // A hit here deliberately does not fill guildNameCache, so a stored
+  // answer never becomes the one the checker reads later in the session.
+  if (allowStored) {
+    const kept = guildStoreRead().get(guildId);
+    if (kept) return { name: kept.n, tag: kept.t, emblem: kept.e || null };
   }
 
   try {
@@ -122,6 +191,10 @@ async function getGuildInfo(guildId) {
     // guild checker already uses, so it costs nothing extra.
     const result = { name: info.name, tag: info.tag, emblem: info.emblem || null };
     guildNameCache.set(guildId, { ok: true, data: result });
+    guildStoreRead().set(guildId,
+      { n: result.name, t: result.tag, e: result.emblem, at: Date.now() });
+    guildStoreDirty = true;
+    guildStoreFlush();
     return result;
   } catch (err) {
     // Only a definite answer is worth remembering. A timeout or a dropped

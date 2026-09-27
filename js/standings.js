@@ -134,6 +134,25 @@ function setStandingsStatus(el, synced, text) {
   el.appendChild(document.createTextNode(text));
 }
 
+// The shimmering placeholder only stands in for an answer that has not
+// arrived yet. Once one has failed it has arrived, and left alone it
+// would shimmer behind the error line for as long as the tab is open.
+function clearSkeleton(gridEl) {
+  if (gridEl.querySelector('.skel-match')) gridEl.textContent = '';
+}
+
+// One region onto the page. A region that failed keeps whatever it last
+// rendered rather than being emptied: last refresh's standings are still
+// the standings, and blanking a column over one request says far less
+// than leaving it up and saying it did not update. The first load is the
+// exception, because what is up then is the skeleton.
+function showRegion(gridEl, statusEl, matches, label, syncedAt) {
+  if (matches) renderStandingsRegion(gridEl, matches);
+  else clearSkeleton(gridEl);
+  const ok = !!matches && matches.length > 0;
+  setStandingsStatus(statusEl, ok, ok ? syncedAt : `Couldn't load ${label} standings.`);
+}
+
 // Loads every active match (NA + EU) in two requests and powers the
 // standings rails. Results are cached, so a later guild check reuses them.
 async function loadStandings() {
@@ -143,7 +162,12 @@ async function loadStandings() {
       throw new Error('No active matches returned');
     }
 
-    // Fetched per region so an issue with one region can't wipe out the other.
+    // One request per region, and the answers are kept apart all the way
+    // down. null means that region's request failed; [] means it
+    // answered and has no matches. They used to be the same thing, and
+    // collapsing them is what let one region take the other down with
+    // it - Promise.all rejects whole, so a single 500 on EU threw away
+    // an NA answer that had already arrived and blanked both columns.
     const naIds = idList.filter((id) => id.startsWith('1-'));
     const euIds = idList.filter((id) => id.startsWith('2-'));
 
@@ -153,7 +177,18 @@ async function loadStandings() {
       return Array.isArray(data) ? data : [];
     };
 
-    const [naMatches, euMatches] = await Promise.all([fetchRegion(naIds), fetchRegion(euIds)]);
+    const [naMatches, euMatches] = await Promise.all([
+      fetchRegion(naIds).catch(() => null),
+      fetchRegion(euIds).catch(() => null),
+    ]);
+    const answered = [...(naMatches || []), ...(euMatches || [])];
+
+    // Every refresh leaves a kills/deaths snapshot behind on its way
+    // past. Nothing here waits on it and nothing extra is fetched - it is
+    // what lets the maps popover say which map is busy the moment it
+    // opens, instead of having to sample twice itself. See the fight log
+    // in js/maps.js.
+    recordFightSamples(answered);
 
     // Forget matches that no longer exist. IDs are stable week to week, so
     // this only bites when a region loses a tier: a leftover "1-4" would
@@ -167,7 +202,7 @@ async function loadStandings() {
       if (!liveIds.has(matchId)) teamToMatchId.delete(teamId);
     }
 
-    for (const match of [...naMatches, ...euMatches]) {
+    for (const match of answered) {
       if (!match || typeof match.id !== 'string' || typeof match.all_worlds !== 'object') continue;
       matchDataCache.set(match.id, match);
       for (const color of COLORS) {
@@ -176,18 +211,17 @@ async function loadStandings() {
       }
     }
 
-    renderStandingsRegion(standingsGridNA, naMatches);
-    renderStandingsRegion(standingsGridEU, euMatches);
     updateRelinkFromMatches(naMatches, euMatches);
     const syncedAt = `Synced ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    const naOk = naMatches.length > 0;
-    const euOk = euMatches.length > 0;
-    setStandingsStatus(standingsStatusNA, naOk, naOk ? syncedAt : "Couldn't load NA standings.");
-    setStandingsStatus(standingsStatusEU, euOk, euOk ? syncedAt : "Couldn't load EU standings.");
+    showRegion(standingsGridNA, standingsStatusNA, naMatches, 'NA', syncedAt);
+    showRegion(standingsGridEU, standingsStatusEU, euMatches, 'EU', syncedAt);
   } catch {
-    // Clear the skeletons too, or they shimmer forever behind an error.
-    standingsGridNA.textContent = '';
-    standingsGridEU.textContent = '';
+    // The id list itself failed, so there is nothing to say about either
+    // region - but the same rule holds: what is on screen stays, because
+    // a refresh that did not answer is not a reason to take away the one
+    // that did. Only a skeleton has to go, for the reason in showRegion.
+    clearSkeleton(standingsGridNA);
+    clearSkeleton(standingsGridEU);
     standingsStatusNA.textContent = "Couldn't load live standings right now.";
     standingsStatusEU.textContent = "Couldn't load live standings right now.";
   }

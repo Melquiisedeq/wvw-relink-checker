@@ -70,8 +70,8 @@
 /* Saturated rather than merely tinted. At this size the glyph is small
    enough that a muted colour reads as grey, and the whole point of the
    mark is that you catch which way it points without stopping on it. */
-.movement-up{color:#45c489;text-shadow:0 1px 1px rgba(0,0,0,.85);}
-.movement-down{color:#ff6b6e;text-shadow:0 1px 1px rgba(0,0,0,.85);}
+.movement-up{color:var(--green-ink);text-shadow:0 1px 1px rgba(0,0,0,.85);}
+.movement-down{color:var(--red-ink);text-shadow:0 1px 1px rgba(0,0,0,.85);}
 /* Three marks, three drops. The shapes say why: a triangle carries its
    weight at the base and its centroid sits a third of the way up from
    it, so centred on its box the ▲ reads low and the ▼ reads high, while
@@ -312,9 +312,9 @@
 
 /* Per-map K/D breakdown: small crossed-swords icon next to the K/D value */
 .map-kd-btn{width:15px;height:16px;color:var(--accent);vertical-align:middle;}
-.map-kd-label--gbl,.pop-bar-label.map-kd-label--gbl{color:var(--green);}
+.map-kd-label--gbl,.pop-bar-label.map-kd-label--gbl{color:var(--green-ink);}
 .map-kd-label--bbl,.pop-bar-label.map-kd-label--bbl{color:var(--blue);}
-.map-kd-label--rbl,.pop-bar-label.map-kd-label--rbl{color:var(--red);}
+.map-kd-label--rbl,.pop-bar-label.map-kd-label--rbl{color:var(--red-ink);}
 /* EBG is nobody's map, so it gets a colour no team owns: the amber the
    lockout banner pulses in. Not cyan - cyan on this page means
    something you can touch. It used to be the three team colours across
@@ -373,8 +373,8 @@
    the value. This used to be --ok and --err: the green matched by
    accident and the red did not, which put three reds on screen for one
    number. */
-.pop-figure--good .pop-figure-value{color:var(--green);}
-.pop-figure--bad .pop-figure-value{color:var(--red);}
+.pop-figure--good .pop-figure-value{color:var(--green-ink);}
+.pop-figure--bad .pop-figure-value{color:var(--red-ink);}
 
 
 /* The other two sides, for scale. Thin and dim on purpose: they are
@@ -531,8 +531,8 @@
 .skirmish-bar-green{background:var(--green);}
 
 /* K/D value colored by who's winning the fight stat */
-.kd-good{color:var(--green)!important;}
-.kd-bad{color:var(--red)!important;}
+.kd-good{color:var(--green-ink)!important;}
+.kd-bad{color:var(--red-ink)!important;}
 .stat-leader{
   text-decoration:underline;
   text-decoration-color:var(--accent);text-underline-offset:3px;

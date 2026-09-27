@@ -167,18 +167,28 @@ function latestOf(matches, field) {
   return times.length ? Math.max(...times) : null;
 }
 
+// start_time is the far side of the event end_time names: when the
+// newest published week began, which is what says the maps are about to
+// open. end_time cannot say that - by then it is a week away again. And
+// one tier still running the week it published is enough to know the new
+// data exists somewhere.
+//
+// A region whose request failed arrives as null and keeps the figures it
+// had. Read as an empty list it would set its countdown to null and take
+// that half of the banner down over a single refresh that did not
+// answer - which is how one failed request used to reach three different
+// parts of the page.
 function updateRelinkFromMatches(naMatches, euMatches) {
-  relinkNA = latestOf(naMatches, 'end_time');
-  relinkEU = latestOf(euMatches, 'end_time');
-  // The far side of the same event: when the newest published week
-  // began. It is what says the maps are about to open, which end_time
-  // cannot - by then end_time is a week away again.
-  resetNA = latestOf(naMatches, 'start_time');
-  resetEU = latestOf(euMatches, 'start_time');
-  // One tier still running the week it published is enough to know the
-  // new data exists somewhere.
-  liveNA = (naMatches || []).some(matchIsLive);
-  liveEU = (euMatches || []).some(matchIsLive);
+  if (naMatches) {
+    relinkNA = latestOf(naMatches, 'end_time');
+    resetNA = latestOf(naMatches, 'start_time');
+    liveNA = naMatches.some(matchIsLive);
+  }
+  if (euMatches) {
+    relinkEU = latestOf(euMatches, 'end_time');
+    resetEU = latestOf(euMatches, 'start_time');
+    liveEU = euMatches.some(matchIsLive);
+  }
   updateRelinkBanner();
 }
 
@@ -202,10 +212,10 @@ function updateRelinkBanner() {
     const naLeft = relinkNA !== null ? relinkNA - now : null;
     const euLeft = relinkEU !== null ? relinkEU - now : null;
     inner.appendChild(buildRelinkStat(
-      'Next Relink',
+      'Next Reset',
       buildRelinkValue(naLeft, euLeft, naUrgent, euUrgent),
       false,
-      'When the current tier matchups end and everyone is shuffled into new pairings for the week.'
+      'When the current matchups end and every tier is redrawn for the week ahead. Weekly - the relink that rebuilds the teams themselves is monthly.'
     ));
   }
   if (hasRelink && hasLockout) {

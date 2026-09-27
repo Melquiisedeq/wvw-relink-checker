@@ -21,6 +21,22 @@
   --blue:#5b8ff0;
   --green:#4caf7d;
   --red:#e15c5c;
+  /* The same two colours again, for the job the pair above cannot do.
+     A fill may be dark - there is nothing in a dot or a bar to read -
+     but --red as small text on the popover measures 3.49:1, under the
+     4.5 AA wants, and there is no darker red that would clear it: on a
+     dark surface every legible red is a lighter one. So shapes keep
+     --red and --green and letters take these. The green is the one the
+     promotion arrow already used, so only the red actually moves.
+     Saturation is what decides whether a lighter red still reads as red
+     rather than as salmon, so this one stays near the top of it and
+     spends only the lightness it has to. Measured against the surface
+     the K/D figure actually sits on it clears the floor by a tenth,
+     which is as dark as it goes - a step further is 4.09 and fails.
+     css/maps.css hit the same wall and picked its own lighter pair
+     before this existed; those two are still its own. */
+  --red-ink:#fb6a68;
+  --green-ink:#3fbd83;
 }
 *{box-sizing:border-box;}
 body{

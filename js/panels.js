@@ -231,20 +231,24 @@ function getMaxTierForRegion(regionCode) {
 
 const MOVEMENT_SYMBOLS = { up: '▲', down: '▼' };
 
-// Projects where a side lands after the next weekly relink from its
+// Projects where a side lands after the next weekly reset from its
 // rank within the tier: 1st promotes, 2nd always stays, 3rd relegates,
 // unless there's nowhere further up or down to go.
+//
+// Reset, not relink. Tiers turn over every week, at the end of the
+// matchup; the relink is the monthly rebuild of the teams themselves and
+// moves nobody between tiers.
 function getRelinkMovement(rank, tierNum, maxTierForRegion) {
   const tier = Number(tierNum);
   if (rank === 1) {
     if (tier === 1) return { dir: 'stay', label: 'Already the top tier' };
-    return { dir: 'up', label: 'Moves up next relink' };
+    return { dir: 'up', label: 'Moves up next reset' };
   }
-  if (rank === 2) return { dir: 'stay', label: 'Stays in this tier next relink' };
+  if (rank === 2) return { dir: 'stay', label: 'Stays in this tier next reset' };
   if (maxTierForRegion != null && tier === maxTierForRegion) {
     return { dir: 'stay', label: 'Already the bottom tier' };
   }
-  return { dir: 'down', label: 'Moves down next relink' };
+  return { dir: 'down', label: 'Moves down next reset' };
 }
 
 // Small movement badge next to a side's VP: arrow up, arrow down, or a

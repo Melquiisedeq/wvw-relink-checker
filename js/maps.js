@@ -10,8 +10,9 @@
 // request per session. The map itself is the sector polygons the API
 // publishes for every WvW map, in the same coordinate space as the
 // objectives - which is why the markers land where they belong by
-// construction rather than by fitting. There is no terrain image
-// because ArenaNet publishes no tiles for WvW; see the top of
+// construction rather than by fitting. The terrain under them is a
+// self-hosted picture: ArenaNet publishes no tiles for WvW, so the four
+// renders come off the wiki. See MAP_IMAGE below and the top of
 // css/maps.css.
 // ---------------------------------------------------------------------
 // Tab order, left to right. Red last by request - it reads as the
@@ -60,14 +61,35 @@ const MAX_ZOOM = 4.5;
 //
 // `edge` is how wide our own border is drawn, in map units, and it has
 // to cover the one already printed into the picture or you see both.
-// EBG printed a 23-unit line against the borderlands' 5, so EBG's was
-// painted out of the image rather than widening ours - which is why all
-// four can share the same 14.
+// All four renders print the same 5-unit white sector line, and 14
+// buries it. Eternal Battlegrounds printed a second line beside that
+// one - 23 units wide, in the home team's colour - which 14 does not
+// cover: it bled out either side of our stroke, in a colour that had
+// nothing to do with who holds the sector now. That line was taken out
+// of the image, leaving EBG with the same white line the borderlands
+// have, so all four still share the same 14. The white line under it is
+// the API's own sector edge, which is why our stroke lands on top of it
+// rather than beside it.
 const MAP_IMAGE = Object.freeze({
   38: { src: 'assets/map-ebg.webp', x: 8846.4, y: 12710.9, w: 3308.0, h: 3293.5, edge: 14 },
   1099: { src: 'assets/map-rbl.webp', x: 9133.8, y: 8866.1, w: 3228.6, h: 3245.6, edge: 14 },
   96: { src: 'assets/map-bbl.webp', x: 12718.3, y: 10865.3, w: 2660.6, h: 3623.1, edge: 14 },
   95: { src: 'assets/map-gbl.webp', x: 5534.1, y: 11493.7, w: 2693.0, h: 3638.3, edge: 14 },
+});
+
+// The three mercenary camps on Eternal Battlegrounds are the only
+// objectives the API publishes with an empty coord, so they are the only
+// ones left on label_coord - and label_coord puts Molevekian Delve 139
+// units west of its own camp. The wiki's interactive map skips them too,
+// so these were read off the map render instead: the crossed poleaxes the
+// game prints for a mercenary camp, measured at that image's own 1.1638
+// pixels per map unit. Good to about 3 units, against a marker radius of
+// 92 - close enough that the icon covers the camp, which is all a marker
+// has to do.
+const MERC_COORD = Object.freeze({
+  '38-123': [9972.9, 14197.7],    // Molevekian Delve
+  '38-125': [11284.6, 14096.6],   // Orgath Uplands
+  '38-126': [10692.6, 15310.5],   // Darkrait Inlet
 });
 
 // The game's own icons off the wiki, copied into assets/icons: a disc in
@@ -77,6 +99,17 @@ const MAP_IMAGE = Object.freeze({
 // changed, alpha pixel-identical, so grey -> team was learned from the
 // Keep and Tower pairs. Replaying it on those reproduces them to within
 // 0.2/255.
+//
+// They ship at 96px now rather than the published 32px. Nothing was
+// redrawn: the same picture is enlarged with Lanczos and given a light
+// unsharp pass, so the stone texture, the dark rim and the disc's own
+// ragged edge all survive - it just stops being the browser's job to
+// stretch 32px up to the 143px a marker reaches at full zoom. Ruins and
+// Mercenary were also pulled onto the same team colour as the other
+// four, by a per-channel factor over the whole image: relative texture
+// is preserved, and multiplying black still gives black, so the glyph
+// stays put. WebP because the sharpened texture costs 287KB as PNG and
+// 115KB here; the tactic icons next to them were already WebP.
 const MARKER_ICON = Object.freeze({
   Castle: 'Event_Castle', Keep: 'Event_Keep', Tower: 'Event_Tower',
   Camp: 'Event_Camp', Ruins: 'Event_Ruins',
@@ -93,37 +126,82 @@ let plotSerial = 0;
 // this runs only while the maps are open and the window has focus.
 const MAP_REFRESH_MS = 30 * 1000;
 let mapPollTimer = null;
+// The last answer a poll got, paired with the standings match it was
+// pulled against - one slot, because only one tier's maps are ever
+// open. toggleTierMaps says what the pairing is for.
+let freshRecall = null;
+// Separate from the poll on purpose: this one only rewrites the RI
+// clocks, so it can run every second without touching the refresh
+// cadence or asking the API for anything.
+let mapTickTimer = null;
 
 function markerIcon(type, owner) {
   const base = MARKER_ICON[type];
   if (!base) return null;
   const c = String(owner || '').toLowerCase();
-  return `assets/icons/${base}${COLORS.includes(c) ? `_${c}` : ''}.png`;
+  return `assets/icons/${base}${COLORS.includes(c) ? `_${c}` : ''}.webp`;
 }
 
-// The twenty guild tactics, likewise copied in. Serving every picture
-// ourselves is what lets img-src stay 'self': no third-party host ever
-// learns who is looking at a map.
-const TACTIC_ICONS = new Set([
-  '1202661','1202663','1202664','1202665','1202666','1202667','1202668',
-  '1202669','1202670','1202671','1202672','1202673','1202674','1202675',
-  '1202676','1202677','1202678','1202679','1202680','1202681',
+// Every upgrade a guild can install on a claimed objective - ten
+// tactics and eleven improvements - likewise copied in. Serving every
+// picture ourselves is what lets img-src stay 'self': no third-party
+// host ever learns who is looking at a map.
+//
+// An id that is not in here draws no picture rather than reaching for
+// render.guildwars2.com, so a new upgrade degrades to its name alone.
+const UPGRADE_ICONS = new Set([
+  '1202661','1202662','1202663','1202664','1202665','1202666','1202667',
+  '1202668','1202669','1202670','1202671','1202672','1202673','1202674',
+  '1202675','1202676','1202677','1202678','1202679','1202680','1202681',
 ]);
 const RENDER_FILE_RE = /^https:\/\/render\.guildwars2\.com\/file\/[0-9A-F]+\/(\d+)\.png$/;
 
-function tacticIcon(url) {
+function upgradeIcon(url) {
   const m = RENDER_FILE_RE.exec(String(url || ''));
-  if (!m || !TACTIC_ICONS.has(m[1])) return null;
+  if (!m || !UPGRADE_ICONS.has(m[1])) return null;
   return `assets/icons/${m[1]}.webp`;
 }
 
 let objectiveCatalogue = null;
 let upgradeCatalogue = null;
 let tacticCatalogue = null;
+const tacticAsked = new Set();
 const sectorCache = new Map();
+
+// The written-out copy, checked once. Missing or malformed it simply
+// is not there, and everything below falls back to the API the way it
+// always did.
+function staticPack() {
+  return (typeof WVW_STATIC === 'object' && WVW_STATIC) || null;
+}
+
+// Started once, in the background, with the map already drawn from the
+// baked copy. Whatever comes back is what the NEXT opening uses - this
+// never repaints under someone's cursor, and a map half from one
+// catalogue and half from another is not a state worth having.
+let catalogueRefreshed = false;
+
+function refreshCatalogueSoon() {
+  if (catalogueRefreshed) return;
+  catalogueRefreshed = true;
+  fetchJsonCached(`${API_BASE}/wvw/objectives?ids=all`).then((list) => {
+    if (!Array.isArray(list) || !list.length) return;
+    const byId = new Map();
+    for (const o of list) byId.set(o.id, o);
+    objectiveCatalogue = byId;
+  }).catch(() => { catalogueRefreshed = false; });
+}
 
 async function getObjectiveCatalogue() {
   if (objectiveCatalogue) return objectiveCatalogue;
+  const pack = staticPack();
+  if (pack && Array.isArray(pack.objectives) && pack.objectives.length) {
+    const byId = new Map();
+    for (const o of pack.objectives) byId.set(o.id, o);
+    objectiveCatalogue = byId;
+    refreshCatalogueSoon();
+    return byId;
+  }
   const list = await fetchJsonCached(`${API_BASE}/wvw/objectives?ids=all`);
   const byId = new Map();
   for (const o of Array.isArray(list) ? list : []) byId.set(o.id, o);
@@ -153,12 +231,20 @@ async function getUpgradeCatalogue() {
 // whole match in one request rather than per objective.
 async function getTacticCatalogue(ids) {
   if (!tacticCatalogue) tacticCatalogue = new Map();
-  const want = [...new Set(ids)].filter((id) => !tacticCatalogue.has(id));
+  // Asked, not just answered. An id the API declines to return would
+  // otherwise be requested again on every repaint, for as long as the
+  // popover stayed open.
+  const want = [...new Set(ids)]
+    .filter((id) => !tacticCatalogue.has(id) && !tacticAsked.has(id));
   if (!want.length) return tacticCatalogue;
+  for (const id of want) tacticAsked.add(id);
   try {
     const list = await fetchJsonCached(`${API_BASE}/guild/upgrades?ids=${want.map(encodeURIComponent).join(',')}`);
     for (const u of Array.isArray(list) ? list : []) tacticCatalogue.set(u.id, u);
-  } catch { /* tactics are a nicety; the panel reads fine without them */ }
+  } catch {
+    // A dropped connection must not retire these ids for the session.
+    for (const id of want) tacticAsked.delete(id);
+  }
   return tacticCatalogue;
 }
 
@@ -167,32 +253,281 @@ async function getTacticCatalogue(ids) {
 // carries the design and the rest turn to mush at this size - painted
 // white, so one image per guild is enough. The catalogue is one request
 // per session.
-let emblemForegrounds = null;
-let emblemForegroundsPromise = null;
+let emblemPieces = null;
+let emblemPiecesPromise = null;
 
-function getEmblemForegrounds() {
-  if (emblemForegrounds) return Promise.resolve(emblemForegrounds);
-  if (!emblemForegroundsPromise) {
-    emblemForegroundsPromise = fetchJsonCached(`${API_BASE}/emblem/foregrounds?ids=all`)
-      .then((list) => {
+// Both halves of the catalogue: the shapes a guild can pick for its
+// backdrop and the ones it can pick for the device on top. Fetched
+// together because an emblem needs both to be drawn at all.
+function getEmblemPieces() {
+  if (emblemPieces) return Promise.resolve(emblemPieces);
+  if (!emblemPiecesPromise) {
+    emblemPiecesPromise = Promise.all([
+      fetchJsonCached(`${API_BASE}/emblem/backgrounds?ids=all`),
+      fetchJsonCached(`${API_BASE}/emblem/foregrounds?ids=all`),
+    ]).then(([bgs, fgs]) => {
+      const pack = (list) => {
         const byId = new Map();
-        for (const f of Array.isArray(list) ? list : []) byId.set(f.id, f);
-        emblemForegrounds = byId;
+        for (const x of Array.isArray(list) ? list : []) byId.set(x.id, x);
         return byId;
-      })
+      };
+      emblemPieces = { bg: pack(bgs), fg: pack(fgs) };
+      return emblemPieces;
+    })
       // Dropped rather than remembered as an empty catalogue: kept, it
       // would blank every claim emblem until the page was reloaded,
       // because the answer is only ever fetched once. Clearing the
       // promise is what lets the next claimed objective ask again.
-      .catch(() => { emblemForegroundsPromise = null; return new Map(); });
+      .catch(() => { emblemPiecesPromise = null; return { bg: new Map(), fg: new Map() }; });
   }
-  return emblemForegroundsPromise;
+  return emblemPiecesPromise;
 }
 
-function emblemSrc(info, foregrounds) {
-  const fg = info && info.emblem && info.emblem.foreground;
-  const entry = fg && foregrounds.get(fg.id);
-  return (entry && Array.isArray(entry.layers) && entry.layers[0]) || null;
+// Dye colours for the guild emblems: id to hex, the cloth value of each,
+// because a guild emblem is cloth. base_rgb is not the colour - it reads
+// [128, 26, 26] for all 643 of them, being the reference that each
+// material transforms.
+//
+// An earlier note here said the real colours were out of reach, because
+// they would mean reimplementing ArenaNet's unpublished colour-shift
+// maths. That is true of dyeing an arbitrary texture and not of this:
+// /v2/colors publishes the colour AFTER the shift, so there is nothing
+// to reimplement.
+//
+// Baked in rather than fetched. /v2/colors?ids=all measured 637 KB and
+// 1.6 seconds on 26/09, for a popover that has to feel instant; the same
+// answer written out is 7 KB and costs no request at all. An id that is
+// not here - a dye added after this was written - falls back to the ink
+// this used before, which is the old behaviour rather than a gap.
+const DYE_CLOTH =
+  '1:7c6c53,2:252326,3:5f5c5c,4:484546,5:302e31,6:d3d0cf,7:003349,'
+  + '8:016a87,9:004c6d,10:3682a0,11:001f34,12:48220f,13:41311d,14:58402a,'
+  + '15:27251e,16:2a1607,17:472c17,18:361e03,19:353228,20:968469,21:301308,'
+  + '22:564a38,23:7e6343,24:653b22,25:221b0b,26:5f4320,27:24417a,28:4a71bb,'
+  + '29:04143e,30:122559,31:23578b,32:774b43,33:864135,34:5d2319,35:9f6a57,'
+  + '36:965040,37:596680,38:2e4153,39:203a44,40:2f3148,41:314a48,42:485f5d,'
+  + '43:28323f,44:2e525f,45:283a3d,46:3d5267,47:461041,48:5e1d64,49:793581,'
+  + '50:9d5ca4,51:2d0923,52:666000,53:586e39,54:8a8127,55:1d653b,56:00260e,'
+  + '57:0e2c0b,58:42865a,59:0a4f27,60:0f2f24,61:07351a,62:453b2e,63:3e4130,'
+  + '64:714910,65:3f3921,66:5d2e0f,67:8a6732,68:3e4447,69:21292d,70:a7998e,'
+  + '71:370400,72:464636,73:491a05,74:828a92,75:57534c,76:0e1c25,77:171b28,'
+  + '78:241620,79:261702,80:0f1c14,81:201906,82:1e1725,83:250f0b,84:2b1618,'
+  + '85:241209,86:0a1b1a,87:1a1829,88:161c0e,89:323c41,90:9a8372,91:7c6c53,'
+  + '92:403d46,93:7c888a,94:9b8e79,96:4b3f39,97:373f38,98:746970,99:5f6460,'
+  + '100:45463e,101:666455,102:ba6f57,103:615449,104:3c3900,105:455100,'
+  + '106:5b6a00,107:272400,108:747f21,109:a04b17,110:3b0c00,111:ca6b39,'
+  + '112:983f17,113:5f1700,114:452863,115:230f3d,116:5e468c,117:301a4d,'
+  + '118:8160af,119:330002,120:a9484c,121:c2616a,122:470000,123:660006,'
+  + '124:b65a80,125:751943,126:a9365e,127:4d0026,128:2f0019,129:405612,'
+  + '130:192700,131:163900,132:235000,133:62893c,134:2d8c7f,135:00514c,'
+  + '136:003831,137:006c6c,138:002323,139:353574,140:292159,141:6b6eb9,'
+  + '142:4d5398,143:151340,144:7a4400,145:5e3100,146:895500,147:9b6c00,'
+  + '148:ab8726,314:483f42,315:af9f7c,332:9c6a46,333:927743,334:827b3e,'
+  + '335:86706b,336:998b70,337:765f54,338:562400,339:426d23,340:514500,'
+  + '341:453000,342:2c1d00,343:b96b6b,344:bd8861,345:bb9755,346:959b5f,'
+  + '347:7d9664,348:68947b,349:698f97,350:7579a1,351:8a6c99,352:945648,'
+  + '353:736751,354:a37973,355:8f8f71,356:738083,357:8d7277,358:2b322e,'
+  + '359:6d7a4a,360:5e785b,361:50706a,362:506773,363:5b5e78,364:715063,'
+  + '365:814646,366:765632,367:4b4422,368:57291b,369:5a3808,370:273300,'
+  + '371:4a3751,372:302a41,373:7f7363,374:c55d4b,375:9d3e2d,376:85241a,'
+  + '377:580800,378:470000,379:b4752a,380:98560b,381:864000,382:7b3000,'
+  + '383:624225,384:4b382e,385:5b5f63,434:6f4326,435:5a4620,436:4d2121,'
+  + '437:552f16,438:383c16,439:514a64,440:36273f,441:482a3d,442:8e8a78,'
+  + '443:bdbab9,444:857a60,445:8e9881,446:7f7272,447:a0826c,448:7d8674,'
+  + '449:777987,450:4b3a2d,451:2c3439,452:6b5b3c,453:392920,454:473f33,'
+  + '455:2f281c,456:21130e,457:4d3e26,458:292c36,459:4f3929,460:807383,'
+  + '461:74867d,462:9e8b66,463:4a2a2a,464:342d38,465:393522,466:6c3e2d,'
+  + '467:695637,468:88533f,469:483b1b,470:2b230c,471:3d2b31,472:4a361a,'
+  + '473:1a181b,474:524f4f,475:6b6969,476:3b393c,477:9d9a9a,478:624c3f,'
+  + '479:81654d,480:9c7e51,481:a16d55,482:000000,483:000008,484:323b2d,'
+  + '485:343223,582:752200,583:21356a,584:9d8e6c,585:c7a23d,586:330000,'
+  + '587:a0a8b9,588:284e82,589:523776,590:6687c6,591:e09e5c,592:770000,'
+  + '593:6b1400,594:e38350,595:ee9566,596:d8aa86,597:414f53,598:b2a740,'
+  + '599:1a4400,600:a97815,601:371700,602:322f00,603:595fa9,604:411e00,'
+  + '605:382800,606:00453e,607:103300,608:500c00,609:3a0f32,610:7d7a7a,'
+  + '611:8e8a88,612:687600,613:7cb286,614:7895cd,615:662d6c,616:893203,'
+  + '617:1c5a2d,618:4d2a00,619:b34d74,620:a366aa,621:d8b080,622:ac6620,'
+  + '623:cc8a48,624:b7678b,625:005f7c,626:42447f,627:47514b,628:ccb471,'
+  + '629:5a0000,630:63a46f,631:9cc4a0,632:2a5c05,633:b14d3b,634:22788f,'
+  + '635:75974a,636:86a956,637:a9c188,638:499864,639:43978c,640:6369b5,'
+  + '641:8e2652,642:d4b254,643:888266,644:382f67,645:6b654c,646:b5bc72,'
+  + '647:b95629,648:97322c,649:8fa7d3,650:e7a876,651:e0ae73,652:dabc6b,'
+  + '653:8ac094,654:9ebc75,655:b3bc5e,656:efab8b,657:f7aa9d,658:a895c3,'
+  + '659:cb8ca9,660:83bbac,661:c1b759,662:9398d6,663:b88dbc,664:85b3c1,'
+  + '665:d9ab95,666:a94165,667:884a8e,668:d8aca4,669:e18076,670:541c54,'
+  + '671:9b83bc,672:b1a4c3,673:87000a,674:00405b,675:3c2456,676:386299,'
+  + '677:6e3b00,678:bd7294,679:c99eb2,680:610a35,681:6bac9e,682:55ad9a,'
+  + '683:96bab1,684:787dc0,685:8f77b0,686:642700,687:736d00,688:5b4e00,'
+  + '689:297549,690:97a53b,691:488f9f,692:496100,693:c5bd70,694:4b772a,'
+  + '695:7b7600,696:01776e,697:9d922a,698:a0252f,699:f39a91,700:3d70a2,'
+  + '701:765c9d,702:f79b7e,703:a99c81,704:005d5d,705:431a00,706:6b5490,'
+  + '707:868bc9,708:9da0c4,709:064224,710:ac7db1,711:bc9dbf,712:6fa2b1,'
+  + '713:5699ae,714:96b1ba,715:89932a,1053:e17967,1054:3e4100,1149:791a09,'
+  + '1150:440000,1151:601300,1152:2d0000,1153:550000,1154:a1660c,'
+  + '1155:c58d36,1156:455139,1157:3e574f,1158:42485a,1159:47435a,'
+  + '1160:573e4f,1161:574747,1231:3c6a65,1232:3d5e6f,1233:597d8f,'
+  + '1234:578984,1235:2f4d4a,1236:304550,1237:cb8c16,1238:dab44d,'
+  + '1239:9c5915,1240:8b2e12,1241:423a31,1242:8e8b73,1243:354100,'
+  + '1244:6e7a36,1245:5b6100,1246:466300,1247:212400,1248:4c7200,'
+  + '1249:443582,1250:664785,1251:7f8f05,1252:005562,1253:290935,'
+  + '1254:3d125d,1265:9e5353,1266:928032,1267:9c6c3d,1268:597c35,'
+  + '1269:376f8d,1270:6f378d,1271:604600,1272:31581d,1273:064857,'
+  + '1274:4c0e4c,1275:5a2200,1276:4e0000,1277:003127,1278:002911,'
+  + '1279:1c1c43,1280:411313,1281:3a2e03,1282:4f0821,1301:8fffa2,'
+  + '1302:ffb088,1303:fffc5e,1304:ff8cac,1305:82c8ff,1306:b390ff,'
+  + '1307:aeb6d7,1308:a9bdd4,1309:a5cdc9,1310:c0a8d3,1311:afd7b5,'
+  + '1312:d1c3a7,1333:edb227,1334:810000,1335:580000,1336:990000,'
+  + '1337:d89d00,1338:c37600,1348:080900,1349:110000,1350:0f0000,'
+  + '1351:04000c,1352:080009,1353:0b0005,1354:000000,1355:001000,'
+  + '1356:000908,1357:00030c,1358:3b7d8c,1359:814381,1360:537a3e,'
+  + '1361:a28800,1362:8a5200,1363:9b0f29,1364:37342c,1365:7e6121,'
+  + '1366:48443c,1367:5d5951,1368:4f3f12,1369:7a5f2d,1370:745a00,'
+  + '1371:3e0100,1372:3d212f,1373:8a4800,1374:cfcfb1,1375:730e00,'
+  + '1376:001f4c,1377:3b5475,1378:27528b,1379:001c67,1380:6091d3,'
+  + '1381:0c203d,1382:8795a8,1383:495566,1384:7793b9,1453:630007,'
+  + '1454:00001a,1455:0a000a,1456:310000,1457:3d003d,1458:2c004c,'
+  + '1477:b74725,1478:210000,1481:f6f0b3,1485:898989,1486:185240,'
+  + '1489:1e1c1f,1490:ab0078,1493:172585,1495:7a9600,1497:bd000b,'
+  + '1498:2d2c3f,1499:b08f80,1537:f05000,1538:ff9303,1539:ffec4c,'
+  + '1540:c40000,1541:ee2500,1542:070000,1549:e8e2e1,1550:52abec,'
+  + '1551:e8ffff,1552:fafffa,1553:ffffff,1554:77ba83,1573:714737,'
+  + '1574:4d5420,1575:fbc940,1576:2d231f,1577:28aeae,1578:2c2400,'
+  + '1579:c8aa82,1580:000000,1581:738983,1582:262626,1583:543831,'
+  + '1584:b2a99d,1585:343434,1592:326b35,1593:303d62,1594:330202,'
+  + '1595:1a8ac5,1596:d4f058,1597:b06200,1598:a1947e,1599:060a13,'
+  + '1600:8f7224,1601:3d3900,1602:a97451,1617:001e00,1618:917707,'
+  + '1619:913600,1620:603a00,1621:3e9500,1622:000000,1623:230050,'
+  + '1624:b9b9f4,1625:ab00ab,1627:5e005e,1628:00002f,1629:5b00d4,'
+  + '1633:000f45,1634:ca9800,1635:a47b0e,1636:77d5ff,1637:003e9a,'
+  + '1638:ffd96b,1639:ff4900,1640:717171,1641:474747,1642:8a0c0c,'
+  + '1643:653b3b,1644:a94900,1645:04042e,1646:725439,1647:a4a5a6,'
+  + '1648:5b522d,1649:3b4753,1650:144382,1651:001f6e,1652:1e364f,'
+  + '1653:2323cb,1654:125ba3,1655:298829,1656:009400,1657:13d413,'
+  + '1658:004a00,1659:d40303,1660:882929,1661:6e1a1a,1662:933f3f,'
+  + '1663:6d643f,1664:b58b00,1665:715e0a,1666:7e6500,1667:004991,'
+  + '1668:ffff8c,1669:99a5b1,1670:078585,1671:fcf2d5,1672:d9b0ff,'
+  + '1673:9eefff,1674:ffff99,1675:ff69b7,1676:ffe09f,1677:ffbebe,'
+  + '1678:7eff7e,1679:004432,1680:78aa00,1681:0d7953,1682:000000,'
+  + '1683:000000,1684:000000,1685:000000,1686:000000,1687:00a14f,'
+  + '1688:000000,1689:085c08,1690:026140,1691:000078,1692:7f0036,'
+  + '1693:12002a,1694:096868,1696:292988,1698:693f69,1699:680968,'
+  + '1700:36007f,1701:802d2d,1702:9d0024,1703:00004a,1704:230050,'
+  + '1706:6d5c12,1707:585858,1708:f4d4fb,1709:063667,1710:4f1e36,'
+  + '1711:4d774d';
+
+let dyeRgb = null;
+
+// Parsed on first sight, not at load: a tier with nothing claimed never
+// pays for it.
+function dyeHex(id) {
+  if (!dyeRgb) {
+    dyeRgb = new Map();
+    for (const pair of DYE_CLOTH.split(',')) {
+      const cut = pair.indexOf(':');
+      if (cut > 0) dyeRgb.set(Number(pair.slice(0, cut)), pair.slice(cut + 1));
+    }
+  }
+  return dyeRgb.get(Number(id)) || null;
+}
+
+// The dye, untouched. An earlier version of this darkened every colour
+// to keep it off the gold field it used to sit on; with the emblem's own
+// backdrop drawn underneath it there is nothing to correct for, and
+// correcting anyway would be repainting a design its guild chose.
+//
+// The fallback is the near-black this drew before, for a dye added to
+// the game after the table was written.
+function emblemInk(hex) {
+  const n = hex ? parseInt(hex, 16) : NaN;
+  if (!Number.isFinite(n)) return [0.09, 0.07, 0.04];
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+}
+
+// The emblem as a stack of tinted layers, bottom first.
+//
+// The one thing here that is not obvious, and is not written down
+// anywhere: the foreground's FIRST layer is not drawn. It is the whole
+// device in the game's base red, and the layers after it are the masks
+// for the coloured regions - one per entry in colors. Verified on
+// 26/09 by rebuilding a real guild's emblem from its raw layers four
+// different ways and comparing each against a working renderer's
+// output pixel by pixel: leaving layer 0 out scored 0.33 average error
+// per channel, and every version that drew it scored between 5 and 9.
+//
+// The background has one layer and one colour, and no such spare.
+function emblemLayers(info, pieces) {
+  const em = info && info.emblem;
+  if (!em || !pieces) return [];
+  const out = [];
+  const flags = new Set(em.flags || []);
+
+  const bgEntry = pieces.bg.get(em.background && em.background.id);
+  const bgColors = (em.background && em.background.colors) || [];
+  for (const [i, src] of ((bgEntry && bgEntry.layers) || []).entries()) {
+    out.push({
+      src,
+      hex: dyeHex(bgColors[i]),
+      flipH: flags.has('FlipBackgroundHorizontal'),
+      flipV: flags.has('FlipBackgroundVertical'),
+    });
+  }
+
+  const fgEntry = pieces.fg.get(em.foreground && em.foreground.id);
+  const fgColors = (em.foreground && em.foreground.colors) || [];
+  const fgLayers = ((fgEntry && fgEntry.layers) || []).slice(1);
+  for (const [i, src] of fgLayers.entries()) {
+    out.push({
+      src,
+      hex: dyeHex(fgColors[i]),
+      flipH: flags.has('FlipForegroundHorizontal'),
+      flipV: flags.has('FlipForegroundVertical'),
+    });
+  }
+  return out;
+}
+
+// One filter per colour, built on first use and parked in the defs it
+// is given. Shared by the map and by the detail panel, which draw the
+// same emblem at very different sizes.
+function emblemFilterFactory(defs, prefix) {
+  const made = new Map();
+  return (hex) => {
+    const key = hex || '-';
+    if (made.has(key)) return made.get(key);
+    const id = `${prefix}-${made.size}`;
+    const filt = svgEl('filter', {
+      id, 'color-interpolation-filters': 'sRGB',
+      x: '0', y: '0', width: '100%', height: '100%',
+    });
+    const [er, eg, eb] = emblemInk(hex);
+    filt.appendChild(svgEl('feColorMatrix', {
+      type: 'matrix',
+      values: `0 0 0 0 ${er.toFixed(4)}  0 0 0 0 ${eg.toFixed(4)}`
+        + `  0 0 0 0 ${eb.toFixed(4)}  0 0 0 1 0`,
+    }));
+    defs.appendChild(filt);
+    made.set(key, id);
+    return id;
+  };
+}
+
+// Draws the stack into one box. A flip is a mirror about the box's own
+// centre, which is why the translate is twice the edge plus the span.
+function paintEmblem(parent, layers, box, filterFor) {
+  for (const layer of layers) {
+    const im = svgEl('image', {
+      class: 'claim-emblem', href: layer.src, filter: `url(#${filterFor(layer.hex)})`,
+      x: box.x, y: box.y, width: box.w, height: box.h,
+    });
+    im.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', layer.src);
+    if (layer.flipH || layer.flipV) {
+      im.setAttribute('transform',
+        `translate(${layer.flipH ? 2 * box.x + box.w : 0}`
+        + ` ${layer.flipV ? 2 * box.y + box.h : 0})`
+        + ` scale(${layer.flipH ? -1 : 1} ${layer.flipV ? -1 : 1})`);
+    }
+    parent.appendChild(im);
+  }
 }
 
 // Everything the emblem needs, resolved together. Keyed by guild and
@@ -202,8 +537,11 @@ const emblemPending = new Map();
 
 function guildEmblem(guildId) {
   if (!emblemPending.has(guildId)) {
-    const pending = Promise.all([getGuildInfo(guildId), getEmblemForegrounds()])
-      .then(([info, fgs]) => ({ info, src: emblemSrc(info, fgs) }));
+    // true: the stored copy is good enough here. This draws a badge
+    // the size of a thumbnail, and the emblem on it has not changed
+    // since the guild was founded.
+    const pending = Promise.all([getGuildInfo(guildId, true), getEmblemPieces()])
+      .then(([info, pieces]) => ({ info, layers: emblemLayers(info, pieces) }));
     // Dropped again if it fails, so the next marker can retry. Keeping a
     // rejected promise here blanked that guild's emblem for the rest of
     // the session over one bad request.
@@ -213,8 +551,31 @@ function guildEmblem(guildId) {
   return emblemPending.get(guildId);
 }
 
+const sectorsRefreshed = new Set();
+
+// Same deal as the catalogue: the drawing already happened, this is for
+// the next one.
+function refreshSectorsSoon(mapId) {
+  if (sectorsRefreshed.has(mapId)) return;
+  sectorsRefreshed.add(mapId);
+  fetchJsonCached(
+    `${API_BASE}/continents/2/floors/3/regions/7/maps/${encodeURIComponent(mapId)}/sectors?ids=all`)
+    .then((list) => {
+      const arr = (Array.isArray(list) ? list : []).filter((x) => Array.isArray(x.bounds));
+      if (arr.length) sectorCache.set(mapId, arr);
+    })
+    .catch(() => { sectorsRefreshed.delete(mapId); });
+}
+
 async function getSectors(mapId) {
   if (sectorCache.has(mapId)) return sectorCache.get(mapId);
+  const pack = staticPack();
+  const baked = pack && pack.sectors && pack.sectors[String(mapId)];
+  if (Array.isArray(baked) && baked.length) {
+    sectorCache.set(mapId, baked);
+    refreshSectorsSoon(mapId);
+    return baked;
+  }
   const list = await fetchJsonCached(
     `${API_BASE}/continents/2/floors/3/regions/7/maps/${encodeURIComponent(mapId)}/sectors?ids=all`);
   const arr = (Array.isArray(list) ? list : []).filter((x) => Array.isArray(x.bounds));
@@ -232,10 +593,10 @@ function flippedAgo(iso) {
   const ms = Date.now() - new Date(iso).getTime();
   if (!Number.isFinite(ms) || ms < 0) return null;
   const mins = Math.floor(ms / 60000);
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 60) return `${mins}m`;
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ${mins % 60}m ago`;
-  return `${Math.floor(hours / 24)}d ${hours % 24}h ago`;
+  if (hours < 24) return `${hours}h ${mins % 60}m`;
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
 }
 
 // Tier is not in the objective data - it is how many upgrade steps the
@@ -248,13 +609,226 @@ function objectiveTier(meta, ob) {
   const line = upgradeCatalogue && upgradeCatalogue.get(meta.upgrade_id);
   if (!line || !Array.isArray(line.tiers)) return null;
   const yaks = Number(ob.yaks_delivered || 0);
+  // yaks_required is what THAT tier costs, not the running total, so the
+  // thresholds have to be summed: a tower is 15, then 20, then 35, which
+  // is a tier at 15, 35 and 70 delivered.
   let spent = 0;
   let reached = 0;
+  let floor = 0;
+  let next = null;
   for (const t of line.tiers) {
-    spent += Number(t.yaks_required || 0);
-    if (yaks >= spent) reached += 1;
+    const at = spent + Number(t.yaks_required || 0);
+    if (yaks >= at) { reached += 1; floor = at; }
+    else if (!next) next = { name: t.name, at };
+    spent = at;
   }
-  return { tier: reached, tiers: line.tiers };
+  return {
+    tier: reached,
+    tiers: line.tiers,
+    name: reached ? line.tiers[reached - 1].name : null,
+    yaks,
+    floor,
+    next,
+  };
+}
+
+// Where each waypoint actually stands, in the same coordinates as the
+// objectives themselves. Taken from the points of interest the API
+// publishes for these four maps - the permanent ones; the "Emergency
+// Waypoint" entries belong to the tactic and come and go.
+//
+// Baked in rather than fetched: it is four more requests on open for
+// something that has not moved in years, and the popover already waits
+// on enough. Every name lines up with its objective, Stonemist included,
+// whose point of interest drops the "Castle".
+// x, y and the point of interest's own id, which is what a chat link is
+// made of - see waypointChat.
+const WAYPOINT_AT = Object.freeze({
+  // Eternal Battlegrounds
+  '38-1': [10836.5, 13669.2, 1214], '38-2': [11554.7, 15223.9, 1215],
+  '38-3': [9648.4, 15184.7, 1216], '38-9': [10621.7, 14619.2, 1213],
+  // Desert Borderlands
+  '1099-106': [9492.8, 10632.5, 2221], '1099-113': [10774.6, 10071.3, 2301],
+  '1099-114': [12032.4, 10704.6, 2150],
+  // Alpine Borderlands, blue and green
+  '96-32': [15173.9, 12869.5, 1239], '96-33': [13083.0, 12921.3, 1235],
+  '96-37': [14013.8, 12465.6, 1237],
+  '95-32': [8005.9, 13509.5, 1245], '95-33': [5915.0, 13561.3, 1241],
+  '95-37': [6845.8, 13105.6, 1243],
+});
+
+// The game's own chat link for a point of interest: the byte 4, then the
+// id as four little-endian bytes, base64'd between [& and ]. Built here
+// rather than written out, because a wrong character in a pasted code is
+// a link that silently goes nowhere - all thirteen of these were checked
+// against the game's own on 26/09 and match.
+function waypointChat(poiId) {
+  if (!poiId) return null;
+  const b = [4, poiId & 255, (poiId >> 8) & 255, (poiId >> 16) & 255, (poiId >> 24) & 255];
+  return `[&${btoa(String.fromCharCode(...b))}]`;
+}
+
+// Straight to the clipboard, with the old way behind it: the modern API
+// needs a secure context and the user's permission, and neither is
+// guaranteed.
+function copyChatLink(text) {
+  const legacy = () => {
+    try { return typeof legacyCopy === 'function' ? legacyCopy(text) : false; }
+    catch { return false; }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text).then(() => true, legacy);
+  }
+  return Promise.resolve(legacy());
+}
+
+// Eternal Battlegrounds, placed by eye instead of by bearing. The real
+// bearings there are 100, 141, 151 and 158 degrees - every one of them
+// straight into the claim badge - so the rule had nowhere to put them
+// and stacked all four in the same corner. These offsets are in units
+// of the marker's own radius, x right and y down, and they came from
+// looking at the live map, which is the only measure that settles
+// whether something looks wrong.
+const WAYPOINT_NUDGE = Object.freeze({
+  // Overlook, red's keep. Tucked in until it just laps the icon's edge -
+  // the disc is 1r and this badge 0.37r across, so at this height the
+  // two overlap by about four hundredths of a radius.
+  '38-1': [-1.00, 0.74],
+  // Valley, blue's keep.
+  '38-2': [-1.08, 0.64],
+  // Lowlands, green's keep. Clear of the tier shields, which stop at
+  // 0.76r across, and clear of the claim badge, which starts at 0.09r
+  // down.
+  '38-3': [1.32, -0.44],
+  // Stonemist. Low and left, which is the one quarter the claim badge
+  // never reaches.
+  '38-9': [-0.86, 0.78],
+});
+
+// Whose map is this. A borderland says so in its own name. Eternal
+// Battlegrounds does not, and nothing the API publishes ties its three
+// keeps to a colour, so they are listed - they have not moved since
+// 2012. Checked two ways on 26/09 rather than from memory: the wiki
+// names the sectors Red World Overlook, Blue World Valley and Green
+// World Lowlands, and across all nine live matchups each keep was held
+// by exactly that colour (9/9, 9/9, 8/9) while Stonemist was split
+// 5/2/2, which is what a keep nobody owns by default looks like.
+const BL_HOME_COLOR = Object.freeze({ RedHome: 'red', BlueHome: 'blue', GreenHome: 'green' });
+const EBG_HOME_KEEP = Object.freeze({ '38-1': 'red', '38-2': 'blue', '38-3': 'green' });
+
+// Does this objective have a waypoint? Not a field the API publishes,
+// and - this is the trap - not something the upgrade catalogue still
+// gets right either. The catalogue says "Build Waypoint" is a Fortified
+// upgrade, which was true until the 24/02/2026 notes: "Keeps in
+// borderlands maps and the Eternal Battlegrounds spawn keep will now
+// build waypoints as soon as they are controlled by the home team.
+// Keeps will continue to build waypoints at Fortified level only when
+// controlled by an opposing team."
+//
+// So the home team's own keep has one at any tier, tier 0 included, and
+// the catalogue answers only for the other two cases: a keep an enemy
+// took, and Stonemist, which the change left alone.
+//
+// It says the waypoint EXISTS, not that you can use it: a waypoint is
+// contested while the objective is under attack, and the API does not
+// publish that - see the note on the tooltip.
+function hasWaypoint(mapType, ob, tierInfo) {
+  if (ob && ob.type === 'Keep') {
+    const home = BL_HOME_COLOR[mapType] || EBG_HOME_KEEP[ob.id];
+    if (home && String(ob.owner || '').toLowerCase() === home) return true;
+  }
+  if (!tierInfo || !tierInfo.tier) return false;
+  for (let i = 0; i < tierInfo.tier; i++) {
+    const t = tierInfo.tiers[i];
+    for (const up of (t && t.upgrades) || []) {
+      if (/waypoint/i.test(up.name || '')) return true;
+    }
+  }
+  return false;
+}
+
+// Held off to the side, in the direction the waypoint really lies. A
+// fixed corner was the obvious first try and it was wrong: it put
+// Ascension Bay's waypoint out over the water, because a corner is a
+// guess and the guess is the same for every keep on the map.
+//
+// The distance is not kept, only the bearing. Most waypoints sit closer
+// to their keep than the marker's own radius, so drawn to scale the
+// badge would land underneath the icon it belongs to - so it is pushed
+// out to the rim, and capped before it drifts near the next marker.
+function waypointBadge(r, p) {
+  const w = r * 0.74;
+  const g = svgEl('g', { class: 'wvw-wp' });
+  const chat = waypointChat((WAYPOINT_AT[p.meta.id] || [])[2]);
+
+  const put = (cx, cy) => {
+    const im = svgEl('image', {
+      href: 'assets/icons/Waypoint.webp',
+      x: cx - w / 2, y: cy - w / 2, width: w, height: w,
+    });
+    im.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href',
+      'assets/icons/Waypoint.webp');
+    g.appendChild(im);
+
+    const tip = svgEl('title', {});
+    tip.textContent = chat
+      ? 'Waypoint \u2014 click to copy its chat link, then paste it in game'
+      : 'Waypoint \u2014 contested while the objective is under attack';
+    g.appendChild(tip);
+
+    if (chat) {
+      g.classList.add('is-copyable');
+      g.addEventListener('click', (e) => {
+        // The badge sits inside the marker's group, so without this a
+        // copy would also select the objective behind it.
+        e.stopPropagation();
+        copyChatLink(chat).then((ok) => {
+          const note = svgEl('text', {
+            class: 'wvw-wp-note', x: cx, y: cy - w * 0.8,
+            'font-size': r * 0.5, 'text-anchor': 'middle',
+          });
+          note.textContent = ok ? 'copied' : chat;
+          g.appendChild(note);
+          setTimeout(() => note.remove(), 1400);
+        });
+      });
+    }
+    return g;
+  };
+
+  const fixed = WAYPOINT_NUDGE[p.meta.id];
+  if (fixed) return put(fixed[0] * r, fixed[1] * r);
+
+  const at = WAYPOINT_AT[p.meta.id];
+  let dx = -1, dy = -1;
+  if (at) { dx = at[0] - p.x; dy = at[1] - p.y; }
+  const d = Math.hypot(dx, dy) || 1;
+
+  // Bearing, clockwise from straight up, to be checked against what is
+  // already parked around the marker: the tier shields hold the top from
+  // -46 to 46 degrees and reach about 1.0r, and the claim badge sits at
+  // 133 degrees with a box that runs out to roughly 1.8r.
+  let a = ((Math.atan2(dx, -dy) * 180) / Math.PI + 360) % 360;
+  let out = Math.min(Math.max(d, r * 1.22), r * 1.7);
+
+  if (a < 45 || a > 315) {
+    // Above the shields. Pushing outward keeps the real bearing, and
+    // there is nothing further up to run into.
+    out = Math.max(out, r * 1.55);
+  } else if (a > 95 && a < 190) {
+    // Straight into the claim badge - which is where all four Eternal
+    // Battlegrounds waypoints really lie. Pushing out does not help
+    // here: clearing a box that deep would strand the icon somewhere
+    // that reads as belonging to the next marker. So it gives up the
+    // bearing and takes the upper left, the one corner nothing else
+    // ever uses. A waypoint in the wrong corner still tells you the
+    // keep has one; a waypoint under the guild badge tells you nothing.
+    a = 315;
+    out = r * 1.5;
+  }
+
+  const rad = (a * Math.PI) / 180;
+  return put(Math.sin(rad) * out, -Math.cos(rad) * out);
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -264,49 +838,330 @@ const svgEl = (name, attrs) => {
   return el;
 };
 
-// The guild's own emblem on a shield in the corner, which is what a
-// claimed objective shows in game. The shield is drawn straight away and
+// The heraldic shield both badges are cut from: flat across the top,
+// straight down the sides, then curving in to a point. Centred on
+// (cx, cy) so callers can place it by where it should sit rather than
+// by a corner.
+function shieldPath(cx, cy, w, h, cls) {
+  const x = cx - w / 2, y = cy - h / 2;
+  return svgEl('path', {
+    class: cls,
+    d: `M${x} ${y}h${w}v${h * 0.5}`
+      + `q0 ${h * 0.32} ${-w / 2} ${h * 0.5}`
+      + `q${-w / 2} ${-h * 0.18} ${-w / 2} ${-h * 0.5}z`,
+  });
+}
+
+
+// ---- the fight log --------------------------------------------------
+// What puts the crossed swords on a map tab. Half of it comes from the
+// kills sheet, whose format is this project's own - see KILLS_SHEET_ID
+// in js/config.js before treating it as fixed.
+// Which map is busy cannot be read from one answer: the API publishes
+// kills and deaths only as running totals for the week, so a map that
+// was a warzone at breakfast still carries the number at midnight. It
+// takes two readings, apart in time.
+//
+// The popover has no way to have that when it opens. The site does. The
+// standings already fetch wvw/matches every five minutes for as long as
+// the tab is open, and that answer carries maps[].kills and
+// maps[].deaths - so every refresh drops a snapshot here on its way
+// past, and the popover compares now against one that is already
+// waiting. No extra request, no waiting, and the refresh cadence itself
+// is untouched.
+//
+// It survives a reload, so anyone who had the site open earlier has
+// history before they open the maps at all. A first-ever visit does not,
+// and the swords stay off until two samples exist - there is nowhere
+// else that number could come from.
+const FIGHT_KEY = 'wvw-fight-v1';
+const FIGHT_KEEP_MS = 40 * 60 * 1000;
+const FIGHT_MAX_SAMPLES = 12;
+const FIGHT_MIN_GAP_MS = 60 * 1000;
+// A sample older than this is not a baseline, it is history. Guards
+// against a dead sheet: its rows would keep ageing and the rate computed
+// off them would look plausible and be meaningless.
+const FIGHT_STALE_MS = 3 * 60 * 60 * 1000;
+
+// Player kills per map, and only those. The swords mean the same thing
+// here as in the game: this is where people are killing each other, go
+// there if you want a fight.
+//
+// deaths look like the same measure and are not. Summed over the three
+// sides they also count everyone who died to a lord, a guard or a fall
+// - which is a roamer soloing a camp, the opposite of what the swords
+// are for. It is not a rounding difference either: measured across all
+// thirty-six live maps on 26/09, deaths run 0.9% above kills on a busy
+// map and 18.6% above on an empty borderland, because that is where the
+// deaths to guards pile up. Counting them would lift exactly the map
+// nobody wants to be sent to.
+function fightTotals(match) {
+  const out = {};
+  for (const m of (match && match.maps) || []) {
+    let n = 0;
+    for (const c of COLORS) n += Number((m.kills || {})[c] || 0);
+    out[m.type] = n;
+  }
+  return out;
+}
+
+function readFightLog() {
+  // A private window, cleared site data or a browser set to block
+  // storage all throw here rather than returning null.
+  try {
+    const raw = localStorage.getItem(FIGHT_KEY);
+    const obj = raw ? JSON.parse(raw) : null;
+    return obj && typeof obj === 'object' ? obj : {};
+  } catch { return {}; }
+}
+
+// Called by whoever happens to be holding fresh match data. Cheap enough
+// to call on every refresh, and it declines samples that arrive too
+// close together so the popover's own thirty-second poll cannot flood it.
+function recordFightSamples(matches) {
+  const log = readFightLog();
+  const at = Date.now();
+  const seen = new Set();
+  for (const match of matches || []) {
+    if (!match || typeof match.id !== 'string' || !Array.isArray(match.maps)) continue;
+    seen.add(match.id);
+    const kept = (log[match.id] || []).filter((s) => s && at - s.at <= FIGHT_KEEP_MS);
+    const last = kept[kept.length - 1];
+    if (!last || at - last.at >= FIGHT_MIN_GAP_MS) kept.push({ at, n: fightTotals(match) });
+    log[match.id] = kept.slice(-FIGHT_MAX_SAMPLES);
+  }
+  // Matches this call did not mention are only dropped once they age out,
+  // not immediately: the maps popover records a single match at a time
+  // and must not wipe the other eight.
+  for (const id of Object.keys(log)) {
+    if (seen.has(id)) continue;
+    const kept = log[id].filter((s) => s && at - s.at <= FIGHT_KEEP_MS);
+    if (kept.length) log[id] = kept; else delete log[id];
+  }
+  try { localStorage.setItem(FIGHT_KEY, JSON.stringify(log)); } catch { /* storage off */ }
+}
+
+
+// The shared half of the fight log: two hours of snapshots that were
+// taken whether or not anyone was looking, which is the only way a
+// first-ever visitor can be told which map is busy. Cached for as long
+// as the sheet takes to change, so tab switches and the thirty-second
+// poll never refetch it.
+let killSheet = null;
+let killSheetAt = 0;
+let killSheetInFlight = null;
+
+async function getKillSheet() {
+  if (killSheet && Date.now() - killSheetAt < KILLS_SHEET_TTL_MS) return killSheet;
+  if (killSheetInFlight) return killSheetInFlight;
+
+  killSheetInFlight = (async () => {
+    const by = new Map();
+    // The deadline every other request on this page already gets. A
+    // connection that accepts and then goes quiet would otherwise leave
+    // this promise pending for good - and since killSheetInFlight hands
+    // that same promise to every later caller, the shared history would
+    // be gone for the rest of the session with nothing having failed.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const res = await fetch(KILLS_SHEET_URL,
+        { cache: 'no-store', signal: controller.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      for (const r of parseCsv(await res.text())) {
+        if (!r || r.length < 2 + KILLS_MAP_ORDER.length) continue;
+        const at = Number(r[0]);
+        const id = String(r[1] || '');
+        if (!Number.isFinite(at) || !at || !id) continue;
+        const n = {};
+        KILLS_MAP_ORDER.forEach((t, i) => { n[t] = Number(r[2 + i]) || 0; });
+        if (!by.has(id)) by.set(id, []);
+        by.get(id).push({ at, n });
+      }
+      for (const list of by.values()) list.sort((a, b) => a.at - b.at);
+      killSheet = by;
+      killSheetAt = Date.now();
+    } catch {
+      // The local log still answers for anyone who has been here a
+      // while; only the cold visit loses out, and it loses quietly.
+      if (!killSheet) killSheet = new Map();
+    } finally {
+      clearTimeout(timer);
+    }
+    killSheetInFlight = null;
+    return killSheet;
+  })();
+  return killSheetInFlight;
+}
+
+// Both halves as one series. The sheet covers the cold visit at
+// five-minute resolution, localStorage covers an open session at thirty
+// seconds; sorted together, picking a baseline never has to care which
+// is which.
+function fightSamples(matchId) {
+  const local = readFightLog()[matchId] || [];
+  const shared = (killSheet && killSheet.get(matchId)) || [];
+  // Anything older than this is thrown away rather than used as a
+  // baseline. If the sheet's trigger ever dies, its newest row keeps
+  // ageing, and a rate measured over three days would be a number that
+  // looks real and means nothing. Better to show no swords at all.
+  const floor = Date.now() - FIGHT_STALE_MS;
+  return [...shared, ...local]
+    .filter((s) => s && s.at >= floor)
+    .sort((a, b) => a.at - b.at);
+}
+
+// Kills and deaths per map since the best baseline we have, normalised to
+// a ten-minute rate so the floor means the same thing whether the
+// baseline is six minutes old or forty.
+function fightRates(match, wantMs) {
+  const list = fightSamples(match && match.id);
+  const at = Date.now();
+  // The newest sample that is already old enough, falling back to the
+  // oldest we have when nothing is.
+  let base = null;
+  for (const s of list) if (at - s.at >= wantMs) base = s;
+  if (!base) base = list[0];
+  const span = base ? at - base.at : 0;
+  if (!base || span < 3 * 60 * 1000) return null;
+
+  const now = fightTotals(match);
+  const per = new Map();
+  for (const type in now) {
+    const d = now[type] - Number(base.n[type] || 0);
+    per.set(type, (d > 0 ? d : 0) * (600000 / span));
+  }
+  return { per, span };
+}
+
+// ---- Righteous Indignation ------------------------------------------
+// Five minutes, from the wiki, on every objective but sentries - which
+// this map does not draw. During it the objective's guards cannot be
+// hurt, so it is the single most useful thing to know about a structure
+// that just changed hands: not "who owns this" but "can I take it back
+// yet".
+const RI_MS = 5 * 60 * 1000;
+
+function riLeft(iso) {
+  if (!iso) return 0;
+  const end = new Date(iso).getTime() + RI_MS;
+  const left = end - Date.now();
+  return Number.isFinite(left) && left > 0 ? left : 0;
+}
+
+function riClock(ms) {
+  const s = Math.ceil(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+// Crossed swords and a countdown, under the marker. The group carries
+// its own expiry in a data attribute rather than being held in a list,
+// so the one-second tick can just sweep the DOM - no registry to keep in
+// step with a repaint that rebuilds every marker from scratch.
+function riBadge(r, ob) {
+  // Ruins are left out. They have no guards, so there is nothing for
+  // five minutes of invulnerability to protect - and they turn over
+  // constantly, so the badges would be permanent clutter strung across
+  // the middle of every borderland.
+  if (!ob || ob.type === 'Ruins') return null;
+  const left = riLeft(ob.last_flipped);
+  if (!left) return null;
+  const g = svgEl('g', { class: 'wvw-ri' });
+  g.dataset.until = String(new Date(ob.last_flipped).getTime() + RI_MS);
+  // Its own words now that it can be hovered. No number in them: this is
+  // written on the thirty-second repaint while the clock beside it ticks
+  // every second, and a tooltip two minutes behind would be worse than
+  // none.
+  const tip = svgEl('title', {});
+  tip.textContent = 'Righteous Indignation \u2014 just flipped, and its'
+    + ' guards take no damage until this runs out';
+  g.appendChild(tip);
+
+  g.appendChild(svgEl('rect', {
+    x: -r * 1.3, y: r * 1.05, width: r * 2.6, height: r * 0.95,
+    rx: r * 0.475,
+  }));
+  const im = svgEl('image', {
+    href: 'assets/icons/Event_Swords.webp', x: -r * 1.16, y: r * 1.15,
+    width: r * 0.75, height: r * 0.75,
+  });
+  im.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href',
+    'assets/icons/Event_Swords.webp');
+  g.appendChild(im);
+
+  const t = svgEl('text', {
+    x: -r * 0.3, y: r * 1.525, 'font-size': r * 0.68,
+    'dominant-baseline': 'central',
+  });
+  t.textContent = riClock(left);
+  g.appendChild(t);
+  return g;
+}
+
+// Rewrites the clocks and drops the badges whose five minutes are up.
+// Text only - it fetches nothing, which is why it can run every second
+// alongside the thirty-second refresh without competing with it.
+function tickRi(root) {
+  for (const g of root.querySelectorAll('.wvw-ri')) {
+    const left = Number(g.dataset.until) - Date.now();
+    if (!(left > 0)) { g.remove(); continue; }
+    const t = g.querySelector('text');
+    if (t) t.textContent = riClock(left);
+  }
+}
+
+// The guild's own emblem on a shield at the marker's lower left, which
+// is where and how a claimed objective reads in game - a gold shield,
+// larger than the tier shields above it, so claimed and upgraded never
+// get confused for one another. The shield is drawn straight away and
 // the emblem drops in when the lookup lands, so a slow guild call never
 // holds up the map.
-function claimBadge(r, guildId, whiteFilter) {
-  const w = r * 0.86, h = w * 1.1;
-  const x = r * 0.66 - w / 2, y = -r * 0.74 - h / 2;
+function claimBadge(r, guildId, emblemFilter) {
+  // Lower right, measured off the game - but pulled in over the disc
+  // rather than hung off its corner, and smaller with it. Sitting a full
+  // radius out on both axes it read as a second object parked beside the
+  // marker instead of a badge on it.
+  const w = r * 1.12, h = w * 1.06;
+  const cx = r * 0.74, cy = r * 0.68;
   const g = svgEl('g', { class: 'wvw-claim' });
-  g.appendChild(svgEl('path', {
-    class: 'claim-shield',
-    d: `M${x} ${y}h${w}v${h * 0.52}`
-      + `q0 ${h * 0.32} ${-w / 2} ${h * 0.48}`
-      + `q${-w / 2} ${-h * 0.16} ${-w / 2} ${-h * 0.48}z`,
-  }));
-  guildEmblem(guildId).then(({ src }) => {
-    if (!src) return;
-    const im = svgEl('image', {
-      class: 'claim-emblem', href: src, filter: `url(#${whiteFilter})`,
-      x: x + w * 0.16, y: y + h * 0.08, width: w * 0.68, height: w * 0.68,
-    });
-    im.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', src);
-    g.appendChild(im);
+  // Two shields, one inside the other: the bright rim and the darker
+  // field it frames. That pair is what reads as the game's gold shield
+  // at this size - its quartering is under a pixel here.
+  g.appendChild(shieldPath(cx, cy, w, h, 'claim-rim'));
+  g.appendChild(shieldPath(cx, cy, w * 0.82, h * 0.82, 'claim-field'));
+  guildEmblem(guildId).then(({ layers }) => {
+    if (!layers.length) return;
+    // Bigger than it was. With one flat silhouette there was nothing to
+    // make out and the size did not matter; a real emblem has a device
+    // inside a backdrop, and at the old two thirds the inner shape was
+    // gone.
+    paintEmblem(g, layers, {
+      x: cx - w * 0.38, y: cy - h * 0.39, w: w * 0.76, h: w * 0.76,
+    }, emblemFilter);
   }).catch(() => { /* the shield alone still says claimed */ });
   return g;
 }
 
-// One shield per tier along the bottom of the marker, none at tier 0. A
-// digit in a badge was only legible once you were already looking at it.
-// The marker also gets a tier-N class, which lights the ring around it -
-// that is the part you can read across a whole map.
+// One shield per tier along the TOP of the marker, none at tier 0, laid
+// out the way the game lays them out: one shield sits dead centre, two
+// flank that centre, and three put one back in the centre with the other
+// two out on the shoulders. Degrees from straight up.
+const TIER_ANGLES = [null, [0], [-24, 24], [-46, 0, 46]];
+
 function tierShields(r, tier) {
   const g = svgEl('g', { class: 'wvw-tierpips' });
-  if (!tier) return g;
-  const w = r * 0.5, h = w * 1.2, gap = r * 0.09;
-  let x = -(tier * w + (tier - 1) * gap) / 2;
-  const y = r * 0.68;
-  for (let i = 0; i < tier; i++) {
-    g.appendChild(svgEl('path', {
-      d: `M${x} ${y}h${w}v${h * 0.5}`
-        + `q0 ${h * 0.32} ${-w / 2} ${h * 0.5}`
-        + `q${-w / 2} ${-h * 0.18} ${-w / 2} ${-h * 0.5}z`,
-    }));
-    x += w + gap;
+  const angles = TIER_ANGLES[tier];
+  if (!angles) return g;
+  const w = r * 0.42, h = w * 1.15;
+  // Right inside the disc: at w*1.15 tall, a centre of 0.76r lands the
+  // top edge of each shield exactly on the outline at 1.0r, so they sit
+  // on the icon rather than over its edge. The game measures 1.3 radii
+  // out, but its disc is much larger relative to the icon than ours and
+  // at that distance these floated free of the marker.
+  const R = r * 0.76;
+  for (const a of angles) {
+    const t = (a * Math.PI) / 180;
+    g.appendChild(shieldPath(Math.sin(t) * R, -Math.cos(t) * R, w, h));
   }
   return g;
 }
@@ -337,11 +1192,20 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
   for (const meta of catalogue.values()) {
     if (meta.map_id !== mapData.id) continue;
     if (MAP_SKIP_TYPES.has(meta.type)) continue;
-    // label_coord, not coord. coord is the thing's position in the world - a
-    // lord's room, a gate - while label_coord is where the game itself
-    // writes the objective. Measured against the centre of each one's own
-    // sector, label_coord is 42 units off on average and coord is 138.
-    const at = meta.label_coord || meta.coord;
+    // coord, not label_coord. The old rule measured both against the
+    // centre of each objective's own sector, and a sector centre is not
+    // where the structure stands - that ruler favoured the wrong one.
+    // label_coord is where the game writes the objective's *name*, which
+    // floats clear of the building so the text stays readable: 111 units
+    // off on Eternal Battlegrounds on average, 171 on the Red borderland,
+    // and 534 at Blistering Undercroft. coord is the structure itself.
+    // The wiki's own interactive maps plot coord, and all 76 markers it
+    // publishes for these four maps match the API's coord to the decimal.
+    //
+    // The three mercenary camps on Eternal Battlegrounds publish an empty
+    // coord; MERC_COORD stands in for them.
+    const at = (meta.coord && meta.coord.length) ? meta.coord
+      : (MERC_COORD[meta.id] || meta.label_coord);
     if (!at) continue;
     pts.push({ ob: owners.get(meta.id) || blank(meta), meta, x: at[0], y: at[1] });
   }
@@ -371,25 +1235,18 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
     preserveAspectRatio: 'xMidYMid meet',
   });
 
-  // Emblem layers ship in the game's neutral base red, and a guild's
-  // colours arrive as dye ids rather than RGB. Turning those into the real
-  // colours means implementing ArenaNet's own colour-shift maths in an
-  // order they do not publish, and an emblem in the wrong colours is worse
-  // than one in none. These stay monochrome: the shape is what identifies
-  // the guild, and white is legible on every team colour. Not a
-  // placeholder.
-  const whiteFilter = `wvw-white-${++plotSerial}`;
+  // One flattening filter per colour actually on this map, built the
+  // first time that colour is asked for. The alpha channel is passed
+  // through untouched, so all that survives of the layer is its shape,
+  // filled with the guild's own dye - see emblemInk for why it is
+  // darkened on the way.
+  //
+  // The count of filtered elements is the same as when they all shared
+  // one filter, so this costs no more to draw; a claimed map just ends
+  // up with a handful of tiny filter definitions instead of one.
   const defs = svgEl('defs', {});
-  const filt = svgEl('filter', {
-    id: whiteFilter, 'color-interpolation-filters': 'sRGB',
-    x: '0', y: '0', width: '100%', height: '100%',
-  });
-  filt.appendChild(svgEl('feColorMatrix', {
-    type: 'matrix',
-    values: '0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1 0',
-  }));
-  defs.appendChild(filt);
   svg.appendChild(defs);
+  const emblemFilter = emblemFilterFactory(defs, `wvw-emblem-${++plotSerial}`);
 
   // Which side holds the objective inside each sector, so the ground
   // itself can be tinted.
@@ -454,15 +1311,11 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
     g.setAttribute('class', `wvw-marker own-${owner} tier-${tier}${selected}`);
     while (g.firstChild) g.removeChild(g.firstChild);
 
-    // A generous invisible disc under every marker, so the whole badge
-    // is a target rather than just the glyph.
-    g.appendChild(svgEl('circle', { class: 'hit', r: Math.max(r * 1.5, 30) }));
-    // The tier ring, under the icon so the icon stays crisp over it,
-    // and a dark casing under that so the colour reads on any team
-    // disc. Both invisible at tier 0 - an unupgraded objective should
-    // look plain.
-    g.appendChild(svgEl('circle', { class: 'halo-case', r: r * 1.02 }));
-    g.appendChild(svgEl('circle', { class: 'halo', r: r * 1.02 }));
+    // The icon's own disc, and nothing past it. It used to reach half a
+    // radius further, which swallowed the badges hanging off the marker:
+    // both have to answer for themselves now, and where the RI badge
+    // reached past even that, nothing answered at all.
+    g.appendChild(svgEl('circle', { class: 'hit', r }));
     // The icon already carries the team colour, so nothing is drawn
     // under it - a disc behind would only show as a second ring.
     const markerSrc = markerIcon(p.ob.type, p.ob.owner);
@@ -474,14 +1327,27 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
       icon.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', markerSrc);
       g.appendChild(icon);
     }
-    if (p.ob.claimed_by) g.appendChild(claimBadge(r, p.ob.claimed_by, whiteFilter));
-    g.appendChild(svgEl('circle', { class: 'ring', r: r * 1.04 }));
-    // Last, so the shields sit over the claim ring instead of being
+    const wp = hasWaypoint(mapData.type, p.ob, tierInfo);
+    if (wp) g.appendChild(waypointBadge(r, p));
+    if (p.ob.claimed_by) g.appendChild(claimBadge(r, p.ob.claimed_by, emblemFilter));
+    // Last, so the shields sit over the claim badge instead of being
     // crossed by it.
     if (tier) g.appendChild(tierShields(r, tier));
+    const ri = riBadge(r, p.ob);
+    if (ri) g.appendChild(ri);
     const tip = svgEl('title', {});
-    tip.textContent = `${p.meta.name || p.ob.id} · ${p.ob.owner}`
-      + (tierInfo ? ` · T${tierInfo.tier}` : '');
+    // The same words the detail panel uses. This said "Red" where a
+    // click said "Mosswood", and "T3" where a click said "Fortified" -
+    // two names for one thing, a hover apart. Nothing is lost by
+    // dropping the colour: the marker under the cursor is painted it.
+    //
+    // The badges used to be explained from here, because they could not
+    // be hovered themselves. Now they can, so each says its own piece.
+    const ownerId = COLORS.includes(owner) ? matchTeamId(match, owner) : null;
+    const tierName = tierInfo && tierInfo.tier ? tierInfo.name : null;
+    tip.textContent = `${p.meta.name || p.ob.id} · `
+      + ((ownerId && getTeamName(ownerId)) || p.ob.owner)
+      + (tierName ? ` · T${tierInfo.tier} ${tierName}` : '');
     g.appendChild(tip);
   };
 
@@ -607,7 +1473,9 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
   const reset = document.createElement('button');
   reset.type = 'button';
   reset.textContent = '\u2302';
-  reset.setAttribute('aria-label', 'Reset the view');
+  // Not "reset the view": in this mode reset is Friday night, and the
+  // message a few lines down uses the word in exactly that sense.
+  reset.setAttribute('aria-label', 'Recentre the map');
   reset.addEventListener('click', (e) => {
     e.stopPropagation();
     view.x = minX; view.y = minY; view.w = fullW; view.h = fullH;
@@ -620,7 +1488,7 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
   // way, so this is not an error state - it is the colours being late.
   const waiting = document.createElement('p');
   waiting.className = 'wvw-waiting';
-  waiting.textContent = "Reset - ArenaNet hasn't published this map yet";
+  waiting.textContent = "Just after reset — ArenaNet hasn't published this map yet";
   waiting.hidden = owners.size > 0;
   wrap.appendChild(waiting);
 
@@ -654,22 +1522,267 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
   return wrap;
 }
 
+
+// ---- the score bar --------------------------------------------------
+// The strip the game prints across the top of the WvW map: one segment
+// per side, as wide as that side's share of THIS map's tick.
+//
+// Per map, not the match total. Whoever is running the map fills the
+// bar; a side that has stopped scoring shrinks out of it. That makes the
+// bar readable at a glance from anywhere on the map, which a match-wide
+// number - identical on all four tabs - would not be.
+function buildScoreBar(mapData, isLive) {
+  const { by } = mapTally(mapData, isLive);
+  const vals = COLORS.map((c) => Math.max(0, Number((by.get(c) || {}).ppt || 0)));
+  const total = vals.reduce((a, b) => a + b, 0);
+  if (!total) return null;
+
+  const bar = document.createElement('div');
+  bar.className = 'wvw-scorebar';
+  COLORS.forEach((c, i) => {
+    // A side on zero is not drawn at all. Giving it a zero-width span
+    // would still leave its 2px separator hanging in empty bar.
+    if (!vals[i]) return;
+    const seg = document.createElement('span');
+    seg.className = `wvw-scorebar-seg own-${c}`;
+    // Percentages rather than flex-grow: flex would hand a share back to
+    // a side that has none.
+    seg.style.width = `${(vals[i] / total) * 100}%`;
+    bar.appendChild(seg);
+  });
+  return bar.childElementCount ? bar : null;
+}
+
+// ---- the map scoreboard ---------------------------------------------
+// The four types that pay. Ruins and Mercenary are left out because they
+// tick zero - which is also why the game's own Contested Areas panel
+// shows four icons and not six. Drawn biggest first, the way the game
+// lists them.
+// Smallest first, which is the order the game's own panel uses.
+const SCORE_TYPES = ['Camp', 'Tower', 'Keep', 'Castle'];
+
+// What each side holds across whatever maps it is handed: the tick they
+// add up to, and how many of each structure. All of it comes out of the
+// objective lists the standings fetch already paid for, so it costs no
+// request at all.
+function tallyMaps(maps, isLive) {
+  const by = new Map();
+  for (const c of COLORS) by.set(c, { ppt: 0, counts: new Map() });
+  // Which of the four are in play at all. Across the whole match that is
+  // always the four; over a single borderland it drops the castle, which
+  // would otherwise be a column of zeroes using up width to say nothing.
+  const present = new Set();
+  if (!isLive) return { by, types: [] };
+  for (const m of maps || []) {
+    for (const ob of (m && m.objectives) || []) {
+      if (SCORE_TYPES.includes(ob.type)) present.add(ob.type);
+      const row = by.get(String(ob.owner || '').toLowerCase());
+      if (!row) continue;
+      row.ppt += Number(ob.points_tick || 0);
+      if (SCORE_TYPES.includes(ob.type)) {
+        row.counts.set(ob.type, (row.counts.get(ob.type) || 0) + 1);
+      }
+    }
+  }
+  return { by, types: SCORE_TYPES.filter((t) => present.has(t)) };
+}
+
+function mapTally(mapData, isLive) {
+  return tallyMaps(mapData ? [mapData] : [], isLive);
+}
+
+// One row per side, the leader on top, totalled over the whole match -
+// which is what the game's own Contested Areas panel shows, and what
+// leaves this and the bar over the map answering different questions:
+// the bar is this map, the board is the war.
+//
+// Sorting by tick answers "who is winning" before you read a single
+// number. The cost is that rows can swap places on the 30s refresh,
+// which is why each row carries the team colour as well as the name.
+function paintMapBoard(board, match, isLive) {
+  board.textContent = '';
+  const { by, types } = tallyMaps(match && match.maps, isLive);
+  const rows = COLORS.map((c) => ({ color: c, ...by.get(c) }));
+  if (!isLive || !rows.some((r) => r.ppt || r.counts.size)) {
+    board.hidden = true;
+    return;
+  }
+  board.hidden = false;
+  // Ties keep the fixed colour order, so a 0-0 map does not shuffle on
+  // every refresh for no reason.
+  rows.sort((a, b) => (b.ppt - a.ppt) || (COLORS.indexOf(a.color) - COLORS.indexOf(b.color)));
+
+  // The grid is set here rather than in the stylesheet because the
+  // column count is the map's, not the design's. el.style goes through
+  // the CSSOM, which the page's CSP does not govern.
+  const grid = `repeat(${types.length}, var(--board-cell))`;
+
+  // The header the game's panel has too, with the column names filled
+  // in: the icons are the game's, but nobody has to already know them.
+  const head = document.createElement('div');
+  head.className = 'wvw-board-row wvw-board-head';
+  const headLabel = document.createElement('span');
+  headLabel.className = 'wvw-board-team';
+  headLabel.textContent = 'Contested areas';
+  head.appendChild(headLabel);
+  const headCells = document.createElement('span');
+  headCells.className = 'wvw-board-counts';
+  headCells.style.gridTemplateColumns = grid;
+  for (const type of types) {
+    const h = document.createElement('span');
+    h.textContent = type;
+    headCells.appendChild(h);
+  }
+  head.appendChild(headCells);
+  const headPpt = document.createElement('span');
+  headPpt.className = 'wvw-board-ppt';
+  headPpt.textContent = 'PPT';
+  // Every map added up, not this one. The board has been match-wide
+  // since it moved to the side column, and the bar over the map is the
+  // per-map reading - saying "this map" here put the two in open
+  // disagreement, a few centimetres apart.
+  headPpt.title = 'Points per tick, every map added up';
+  head.appendChild(headPpt);
+  board.appendChild(head);
+
+  for (const r of rows) {
+    const line = document.createElement('div');
+    line.className = `wvw-board-row own-${r.color}`;
+
+    const name = document.createElement('span');
+    name.className = 'wvw-board-team';
+    const teamId = matchTeamId(match, r.color);
+    name.textContent = teamId ? getTeamName(teamId) : r.color;
+    name.title = name.textContent;
+    line.appendChild(name);
+
+    const counts = document.createElement('span');
+    counts.className = 'wvw-board-counts';
+    counts.style.gridTemplateColumns = grid;
+    for (const type of types) {
+      const n = r.counts.get(type) || 0;
+      const cell = document.createElement('span');
+      // Zero still gets its cell. The columns have to line up across the
+      // three rows, or comparing them means counting icons instead of
+      // reading down - and a side holding no keep at all is itself worth
+      // seeing at a glance. The game fades those to almost nothing, so
+      // this does too.
+      cell.className = n ? 'wvw-board-cell' : 'wvw-board-cell is-none';
+      const src = markerIcon(type, r.color);
+      if (src) {
+        const img = document.createElement('img');
+        img.src = src;
+        img.alt = '';
+        img.width = 22;
+        img.height = 22;
+        cell.appendChild(img);
+      }
+      // Beside the icon, not under it. Stacking is what the game does,
+      // but the game has a full window for it; here three stacked rows
+      // pushed the popover into a scrollbar, and the second line was
+      // pure height - the number is the same number either way.
+      const n_ = document.createElement('b');
+      n_.textContent = String(n);
+      cell.appendChild(n_);
+      cell.title = `${n} ${type}${n === 1 ? '' : 's'}`;
+      counts.appendChild(cell);
+    }
+    line.appendChild(counts);
+
+    const ppt = document.createElement('span');
+    ppt.className = 'wvw-board-ppt';
+    ppt.textContent = `+${r.ppt}`;
+    ppt.title = `${getTeamName(matchTeamId(match, r.color)) || r.color}`
+      + ` earns ${r.ppt} points per tick, every map added up`;
+    line.appendChild(ppt);
+
+    board.appendChild(line);
+  }
+}
+
 // ---- the detail panel ------------------------------------------------
-function row(dl, label, value) {
+// How far along the next tier is, in the game's own x/y shape with a bar
+// under it. The bar fills to the same fraction the numbers state, so the
+// two can never disagree - what it is NOT is progress within the current
+// tier, which for a tower sitting on 37 would read far emptier.
+//
+// At the top tier it says "max" and drops the bar, keeping the icon: the
+// icon is what makes the row scan like the others, but 100/100 under a
+// full bar reads as progress towards something when there is nothing
+// left to reach.
+function yakCell(t) {
+  const cell = document.createElement('span');
+  cell.className = 'wvw-yakcell';
+
+  // The game's own caravan icon, so the pair of numbers says what it is
+  // counting without spending a word on it in a column this narrow.
+  const line = document.createElement('span');
+  line.className = 'wvw-yaknum';
+  const icon = document.createElement('img');
+  icon.src = 'assets/icons/Event_Caravan.webp';
+  // At the top tier the row label already says "Yaks", so the icon is
+  // decoration and repeating the word just reads it twice. On the way
+  // up the label names the tier instead, and then the icon is the only
+  // thing saying what is being counted.
+  icon.alt = t.next ? 'yaks' : '';
+  icon.width = 15;
+  icon.height = 15;
+  line.appendChild(icon);
+  const n = document.createElement('b');
+  n.textContent = t.next ? `${t.yaks}/${t.next.at}` : `${t.yaks} — max`;
+  line.appendChild(n);
+  cell.appendChild(line);
+
+  // No bar at the top tier. A full bar is a progress reading, and there
+  // is no progress left to report - the word says it in less space and
+  // without pretending something is still being counted towards.
+  if (t.next) {
+    const track = document.createElement('span');
+    track.className = 'wvw-yakbar';
+    const fill = document.createElement('i');
+    fill.style.width = `${Math.min(100, (t.yaks / t.next.at) * 100)}%`;
+    track.appendChild(fill);
+    cell.appendChild(track);
+  }
+
+  const left = t.next ? Math.max(0, t.next.at - t.yaks) : 0;
+  cell.title = t.next
+    ? `${left} more dolyak${left === 1 ? '' : 's'} to ${t.next.name}`
+      + ' — and the count resets to zero if it flips'
+    : `Fully upgraded on ${t.yaks} dolyaks — the count resets to zero`
+      + ' if it flips';
+  return cell;
+}
+
+function row(dl, label, value, cls) {
   const wrap = document.createElement('div');
   wrap.className = 'wvw-row';
   const dt = document.createElement('dt');
   dt.textContent = label;
   const dd = document.createElement('dd');
+  if (cls) dd.className = cls;
   if (value instanceof Node) dd.appendChild(value); else dd.textContent = value;
   wrap.appendChild(dt);
   wrap.appendChild(dd);
   dl.appendChild(wrap);
 }
 
+// Breaks the list into the three questions it actually answers: whose it
+// is, what it pays, how upgraded it is. Same styling as the tactics
+// heading further down, so this is grouping, not a new look.
+function group(dl, label) {
+  const h = document.createElement('div');
+  h.className = 'wvw-group';
+  h.textContent = label;
+  dl.appendChild(h);
+}
+
 function renderObjectiveDetail(panel, p, match) {
   panel.textContent = '';
   const { ob, meta } = p;
+  // Which objective this panel is currently showing, so a fetch that
+  // lands late cannot repaint over a different one.
+  panel.dataset.showing = String(ob.id);
 
   const name = document.createElement('div');
   name.className = 'wvw-detail-name';
@@ -680,70 +1793,160 @@ function renderObjectiveDetail(panel, p, match) {
   if (tierInfo && tierInfo.tier > 0) {
     const chip = document.createElement('span');
     chip.className = `wvw-tierchip tierchip-${tierInfo.tier}`;
-    chip.title = `Upgrade tier ${tierInfo.tier} of ${tierInfo.tiers.length}`;
+    // The same form the row below and the marker tooltip use. The number
+    // stays: "T3" is how the mode is spoken, and dropping it for the
+    // game's name alone would have been less familiar, not more.
+    chip.title = `T${tierInfo.tier} ${tierInfo.name}`;
     for (let i = 0; i < tierInfo.tier; i++) chip.appendChild(document.createElement('i'));
     name.appendChild(chip);
   }
   name.appendChild(document.createTextNode(meta.name || ob.id));
   panel.appendChild(name);
 
+  const ownerColor = String(ob.owner || '').toLowerCase();
+  const owned = COLORS.includes(ownerColor);
+  const ownCls = owned ? `wvw-owner own-${ownerColor}` : null;
+
+  // The type carries the very marker the map draws for it, already in
+  // the holder's colour: one glance says what it is and whose it is.
   const type = document.createElement('div');
   type.className = 'wvw-detail-type';
-  type.textContent = ob.type;
+  const tsrc = markerIcon(ob.type, ownerColor);
+  if (tsrc) {
+    const timg = document.createElement('img');
+    timg.src = tsrc;
+    timg.alt = '';
+    timg.width = 18;
+    timg.height = 18;
+    type.appendChild(timg);
+  }
+  type.appendChild(document.createTextNode(ob.type));
   panel.appendChild(type);
 
   const dl = document.createElement('dl');
-  const ownerColor = String(ob.owner || '').toLowerCase();
-  const teamId = COLORS.includes(ownerColor)
-    ? matchTeamId(match, ownerColor) : null;
-  row(dl, 'Owned by', teamId ? getTeamName(teamId) : (ob.owner || 'Nobody'));
-  const ago = flippedAgo(ob.last_flipped);
-  if (ago) row(dl, 'Last flipped', ago);
-  if (tierInfo) row(dl, 'Tier', String(tierInfo.tier));
-  row(dl, 'Points per tick', String(ob.points_tick ?? 0));
-  row(dl, 'Points for capture', String(ob.points_capture ?? 0));
-  row(dl, 'Yaks delivered', String(ob.yaks_delivered ?? 0));
+  const teamId = owned ? matchTeamId(match, ownerColor) : null;
 
+  group(dl, 'Held by');
+  row(dl, 'Team', teamId ? getTeamName(teamId) : (ob.owner || 'Nobody'), ownCls);
+  const ago = flippedAgo(ob.last_flipped);
+  if (ago) row(dl, 'For', ago);
   const claimCell = document.createElement('span');
   if (ob.claimed_by) {
     claimCell.className = 'wvw-claimed';
     claimCell.textContent = 'loading…';
     // Straight through the same cache the guild checker uses, so a guild
     // that holds three objectives is still only looked up once.
-    guildEmblem(ob.claimed_by).then(({ info, src }) => {
+    guildEmblem(ob.claimed_by).then(({ info, layers }) => {
       claimCell.textContent = '';
-      if (src) {
-        const img = document.createElement('img');
-        img.className = 'wvw-emblem';
-        img.src = src;
-        img.alt = '';
-        img.loading = 'lazy';
-        claimCell.appendChild(img);
+      if (layers.length) {
+        // An SVG rather than an img, because the layers have to be tinted
+        // and stacked - the same drawing the marker gets, at a fifth of
+        // the size. Its own defs and its own ids, since it lives outside
+        // the map's SVG entirely.
+        const svg = svgEl('svg', { class: 'wvw-emblem', viewBox: '0 0 1 1' });
+        const defs = svgEl('defs', {});
+        svg.appendChild(defs);
+        paintEmblem(svg, layers, { x: 0, y: 0, w: 1, h: 1 },
+          emblemFilterFactory(defs, `wvw-panel-emblem-${++plotSerial}`));
+        claimCell.appendChild(svg);
       }
       claimCell.appendChild(document.createTextNode(`[${info.tag}] ${info.name}`));
-    }).catch(() => { claimCell.textContent = 'a guild'; });
+    }).catch(() => { claimCell.textContent = 'claimed, name unavailable'; });
   } else {
     claimCell.textContent = 'unclaimed';
   }
-  row(dl, 'Claimed by', claimCell);
+  row(dl, 'Guild', claimCell);
+
+  group(dl, 'Worth');
+  row(dl, 'Per tick', `+${ob.points_tick ?? 0}`, ownCls);
+  row(dl, 'On capture', String(ob.points_capture ?? 0));
+
+  group(dl, 'Upgrade');
+  // The game's own names for the tiers, straight out of the API. "Tier 2"
+  // meant nothing to anyone who did not already know the ladder.
+  if (tierInfo) {
+    // "of 3" is gone because every objective in the mode has exactly
+    // three tiers, so it never told anyone anything. Not "paper"
+    // either: that word covers T1 as well, so it is not a synonym for
+    // this.
+    row(dl, 'Now', tierInfo.tier ? `T${tierInfo.tier} ${tierInfo.name}` : 'Not upgraded');
+  }
+  if (tierInfo && tierInfo.next) {
+    row(dl, `To ${tierInfo.next.name}`, yakCell(tierInfo));
+  } else if (tierInfo) {
+    row(dl, 'Yaks', yakCell(tierInfo));
+  } else {
+    row(dl, 'Yaks delivered', String(ob.yaks_delivered ?? 0));
+  }
+
   panel.appendChild(dl);
 
   // Tactics, not the automatic tier upgrades. The tier's walls and
   // guards follow from the yak count and are already summed up by the
   // number above; what is worth listing is what the holding guild chose
   // to install, because that is what an attack has to plan around.
-  const tactics = Array.isArray(ob.guild_upgrades) ? ob.guild_upgrades : [];
-  if (tactics.length) {
+  // The same field carries both kinds, and they are different things:
+  // an improvement is bought once and is simply on from then, while a
+  // tactic sits in a slot waiting for supply and for someone to press
+  // it. Only the second is something an attack has to time around - so
+  // they get a heading each, tactics first, rather than one mixed list.
+  // The game splits them the same way, and by these names: tactics are
+  // pulled at a tactivator, improvements are passive.
+  //
+  // The API types both as "Claimable" and gives them away only through
+  // the item each one costs, whose name ends in "Tactic" or
+  // "Improvement". Checked against the whole catalogue: twenty-one of
+  // them, ten tactics and eleven improvements, no exceptions and none
+  // without a cost. Anything matching neither is listed with the
+  // tactics, so a new kind of upgrade shows up instead of being
+  // quietly swallowed.
+  const isImprovement = (t) => {
+    const cost = t && (t.costs || [])[0];
+    return !!cost && /\bImprovement$/i.test(cost.name || '');
+  };
+  const installed = Array.isArray(ob.guild_upgrades) ? ob.guild_upgrades : [];
+
+  // The catalogue is fetched once for the whole match when the popover
+  // opens, so anything installed after that was not in it - and came
+  // out as a bare "Upgrade 379", at exactly the moment the name was
+  // worth having. Fetched on sight instead, and the panel repaints when
+  // it lands. The second check is the brake: if nothing new arrived
+  // there is nothing to repaint, and a repaint that changes nothing
+  // would ask again for ever.
+  const unknown = installed.filter((id) => !(tacticCatalogue && tacticCatalogue.has(id)));
+  if (unknown.length) {
+    getTacticCatalogue(unknown).then(() => {
+      if (panel.dataset.showing !== String(ob.id)) return;
+      if (!unknown.some((id) => tacticCatalogue.has(id))) return;
+      renderObjectiveDetail(panel, p, match);
+    });
+  }
+
+  const tactics = [];
+  const improvements = [];
+  for (const id of installed) {
+    const t = tacticCatalogue && tacticCatalogue.get(id);
+    (isImprovement(t) ? improvements : tactics).push(id);
+  }
+
+  // Both lists go in one container so they can sit side by side; the
+  // stylesheet decides whether there is room for that.
+  const cols = document.createElement('div');
+  cols.className = 'wvw-upgrade-cols';
+
+  const listUpgrades = (label, ids) => {
+    if (!ids.length) return;
+    const group = document.createElement('div');
     const heading = document.createElement('div');
     heading.className = 'wvw-upgrade-tier';
-    heading.textContent = `Tactics (${tactics.length})`;
-    panel.appendChild(heading);
+    heading.textContent = `${label} (${ids.length})`;
+    group.appendChild(heading);
     const ul = document.createElement('ul');
     ul.className = 'wvw-upgrades';
-    for (const id of tactics) {
+    for (const id of ids) {
       const t = tacticCatalogue && tacticCatalogue.get(id);
       const li = document.createElement('li');
-      const src = tacticIcon(t && t.icon);
+      const src = upgradeIcon(t && t.icon);
       if (src) {
         const img = document.createElement('img');
         img.src = src;
@@ -755,18 +1958,28 @@ function renderObjectiveDetail(panel, p, match) {
       if (t && t.description) li.title = t.description;
       ul.appendChild(li);
     }
-    panel.appendChild(ul);
-  }
+    group.appendChild(ul);
+    cols.appendChild(group);
+  };
+  // Tactics first, so that the column that collapses to the top row on
+  // a narrow screen is the one you read before deciding to hit a place.
+  // The game's own claiming panel puts improvements first, but that is
+  // a panel for running an objective you already hold; this one is for
+  // sizing up someone else's.
+  listUpgrades('Tactics', tactics);
+  listUpgrades('Improvements', improvements);
+  if (cols.childElementCount) panel.appendChild(cols);
 }
 
 // ---- the popover -----------------------------------------------------
-function renderTierMapsContent(popover, match, regionName, tierNum, catalogue, sectorsByType, triggerEl) {
+function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
+                               sectorsByType, pendingSectors, triggerEl) {
   popover.textContent = '';
 
   const header = document.createElement('div');
   header.className = 'info-popover-header';
   const title = document.createElement('span');
-  title.textContent = `${regionName} Tier ${tierNum} · objectives`;
+  title.textContent = `${regionName} Tier ${tierNum} · objective maps`;
   header.appendChild(title);
 
   const actions = document.createElement('div');
@@ -794,7 +2007,10 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue, s
   popover.appendChild(header);
 
   const byType = new Map((match.maps || []).map((m) => [m.type, m]));
-  const available = MAP_PANEL_ORDER.filter((t) => byType.has(t) && sectorsByType.has(t));
+  // A tab exists because the tier has that map, not because its outline
+  // has arrived yet - the outlines for the three tabs you did not open
+  // are still in flight when this runs.
+  const available = MAP_PANEL_ORDER.filter((t) => byType.has(t) && pendingSectors.has(t));
   if (!available.length) {
     const msg = document.createElement('p');
     msg.className = 'hint';
@@ -812,30 +2028,189 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue, s
   stage.className = 'wvw-stage';
   popover.appendChild(stage);
 
+  // The right-hand column: the scoreboard on top, the objective detail
+  // under it. Both answer "who holds what", so they read as one column,
+  // and neither is ever over the map.
+  const side = document.createElement('div');
+  side.className = 'wvw-side';
+
+  const board = document.createElement('div');
+  board.className = 'wvw-board';
+  board.hidden = true;
+  side.appendChild(board);
+
   const detail = document.createElement('div');
   detail.className = 'wvw-detail';
+  side.appendChild(detail);
+
+  // What the detail panel is showing, so the refresh can repaint it.
+  // Cleared with the panel, because a point belongs to the stage that
+  // drew it and switching tabs throws that stage away.
+  let selected = null;
 
   const emptyDetail = () => {
+    selected = null;
     detail.textContent = '';
     const p = document.createElement('p');
     p.className = 'wvw-detail-empty';
-    p.textContent = 'Pick an objective on the map to see who holds it, how long they have, and what it has been upgraded with.';
+    // "upgraded with" was wrong: the tier is bought by yaks and arrives
+    // on its own, and the lists under it are what the holding guild
+    // chose to install. Both are named because the game names them
+    // apart, and a defender treats them apart.
+    p.textContent = 'Click an objective to see who holds it, how long they have had it, and its tactics and improvements.';
     detail.appendChild(p);
   };
 
   let current = null;
   let plotWrap = null;
+
+  const draw = (type, sectors) => {
+    paintMapBoard(board, match, matchIsLive(match));
+    stage.textContent = '';
+    plotWrap = sectors && sectors.length
+      ? buildMapStage(match, byType.get(type), sectors, catalogue,
+        (p, m) => { selected = p; renderObjectiveDetail(detail, p, m); })
+      : null;
+    if (plotWrap) {
+      // Over the plot, not inside the SVG: the SVG is the camera and
+      // everything in it pans and zooms with the terrain.
+      const sb = buildScoreBar(byType.get(type), matchIsLive(match));
+      if (sb) plotWrap.appendChild(sb);
+      stage.appendChild(plotWrap);
+    } else {
+      // The outline is what the drawing gets its frame from, so without
+      // it there is no map to show - but the other tabs are unaffected,
+      // which is why this replaces the stage and not the popover.
+      const msg = document.createElement('p');
+      msg.className = 'hint wvw-stage-msg';
+      msg.textContent = "Couldn't load this map right now.";
+      stage.appendChild(msg);
+    }
+    stage.appendChild(side);
+    emptyDetail();
+  };
+
   const show = (type) => {
     if (current === type) return;
     current = type;
     for (const b of tabs.children) b.classList.toggle('is-active', b.dataset.type === type);
+    const ready = sectorsByType.get(type);
+    if (ready) { draw(type, ready); return; }
+    // Not here yet. Only the tab that opens is waited on before the
+    // popover is built, so clicking one of the others early can land
+    // ahead of its outline.
     stage.textContent = '';
-    const plot = buildMapStage(match, byType.get(type), sectorsByType.get(type),
-      catalogue, (p, m) => renderObjectiveDetail(detail, p, m));
-    plotWrap = plot;
-    if (plot) stage.appendChild(plot);
-    stage.appendChild(detail);
-    emptyDetail();
+    const wait = document.createElement('p');
+    wait.className = 'hint wvw-stage-msg';
+    wait.innerHTML = '<span class="spinner"></span>Loading this map\u2026';
+    stage.appendChild(wait);
+    pendingSectors.get(type).then((arr) => {
+      // Both checks matter: the popover can be closed and another tab
+      // can be picked while this is in the air.
+      if (activeTrigger !== triggerEl || current !== type) return;
+      if (arr && arr.length) sectorsByType.set(type, arr);
+      draw(type, arr);
+    });
+  };
+
+  // Which map is busy, from the fight log the standings refresh has been
+  // filling since the tab opened - see recordFightSamples. Ten minutes
+  // back is what the baseline aims for: long enough that one gank does
+  // not decide it, short enough that "busy" still means now.
+  const HOT_WANT_MS = 10 * 60 * 1000;
+  const HOT_FLOOR = 10;      // kills and deaths per ten minutes
+  const tabByType = new Map();
+
+  const markHotTab = (src) => {
+    // Nothing is marked on a match that is not running. Between the
+    // reset and the API publishing the new one, everything else on this
+    // popover goes neutral - see ownersOf - and a pair of swords over a
+    // blank map would be the one thing still claiming to know something.
+    const rates = matchIsLive(src) ? fightRates(src, HOT_WANT_MS) : null;
+    let hot = null;
+    let bestN = 0;
+    let nextN = 0;
+    // Walked in tab order and taken on a strict win, so a tie keeps
+    // whichever map comes first rather than swapping the swords back and
+    // forth on every refresh. The runner-up is kept because the count on
+    // its own does not travel: a borderland that is normally empty can
+    // be the whole match's fight at a number that would be a quiet hour
+    // on Eternal Battlegrounds.
+    if (rates) {
+      for (const type of available) {
+        const n = rates.per.get(type) || 0;
+        if (n > bestN) { nextN = bestN; bestN = n; hot = type; }
+        else if (n > nextN) { nextN = n; }
+      }
+    }
+    if (bestN < HOT_FLOOR) hot = null;
+
+    for (const [type, b] of tabByType) {
+      const had = b.querySelector('.wvw-tab-swords');
+      if (type === hot) {
+        if (!had) {
+          const im = document.createElement('img');
+          im.className = 'wvw-tab-swords';
+          im.src = 'assets/icons/Event_Swords.webp';
+          im.alt = '';
+          im.width = 14;
+          im.height = 14;
+          b.insertBefore(im, b.firstChild);
+          // The label shifts over rather than the swords sitting in the
+          // text flow: pinned to the corner they would land on top of it.
+          b.classList.add('is-hot');
+        }
+        const mins = Math.round(rates.span / 60000);
+        b.title = `${MAP_PANEL_NAME[type] || type} —`
+          + ` ${Math.round(bestN * rates.span / 600000)} kills in the last`
+          + ` ${mins} min, more than any other map`;
+      } else {
+        if (had) { had.remove(); b.classList.remove('is-hot'); }
+        b.title = MAP_PANEL_NAME[type] || type;
+      }
+    }
+  };
+
+  // The freshest answer this popover has seen, which is not the one it
+  // opened with. Everything that reads "how the match stands right now"
+  // has to read this, or it quietly undoes the opening pull - which is
+  // exactly what the kill sheet's callback used to do.
+  let liveMatch = match;
+  let hotFresh = false;
+
+  // One fetch of this tier's match, and everything that has to be
+  // repainted when it lands. Called on opening and then on the poll.
+  const pullFresh = async () => {
+    let fresh;
+    try {
+      fresh = await fetchJson(`${API_BASE}/wvw/matches?id=${encodeURIComponent(match.id)}`);
+    } catch { return; }
+    if (activeTrigger !== triggerEl || !fresh || !Array.isArray(fresh.maps)) return;
+    for (const m of fresh.maps) if (byType.has(m.type)) byType.set(m.type, m);
+    liveMatch = fresh;
+    // Outlives the popover, so reopening starts from here.
+    if (freshRecall) freshRecall.data = fresh;
+    hotFresh = true;
+    recordFightSamples([fresh]);
+    markHotTab(liveMatch);
+    const now = byType.get(current);
+    // Asked of the answer that just arrived, not of the match this
+    // popover opened with: a tier turns over while the maps are open,
+    // and it has also been seen turning back.
+    const live = matchIsLive(fresh);
+    paintMapBoard(board, fresh, live);
+    if (plotWrap && plotWrap.applyLive && now) plotWrap.applyLive(now, live);
+    // The panel was born from a click and then stood still: the marker
+    // beside it could change hands, tier or guild while the text went
+    // on describing the moment it was clicked. applyLive rewrites the
+    // point in place, so repainting is all it takes.
+    if (selected) renderObjectiveDetail(detail, selected, fresh);
+    if (plotWrap) {
+      const old = plotWrap.querySelector('.wvw-scorebar');
+      const sb = buildScoreBar(now, live);
+      if (old) old.remove();
+      if (sb) plotWrap.appendChild(sb);
+    }
   };
 
   // The maps keep themselves current while they are open. The standings
@@ -844,35 +2219,123 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue, s
   // refresh used to just close the popover out from under you. So this
   // asks for one match, not all nine, and repaints in place.
   clearInterval(mapPollTimer);
-  mapPollTimer = setInterval(async () => {
+  mapPollTimer = setInterval(() => {
     if (activeTrigger !== triggerEl) { clearInterval(mapPollTimer); return; }
     // Same rule as the animations: no work for a window nobody is
     // looking at. It catches up on the next tick after you come back.
     if (document.visibilityState === 'hidden' || !document.hasFocus()) return;
-    let fresh;
-    try {
-      fresh = await fetchJson(`${API_BASE}/wvw/matches?id=${encodeURIComponent(match.id)}`);
-    } catch { return; }
-    if (activeTrigger !== triggerEl || !fresh || !Array.isArray(fresh.maps)) return;
-    for (const m of fresh.maps) if (byType.has(m.type)) byType.set(m.type, m);
-    const now = byType.get(current);
-    // Asked of the answer that just arrived, not of the match this
-    // popover opened with: a tier turns over while the maps are open,
-    // and it has also been seen turning back.
-    if (plotWrap && plotWrap.applyLive && now) plotWrap.applyLive(now, matchIsLive(fresh));
+    pullFresh();
   }, MAP_REFRESH_MS);
+
+  clearInterval(mapTickTimer);
+  mapTickTimer = setInterval(() => {
+    if (activeTrigger !== triggerEl) { clearInterval(mapTickTimer); return; }
+    tickRi(stage);
+  }, 1000);
 
   for (const type of available) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'wvw-tab';
     b.dataset.type = type;
-    b.textContent = MAP_TAB_NAME[type] || type;
+    const label = document.createElement('span');
+    label.textContent = MAP_TAB_NAME[type] || type;
+    b.appendChild(label);
     b.title = MAP_PANEL_NAME[type] || type;
     b.addEventListener('click', (e) => { e.stopPropagation(); show(type); });
     tabs.appendChild(b);
+    tabByType.set(type, b);
   }
+  // The swords wait for the fresh reading rather than being painted
+  // from the one this popover opened with.
+  //
+  // That opening reading can be five minutes old, and five minutes is
+  // enough to change the answer: measured against the kill sheet's own
+  // two hours, the map picked from a five-minute-old reading disagrees
+  // with the fresh one in 38% of cases. Painting it straight away meant
+  // better than one opening in three put the swords on the wrong tab
+  // and moved them a breath later - which reads as a glitch, and the
+  // swords only do their job if they can be trusted at a glance.
+  //
+  // The tab titles are already set in the loop above, so nothing is
+  // blank in the meantime; the swords simply arrive with the data that
+  // earns them, about a third of a second in.
+  //
+  // Plan B, for a fetch that never lands: the stale reading is still
+  // better than no swords at all.
+  setTimeout(() => {
+    if (activeTrigger === triggerEl && !hotFresh) markHotTab(liveMatch);
+  }, 2500);
+  // Again when the sheet lands - but only once there is a fresh reading
+  // for it to be applied to. Resolves from cache on every later open,
+  // which is why this used to fire straight back over the fresh answer.
+  getKillSheet().then(() => {
+    if (activeTrigger === triggerEl && hotFresh) markHotTab(liveMatch);
+  });
   show(available[0]);
+
+  // And once, right now, rather than waiting out the first poll.
+  //
+  // What this popover opens with is the match the standings panel is
+  // holding, and that panel refreshes every five minutes - so the data
+  // is anywhere from fresh to five minutes old when somebody clicks.
+  // Righteous Indignation lasts exactly five minutes, which makes the
+  // staleness the same size as the whole thing it is meant to show.
+  //
+  // Measured across every live map on 26/09, with 56 objectives under
+  // RI at that moment: a two-and-a-half minute old snapshot - the
+  // average - was missing half of them, and at five minutes it was
+  // missing all of them. Waiting for the poll on top of that could hide
+  // a flip for five and a half minutes, which is longer than the badge
+  // exists: an objective could turn over, run its whole RI and vanish
+  // without ever having been drawn.
+  //
+  // It costs one request, it blocks nothing - the map is already up -
+  // and it fixes the swords in the same move, because markHotTab reads
+  // the answer that just arrived instead of a five-minute-old count.
+  pullFresh();
+
+  // The other three terrain pictures, once the first map is up and
+  // being looked at. A tab switch used to start its own download at the
+  // click - a few hundred kilobytes and the decode of a seven-megapixel
+  // image, all of it between the click and anything appearing.
+  //
+  // decode() rather than just src, because the download is only half of
+  // it: the other half runs on the main thread, and that is the half
+  // that would be seen.
+  //
+  // One at a time, in tab order. All three at once is a couple of
+  // megabytes racing the pictures the VISIBLE map is still pulling -
+  // its claim emblems, and any guild the stored copy did not have. On a
+  // roomy connection it makes no difference; on a tight one it would
+  // put maps nobody asked for in front of the map being looked at. Tab
+  // order is also roughly click order, so the next one is usually the
+  // one that lands first.
+  const warmTerrain = () => {
+    const queue = available.filter((t) => t !== current);
+    const next = () => {
+      if (activeTrigger !== triggerEl) return;   // closed while waiting
+      const type = queue.shift();
+      if (!type) return;
+      const pic = MAP_IMAGE[(byType.get(type) || {}).id];
+      if (!pic) { next(); return; }
+      const im = new Image();
+      im.src = pic.src;
+      // A warm-up that fails is not an error: the tab that needs it
+      // asks again, which is exactly what happens today. Either way the
+      // queue moves on.
+      if (im.decode) im.decode().then(next, next);
+      else { im.onload = next; im.onerror = next; }
+    };
+    next();
+  };
+  // Not for a connection that has asked to be spared. This is megabytes
+  // of maps nobody has said they want to see.
+  const conn = navigator.connection;
+  if (!conn || !(conn.saveData || /(^|-)2g$/.test(conn.effectiveType || ''))) {
+    if (window.requestIdleCallback) requestIdleCallback(warmTerrain, { timeout: 4000 });
+    else setTimeout(warmTerrain, 1500);
+  }
 }
 
 async function toggleTierMaps(match, regionName, tierNum, triggerEl) {
@@ -889,32 +2352,78 @@ async function toggleTierMaps(match, regionName, tierNum, triggerEl) {
   // this one opens the way the guild list looks once expanded.
   setPopoverExpanded(popover, triggerEl, true);
 
-  let catalogue, sectorsByType;
-  try {
-    // All of it at once. These ran one after another - objectives, upgrades,
-    // tactics, then four map outlines - which is four round trips on an API
-    // where the trip costs about a second and the payload barely matters.
-    // Only upgrades ever needed another's answer, and that is gone.
-    const wanted = (match.maps || []).filter((m) => MAP_PANEL_ORDER.includes(m.type));
-    const tacticIds = [];
-    for (const m of match.maps || []) {
-      for (const ob of m.objectives || []) {
-        if (Array.isArray(ob.guild_upgrades)) tacticIds.push(...ob.guild_upgrades);
-      }
+  // Reopen with what we already know, not with what the standings panel
+  // is holding. That panel refreshes every five minutes, so a reopen
+  // would paint from a snapshot this very popover had bettered a minute
+  // earlier and then correct itself a second later - measured at 1.4s
+  // on a cold connection. The correction is right, but it reads as a
+  // glitch, and camps flip often enough that EBG usually has one or two
+  // of them changing colour under your eyes.
+  //
+  // Which of the two is newer is decided by identity, not by clocks:
+  // every standings refresh parses fresh JSON, so a match object we
+  // have seen before means that panel has not refreshed since and our
+  // answer is the newer one. A different object means it is ahead of
+  // us, and it wins - which is also what happens on the first opening
+  // of each five-minute cycle, when there is nothing remembered yet.
+  if (freshRecall && freshRecall.from === match) {
+    if (freshRecall.data) match = freshRecall.data;
+  } else {
+    freshRecall = { from: match, data: null };
+  }
+
+  const wanted = (match.maps || []).filter((m) => MAP_PANEL_ORDER.includes(m.type));
+  const firstType = MAP_PANEL_ORDER.find((t) => wanted.some((m) => m.type === t));
+  const firstMap = wanted.find((m) => m.type === firstType);
+
+  // The terrain picture, asked for here rather than by the <image> node.
+  // That node is built after everything below has resolved, so the
+  // download used to queue up behind a second of API and nothing else
+  // was happening during that second. Same URL, so the <image> finds it
+  // in the browser's cache instead of asking again.
+  const firstPic = firstMap && MAP_IMAGE[firstMap.id];
+  if (firstPic) { const pre = new Image(); pre.src = firstPic.src; }
+
+  // Started, never awaited. None of these draws a map: tiers only light
+  // the rings, tactics only name the list in the detail panel, and the
+  // foreground catalogue only matters once a claim emblem resolves -
+  // which is its own request anyway. They land while the map is already
+  // on screen.
+  getUpgradeCatalogue();
+  getEmblemPieces();
+  // Started here and never awaited: the swords are the last thing on the
+  // screen that matters and the first tab must not wait on a spreadsheet.
+  getKillSheet();
+  const tacticIds = [];
+  for (const m of match.maps || []) {
+    for (const ob of m.objectives || []) {
+      if (Array.isArray(ob.guild_upgrades)) tacticIds.push(...ob.guild_upgrades);
     }
-    const [cat, sets] = await Promise.all([
+  }
+  if (tacticIds.length) getTacticCatalogue(tacticIds);
+
+  // All four outlines go out at once, but only the tab that opens is
+  // waited on. Measured 26/09 on one opening: the API answered maps 38
+  // and 96 in about 220ms and maps 95 and 1099 in about 1220ms, with
+  // 2ms of browser queueing - so the slow ones were the server thinking,
+  // and waiting for all four charged every opening the worst of them.
+  // The other three fill in behind; show() waits on one if you get there
+  // first.
+  const sectorsByType = new Map();
+  const pendingSectors = new Map();
+  for (const m of wanted) {
+    const p = getSectors(m.id).catch(() => []);
+    pendingSectors.set(m.type, p);
+    p.then((arr) => { if (arr.length) sectorsByType.set(m.type, arr); });
+  }
+
+  let catalogue;
+  try {
+    const [cat] = await Promise.all([
       getObjectiveCatalogue(),
-      Promise.all(wanted.map((m) => getSectors(m.id).catch(() => []))),
-      getUpgradeCatalogue(),
-      tacticIds.length ? getTacticCatalogue(tacticIds) : null,
-      // Not needed to draw the map, but every claimed objective wants it
-      // a moment later, so it rides along rather than costing its own
-      // wait once the markers are already on screen.
-      getEmblemForegrounds(),
+      firstType ? pendingSectors.get(firstType) : null,
     ]);
     catalogue = cat;
-    sectorsByType = new Map();
-    wanted.forEach((m, i) => { if (sets[i].length) sectorsByType.set(m.type, sets[i]); });
   } catch {
     if (activeTrigger !== triggerEl) return;
     popover.textContent = '';
@@ -927,7 +2436,8 @@ async function toggleTierMaps(match, regionName, tierNum, triggerEl) {
   }
 
   if (activeTrigger !== triggerEl) return; // closed while loading
-  renderTierMapsContent(popover, match, regionName, tierNum, catalogue, sectorsByType, triggerEl);
+  renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
+    sectorsByType, pendingSectors, triggerEl);
 }
 
 function buildTierMapButton(match, regionName, tierNum) {

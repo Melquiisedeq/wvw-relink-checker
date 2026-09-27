@@ -120,11 +120,26 @@ h1{
   animation:rule-scan 7s linear infinite;
 }
 @keyframes rule-scan{0%{background-position:0% 0;}100%{background-position:300% 0;}}
-/* Scoped on purpose to the header's endless scan, the only motion that
-   runs forever while the page just sits there. The crest flash and the
-   panels dropping in after a finished check are a one-shot payoff, not
-   ambient motion, so they deliberately stay put even here. */
+/* The header's scan only, and what it leaves out is a choice rather
+   than an oversight. Two other things also run for as long as the tab
+   is open - the ember field in js/boot.js and the sheen on the
+   first-place badge - and the two banner pulses loop as well, but only
+   inside the hours before a reset or a lockout, where the movement is
+   the warning. The crest flash and the panels dropping in after a check
+   end by themselves; stopping those would freeze a frame rather than
+   calm anything, which is why they stay put even here. */
 @media (prefers-reduced-motion: reduce){
   .header-rule{animation:none;}
 }
+/* It also stands down while the banner is raising an alarm. The banner
+   already refuses to run both of its own pulses at once, for the reason
+   in js/relink.js - two things pulsing read as decoration rather than
+   as a warning - and a colour scanning across the top of the page is a
+   third. It is the only one of the three that means nothing, so it is
+   the one that gives way.
+   The sibling combinator reaches it because the banner and .page are
+   both children of <body>, which is also why this needs no JavaScript:
+   the two classes the banner already toggles are the whole signal. */
+.relink-banner.is-urgent ~ .page .header-rule,
+.relink-banner.is-lockout ~ .page .header-rule{animation:none;}
 .subtitle{color:var(--muted);font-size:.92rem;margin-bottom:24px;line-height:1.5;max-width:720px;}

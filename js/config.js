@@ -97,3 +97,32 @@ const STANDINGS_REFRESH_MS = 5 * 60 * 1000;  // match scores, kills/deaths, VP, 
 const TIMERS_REFRESH_MS = 10 * 60 * 1000;    // season lockout
 // Community sheet is edited by hand; re-fetched on click with a short TTL.
 const COMMUNITY_SHEET_TTL_MS = 5 * 60 * 1000;
+
+// Kills history. The GW2 API publishes kills and deaths only as running
+// totals for the week, so "which map is busy now" cannot be read from
+// one answer - it takes two, apart in time. A visitor arriving cold has
+// no earlier reading and nowhere to get one.
+//
+// So a Google Apps Script trigger takes a snapshot every five minutes
+// and appends it here, trimming to a rolling two hours. Reading it is
+// the same trick the community guild sheet already uses: the gviz CSV
+// export, no API key, and docs.google.com is already in the CSP.
+// Measured 26/09: 449ms for the whole file, which is faster than the
+// GW2 API call the popover already waits on.
+//
+// The sheet and the script that fills it are part of this project, not
+// a third-party feed. So the shape below is a decision, not a
+// constraint: if this ever needs another column, a different cadence or
+// a different unit, change it at the source rather than working around
+// it here.
+//
+// Columns, in this order and with no header row:
+//   epoch ms | match id | Center | RedHome | BlueHome | GreenHome
+// The four numbers are player kills, summed over all three sides - see
+// fightTotals in js/maps.js for why deaths are left out.
+const KILLS_SHEET_ID = '1Lh6dGhlYVvvKlXT_tofEUKZhYGW71Jij1IstbdPF2fg';
+const KILLS_SHEET_URL =
+  `https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=kills`;
+const KILLS_SHEET_TTL_MS = 5 * 60 * 1000;
+// Must match the column order the Apps Script writes.
+const KILLS_MAP_ORDER = Object.freeze(['Center', 'RedHome', 'BlueHome', 'GreenHome']);

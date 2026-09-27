@@ -58,7 +58,10 @@ resolves them.
 Standings load once and keep refreshing in the background, so most checks
 reuse data the page already has. The NA alliance list is a public Google
 Sheet maintained by the NA WvW Discord, read only when you click a shield
-icon.
+icon. The crossed swords marking the busiest map come from a second
+sheet, this one filled by the project itself — the API only publishes
+totals for the whole week, so spotting a fight happening *now* takes two
+readings taken apart in time.
 
 ## 🔒 Privacy
 
@@ -69,12 +72,17 @@ anything to.**
 |---|---|
 | `api.guildwars2.com` | The guild names you paste go here to be resolved — that request *is* the lookup. Also all match, objective and upgrade data. |
 | `render.guildwars2.com` | Guild emblem images, for objectives claimed by a guild. Images only. |
-| `docs.google.com` | Only when you click a shield icon: a read-only CSV export of the community guild sheet. |
+| `docs.google.com` | Two public spreadsheets, read-only: the community guild list when you click a shield icon, and the kills history when you open a tier's maps. |
 | `melquiisedeq.goatcounter.com` | One anonymous page view per visit. Nothing else. |
 
-The guild list you type is saved in local storage under
-`wvw-relink-checker:guilds` so it is still there next time, and that copy
-never leaves your device.
+Three things are kept in your browser's own storage. None of them ever
+leave your device, and the last two clear themselves out as they age.
+
+| Key | What it holds |
+|---|---|
+| `wvw-relink-checker:guilds` | The list you typed, so it is still there next time |
+| `wvw-guilds-v1` | Name, tag and emblem of guilds already looked up, so the maps don't ask twice |
+| `wvw-fight-v1` | Recent kill counts per match — what puts the crossed swords on the busiest map |
 
 <details>
 <summary><b>About the visit counter</b></summary>
@@ -115,8 +123,6 @@ does it.
   this project — and may be incomplete or out of date.
 - The score for the 2-hour block being played lands about 15 minutes late.
   Until it does, the trend popover says so rather than inventing a number.
-- Guild emblems are monochrome: the API returns their colors as dye IDs
-  that need an undocumented transform to resolve.
 
 ## 📁 Project layout
 

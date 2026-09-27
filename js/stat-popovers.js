@@ -394,7 +394,7 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
       // running because we can compute it; saying so beats an empty
       // space that reads as "nothing is happening" - and naming whose
       // delay it is stops the gap reading as a fault in this page.
-      body.textContent = "ArenaNet hasn't posted this block yet";
+      body.textContent = "ArenaNet hasn't published this block yet";
     } else if (progress.fraction >= LIVE_PROJECT_AFTER) {
       // Two segments, not three. What the projection is read against is
       // the Average card above - repeating it here bought nothing and

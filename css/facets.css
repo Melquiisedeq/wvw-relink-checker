@@ -83,8 +83,8 @@
   font-size:.64rem;font-weight:800;white-space:nowrap;pointer-events:none;
   animation:delta-rise 1.7s ease-out forwards;
 }
-.delta-up{color:var(--green);}
-.delta-down{color:var(--red);}
+.delta-up{color:var(--green-ink);}
+.delta-down{color:var(--red-ink);}
 @keyframes delta-rise{
   0%{opacity:0;transform:translate(-50%,6px);}
   22%{opacity:1;}
