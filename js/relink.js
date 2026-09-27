@@ -283,7 +283,7 @@ function updateRelinkBanner() {
   const hasRelink = relinkNA !== null || relinkEU !== null;
   const hasLockout = timersLoaded && lockoutTime !== null;
   relinkBanner.textContent = '';
-  relinkBanner.classList.remove('is-lockout', 'is-urgent', 'is-rebuild');
+  relinkBanner.classList.remove('is-lockout', 'is-urgent', 'is-relink-week', 'is-rebuild');
   if (!hasRelink && !hasLockout) {
     relinkBanner.style.display = 'none';
     return;
@@ -373,6 +373,10 @@ function updateRelinkBanner() {
   // stands down; its number is still on the bar, just not shouting.
   relinkBanner.classList.toggle('is-lockout', lockoutUrgent);
   relinkBanner.classList.toggle('is-urgent', relinkUrgent && !lockoutUrgent);
+  // The rule scans red to blue to green and so does the mark under Next
+  // Relink; two of them at once read as decoration rather than as one
+  // signal, so the rule stands down and the mark keeps the colours.
+  relinkBanner.classList.toggle('is-relink-week', relinkWeek);
 
   relinkBanner.style.display = 'block';
   relinkBanner.appendChild(inner);

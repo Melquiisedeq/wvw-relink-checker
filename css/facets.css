@@ -280,8 +280,7 @@
    started; leaving it lit would split the eye with the one alarm that
    can still be acted on. */
 .relink-banner.is-lockout .relink-week .relink-stat-title{
-  color:#aab4c1;
-  background:linear-gradient(90deg,rgba(225,92,92,.40),rgba(91,143,240,.40),rgba(76,175,125,.40)) bottom/100% 2px no-repeat;
+  color:#aab4c1;background:none;padding-bottom:0;
 }
 .relink-banner.is-lockout .relink-week .relink-stat-title .swords-icon{opacity:.45;}
 .relink-banner.is-lockout .relink-week .relink-stat-value .time{color:#eaf0f6;}
@@ -295,7 +294,7 @@
    It never has to out-shout the amber either: the lockout is over
    before this exists, and the two are never on screen together. */
 .relink-banner.is-rebuild{
-  padding:14px 26px;
+  padding:9px 26px;
   animation:rebuild-beat 6.3s ease-in-out infinite;
 }
 @keyframes rebuild-beat{
@@ -330,7 +329,7 @@
       0 2px 3px rgba(0,0,0,.4),0 16px 32px -16px rgba(0,0,0,.85),0 0 40px 0 rgba(76,175,125,.70);
   }
 }
-.relink-banner.is-rebuild .relink-stat{cursor:default;gap:8px;align-self:stretch;}
+.relink-banner.is-rebuild .relink-stat{cursor:default;gap:4px;align-self:stretch;}
 /* Serif, where the whole page is not. One hero moment a month earns a
    face of its own, and destoning is the point rather than an accident.
    The trailing letter-space is padded back on the left or the word
@@ -350,7 +349,7 @@
   background:linear-gradient(90deg,transparent,rgba(214,238,250,.7));
 }
 .relink-rule.is-right{background:linear-gradient(90deg,rgba(214,238,250,.7),transparent);}
-.relink-banner.is-rebuild .relink-stat-value{font-size:1.5rem;font-weight:700;letter-spacing:.3px;}
+.relink-banner.is-rebuild .relink-stat-value{font-size:1.1rem;font-weight:700;letter-spacing:.3px;}
 .relink-banner.is-rebuild .relink-stat-value .time{color:#e9f0f7;text-shadow:0 1px 2px rgba(0,0,0,.75);}
 .relink-banner.is-rebuild .relink-stat-value .region{color:#8d97a6;}
 /* Cyan is the one colour not in the cycle, so the region inside two
@@ -367,12 +366,12 @@
   50%{text-shadow:0 1px 2px rgba(0,0,0,.7), 0 0 26px rgba(102,245,255,1);}
 }
 .relink-banner.is-rebuild .relink-alert{
-  margin-top:10px;padding-top:10px;
+  margin-top:7px;padding-top:7px;
   border-top-color:rgba(200,220,245,.16);color:#dfe7f0;
 }
 @media (max-width:560px){
   .relink-word{font-size:1rem;gap:10px;}
-  .relink-banner.is-rebuild .relink-stat-value{font-size:1.24rem;}
+  .relink-banner.is-rebuild .relink-stat-value{font-size:1.02rem;}
 }
 
 /* The relink's own. Quieter than the lockout's amber on every axis, the
