@@ -143,5 +143,6 @@ h1{
    way. The sibling combinator reaches it because the banner and .page
    are both children of <body>, which is why this needs no JavaScript. */
 .relink-banner.is-urgent ~ .page .header-rule::before,
+.relink-banner.is-rebuild ~ .page .header-rule::before,
 .relink-banner.is-lockout ~ .page .header-rule::before{animation:none;}
 .subtitle{color:var(--muted);font-size:.92rem;margin-bottom:24px;line-height:1.5;max-width:720px;}

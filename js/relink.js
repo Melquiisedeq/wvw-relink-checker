@@ -61,6 +61,11 @@ const RELINK_OPENING_MS = 5 * 60 * 1000;
 // turns up within minutes, so this is the fuse for an API that has
 // stopped answering, not a window anyone is meant to see the end of.
 const RELINK_STUCK_MS = 30 * 60 * 1000;
+// The final week of the season, after which the countdown stops being
+// about a reset and starts being about the relink. It is not an
+// estimate: teamAssignment minus seven days lands on the previous reset
+// to the minute, so the window is exactly "this is the last week".
+const RELINK_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Whether a region's relink is close enough to shout about. Three ways
 // in, handing over to each other so the bar never blinks out mid-reset:
@@ -83,15 +88,17 @@ function regionIsUrgent(relinkAt, resetAt, hasLive, now) {
   return false;
 }
 
-// Crossed swords, at the weight the other glyphs on the page are drawn.
-// Deliberately not the lockout's warning triangle: a relink is an event
-// you turn up for, not a deadline you can miss, and giving both the same
-// glyph would leave hue as the only thing telling them apart.
-const SWORDS_ICON =
-  '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" ' +
-  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-  '<path d="M4.5 19.5 L19 5"/><path d="M19.5 19.5 L5 5"/>' +
-  '<path d="M5.5 15.5 L8.5 18.5"/><path d="M18.5 15.5 L15.5 18.5"/></svg>';
+// The game's own crossed swords - the icon WvW already puts on a fight
+// in progress, so it needs no learning. Deliberately not the lockout's
+// warning triangle: a relink is an event you turn up for, not a deadline
+// you can miss. The file is a flat alpha silhouette, which is why it is
+// a mask over currentColor and not an <img>: one asset, tinted by
+// whatever state it lands in.
+function swordsIcon() {
+  const s = document.createElement('span');
+  s.className = 'swords-icon';
+  return s;
+}
 
 // Dims the region labels (NA/EU) and emphasizes the countdown values,
 // since the time is what the person actually came to read.
@@ -134,6 +141,18 @@ let resetEU = null;
 let liveNA = false;
 let liveEU = false;
 
+// The relink proper: when the teams themselves are rebuilt, which is a
+// different event from the week rolling over even though they land two
+// minutes apart. Its own endpoint, and unlike the lockout the regions
+// differ - EU goes eight hours before NA.
+let assignNA = null;
+let assignEU = null;
+
+function msOrNull(iso) {
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
+}
+
 async function fetchTimers() {
   try {
     const lockoutRaw = await fetchJson(`${API_BASE}/wvw/timers/lockout`);
@@ -145,6 +164,16 @@ async function fetchTimers() {
     timersLoaded = true;
   } catch {
     // Keep showing the last known value; the banner just skips this cycle.
+  }
+  // Its own try, so one endpoint failing does not cost the other its
+  // figures - they drive different halves of the bar.
+  try {
+    const raw = await fetchJson(`${API_BASE}/wvw/timers/teamAssignment`);
+    const at = Array.isArray(raw) ? raw[0] : raw;
+    assignNA = msOrNull(at?.na);
+    assignEU = msOrNull(at?.eu);
+  } catch {
+    // Same reasoning: the last figures stand.
   }
   updateRelinkBanner();
 }
@@ -184,15 +213,100 @@ function updateRelinkFromMatches(naMatches, euMatches) {
   updateRelinkBanner();
 }
 
+// The relink's own value line. Same shape as the weekly one, with one
+// difference: a region that has already relinked shows that it is done
+// rather than a countdown, because 'any moment now' would be a lie for
+// the eight hours EU spends waiting for NA.
+function buildRebuildValue(naLeft, euLeft) {
+  const frag = document.createDocumentFragment();
+  const half = (name, left) => {
+    const lit = left !== null && left > 0 && left <= RELINK_URGENT_MS;
+    const region = document.createElement('span');
+    region.className = lit ? 'region is-now' : 'region';
+    region.textContent = name + ' ';
+    const time = document.createElement('span');
+    time.className = lit ? 'time is-now' : 'time';
+    time.textContent = left !== null && left <= 0 ? 'done' : formatCountdown(left);
+    return [region, time];
+  };
+  const sep = document.createElement('span');
+  sep.className = 'region';
+  sep.textContent = ' \u00b7 ';
+  frag.append(...half('NA', naLeft), sep, ...half('EU', euLeft));
+  return frag;
+}
+
+// The relink's bar. One stat and no divider: the lockout has nothing
+// left to say by now, and the reset it used to sit beside is the same
+// instant this is counting to.
+function buildRebuildBanner(naLeft, euLeft) {
+  relinkBanner.classList.add('is-rebuild');
+  const inner = document.createElement('div');
+  inner.className = 'relink-inner';
+  const stat = document.createElement('div');
+  stat.className = 'relink-stat';
+
+  const word = document.createElement('div');
+  word.className = 'relink-word';
+  const text = document.createElement('span');
+  text.className = 'relink-word-text';
+  text.textContent = 'Relink';
+  const rule = (right) => {
+    const r = document.createElement('span');
+    r.className = right ? 'relink-rule is-right' : 'relink-rule';
+    return r;
+  };
+  word.append(swordsIcon(), rule(false), text, rule(true), swordsIcon());
+
+  const value = document.createElement('div');
+  value.className = 'relink-stat-value';
+  value.appendChild(buildRebuildValue(naLeft, euLeft));
+
+  stat.append(word, value);
+  inner.appendChild(stat);
+  relinkBanner.style.display = 'block';
+  relinkBanner.appendChild(inner);
+
+  const alert = document.createElement('div');
+  alert.className = 'relink-alert';
+  alert.appendChild(swordsIcon());
+  const line = document.createElement('span');
+  // Nothing here asks for an action, because by now there is none to
+  // take - the lockout closed days ago. It announces.
+  line.textContent = 'New link, new enemies, and a month of good fights ahead.';
+  alert.appendChild(line);
+  relinkBanner.appendChild(alert);
+}
+
 function updateRelinkBanner() {
   const now = Date.now();
   const hasRelink = relinkNA !== null || relinkEU !== null;
   const hasLockout = timersLoaded && lockoutTime !== null;
   relinkBanner.textContent = '';
+  relinkBanner.classList.remove('is-lockout', 'is-urgent', 'is-rebuild');
   if (!hasRelink && !hasLockout) {
     relinkBanner.style.display = 'none';
     return;
   }
+
+  const assignNaLeft = assignNA !== null ? assignNA - now : null;
+  const assignEuLeft = assignEU !== null ? assignEU - now : null;
+  const lockoutGone = hasLockout && lockoutTime - now <= 0;
+  // The three days between the lockout closing and the teams landing.
+  // It ends on NA, the later region, so the bar survives EU's eight-hour
+  // head start - and the moment NA lands it is gone. Reading the future
+  // of assignNA is also what stops a stale timer stranding it here.
+  const rebuilding = lockoutGone && assignNaLeft !== null && assignNaLeft > 0;
+  if (rebuilding) {
+    buildRebuildBanner(assignNaLeft, assignEuLeft);
+    return;
+  }
+
+  // The last week of the season. Both regions enter it eight hours
+  // apart, so the earlier one opens the window for the whole bar - it
+  // is the same week either way.
+  const ahead = [assignNaLeft, assignEuLeft].filter((v) => v !== null && v > 0);
+  const relinkWeek = ahead.length > 0 && Math.min(...ahead) <= RELINK_WEEK_MS;
 
   const inner = document.createElement('div');
   inner.className = 'relink-inner';
@@ -203,12 +317,22 @@ function updateRelinkBanner() {
   if (hasRelink) {
     const naLeft = relinkNA !== null ? relinkNA - now : null;
     const euLeft = relinkEU !== null ? relinkEU - now : null;
-    inner.appendChild(buildRelinkStat(
-      'Next Reset',
+    // Same numbers either way - on the final week the reset and the
+    // relink are the same instant - so what changes is the name on
+    // them, which is the whole point of the state.
+    const stat = buildRelinkStat(
+      relinkWeek ? 'Next Relink' : 'Next Reset',
       buildRelinkValue(naLeft, euLeft, naUrgent, euUrgent),
       false,
-      'When the current matchups end and every tier is redrawn for the week ahead. Weekly - the relink that rebuilds the teams themselves is monthly.'
-    ));
+      relinkWeek
+        ? 'The last reset of the season. At this one the teams themselves are rebuilt, not just the matchups.'
+        : 'When the current matchups end and every tier is redrawn for the week ahead. Weekly - the relink that rebuilds the teams themselves is monthly.'
+    );
+    if (relinkWeek) {
+      stat.classList.add('relink-week');
+      stat.querySelector('.relink-stat-title').prepend(swordsIcon());
+    }
+    inner.appendChild(stat);
   }
   if (hasRelink && hasLockout) {
     const divider = document.createElement('div');
@@ -277,7 +401,7 @@ function updateRelinkBanner() {
     // two is ever on the bar.
     const alert = document.createElement('div');
     alert.className = 'relink-alert relink-alert--relink';
-    alert.innerHTML = SWORDS_ICON;
+    alert.appendChild(swordsIcon());
     // Named rather than pointed at. A glyph beside one of two numbers
     // has to be noticed and then interpreted; the word is read.
     const where = [];
@@ -286,6 +410,18 @@ function updateRelinkBanner() {
     const text = document.createElement('span');
     text.textContent = `${where.join(' and ')} reset night. `
       + 'Big fight, and the queue that comes with it.';
+    alert.appendChild(text);
+    relinkBanner.appendChild(alert);
+  } else if (relinkWeek) {
+    // Last of the three, and it says the one thing the other two do not:
+    // that the season itself is ending. It deliberately carries no
+    // instruction - going to set your guild is the lockout's line, and
+    // saying it twice would leave neither being read.
+    const alert = document.createElement('div');
+    alert.className = 'relink-alert relink-alert--relink';
+    alert.appendChild(swordsIcon());
+    const text = document.createElement('span');
+    text.textContent = 'Last week of the season. New teams at the next reset.';
     alert.appendChild(text);
     relinkBanner.appendChild(alert);
   }
