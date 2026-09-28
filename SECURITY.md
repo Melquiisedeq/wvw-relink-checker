@@ -40,6 +40,13 @@ than hours.
 
 ## Scope
 
-This repository, and the site it serves at `wvwrelink.com`. ArenaNet's API,
-Google Sheets and GoatCounter are other people's services — report those to
-them.
+This repository, and the site it serves at `wvwrelink.com` — including the two
+spreadsheets this project fills and publishes itself: the kills history behind
+the crossed swords, and the one cell that decides whether the page announces
+that new teams are out. Both are published read-only on purpose. If either
+turns out to be writable by anyone with the link, that is a finding here and a
+serious one, because whoever can write that cell decides what this page tells
+people about their team.
+
+ArenaNet's API, the community guild sheet, Google as a platform and GoatCounter
+are other people's services — report those to them.

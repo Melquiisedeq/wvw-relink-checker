@@ -29,7 +29,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # than being discovered later by a feature quietly not working.
 FETCHED = {
     'api.guildwars2.com': 'guild search, matches, objectives, timers',
-    'docs.google.com': 'the two public spreadsheets',
+    'docs.google.com': 'the three public spreadsheets',
     'render.guildwars2.com': 'guild emblem images',
     'melquiisedeq.goatcounter.com': 'one page view per visit',
 }
@@ -179,9 +179,48 @@ def check_demo_hatch(problems):
                 'a link that shows a relink which is not happening.' % name)
 
 
+def check_notice_position(problems):
+    """#teamsNotice has to be the first element in the body.
+
+    It is a sticky bar. sticky measures from where an element really sits in the
+    document rather than from where it ends up painted, so moved down under the
+    scenery it would not be at the top of a freshly loaded page at all - it
+    would pin only once you had scrolled past where it lives, which is an
+    announcement you have to go and find. Moved inside anything with overflow
+    set it would not pin at all.
+
+    Both failures are silent in the way this whole file is about: the page looks
+    perfectly fine, the bar is simply somewhere useless, and the only days
+    anybody could notice are the days a relink is happening.
+    """
+    html = read('index.html')
+    body = re.search(r'<body[^>]*>', html)
+    if not body:
+        problems.append(
+            'No <body> tag in index.html, so where the teams notice sits could '
+            'not be checked. That is a much bigger problem than this check.')
+        return
+
+    # Comments and blank lines in front of it are fine. The first *element* is
+    # not, whatever it is.
+    rest = re.sub(r'<!--.*?-->', '', html[body.end():], flags=re.S).lstrip()
+    first = re.match(r'<([a-zA-Z][^\s>/]*)([^>]*)>', rest)
+    if not first or 'id="teamsNotice"' not in first.group(2):
+        found = ('<%s>' % first.group(1)) if first else '(no element at all)'
+        problems.append(
+            'The first element in the body of index.html is %s, not the teams '
+            'notice. #teamsNotice has to come first: it is position:sticky, and '
+            'sticky measures from where an element really sits - anywhere '
+            'further down and the bar is not at the top of a freshly loaded '
+            'page, it only pins after you scroll past it. Inside anything with '
+            'overflow set it does not pin at all. Neither failure produces an '
+            'error.' % found)
+
+
 def main():
     problems = []
-    for check in (check_hosts, check_scripts, check_styles, check_demo_hatch):
+    for check in (check_hosts, check_scripts, check_styles, check_demo_hatch,
+                  check_notice_position):
         check(problems)
 
     if problems:
@@ -198,6 +237,7 @@ def main():
           'only.' % (len(FETCHED) + len(MENTIONED), len(FETCHED),
                      len(MENTIONED)))
     print('No demo hatch in js/.')
+    print('The teams notice is the first element in the body.')
     return 0
 
 

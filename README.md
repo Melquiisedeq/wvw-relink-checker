@@ -63,6 +63,11 @@ sheet, this one filled by the project itself — the API only publishes
 totals for the whole week, so spotting a fight happening *now* takes two
 readings taken apart in time.
 
+New teams are published a few days before the relink they belong to, and
+nothing in the API says when. So a third sheet, also the project's own,
+holds one cell saying whether it has happened yet; the page reads it only
+in those few days and puts a line at the top when it has.
+
 ## 🔒 Privacy
 
 **Everything runs in your browser. There is no backend of mine to send
@@ -72,17 +77,19 @@ anything to.**
 |---|---|
 | `api.guildwars2.com` | The guild names you paste go here to be resolved — that request *is* the lookup. Also all match, objective and upgrade data. |
 | `render.guildwars2.com` | Guild emblem images, for objectives claimed by a guild. Images only. |
-| `docs.google.com` | Two public spreadsheets, read-only: the community guild list when you click a shield icon, and the kills history when you open a tier's maps. |
+| `docs.google.com` | Three public spreadsheets, read-only: the community guild list when you click a shield icon, the kills history when you open a tier's maps, and one cell saying whether the new teams are out — read only in the days before a relink. |
 | `melquiisedeq.goatcounter.com` | One anonymous page view per visit. Nothing else. |
 
-Three things are kept in your browser's own storage. None of them ever
-leave your device, and the last two clear themselves out as they age.
+Four things are kept in your browser's own storage. None of them ever
+leave your device; two clear themselves out as they age, and the last is
+a single number that gets overwritten.
 
 | Key | What it holds |
 |---|---|
 | `wvw-relink-checker:guilds` | The list you typed, so it is still there next time |
 | `wvw-guilds-v1` | Name, tag and emblem of guilds already looked up, so the maps don't ask twice |
 | `wvw-fight-v1` | Recent kill counts per match — what puts the crossed swords on the busiest map |
+| `wvw-relink-checker:teams-notice` | Which relink's "the new teams are out" notice you dismissed, so it stays dismissed until the next one |
 
 <details>
 <summary><b>About the visit counter</b></summary>
