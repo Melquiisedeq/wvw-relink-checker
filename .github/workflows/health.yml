@@ -1,0 +1,84 @@
+# Everything this page shows comes from somewhere else: ArenaNet's API, two
+# Google Sheets, and GitHub Pages. None of them owes this project a warning
+# before changing, and none of the ways they break is loud. A renamed column
+# reads the wrong column. A file that fails to deploy 404s into a console
+# nobody is watching. A stopped Apps Script trigger just stops.
+#
+# So this asks, four times a day, whether the world outside is still the shape
+# the code assumes. It is the counterpart to checks.yml, which asks the same
+# question about the repository itself.
+#
+# Four jobs rather than one script, so the failure email already names which
+# kind of thing moved without opening anything.
+name: Health
+
+on:
+  schedule:
+    # Every six hours, at :43. Not on the hour: scheduled runs bunch up there
+    # and get delayed, and nothing here is urgent to the minute.
+    - cron: '43 */6 * * *'
+  workflow_dispatch:
+
+# Everything here reads. Nothing writes, so nothing gets a token that could.
+permissions:
+  contents: read
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Every route the page reads, and the shape it reads
+        run: python3 .github/scripts/check-api.py
+
+  # Moved here from its own workflow. The API has no endpoint that resolves a
+  # 5-digit WvW Team ID to a name, so js/config.js carries a hand-maintained
+  # TEAM_NAMES table. When ArenaNet adds a team, the page quietly renders
+  # "Unknown team (ID 11013)" until somebody happens to notice. This notices
+  # instead.
+  team-names:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compare live team IDs against the table in js/config.js
+        run: |
+          set -euo pipefail
+
+          # Read all_worlds properly instead of grepping the raw JSON:
+          # scores and kill counts land in the same 5-digit range and would
+          # produce a stream of false alarms.
+          ids=$(curl -fsS 'https://api.guildwars2.com/v2/wvw/matches?ids=all' \
+            | jq -r '.[].all_worlds[][] | select(. >= 10000)' | sort -u)
+
+          if [ -z "$ids" ]; then
+            echo "::error::No team IDs came back from the API - the endpoint or its shape changed."
+            exit 1
+          fi
+
+          missing=""
+          for id in $ids; do
+            grep -q "\"$id\":" js/config.js || missing="$missing $id"
+          done
+
+          if [ -n "$missing" ]; then
+            echo "::error::TEAM_NAMES in js/config.js is missing team ID(s):$missing"
+            echo "Names are published at https://wiki.guildwars2.com/wiki/API:2/wvw/matches"
+            exit 1
+          fi
+
+          echo "All $(echo "$ids" | wc -l) live team IDs are present in TEAM_NAMES."
+
+  sheets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The community sheet's columns, and whether kills is still being written
+        run: python3 .github/scripts/check-sheets.py
+
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: wvwrelink.com answers and serves every file it asks for
+        run: python3 .github/scripts/check-site.py
