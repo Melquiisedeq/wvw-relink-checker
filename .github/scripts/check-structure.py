@@ -11,10 +11,12 @@ nothing to notice until somebody reports it.
 Run it by hand any time:  python .github/scripts/check-structure.py
 """
 
+import datetime
 import io
 import os
 import re
 import sys
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -217,10 +219,70 @@ def check_notice_position(problems):
             'error.' % found)
 
 
+def check_sitemap(problems):
+    """Is sitemap.xml's lastmod a date at all, and not in the future?
+
+    Deliberately not "is it current", and the reason is what the field means.
+    lastmod is the last *significant change to the page's content* - what a
+    reader would see differently - and Google only uses it at all while it is
+    consistently accurate, ignoring the field entirely on sites that stamp the
+    current date on every build. Which makes "is it current" a judgement about
+    whether a change mattered, and that judgement is human: a refactor, a colour
+    tweak and a corrected comment all change these files and none of them change
+    the page.
+
+    A first version of this check asked git when index.html, js/ or css/ last
+    changed and demanded the date keep up. It was wrong, in the worst direction
+    - it would have demanded a new date for comment fixes, training exactly the
+    every-commit stamping that gets the field discounted. Automating the easy
+    half of a judgement guarantees the wrong answer.
+
+    So what is left is the part that needs no judgement, and it is worth having:
+    a lastmod that is malformed or in the future is not a weak signal, it is a
+    sitemap a crawler may drop outright, and it fails as quietly as everything
+    else in this file.
+    """
+    found = re.search(r'<lastmod>([^<]+)</lastmod>', read('sitemap.xml'))
+    if not found:
+        # Absent is fine: lastmod is optional in the protocol, and no date is
+        # better than a date nobody trusts. Nothing to check.
+        return
+
+    stamp = found.group(1).strip()
+    try:
+        said = datetime.date(*time.strptime(stamp, '%Y-%m-%d')[:3])
+    except (ValueError, TypeError):
+        problems.append(
+            'sitemap.xml has <lastmod>%s</lastmod>, which is not a YYYY-MM-DD '
+            'date. A crawler can drop a sitemap it cannot parse, and it does '
+            'not tell anybody.' % stamp)
+        return
+    if said > datetime.date.today():
+        problems.append(
+            'sitemap.xml claims the page last changed on %s, which is in the '
+            'future. Nothing is served differently; the date is simply not '
+            'believable, which is how the field stops counting.' % stamp)
+
+
+def sitemap_note():
+    """What the sitemap says, for the summary - so a silent check leaves proof.
+
+    check_sitemap passes quietly on anything it is allowed to accept, and a check
+    that prints nothing when it is happy is one nobody can tell ran at all.
+    """
+    found = re.search(r'<lastmod>([^<]+)</lastmod>', read('sitemap.xml'))
+    if not found:
+        return ('sitemap.xml carries no <lastmod>, which is allowed - the tag is '
+                'optional.')
+    return ('sitemap.xml says the page last changed on %s; bump it only for a '
+            'change to the content, the JSON-LD or the links.'
+            % found.group(1).strip())
+
+
 def main():
     problems = []
     for check in (check_hosts, check_scripts, check_styles, check_demo_hatch,
-                  check_notice_position):
+                  check_notice_position, check_sitemap):
         check(problems)
 
     if problems:
@@ -238,6 +300,7 @@ def main():
                      len(MENTIONED)))
     print('No demo hatch in js/.')
     print('The teams notice is the first element in the body.')
+    print(sitemap_note())
     return 0
 
 
