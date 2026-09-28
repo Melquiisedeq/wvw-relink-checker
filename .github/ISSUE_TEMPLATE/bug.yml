@@ -1,0 +1,50 @@
+name: Something is wrong
+description: A guild lands on the wrong team, a number looks off, something does not load
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One thing first, because it is behind most reports: guild search is
+        **exact**. It needs the guild's full name - not its tag, not part of
+        the name. Capitalisation does not matter.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Screenshots help, and you can drag them straight into this box.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: input
+    attributes:
+      label: What you put in
+      description: The guild names you pasted, or which part of the page you were on. Guild names are public, so pasting them here is fine.
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      placeholder: Firefox 142, Chrome on Android, Safari on iPhone
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you send
+      options:
+        - label: The name I used is the guild's full name, not its tag
+          required: true
+        - label: I had a look at the Limitations in the README
