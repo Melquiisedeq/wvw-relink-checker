@@ -23,6 +23,7 @@ const standingsGridEU   = document.getElementById('standingsGridEU');
 const standingsStatusNA = document.getElementById('standingsStatusNA');
 const standingsStatusEU = document.getElementById('standingsStatusEU');
 const relinkBanner = document.getElementById('relinkBanner');
+const teamsNotice = document.getElementById('teamsNotice');
 
 let wvwMapCache = null;              // { na: {guid: teamId}, eu: {guid: teamId} }
 let wvwMapCachedAt = 0;

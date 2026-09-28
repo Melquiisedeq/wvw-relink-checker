@@ -7,10 +7,24 @@ Thumbs.db
 .idea/
 *.swp
 
-# Working originals: full-size screenshots and model exports that get
-# cut down before anything ships. Git keeps every byte forever, so the
-# 4 MB versions stay out and only the optimised file in assets/ goes in.
+# The checks under .github/scripts/ are run, not imported - but testing one
+# means importing it from outside the repository, and Python leaves this behind
+# next to the file it imported.
+__pycache__/
+
+# Notes to self, and nothing the site needs to run: the research behind each
+# feature, a sweep of everything the GW2 API can return, and the working copies
+# of the Apps Script code that runs in Google rather than here. Also where the
+# full-size image originals live - git keeps every byte forever, so the 4 MB
+# versions stay out and only the cut-down file in assets/ goes in.
 _source/
+
+# The local test bench for the teams notice: a copy of the page with a control
+# panel bolted on, twelve situations and a verdict for each. Useful and never
+# shipped - it exists to exercise a strip that is only on screen four days a
+# month. Ignored here rather than in .git/info/exclude so a fresh clone cannot
+# commit it by accident.
+_teste/
 
 # Working notes and saved prompts for whoever is helping with the code, kept
 # out because this repository is public and anyone cloning it points their own

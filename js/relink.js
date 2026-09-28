@@ -278,6 +278,257 @@ function buildRebuildBanner(naLeft, euLeft) {
   relinkBanner.appendChild(alert);
 }
 
+// ---------------------------------------------------------------------
+// The teams notice
+// For the days between ArenaNet publishing the new assignment and the
+// relink landing, when the answer is already there to be looked up and
+// nothing says so. The finding is counted by this project's Apps Script
+// trigger and read from the sheet; see RELINK_SHEET_URL in config.js for
+// why the counting cannot happen here.
+// ---------------------------------------------------------------------
+
+// One cell, holding "window:published" as text. Two number cells would
+// come back through the CSV export in whatever format the sheet happens
+// to be using, and a thousands separator is a comma inside a
+// comma-separated file. Nothing but two integers is ever accepted: the
+// sheet is world-readable and this is the one value on the page that
+// decides what the page claims, so it is parsed strictly rather than
+// trustingly.
+const RELINK_STATE_RE = /^"?(\d{1,12}):(\d{1,12})"?$/;
+
+let relinkState = null;        // { window, published }
+let relinkStateAt = 0;
+let relinkStateInFlight = null;
+let relinkStateFailedAt = 0;
+
+// After a failed read, wait before asking again. Without this the banner's
+// one-minute tick would retry every minute for the four days the window is
+// open, in every tab anyone left open - and the case that makes it fail is
+// usually a misconfiguration that will not fix itself, so it would fail
+// every time. Short enough that a blip costs the notice minutes, not the
+// window.
+const RELINK_SHEET_RETRY_MS = 2 * 60 * 1000;
+
+async function getRelinkState() {
+  if (relinkState && Date.now() - relinkStateAt < RELINK_SHEET_TTL_MS) {
+    return relinkState;
+  }
+  if (relinkStateFailedAt
+    && Date.now() - relinkStateFailedAt < RELINK_SHEET_RETRY_MS) {
+    return relinkState;
+  }
+  if (relinkStateInFlight) return relinkStateInFlight;
+
+  relinkStateInFlight = (async () => {
+    // The same deadline every other request on this page gets. Without it
+    // a connection that accepts and goes quiet would leave this pending
+    // for good, and relinkStateInFlight hands that promise to every later
+    // caller - so the notice would never resolve for the whole session.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const res = await fetch(RELINK_SHEET_URL,
+        { cache: 'no-store', signal: controller.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const found = RELINK_STATE_RE.exec((await res.text()).trim());
+      if (!found) throw new Error('not two integers');
+      relinkState = {
+        window: Number(found[1]),
+        published: Number(found[2]),
+      };
+      relinkStateAt = Date.now();
+      relinkStateFailedAt = 0;
+    } catch {
+      // On doubt, nothing. The notice stays down and the next attempt is a
+      // couple of minutes away; a strip that appears because a read went
+      // wrong would send people to the old answer, which is the one thing
+      // it must not do.
+      relinkStateFailedAt = Date.now();
+    } finally {
+      clearTimeout(timer);
+      relinkStateInFlight = null;
+    }
+    return relinkState;
+  })();
+  return relinkStateInFlight;
+}
+
+// Dismissal is remembered as the window it was dismissed in, not as a
+// flag. The window is up to four days long and a regular visitor would
+// otherwise meet the same strip every time, but next month's window has
+// a different id and brings it back on its own - which is the behaviour
+// wanted in both directions, out of one string and no expiry logic.
+const TEAMS_NOTICE_KEY = 'wvw-relink-checker:teams-notice';
+
+function teamsNoticeDismissed(windowId) {
+  try { return localStorage.getItem(TEAMS_NOTICE_KEY) === String(windowId); }
+  catch { return false; } // storage off: it shows, which is the harmless way to be wrong
+}
+
+// Feather's bell, at the weight the other glyphs on the page are drawn.
+// The mark that opens the strip has to say "this is a notice" before a
+// word of it is read, and the page's other two candidates are both
+// already spoken for: the alert triangle belongs to the lockout, and the
+// shield means "there is a guild list behind this" - which is why the
+// shield appears in the middle of the sentence instead, where it is
+// pointing at the thing it has always pointed at.
+const NOTICE_ICON =
+  '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" ' +
+  'stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>' +
+  '<path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+
+// The page's own name for its two answers, written the way they appear
+// on it. A strip that says "check the sheet" sends people off the site to
+// do by hand the thing the site exists to do; a strip that grows its own
+// button puts a rival beside the one verb the page has. So neither: the
+// sentence points at what is already here and already working, and the
+// marks it points with are the marks themselves.
+function buildTeamsNotice(windowId) {
+  teamsNotice.textContent = '';
+
+  const mark = document.createElement('span');
+  mark.className = 'teams-notice-mark';
+  mark.innerHTML = NOTICE_ICON;
+
+  const text = document.createElement('p');
+  text.className = 'teams-notice-text';
+
+  const lead = document.createElement('strong');
+  lead.textContent = 'The new teams are out.';
+
+  // Named, and drawn the way it is drawn. "Hit Check" is a reference
+  // someone has to go and find; the word wearing the button's own colour
+  // is a reference they recognise on the way past.
+  const checkRef = document.createElement('span');
+  checkRef.className = 'teams-notice-ref';
+  checkRef.textContent = 'Check';
+
+  // The shield inline in the sentence, so "open the shield" is not an
+  // instruction to go hunting for something described in words.
+  const shieldRef = document.createElement('span');
+  shieldRef.className = 'teams-notice-ref teams-notice-ref--icon';
+  // 15, not 13, and the reason is arithmetic rather than taste. The shield
+  // is drawn in a 24-wide viewBox and the info mark inside it is 3.2 by 8
+  // units, so the mark lands on whole pixels only when 24 scales by a
+  // multiple of .625 - which in this range means a width of exactly 15. At
+  // 13 the mark is 1.73px wide and antialiases into a smudge, and a smudge
+  // is what it looked like.
+  shieldRef.innerHTML = serverGuildsShield(15);
+  // The word the icon stands for, read out and never seen. An aria-label on
+  // the SVG was tried first and broke the sentence: role="img" makes the icon
+  // an object in the accessibility tree, and Narrator stopped reading there -
+  // "beside any NA team for every guild on it" was simply lost. A text node
+  // has no such edge, and screen readers read straight through it.
+  const spoken = document.createElement('span');
+  spoken.className = 'teams-notice-spoken';
+  spoken.textContent = 'guild list shield';
+  shieldRef.appendChild(spoken);
+
+  // No explanation of what a relink is: anyone reading this page in
+  // these four days knows, and the sentence that teaches them is the
+  // sentence that stops the rest being read.
+  text.append(
+    lead,
+    ' Paste your guilds and hit ',
+    checkRef,
+    ' to see where each one landed — or open the ',
+    shieldRef,
+    ' beside any NA team for every guild on it.'
+  );
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'teams-notice-close';
+  close.setAttribute('aria-label', 'Dismiss this notice');
+  close.title = 'Dismiss';
+  // Two drawn strokes, not the × character. A glyph cannot be centred in
+  // a box by any amount of CSS - it sits on a baseline inside metrics the
+  // font chose, and ×, ✕ and the multiplication sign each sit at a
+  // different height in a different face. Drawn, the cross is centred
+  // because its own coordinates say so.
+  close.innerHTML =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" '
+    + 'stroke-width="2.4" stroke-linecap="round" aria-hidden="true">'
+    + '<path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>';
+  close.addEventListener('click', () => {
+    try { localStorage.setItem(TEAMS_NOTICE_KEY, String(windowId)); }
+    catch { /* no storage: it comes back on the next load, and that is fine */ }
+    teamsNotice.textContent = '';
+    teamsNotice.style.display = 'none';
+  });
+
+  const inner = document.createElement('div');
+  inner.className = 'teams-notice-inner';
+  inner.append(mark, text);
+
+  teamsNotice.append(inner, close);
+  teamsNotice.dataset.window = String(windowId);
+  teamsNotice.style.display = 'block';
+}
+
+function hideTeamsNotice() {
+  if (teamsNotice.dataset.window) delete teamsNotice.dataset.window;
+  teamsNotice.textContent = '';
+  teamsNotice.style.display = 'none';
+}
+
+// Three things have to agree before anything is drawn, and any one of
+// them missing means nothing is: the banner has to be in the rebuilding
+// window, the sheet has to say the table has moved, and it has to say so
+// about *this* relink.
+//
+// That last one is what ends the notice, and it is why nothing ever has to
+// come back and switch it off. The trigger writes once a month; next month
+// the lockout closes, the bar comes back, and last month's row is still
+// there - so comparing it against the timer this page read itself is the
+// whole expiry mechanism. One integer instead of a second write.
+//
+// Outside the window this returns before asking the sheet anything, which
+// is what keeps twenty-six days a month free of a request that could only
+// ever answer "no".
+function updateTeamsNotice(rebuilding) {
+  const windowId = assignNA !== null ? Math.floor(assignNA / 1000) : null;
+  if (!rebuilding || windowId === null || teamsNoticeDismissed(windowId)) {
+    hideTeamsNotice();
+    return;
+  }
+  // Already up, and nothing in it changes - so no fetch and no redraw. The
+  // banner is rebuilt every minute; taking the focus off this strip's own
+  // button once a minute for four days would not be.
+  if (teamsNotice.dataset.window === String(windowId)) return;
+
+  // The rule the rest of the page already follows - see the visibility test
+  // in schedulePeriodicRefresh and the one in the map poll. It matters here
+  // because the interval that drives this was deliberately left ungated
+  // while it only ticked text: hidden, it would still ask the sheet every
+  // ten minutes for as long as the tab stayed open. Nothing is lost by
+  // waiting, since coming back runs this within the minute.
+  //
+  // visibilityState only, and not document.hasFocus() as the map poll adds:
+  // an unfocused window on a second monitor is exactly where somebody parks
+  // this page waiting for the teams, and that is the case the notice exists
+  // for. Animation can stop when nobody is staring at it; news cannot.
+  if (document.visibilityState === 'hidden') return;
+
+  getRelinkState().then((state) => {
+    // The window can close, or the strip be dismissed, while this is in
+    // flight - so the decision is made again on arrival rather than
+    // assumed from when it was asked.
+    const stillWanted = state
+      && state.window === windowId
+      && state.published > 0
+      && assignNA !== null && Math.floor(assignNA / 1000) === windowId
+      && !teamsNoticeDismissed(windowId);
+    if (!stillWanted) {
+      hideTeamsNotice();
+      return;
+    }
+    if (teamsNotice.dataset.window === String(windowId)) return;
+    buildTeamsNotice(windowId);
+  });
+}
+
 function updateRelinkBanner() {
   const now = Date.now();
   const hasRelink = relinkNA !== null || relinkEU !== null;
@@ -286,6 +537,7 @@ function updateRelinkBanner() {
   relinkBanner.classList.remove('is-lockout', 'is-urgent', 'is-relink-week', 'is-rebuild');
   if (!hasRelink && !hasLockout) {
     relinkBanner.style.display = 'none';
+    updateTeamsNotice(false);
     return;
   }
 
@@ -297,6 +549,11 @@ function updateRelinkBanner() {
   // head start - and the moment NA lands it is gone. Reading the future
   // of assignNA is also what stops a stale timer stranding it here.
   const rebuilding = lockoutGone && assignNaLeft !== null && assignNaLeft > 0;
+  // Same condition, same instant: the notice is born and dies with the
+  // bar above it rather than deciding its own life. NA is the later
+  // region, so it survives EU's eight-hour head start and is gone the
+  // moment NA lands - at which point everybody knows anyway.
+  updateTeamsNotice(rebuilding);
   if (rebuilding) {
     buildRebuildBanner(assignNaLeft, assignEuLeft);
     return;

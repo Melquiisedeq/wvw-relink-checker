@@ -1,4 +1,4 @@
-# Everything this page shows comes from somewhere else: ArenaNet's API, two
+# Everything this page shows comes from somewhere else: ArenaNet's API, three
 # Google Sheets, and GitHub Pages. None of them owes this project a warning
 # before changing, and none of the ways they break is loud. A renamed column
 # reads the wrong column. A file that fails to deploy 404s into a console
@@ -8,8 +8,8 @@
 # the code assumes. It is the counterpart to checks.yml, which asks the same
 # question about the repository itself.
 #
-# Four jobs rather than one script, so the failure email already names which
-# kind of thing moved without opening anything.
+# A job per kind of thing rather than one script, so the failure email already
+# names which of them moved without opening anything.
 name: Health
 
 on:
@@ -82,3 +82,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: wvwrelink.com answers and serves every file it asks for
         run: python3 .github/scripts/check-site.py
+
+  # The teams notice is meant to appear every month. A month where it did not is
+  # a bug, and the only way anybody finds out is this asking - the Apps Script
+  # trigger that feeds it stops as silently as the kills one does, which is why
+  # check-sheets.py exists too. Its own job, so the failure email says
+  # "relink-notice" and not "site": nothing is wrong with the site when this
+  # fails.
+  relink-notice:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Every relink produced a notice
+        run: python3 .github/scripts/check-notice.py

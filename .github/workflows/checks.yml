@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # python3, not python: Ubuntu does not guarantee the shorter name exists.
-      - name: Scripts, stylesheets, hosts and the demo hatch
+      - name: Scripts, styles, hosts, the hatch, the notice and the sitemap
         run: python3 .github/scripts/check-structure.py
 
   syntax:
