@@ -13,8 +13,17 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+
+    # This job only reads the repository. Declaring that here means it gets a
+    # read-only token whatever the account-wide default happens to be, now or
+    # later.
+    permissions:
+      contents: read
+
     steps:
-      - uses: actions/checkout@v4
+      # Pinned by commit SHA rather than by the v7 tag: a tag can be moved to
+      # any commit at any time, a SHA cannot.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Compare live team IDs against the table in js/config.js
         run: |

@@ -1,0 +1,12 @@
+# This project has no dependencies to update: no package.json, no lockfile,
+# nothing pulled from a CDN. The one thing it does pin is the GitHub Action it
+# runs, by commit SHA - and a pinned SHA never updates itself. This is what
+# tells us a newer version exists, as a pull request to read before taking it.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      # Monthly, not weekly. One action does not produce enough news to be
+      # worth a weekly notification that gets ignored.
+      interval: monthly
