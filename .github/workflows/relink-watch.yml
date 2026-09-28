@@ -1,0 +1,37 @@
+# TEMPORARY. Delete this and .github/scripts/watch-relink.py after 03/10/2026.
+#
+# One measurement, for one relink window. The question is when ArenaNet
+# publishes the new team assignment: it is known to land before the relink
+# rather than at it, but the only evidence is somebody else's repository
+# history from November 2025. Before building a notice whose entire premise is
+# that window, the window gets seen once with our own eyes.
+#
+# Every two hours because the interesting moments are not office hours: the EU
+# relink lands 02/10 18:00Z and NA 03/10 02:00Z, which is the middle of the
+# night where this is being written.
+#
+# It reads and prints. No snapshot, no commit, no file, no token that can
+# write - deliberately, because a collector that keeps state is real machinery
+# with a real security surface, and that decision belongs to the feature
+# rather than to a measurement taken before it.
+#
+# The script fails on purpose from 04/10 onwards, with a message saying to
+# delete both files. That failure is the cleanup: a temporary cron that relies
+# on being remembered is a cron still running next year.
+name: Relink watch
+
+on:
+  schedule:
+    - cron: '7 */2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read the guild-to-team table and print a digest
+        run: python3 .github/scripts/watch-relink.py
