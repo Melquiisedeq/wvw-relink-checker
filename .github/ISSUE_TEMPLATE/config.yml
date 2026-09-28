@@ -1,0 +1,9 @@
+# Blank issues are off on purpose. Not to be strict - the two forms below ask
+# for the three things that decide whether a report can be reproduced at all,
+# and a blank box gets none of them.
+blank_issues_enabled: false
+
+contact_links:
+  - name: A guild was not found
+    url: https://github.com/Melquiisedeq/wvw-relink-checker#-limitations
+    about: The search is exact - the full guild name, not the tag. That, and the other known limits, are listed here.

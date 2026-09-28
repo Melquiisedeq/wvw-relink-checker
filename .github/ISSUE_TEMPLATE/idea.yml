@@ -1,0 +1,18 @@
+name: An idea
+description: Something you would like the tool to do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would like
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: What it would save you
+      description: What you do today instead, and what is annoying about it. This part matters more than the idea itself - it is what decides whether the feature ends up solving the real problem or just the one that was easy to describe.
+    validations:
+      required: true
