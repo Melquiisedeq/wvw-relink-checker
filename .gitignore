@@ -11,3 +11,9 @@ Thumbs.db
 # cut down before anything ships. Git keeps every byte forever, so the
 # 4 MB versions stay out and only the optimised file in assets/ goes in.
 _source/
+
+# Working notes and saved prompts for whoever is helping with the code, kept
+# out because this repository is public and anyone cloning it points their own
+# tools at it. What a contributor needs is in CONTRIBUTING.md, on purpose.
+CLAUDE.md
+.claude/
