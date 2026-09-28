@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Are the two spreadsheets the page reads still shaped the way it reads them?
+"""Are the spreadsheets the page reads still shaped the way it reads them?
+
+Two of the three, and the two that have a shape to be wrong about. The third is
+a single cell that check-notice.py owns, and its whole shape is "two integers
+and a colon".
 
 Two very different sources, so two very different checks.
 
@@ -35,8 +39,15 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-COMMUNITY_SHEET_ID = '1Txjpcet-9FDVek6uJ0N3OciwgbpE0cfWozUK7ATfWx4'
-KILLS_SHEET_ID = '1Lh6dGhlYVvvKlXT_tofEUKZhYGW71Jij1IstbdPF2fg'
+# The spreadsheet ids are read out of js/config.js, never written here. Same
+# reasoning as fallbacks_in_code() below and as check-notice.py: a second copy
+# of an id is a second thing that can drift, and this one drifts in the worst
+# possible direction. Change an id in the page and leave a copy here, and this
+# check goes on reading the old sheet - finds every column where it expects it,
+# finds the kills history fresh, and passes, while the page reads the new one and
+# is broken. A check that verifies the wrong thing is worse than no check,
+# because it buys confidence without delivering any.
+CONFIG_ID = {'community': 'SHEET_ID', 'kills': 'KILLS_SHEET_ID'}
 
 ATTEMPTS = 3
 PAUSE_SECONDS = 5
@@ -60,6 +71,25 @@ COMMUNITY_COLUMNS = {
         (['Guilds'], 'ALLIANCE_MEMBERS_FALLBACK'),
     ],
 }
+
+
+def sheet_ids():
+    """The two spreadsheet ids this check needs, or (None, the missing name).
+
+    Looked up by the constant's own name so that renaming one in js/config.js
+    fails here loudly, instead of quietly leaving this pointed at a sheet
+    nobody reads any more.
+    """
+    with io.open(os.path.join(ROOT, 'js', 'config.js'), encoding='utf-8') as fh:
+        config = fh.read()
+    found = {}
+    for key, name in CONFIG_ID.items():
+        value = re.search(
+            r"const %s\s*=\s*'([^']+)'" % re.escape(name), config)
+        if not value:
+            return None, name
+        found[key] = value.group(1)
+    return found, None
 
 
 def csv_url(sheet_id, tab):
@@ -97,11 +127,11 @@ def fallbacks_in_code():
             re.finditer(r'const (\w+_FALLBACK)\s*=\s*(\d+)', body)}
 
 
-def check_community(problems, notes):
+def check_community(problems, notes, sheet_id):
     fallbacks = fallbacks_in_code()
 
     for tab, wanted in COMMUNITY_COLUMNS.items():
-        rows, error = fetch_rows(csv_url(COMMUNITY_SHEET_ID, tab))
+        rows, error = fetch_rows(csv_url(sheet_id, tab))
         if error:
             problems.append('The %s tab of the community sheet did not answer '
                             '(%s). The shield icon reads that tab.'
@@ -147,8 +177,8 @@ def check_community(problems, notes):
                              % (names[0], index, constant, expected))
 
 
-def check_kills(problems, notes):
-    rows, error = fetch_rows(csv_url(KILLS_SHEET_ID, 'kills'))
+def check_kills(problems, notes, sheet_id):
+    rows, error = fetch_rows(csv_url(sheet_id, 'kills'))
     if error:
         problems.append('The kills sheet did not answer (%s). This is what '
                         'puts the crossed swords on the busiest map.' % error)
@@ -184,9 +214,17 @@ def check_kills(problems, notes):
 
 
 def main():
+    ids, missing = sheet_ids()
+    if ids is None:
+        print('::error::%s could not be read out of js/config.js, so this '
+              'cannot tell which spreadsheet the page is looking at. It was '
+              'renamed, and this check has to be taught the new name - it '
+              'deliberately keeps no copy of the id of its own.' % missing)
+        return 1
+
     problems, notes = [], []
-    check_community(problems, notes)
-    check_kills(problems, notes)
+    check_community(problems, notes, ids['community'])
+    check_kills(problems, notes, ids['kills'])
 
     for note in notes:
         print(note)
