@@ -1,0 +1,48 @@
+# This site has no tests and cannot easily have any: there is no pure function
+# to call, just a page and the scripts that build it. What it does have is a
+# small set of mistakes that fail *silently* in production - a script missing
+# from the ordered list in index.html, a host missing from the Content Security
+# Policy, a syntax error in a file nothing parses until a browser does. All of
+# them leave the page looking fine. These checks are aimed at exactly those,
+# and at nothing else.
+name: Checks
+
+on:
+  pull_request:
+  push:
+    # main only. Without this, pushing to a pull request branch would run
+    # everything twice - once for the push, once for the pull request.
+    branches: [main]
+
+# Both jobs only read the checked-out tree. Nothing here needs a token that
+# can write, so nothing here gets one.
+permissions:
+  contents: read
+
+jobs:
+  # Two jobs rather than one script, so the name in the annotation and in the
+  # failure email already says which kind of thing broke.
+  structure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # python3, not python: Ubuntu does not guarantee the shorter name exists.
+      - name: Scripts, stylesheets, hosts and the demo hatch
+        run: python3 .github/scripts/check-structure.py
+
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # A syntax error in any of these files takes the whole page down, and
+      # says so nowhere except the browser console of whoever opened it.
+      # node --check parses a file without running a line of it.
+      - name: Parse every script
+        run: |
+          set -euo pipefail
+          for f in js/*.js; do
+            node --check "$f"
+          done
+          echo "$(ls js/*.js | wc -l) scripts parse."
