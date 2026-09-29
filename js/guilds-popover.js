@@ -218,25 +218,17 @@ async function toggleGuildsPopover(teamName, triggerEl) {
 
 // The shield with an info mark inside: this page's sign for "there is a
 // guild list behind this". It sits next to NA team names, and the teams
-// notice in js/relink.js draws the same one for the same reason - the
-// two point at the same list, so they are the same mark or they are a
-// mark and a near-miss.
+// notice in js/relink.js draws the same one - called rather than copied,
+// and safe across the load order even though relink.js is parsed first,
+// because nothing calls this until a click or a countdown tick.
 //
-// Called rather than copied, and safe across the load order even though
-// relink.js is parsed first: nothing calls this until a click or a
-// countdown tick, long after every file has run.
-//
-// Always aria-hidden, for both callers, and that took a correction to
-// arrive at. A screen reader has no use for this shape: next to the
-// button below, the button's own aria-label says what it opens, and
-// inside the teams notice's sentence the word is supplied as text beside
-// the icon - see buildTeamsNotice in js/relink.js.
-//
-// It was briefly given role="img" with a label instead, for the sentence.
-// That was worse, and measurably: role="img" makes the icon an OBJECT in
-// the accessibility tree, and Narrator stopped reading at it, losing the
-// rest of the sentence. An icon standing in for a word wants a text node,
-// not a named graphic.
+// aria-hidden for both callers. Next to the button below, the button's own
+// aria-label says what it opens; inside the notice's sentence the word is
+// supplied as text beside the icon - see buildTeamsNotice in js/relink.js.
+// role="img" with a label was tried there instead and was worse, tested
+// with Narrator on 28/09/2026: role="img" makes the icon an OBJECT in the
+// accessibility tree, and the reader stopped at it, losing the rest of the
+// sentence.
 function serverGuildsShield(size) {
   const w = size || 17;
   return `<svg width="${w}" height="${Math.round(w * 19 / 17)}" viewBox="0 0 24 27" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">`
