@@ -1,25 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 190" width="160" height="190" role="img" aria-labelledby="t">
   <title id="t">WvW Relink Checker</title>
   <defs>
-    <linearGradient id="iceGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#f2fdff"/>
-      <stop offset="100%" stop-color="#6fd8f5"/>
-    </linearGradient>
-    <linearGradient id="shieldEdge" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#eafcff"/>
-      <stop offset="100%" stop-color="#3fa9cc"/>
-    </linearGradient>
+    <linearGradient id="crestface" x1="0" y1="0" x2="0" y2="1"><stop offset="0.00%" stop-color="#dae7ed"/><stop offset="11.77%" stop-color="#cfe6ef"/><stop offset="23.53%" stop-color="#bae3f3"/><stop offset="35.30%" stop-color="#aee2f4"/><stop offset="37.10%" stop-color="#9adcf3"/><stop offset="38.90%" stop-color="#72d0f0"/><stop offset="40.70%" stop-color="#59caee"/><stop offset="52.03%" stop-color="#4cc2e6"/><stop offset="63.37%" stop-color="#2eb3d9"/><stop offset="74.70%" stop-color="#15abd2"/><stop offset="79.70%" stop-color="#00a6cc"/><stop offset="84.70%" stop-color="#009bbf"/><stop offset="89.70%" stop-color="#0096b9"/><stop offset="93.13%" stop-color="#00a3c8"/><stop offset="96.57%" stop-color="#34bae0"/><stop offset="100.00%" stop-color="#4cc6eb"/></linearGradient>
+    <linearGradient id="crestrim" x1="0" y1="0" x2="0" y2="1"><stop offset="0.00%" stop-color="#d0dee3"/><stop offset="11.77%" stop-color="#c5dce5"/><stop offset="23.53%" stop-color="#b0d9e9"/><stop offset="35.30%" stop-color="#a4d8eb"/><stop offset="37.10%" stop-color="#91d2e9"/><stop offset="38.90%" stop-color="#68c6e6"/><stop offset="40.70%" stop-color="#4ec0e4"/><stop offset="52.03%" stop-color="#40b8dd"/><stop offset="63.37%" stop-color="#1caacf"/><stop offset="74.70%" stop-color="#00a2c7"/><stop offset="79.70%" stop-color="#009cc0"/><stop offset="84.70%" stop-color="#0092b4"/><stop offset="89.70%" stop-color="#008cad"/><stop offset="93.13%" stop-color="#0099bc"/><stop offset="96.57%" stop-color="#24b0d6"/><stop offset="100.00%" stop-color="#40bce1"/></linearGradient>
+    <linearGradient id="crestrimin" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#06566a"/><stop offset="55%" stop-color="#137e9a"/><stop offset="57%" stop-color="#6bd4f6"/><stop offset="100%" stop-color="#c6f0ff"/></linearGradient>
+    <radialGradient id="crestwell" cx="42%" cy="34%" r="78%"><stop offset="0%" stop-color="#1d242e"/><stop offset="100%" stop-color="#090c10"/></radialGradient>
+    <clipPath id="crestclip"><path d="M10,10 H150 V95 C150,145 112,172 80,188 C48,172 10,145 10,95 Z"/></clipPath>
   </defs>
-  <path d="M10,10 H150 V95 C150,145 112,172 80,188 C48,172 10,145 10,95 Z" fill="#0f1216" stroke="url(#shieldEdge)" stroke-width="4"/>
-  <path d="M20,18 H140 V95 C140,138 108,162 80,176 C52,162 20,138 20,95 Z" fill="none" stroke="#3fa9cc" stroke-width="1" opacity="0.5"/>
-  <g fill="url(#iceGrad)" transform="translate(38,55)">
-    <rect x="0" y="66" width="84" height="14"/>
-    <rect x="12" y="30" width="60" height="38"/>
-    <rect x="12" y="12" width="10" height="20"/>
-    <rect x="28" y="12" width="10" height="20"/>
-    <rect x="44" y="12" width="10" height="20"/>
-    <rect x="60" y="12" width="10" height="20"/>
-    <rect x="38" y="-8" width="6" height="22"/>
-    <path d="M44,-8 L64,-1 L44,6 Z"/>
+  <path d="M10,10 H150 V95 C150,145 112,172 80,188 C48,172 10,145 10,95 Z" fill="url(#crestwell)" stroke="url(#crestrim)" stroke-width="10.0"/>
+  <g clip-path="url(#crestclip)"><path d="M10,10 H150 L10,150 Z" fill="#ffffff" opacity=".07"/><path d="M10,10 H70 L10,70 Z" fill="#f7fdff" opacity=".10"/></g>
+  <path d="M21,19 H139 V95 C139,137 107,161 80,175 C53,161 21,137 21,95 Z" fill="none" stroke="url(#crestrimin)" stroke-width="1.4" opacity=".9"/>
+  <g transform="translate(38,55) translate(42,36) scale(0.930) translate(-42,-36)"><g fill="#000" opacity="0.24" transform="translate(2,6)"><rect x="0" y="66" width="84" height="14"/><rect x="12" y="30" width="60" height="38"/><rect x="12" y="12" width="10" height="20"/><rect x="28" y="12" width="10" height="20"/><rect x="44" y="12" width="10" height="20"/><rect x="60" y="12" width="10" height="20"/><rect x="38" y="-8" width="6" height="22"/><path d="M44,-8 L64,-1 L44,6 Z"/></g>
+    <g fill="url(#crestface)"><rect x="0" y="66" width="84" height="14"/><rect x="12" y="30" width="60" height="38"/><rect x="12" y="12" width="10" height="20"/><rect x="28" y="12" width="10" height="20"/><rect x="44" y="12" width="10" height="20"/><rect x="60" y="12" width="10" height="20"/><rect x="38" y="-8" width="6" height="22"/><path d="M44,-8 L64,-1 L44,6 Z"/></g>
+    <g fill="none" stroke="#c6f0ff" stroke-width="1" stroke-opacity="0.80"><rect x="0" y="66" width="84" height="14"/><rect x="12" y="30" width="60" height="38"/><rect x="12" y="12" width="10" height="20"/><rect x="28" y="12" width="10" height="20"/><rect x="44" y="12" width="10" height="20"/><rect x="60" y="12" width="10" height="20"/><rect x="38" y="-8" width="6" height="22"/><path d="M44,-8 L64,-1 L44,6 Z"/></g>
+    <g fill="#f7fdff"><rect x="0" y="66" width="84" height="1.8"/><rect x="12" y="30" width="60" height="1.8"/><rect x="12" y="12" width="10" height="1.5"/><rect x="28" y="12" width="10" height="1.5"/><rect x="44" y="12" width="10" height="1.5"/><rect x="60" y="12" width="10" height="1.5"/></g>
+    <g fill="#ffffff" opacity="0.35"><rect x="14" y="32" width="16" height="5" rx="2.5"/><rect x="2" y="68" width="22" height="4" rx="2"/></g>
+    <g fill="#00657e" opacity=".75"><rect x="12" y="65.6" width="60" height="2.4"/></g>
   </g>
 </svg>
