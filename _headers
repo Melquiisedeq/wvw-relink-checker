@@ -1,0 +1,5 @@
+# Read by Cloudflare Pages only; GitHub Pages does not serve files that
+# start with an underscore. Preview deployments already carry noindex -
+# this covers the project's own address, which mirrors main.
+https://wvwrelink-preview.pages.dev/*
+  X-Robots-Tag: noindex
