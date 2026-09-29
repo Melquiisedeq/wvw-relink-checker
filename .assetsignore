@@ -1,0 +1,13 @@
+# Which files of this repository Cloudflare publishes as the site. Everything
+# at the root is left out, then the site is let back in by name - so a new file
+# at the root stays private until it is added here, rather than going public
+# the day it is created. _headers stays out: Cloudflare reads it either way,
+# and let in it would also be served.
+/*
+!/index.html
+!/favicon.ico
+!/robots.txt
+!/sitemap.xml
+!/assets/
+!/css/
+!/js/
