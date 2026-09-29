@@ -101,6 +101,8 @@ cookies, no fingerprinting, no persistent identifier. One request per
 page load records the page address, referrer, title, screen width and
 country — and nothing you type. Its script is served from this repository
 rather than a CDN.
+Only visits to wvwrelink.com are counted; a copy of the page served
+anywhere else sends nothing.
 
 To keep your own browser out of the count, run `localStorage.skipgc = 't'`
 in the developer console on the site.
