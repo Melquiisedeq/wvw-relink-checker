@@ -1,5 +1,18 @@
-# Read by Cloudflare Pages only; GitHub Pages does not serve files that
-# start with an underscore. Preview deployments already carry noindex -
-# this covers the project's own address, which mirrors main.
+# Read by Cloudflare only, never served; GitHub Pages does not publish files
+# that start with an underscore.
+
+# The page's own CSP is a <meta> tag, which cannot say frame-ancestors. The
+# two policies are both enforced, so this one only adds.
+/*
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Cross-Origin-Opener-Policy: same-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()
+
+# Both addresses mirror main and must not be indexed.
 https://wvwrelink-preview.pages.dev/*
+  X-Robots-Tag: noindex
+
+https://wvwrelink.wvwgw2.workers.dev/*
   X-Robots-Tag: noindex

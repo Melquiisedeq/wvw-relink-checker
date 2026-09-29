@@ -1,0 +1,13 @@
+// The site as a Cloudflare Worker made only of static files: no `main`, so no
+// code of ours runs there. Read by Cloudflare's build only; GitHub Pages
+// ignores it. What gets uploaded is decided by .assetsignore.
+{
+  // Must match the Worker's name in the dashboard, or the build fails.
+  "name": "wvwrelink",
+  "compatibility_date": "2026-09-29",
+  "assets": {
+    "directory": "."
+  },
+  // Required by Worker previews, even when empty.
+  "previews": {}
+}
