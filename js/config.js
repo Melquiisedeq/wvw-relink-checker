@@ -121,34 +121,24 @@ const KILLS_SHEET_TTL_MS = 5 * 60 * 1000;
 // Must match the column order the Apps Script writes.
 const KILLS_MAP_ORDER = Object.freeze(['Center', 'RedHome', 'BlueHome', 'GreenHome']);
 
-// The teams notice. In the days between the season lockout closing and the
-// relink landing, the new team assignment becomes queryable and nothing
-// announces it: the API has no timestamp for it, no ETag, no conditional
-// request, nothing that changes. The only signal in existence is the
-// guild-to-team table itself moving, and seeing that means holding a copy of
-// the table and comparing - half a megabyte, which is exactly what a browser
-// must not be made to download to find out whether a strip should appear.
-//
-// So an Apps Script trigger on this project's own account does the comparing,
-// the same way the kills history is produced, and writes the answer as two
-// integers in one cell. This reads that cell, and only while the banner says
-// the teams are being rebuilt - so for twenty-six days a month it costs
-// nothing at all.
+// The teams notice. In the days before a relink the new team assignment becomes
+// queryable and nothing announces it: the API has no timestamp for it, no ETag,
+// no field that changes. The only signal in existence is the guild-to-team
+// table itself moving, and seeing that means holding a copy and comparing half
+// a megabyte - which is why the comparing happens in an Apps Script trigger on
+// this project's own account, the same way the kills history is produced, and
+// arrives here as two integers in one cell.
 //
 //   window     the NA teamAssignment these numbers are about, epoch seconds
 //   published  when the table was seen to have moved, epoch seconds, or 0
 //
-// `window` is what ends the notice without anything having to come back and
-// switch it off: the page compares it against the relink it is counting down
-// to, and a row about last month's relink says nothing. Both are integers and
-// nothing else is ever read out of that cell.
+// Both are integers and nothing else is ever read out of that cell.
+// updateTeamsNotice in js/relink.js says what each of them decides.
 //
-// Its own spreadsheet, not a tab of the kills one: separate documents keep the
-// two features from sharing a fate, and the script that writes this is its own
-// project too. The cost of that choice is a second sharing setting to keep
-// right, and it is the setting that matters - the sheet is published read-only,
-// and whoever could write that cell could make this page announce a relink that
-// has not happened.
+// Its own spreadsheet rather than a tab of the kills one, so the two features
+// do not share a fate. The cost is a second sharing setting to keep right, and
+// it is the one that matters: published read-only, because whoever could write
+// that cell could make this page announce a relink that has not happened.
 const RELINK_SHEET_ID = '14kWfueHYO2-aLKGDVFgdkuO9pHkmYs1fghCO9eMIEl4';
 // `range=A1:A1` is load-bearing, not tidiness. A2 of the same tab holds the
 // trigger's heartbeat, and RELINK_STATE_RE anchors the WHOLE body - so a second
