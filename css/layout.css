@@ -242,7 +242,10 @@
   .teams-notice-close{width:28px;height:28px;right:5px;}
 }
 
-.title-row svg{flex-shrink:0;filter:drop-shadow(0 0 5px rgba(140,224,255,.45));}
+/* .36, down from .45, and lower is the point: the crest carries its own
+   highlight now, so a halo on top of it reads as haze. The footer copy has no
+   filter at all and is the reference for how much is enough. */
+.title-row svg{flex-shrink:0;filter:drop-shadow(0 0 5px rgba(140,224,255,.36));}
 h1{
   font-family:Cambria,Georgia,'Times New Roman',serif;
   font-size:1.7rem;margin:0;letter-spacing:1.5px;text-transform:uppercase;
