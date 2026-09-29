@@ -103,47 +103,17 @@
   }
 }
 /* ---- The teams notice ------------------------------------------- */
-/* A bar across the very top of the window, edge to edge, sticking there
-   once the page scrolls past it.
-
-   Why this form. Of the families of notification, a toast and a snackbar
-   dismiss themselves in seconds and this has to hold for four days for
-   whoever arrives at any moment in them; an inline callout only exists
-   where it is placed; a badge cannot carry a sentence. What is left is
-   the bar sites use for system-level news, which is this register
-   exactly.
-
-   sticky and not fixed. Fixed would sit on the header from the first
-   paint and cover the title; this pattern is only considered safe
-   because it pushes content down instead of hiding it. That is also why
-   #teamsNotice is the first element in index.html: sticky measures from
-   where an element really sits, so put after the scenery it would not be
-   at the top of a freshly loaded page - it would pin only once you had
-   scrolled past where it lives, which is a notice you have to go and
-   find. Put inside anything with overflow set it would not pin at all.
-   Both failures are silent, which is why check-structure.py asserts the
-   position rather than trusting the comment.
-
-   Still, and not travelling. A ticker was built and tried here first,
-   and the thing that decided it was putting the two side by side with
-   everything else held identical: the movement bought attention the
-   position had already bought, and spent legibility for it. Of fifteen
-   announcement bars on commercial sites, none animate.
-
-   No hue in the surface. A bar pinned across the top of the window is
-   already the most prominent place on the page, so colour there is spent
-   on prominence that is not missing - and the page's top is a photograph
-   under a serif title, which a tinted band fights. The accent is kept
-   for the two words that are references to something, and with the
-   surface grey they are the only lit thing in the bar, which is where
-   the eye should land anyway. */
+/* A bar across the very top of the window, edge to edge, sticking there once
+   the page scrolls past it. Why a bar rather than a toast, why it stands
+   still rather than travelling, and why the surface carries no hue are in
+   _source/decisoes-aviso-times.md with the alternatives that lost. The one
+   thing here that is not taste is the position: see index.html, where the
+   element actually sits, and check-structure.py, which asserts it. */
 .teams-notice{
-  /* The four numbers the look is made of, in one place because they were
-     arrived at by turning them against the real thing rather than by
-     reasoning. Width first: the bar spans the window, so its contents are
-     not held to the 720px column the rest of the page uses - at 1040 the
-     whole sentence fits on one line on a desktop, and one line is what
-     keeps the bar shallow. */
+  /* Turned against the real thing rather than reasoned. Width first: the bar
+     spans the window, so its contents are not held to the 720px column the
+     rest of the page uses - at 1040 the whole sentence fits on one line on a
+     desktop, and one line is what keeps the bar shallow. */
   --teams-notice-width:1040px;
   --teams-notice-pad-y:8px;
   --teams-notice-letter:.02em;
@@ -152,55 +122,43 @@
   display:none; /* until updateTeamsNotice sets it to block */
   position:sticky;top:0;z-index:40;
   width:100%;
-  /* Symmetric, and that is the whole reason for the number rather than
-     tidiness. 46px on the right is clearance for the close button, which is
-     absolutely positioned and so takes no space of its own - but the inner
-     block below is centred with `margin:0 auto`, and auto margins split what
-     is left of the CONTENT box. Asymmetric padding therefore leaks straight
-     into the centring: 46 against 18 put the sentence (46-18)/2 = 14px left
-     of the window's middle. Which is visible here and would not be elsewhere,
-     because this bar's own background is a radial lit at exactly 50% - the eye
-     has a perfect reference for the centre and the text was not on it. The
-     mobile rule at the bottom keeps its asymmetry on purpose; see there. */
+  /* Symmetric, and that is the reason for the number rather than tidiness.
+     46px is clearance for the close button, which is absolutely positioned
+     and so takes no space of its own - but .teams-notice-inner below is
+     centred with `margin:0 auto`, and auto margins split what is left of the
+     CONTENT box. So asymmetric padding leaks straight into the centring: 46
+     against 18 put the sentence (46-18)/2 = 14px left of the middle, on a bar
+     whose own background is lit at exactly 50% and gives the eye a perfect
+     reference for it. The mobile rule at the bottom keeps its asymmetry on
+     purpose; see there. */
   padding:0 46px;
-  /* Lit from behind the middle and falling away to both ends, radially
-     rather than in a straight sweep down. It matters that it is radial:
-     the page's own background is a radial from the top, so a bar built
-     the same way belongs to it instead of sitting on it - and the light
-     lands where the sentence is, which gives the bar a centre without
-     giving it a colour. */
+  /* Radial rather than a straight sweep down, and that is the part that
+     matters: the page's own background is a radial from the top, so a bar
+     built the same way belongs to it instead of sitting on it - and the light
+     lands where the sentence is, which gives the bar a centre without giving
+     it a colour. */
   background:radial-gradient(120% 220% at 50% 0%,
     rgba(38,44,54,.97) 0%, rgba(20,24,30,.97) 55%, rgba(11,13,17,.97) 100%);
-  /* No backdrop-filter here, and the absence is the decision. There was an
-     8px blur on this bar; it was removed on 28/09/2026 after looking at it.
-     The surface above is .97 opaque, so three per cent of the backdrop ever
-     showed through - and turned off and on again over the title and the
-     photograph, with the bar stuck to the top where it would show most, the
-     difference was not findable. A blur is a GPU pass per frame over whatever
-     moves behind it, and behind this one the ember canvas is redrawing
-     constantly. Paying that for something nobody can see is the trade the
-     other way round. It is also the rule this project already reached once,
-     in css/standings.css: "Opaque retires the backdrop-filter too."
-
-     The other three blurred surfaces keep theirs - the relink banner below at
-     .62/.52, the controls, the panels - because those are genuinely
-     translucent and there the blur is doing visible work. */
+  /* No backdrop-filter here, and the absence is the decision. The surface is
+     .97 opaque, so three per cent of the backdrop ever showed through, and a
+     blur is a GPU pass per frame over whatever moves behind it - here the
+     ember canvas, redrawing constantly. An 8px blur was on this bar and was
+     removed on 28/09/2026 after looking for the difference and not finding
+     it. Same rule this project already reached in css/standings.css: "Opaque
+     retires the backdrop-filter too." The other three blurred surfaces keep
+     theirs - the relink banner below at .62/.52, the controls, the panels -
+     because those are genuinely translucent. */
   border-bottom:1px solid #2c333d;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.05),
     0 8px 24px -12px rgba(0,0,0,.9);
 }
 .teams-notice-inner{
-  /* justify-content on top of the auto margins, and the two fix different
-     halves of the same problem. The margins centre the 1040px column in the
-     window; this centres the sentence inside the column, which matters because
-     the sentence does not fill it - about 1015px of text in 1040px of column
-     left the leftover entirely on the right and pushed the visual centre
-     another ~12px across.
-
-     It costs nothing when the window is narrow: the paragraph is a flex item
-     that shrinks, so once it has to use the full width there is no free space
-     to distribute and this goes quiet on its own. */
+  /* Two centrings for two halves of one problem: the auto margins centre the
+     1040px column in the window, and this centres the sentence inside the
+     column - it does not fill it, and the leftover all landed on the right.
+     Free on a narrow window, where the paragraph shrinks to the full width
+     and there is no space left to distribute. */
   display:flex;align-items:center;justify-content:center;gap:13px;
   width:100%;max-width:var(--teams-notice-width);margin:0 auto;
   padding:var(--teams-notice-pad-y) 0;
@@ -208,11 +166,10 @@
 .teams-notice-mark{
   display:flex;flex-shrink:0;color:var(--muted);
 }
-/* letter-spacing rather than a bigger size or more padding: the bar is
-   meant to be shallow, and tracking is the one way to give a line room
-   horizontally without giving it any vertically. Small values only -
-   past about .04em a sentence stops reading as a sentence and starts
-   reading as a label. */
+/* letter-spacing rather than a bigger size or more padding: the bar is meant
+   to be shallow, and tracking is the one way to give a line room
+   horizontally without giving it any vertically. Small values only - past
+   about .04em a sentence starts reading as a label. */
 .teams-notice-text{
   margin:0;
   font-size:var(--teams-notice-size);
@@ -221,46 +178,36 @@
   text-shadow:0 1px 2px rgba(0,0,0,.45);
 }
 .teams-notice-text strong{color:#fff;font-weight:700;}
-/* The page's two answers, named in its own hand. Not links and not
-   buttons - the things they name are a screen away and already work, and
-   a second control that scrolls you to the first one is a rival to the
-   only verb this page has. So they are set in the accent and left alone:
-   recognised on the way past, not clicked. */
+/* The page's two answers, set in the accent and left alone: recognised on the
+   way past, not clicked. buildTeamsNotice says why they are neither links nor
+   buttons. */
 .teams-notice-ref{
   color:var(--accent);font-weight:700;
 }
 .teams-notice-ref--icon{
-  /* Two pixels lower than the 13px shield sat, because the box grew by two
-     and it is the mark inside it that has to line up with the sentence, not
-     the box. */
+  /* Two pixels lower than the 13px shield sat: the box grew by two, and it is
+     the mark inside it that has to line up with the sentence, not the box. */
   display:inline-flex;align-items:center;vertical-align:-4px;
 }
-/* Read out, never seen: the word the shield stands for. It exists because the
-   icon is a noun in the middle of a sentence, and a screen reader that skips it
-   is left with "or open the, beside any NA team" - an instruction with a hole
-   where the object goes.
-
-   Not display:none and not visibility:hidden, which is the whole point: both of
-   those take the text out of the accessibility tree as well, which is the
-   opposite of what is wanted. Clipped to nothing instead, so it is there to be
-   read and nowhere to be seen. nowrap because a clipped box one pixel wide
-   would otherwise wrap the phrase into a column of single letters, and some
-   screen readers read that as letters. */
+/* Read out, never seen: the word the shield stands for. The icon is a noun in
+   the middle of a sentence, and a screen reader that skips it is left with
+   "or open the, beside any NA team" - an instruction with a hole where the
+   object goes. Not display:none and not visibility:hidden, which is the whole
+   point: both take the text out of the accessibility tree as well. nowrap
+   because a clipped box one pixel wide would otherwise wrap the phrase into a
+   column of single letters, and some screen readers read that as letters. */
 .teams-notice-spoken{
   position:absolute;width:1px;height:1px;
   margin:-1px;padding:0;border:0;
   overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);
   white-space:nowrap;
 }
-/* Findable without being loud, which took two tries. A faint glyph at
-   65% opacity was too easy to miss - on a bar that is on screen for four
-   days this is the only way out of it. A lit circle with a rim was the
-   overcorrection: a lozenge parked on the end of the bar.
-
-   So: no rim and no fill at rest, a target 30px square for the finger,
-   and a soft square of light under it on hover. The stroke is drawn
-   rather than typed - see the comment in buildTeamsNotice for why a ×
-   character cannot be centred in a box. */
+/* Findable without being loud, which took two tries - a faint glyph at 65%
+   was too easy to miss, and a lit circle with a rim was a lozenge parked on
+   the end of the bar. So no rim and no fill at rest, a target 30px square for
+   the finger, and a soft square of light under it on hover. The stroke is
+   drawn rather than typed; buildTeamsNotice says why a × character cannot be
+   centred in a box. */
 .teams-notice-close{
   position:absolute;top:50%;right:8px;transform:translateY(-50%);
   width:30px;height:30px;padding:0;
@@ -277,21 +224,19 @@
 /* button:active would depress it and stamp the page's inset shadows on a
    transparent square. It outranks the rule above on its own. */
 .teams-notice-close:active{transform:translateY(-50%);box-shadow:none;}
-/* A bar that looks trim on a desktop can take a fifth of a phone's
-   screen. The tracking goes first, because it is the one thing here that
-   costs height on a narrow window: every hundredth of an em is another
-   chance for the sentence to need one more line. */
+/* A bar that looks trim on a desktop can take a fifth of a phone's screen.
+   The tracking goes first, because it is the one thing here that costs height
+   on a narrow window. */
 @media (max-width:600px){
   .teams-notice{
     --teams-notice-letter:0;
     --teams-notice-size:.78rem;
-    /* Still asymmetric here, deliberately, where the base rule is not. Making
-       this symmetric would mean 38px on both sides instead of 38 and 12, which
-       is 26px of a phone's width spent to fix a centring nobody can see: at
-       this size the sentence always fills the line and wraps, so there is no
-       free space for centring to move and no visible middle to be off. The
-       26px, on the other hand, is another chance of one more line - which is
-       the one thing this whole block is tuned against. */
+    /* Still asymmetric here, where the base rule is not. Symmetric would mean
+       38px on both sides instead of 38 and 12, which is 26px of a phone's
+       width spent on a centring nobody can see: at this size the sentence
+       fills the line and wraps, so there is no free space for centring to
+       move. The 26px is another chance of one more line, which is the thing
+       this whole block is tuned against. */
     padding:0 38px 0 12px;
   }
   .teams-notice-close{width:28px;height:28px;right:5px;}

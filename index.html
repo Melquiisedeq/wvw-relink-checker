@@ -130,30 +130,24 @@
 
 <body>
 
-<!-- The teams notice, and it is the first element in the document for a
-     reason that is not cosmetic: it is a sticky bar, and sticky measures
-     from where an element really sits rather than from where it is
-     painted. Moved down under the scenery it would not be at the top of
-     a freshly loaded page at all - it would sit wherever it was put and
-     only pin after you had scrolled past it, which is an announcement
-     you have to go and find. Moved inside anything with overflow set,
-     sticky stops working altogether and says nothing. Empty and
-     display:none except in the days between the new teams being
-     published and the relink landing.
+<!-- The teams notice. First element in the document, and not for tidiness:
+     this is a sticky bar, and sticky measures from where an element sits
+     rather than from where it is painted. Moved down under the scenery it
+     would not be at the top of a freshly loaded page - it would pin only
+     once you had scrolled past where it lives. Moved inside anything with
+     overflow set it would not pin at all. Both failures are silent, so
+     check-structure.py asserts the position. Empty and display:none except
+     in the days between the new teams being published and the relink
+     landing.
 
      role="status" is what makes a screen reader read the bar out when it
-     appears; without it the strip is silent and a blind visitor is told
-     nothing. The role brings polite announcement and aria-atomic with it
-     by default, so the whole sentence is read rather than fragments of it.
-
-     The relink banner further down deliberately has NO live region, and
-     that is not an oversight or an inconsistency. updateRelinkBanner
-     wipes and rebuilds it every sixty seconds to tick the countdown, so
-     a live region there would interrupt the listener with the same
-     numbers every minute, forever. This bar is built once per relink
-     window and guarded against redraw, which is what makes it safe to
-     announce. Announcement suits an announcement; it does not suit a
-     clock. -->
+     appears, and it brings polite announcement and aria-atomic with it, so
+     the whole sentence is read rather than fragments. The relink banner
+     below deliberately has none: updateRelinkBanner rebuilds it every sixty
+     seconds to tick the countdown, so a live region there would read the
+     same numbers out every minute forever. This bar is built once per
+     window and guarded against redraw, which is what makes announcing it
+     safe. -->
 <div class="teams-notice" id="teamsNotice" role="status"></div>
 
 <div class="fx" aria-hidden="true">

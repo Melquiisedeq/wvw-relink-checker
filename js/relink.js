@@ -415,11 +415,9 @@ function buildTeamsNotice(windowId) {
   // 13 the mark is 1.73px wide and antialiases into a smudge, and a smudge
   // is what it looked like.
   shieldRef.innerHTML = serverGuildsShield(15);
-  // The word the icon stands for, read out and never seen. An aria-label on
-  // the SVG was tried first and broke the sentence: role="img" makes the icon
-  // an object in the accessibility tree, and Narrator stopped reading there -
-  // "beside any NA team for every guild on it" was simply lost. A text node
-  // has no such edge, and screen readers read straight through it.
+  // The word the icon stands for, read out and never seen, because the shield
+  // is a noun in the middle of this sentence. serverGuildsShield says why the
+  // SVG is aria-hidden rather than labelled.
   const spoken = document.createElement('span');
   spoken.className = 'teams-notice-spoken';
   spoken.textContent = 'guild list shield';
@@ -473,20 +471,16 @@ function hideTeamsNotice() {
   teamsNotice.style.display = 'none';
 }
 
-// Three things have to agree before anything is drawn, and any one of
-// them missing means nothing is: the banner has to be in the rebuilding
-// window, the sheet has to say the table has moved, and it has to say so
-// about *this* relink.
+// Three things have to agree before anything is drawn: the banner has to be
+// in the rebuilding window, the sheet has to say the table has moved, and it
+// has to say so about *this* relink.
 //
-// That last one is what ends the notice, and it is why nothing ever has to
-// come back and switch it off. The trigger writes once a month; next month
-// the lockout closes, the bar comes back, and last month's row is still
-// there - so comparing it against the timer this page read itself is the
-// whole expiry mechanism. One integer instead of a second write.
-//
-// Outside the window this returns before asking the sheet anything, which
-// is what keeps twenty-six days a month free of a request that could only
-// ever answer "no".
+// That last one is what ends the notice, and why nothing ever has to come back
+// and switch it off - the trigger writes once a month, and next month last
+// month's row is still sitting there to be compared against the timer this
+// page read itself. Outside the window this returns before asking the sheet
+// anything, which keeps twenty-six days a month free of a request that could
+// only ever answer "no".
 function updateTeamsNotice(rebuilding) {
   const windowId = assignNA !== null ? Math.floor(assignNA / 1000) : null;
   if (!rebuilding || windowId === null || teamsNoticeDismissed(windowId)) {
@@ -498,17 +492,17 @@ function updateTeamsNotice(rebuilding) {
   // button once a minute for four days would not be.
   if (teamsNotice.dataset.window === String(windowId)) return;
 
-  // The rule the rest of the page already follows - see the visibility test
-  // in schedulePeriodicRefresh and the one in the map poll. It matters here
-  // because the interval that drives this was deliberately left ungated
-  // while it only ticked text: hidden, it would still ask the sheet every
-  // ten minutes for as long as the tab stayed open. Nothing is lost by
-  // waiting, since coming back runs this within the minute.
+  // The rule the rest of the page already follows - see the visibility test in
+  // schedulePeriodicRefresh and the one in the map poll. It matters here
+  // because the interval driving this was left ungated while it only ticked
+  // text: hidden, it would still ask the sheet every ten minutes for as long
+  // as the tab stayed open. Nothing is lost, since coming back runs this
+  // within the minute.
   //
-  // visibilityState only, and not document.hasFocus() as the map poll adds:
-  // an unfocused window on a second monitor is exactly where somebody parks
-  // this page waiting for the teams, and that is the case the notice exists
-  // for. Animation can stop when nobody is staring at it; news cannot.
+  // visibilityState only, and deliberately not document.hasFocus() as the map
+  // poll adds: an unfocused window on a second monitor is exactly where
+  // somebody parks this page waiting for the teams. Animation can stop when
+  // nobody is watching; news cannot.
   if (document.visibilityState === 'hidden') return;
 
   getRelinkState().then((state) => {
@@ -544,15 +538,15 @@ function updateRelinkBanner() {
   const assignNaLeft = assignNA !== null ? assignNA - now : null;
   const assignEuLeft = assignEU !== null ? assignEU - now : null;
   const lockoutGone = hasLockout && lockoutTime - now <= 0;
-  // The three days between the lockout closing and the teams landing.
-  // It ends on NA, the later region, so the bar survives EU's eight-hour
-  // head start - and the moment NA lands it is gone. Reading the future
-  // of assignNA is also what stops a stale timer stranding it here.
+  // The stretch between the lockout closing and the teams landing - 3d18h in
+  // the window measured off the API timers on 28/09/2026, and ArenaNet sets
+  // both ends, so the figure is not a constant. It ends on NA, the later of
+  // the two regions, so the bar survives EU's eight-hour head start and is
+  // gone the moment NA lands. Reading the future of assignNA is also what
+  // stops a stale timer stranding it here.
   const rebuilding = lockoutGone && assignNaLeft !== null && assignNaLeft > 0;
-  // Same condition, same instant: the notice is born and dies with the
-  // bar above it rather than deciding its own life. NA is the later
-  // region, so it survives EU's eight-hour head start and is gone the
-  // moment NA lands - at which point everybody knows anyway.
+  // Same condition and the same instant: the notice is born and dies with the
+  // bar above it rather than deciding its own life.
   updateTeamsNotice(rebuilding);
   if (rebuilding) {
     buildRebuildBanner(assignNaLeft, assignEuLeft);
