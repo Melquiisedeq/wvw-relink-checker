@@ -17,17 +17,19 @@ __pycache__/
 # of the Apps Script code that runs in Google rather than here. Also where the
 # full-size image originals live - git keeps every byte forever, so the 4 MB
 # versions stay out and only the cut-down file in assets/ goes in.
-_source/
+_source
 
 # The local test bench for the teams notice: a copy of the page with a control
 # panel bolted on, twelve situations and a verdict for each. Useful and never
 # shipped - it exists to exercise a strip that is only on screen four days a
 # month. Ignored here rather than in .git/info/exclude so a fresh clone cannot
 # commit it by accident.
-_teste/
+_teste
 
 # Working notes and saved prompts for whoever is helping with the code, kept
 # out because this repository is public and anyone cloning it points their own
 # tools at it. What a contributor needs is in CONTRIBUTING.md, on purpose.
+# No trailing slash on these and the two above: where they are symlinks rather
+# than folders, a pattern ending in '/' does not match them.
 CLAUDE.md
-.claude/
+.claude
