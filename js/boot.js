@@ -357,3 +357,10 @@ const emberField = (function () {
   document.addEventListener('visibilitychange', update);
   update();
 })();
+
+// Visits count only on the real domain. The Cloudflare preview project
+// serves this same page at *.pages.dev, and GoatCounter records the path,
+// not the host, so a preview visit would be indistinguishable from a real
+// one. count.js loads after this file and keeps a goatcounter object it
+// finds; no_onload is GoatCounter's own switch for "do not count".
+if (location.hostname !== 'wvwrelink.com') window.goatcounter = { no_onload: true };
