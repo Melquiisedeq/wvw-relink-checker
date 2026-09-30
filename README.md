@@ -71,15 +71,17 @@ in those few days and puts a line at the top when it has.
 ## 🔒 Privacy
 
 **Everything the page does runs in your browser, and nothing it does is sent
-to me.** There is one small server of mine, at `wvwrelink.com/api`, but all it
-does is receive game data from this project's own two scripts, signed; the
-page does not talk to it, and nothing you type goes near it.
+to me.** There is one small server of mine, at `wvwrelink.com/api`. It receives game
+data from this project's own two scripts, signed, and the page reads two things
+back from it — the kills history and whether the new teams are out, falling
+back to the spreadsheets if it cannot. Nothing you type goes near it.
 
 | Host | What for |
 |---|---|
 | `api.guildwars2.com` | The guild names you paste go here to be resolved — that request *is* the lookup. Also all match, objective and upgrade data. |
 | `render.guildwars2.com` | Guild emblem images, for objectives claimed by a guild. Images only. |
-| `docs.google.com` | Three public spreadsheets, read-only: the community guild list when you click a shield icon, the kills history when you open a tier's maps, and one cell saying whether the new teams are out — read only in the days before a relink. |
+| `wvwrelink.com/api` | This site's own server: the kills history when you open a tier's maps, and whether the new teams are out — read only in the days before a relink. |
+| `docs.google.com` | Three public spreadsheets, read-only: the community guild list when you click a shield icon, and the same two things as above when `/api` does not answer. |
 | `melquiisedeq.goatcounter.com` | One anonymous page view per visit. Nothing else. |
 | `static.cloudflareinsights.com`, `cloudflareinsights.com` | Cloudflare Web Analytics: its script, and one anonymous report per visit with how fast the page loaded. |
 
@@ -165,7 +167,8 @@ apps-script/   the two Google Apps Script projects behind the spreadsheets:
                the teams notice and the kills history. They run in Google;
                these are the copies they are pasted from.
 worker/        wvwrelink.com/api: takes each script's signed results into
-               the database, and says when each last reported (/api/saude)
+               the database, says when each last reported (/api/saude), and
+               serves the page its two reads (/api/kills, /api/relink)
 .github/       the checks, and the workflows that run them
 ```
 

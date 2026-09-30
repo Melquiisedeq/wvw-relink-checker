@@ -853,8 +853,9 @@ function recordFightSamples(matches) {
 }
 
 
-// The shared half of the fight log: two hours of snapshots taken whether
-// or not anyone was looking, which is the only way a first-ever visitor
+// The shared half of the fight log: snapshots taken whether or not anyone
+// was looking - half an hour from this project's API, two hours from the
+// sheet when that fails - which is the only way a first-ever visitor
 // can be told which map is busy. Cached, so tab switches and the
 // thirty-second poll never refetch it.
 let killSheet = null;
@@ -866,42 +867,72 @@ async function getKillSheet() {
   if (killSheetInFlight) return killSheetInFlight;
 
   killSheetInFlight = (async () => {
-    const by = new Map();
-    // The deadline every other request on this page already gets. A
-    // connection that accepts and then goes quiet would leave this
-    // pending for good - and killSheetInFlight hands that same promise to
-    // every later caller, so the shared history would be gone for the
-    // rest of the session with nothing having failed.
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const res = await fetch(KILLS_SHEET_URL,
-        { cache: 'no-store', signal: controller.signal });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      for (const r of parseCsv(await res.text())) {
-        if (!r || r.length < 2 + KILLS_MAP_ORDER.length) continue;
-        const at = Number(r[0]);
-        const id = String(r[1] || '');
-        if (!Number.isFinite(at) || !at || !id) continue;
-        const n = {};
-        KILLS_MAP_ORDER.forEach((t, i) => { n[t] = Number(r[2 + i]) || 0; });
-        if (!by.has(id)) by.set(id, []);
-        by.get(id).push({ at, n });
-      }
-      for (const list of by.values()) list.sort((a, b) => a.at - b.at);
-      killSheet = by;
+      killSheet = await readOwnKills().catch(readKillSheet);
       killSheetAt = Date.now();
     } catch {
       // The local log still answers for anyone who has been here a
       // while; only the cold visit loses out, and it loses quietly.
       if (!killSheet) killSheet = new Map();
-    } finally {
-      clearTimeout(timer);
     }
     killSheetInFlight = null;
     return killSheet;
   })();
   return killSheetInFlight;
+}
+
+// One reading into the map both sources fill: match id to samples.
+function addKillSample(by, at, id, counts) {
+  if (!Number.isFinite(at) || !at || !id) return;
+  const n = {};
+  KILLS_MAP_ORDER.forEach((t, i) => { n[t] = Number(counts[i]) || 0; });
+  if (!by.has(id)) by.set(id, []);
+  by.get(id).push({ at, n });
+}
+
+function sortKillSamples(by) {
+  for (const list of by.values()) list.sort((a, b) => a.at - b.at);
+  return by;
+}
+
+// The last thirty minutes, as [at, match, Center, RedHome, BlueHome,
+// GreenHome] - the sheet's columns, as numbers. An empty answer is a
+// failure too: the Worker says 503 when its copy stops moving, and nothing
+// at all is no better.
+async function readOwnKills() {
+  const data = await fetchOwnApi(OWN_KILLS_URL);
+  const rows = data && data.rows;
+  if (!Array.isArray(rows) || !rows.length) throw new Error('no rows');
+  const by = new Map();
+  for (const r of rows) {
+    if (!Array.isArray(r) || r.length < 2 + KILLS_MAP_ORDER.length) continue;
+    addKillSample(by, Number(r[0]), typeof r[1] === 'string' ? r[1] : '', r.slice(2));
+  }
+  if (!by.size) throw new Error('no usable rows');
+  return sortKillSamples(by);
+}
+
+async function readKillSheet() {
+  // The deadline every other request on this page already gets. A
+  // connection that accepts and then goes quiet would leave this
+  // pending for good - and killSheetInFlight hands that same promise to
+  // every later caller, so the shared history would be gone for the
+  // rest of the session with nothing having failed.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(KILLS_SHEET_URL,
+      { cache: 'no-store', signal: controller.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const by = new Map();
+    for (const r of parseCsv(await res.text())) {
+      if (!r || r.length < 2 + KILLS_MAP_ORDER.length) continue;
+      addKillSample(by, Number(r[0]), String(r[1] || ''), r.slice(2));
+    }
+    return sortKillSamples(by);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // Both halves as one series. The sheet covers the cold visit at

@@ -320,22 +320,8 @@ async function getRelinkState() {
   if (relinkStateInFlight) return relinkStateInFlight;
 
   relinkStateInFlight = (async () => {
-    // The same deadline every other request on this page gets. Without it
-    // a connection that accepts and goes quiet would leave this pending
-    // for good, and relinkStateInFlight hands that promise to every later
-    // caller - so the notice would never resolve for the whole session.
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const res = await fetch(RELINK_SHEET_URL,
-        { cache: 'no-store', signal: controller.signal });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const found = RELINK_STATE_RE.exec((await res.text()).trim());
-      if (!found) throw new Error('not two integers');
-      relinkState = {
-        window: Number(found[1]),
-        published: Number(found[2]),
-      };
+      relinkState = await readOwnRelink().catch(readRelinkSheet);
       relinkStateAt = Date.now();
       relinkStateFailedAt = 0;
     } catch {
@@ -345,12 +331,40 @@ async function getRelinkState() {
       // it must not do.
       relinkStateFailedAt = Date.now();
     } finally {
-      clearTimeout(timer);
       relinkStateInFlight = null;
     }
     return relinkState;
   })();
   return relinkStateInFlight;
+}
+
+// The same two integers from this project's API, held to the same standard
+// as the sheet: anything but two whole numbers of the sheet's size is a
+// failure, and a failure reads the sheet.
+async function readOwnRelink() {
+  const d = await fetchOwnApi(OWN_RELINK_URL);
+  const ok = (n) => Number.isSafeInteger(n) && n >= 0 && n < 1e12;
+  if (!d || !ok(d.window) || !ok(d.published)) throw new Error('not two integers');
+  return { window: d.window, published: d.published };
+}
+
+async function readRelinkSheet() {
+  // The same deadline every other request on this page gets. Without it
+  // a connection that accepts and goes quiet would leave this pending
+  // for good, and relinkStateInFlight hands that promise to every later
+  // caller - so the notice would never resolve for the whole session.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(RELINK_SHEET_URL,
+      { cache: 'no-store', signal: controller.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const found = RELINK_STATE_RE.exec((await res.text()).trim());
+    if (!found) throw new Error('not two integers');
+    return { window: Number(found[1]), published: Number(found[2]) };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // Dismissal is remembered as the window it was dismissed in, not as a

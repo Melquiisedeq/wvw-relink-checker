@@ -121,6 +121,18 @@ def check_hosts(problems):
                 'Policy, so the browser blocks it - quietly, with the page '
                 'looking fine.' % (host, FETCHED[host]))
 
+    # The page's own /api is reached by path, with no host for the loop above
+    # to find, and connect-src names hosts only: without 'self' there the
+    # browser blocks it and every read quietly falls back to the sheets.
+    own = sorted(rel for rel in tree if rel.startswith('js/')
+                 and re.search(r"'/api/", read(rel)))
+    connect = re.search(r'connect-src([^;]*)', policy)
+    if own and not (connect and "'self'" in connect.group(1).split()):
+        problems.append(
+            "%s reads this site's own /api, but connect-src in the Content "
+            "Security Policy does not say 'self', so the browser blocks it."
+            % ', '.join(own))
+
 
 def check_scripts(problems):
     tags = script_tags(read('index.html'))

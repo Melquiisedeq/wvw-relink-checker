@@ -3,6 +3,8 @@
 //   POST /api/entrada/kills    the kills script, after every tick
 //   POST /api/entrada/relink   the teams notice script, after every tick
 //   GET  /api/saude            when each last reported; nothing else
+//   GET  /api/kills            the last 30 minutes of kills, for the map swords
+//   GET  /api/relink           relink!A1 as numbers, for the teams notice
 //   daily, on a schedule       kills older than KEEP_DAYS are deleted
 //
 // A message is signed by its script with a secret of its own:
@@ -21,6 +23,19 @@ const MIN_SECRET = 64;
 // The running match and the one before it (the owner, 30/09/2026). Raising it
 // keeps more from then on; what was already deleted does not come back.
 const KEEP_DAYS = 14;
+// What GET /api/kills carries. The page wants the newest reading at least
+// ten minutes old, which with a tick every five is 10-15 minutes back; the
+// rest is room for a late tick.
+const RECENT_MS = 30 * 60e3;
+// Past these a source counts as stopped, and the reads answer 503 so the
+// page goes to the sheet rather than show a copy that stopped moving. Kills
+// ticks every 5 minutes, relink every 15.
+const STALE_KILLS_S = 20 * 60;
+const STALE_RELINK_S = 45 * 60;
+// Every match id the entrance accepts, so the rebuild below reads the kills
+// table by its key. By time alone it would scan the whole table.
+const MATCHES = [];
+for (const r of [1, 2]) for (let t = 1; t <= 9; t++) MATCHES.push(r + '-' + t);
 
 export default {
   async fetch(request, env) {
@@ -30,7 +45,18 @@ export default {
       if (request.method !== 'POST') return text(405, 'method');
       return accept(request, env, m[1], url.pathname);
     }
-    if (url.pathname === '/api/saude' && request.method === 'GET') return health(env);
+    // hasOwn, so a path like /api/constructor is not a read.
+    if (Object.hasOwn(READS, url.pathname)) {
+      if (request.method !== 'GET') return text(405, 'method');
+      // Any failure is a 503: the page reads the sheet on any failure, and a
+      // 500 would say nothing more.
+      try {
+        return await READS[url.pathname](env);
+      } catch (e) {
+        console.log(JSON.stringify({ read: url.pathname, failed: String(e) }));
+        return text(503, 'unavailable');
+      }
+    }
     return text(404, 'not found');
   },
 
@@ -91,7 +117,31 @@ async function accept(request, env, source, path) {
 
   await statement.run();
   console.log(JSON.stringify({ source, ok: true }));
+  // Apart from the insert, and after it: the rows are kept even if this
+  // fails, and the next message rebuilds it.
+  if (source === 'kills') {
+    try {
+      await rebuildRecent(env.DB, now);
+    } catch (e) {
+      console.log(JSON.stringify({ source, recent: 'failed', why: String(e) }));
+    }
+  }
   return text(200, 'ok');
+}
+
+// The one row GET /api/kills reads. Built here, once per tick, so a read
+// costs one row of D1's 5 million a day however many there are: the cheapest
+// query over the kills table itself costs ~60, and 100,000 of those a day -
+// the Worker's own limit - would pass it and stop every query, writes
+// included, until midnight UTC.
+function rebuildRecent(db, now) {
+  const keys = MATCHES.map((_, i) => '?' + (i + 3)).join(', ');
+  return db.prepare(
+    'INSERT INTO recent (id, at, rows) ' +
+    'SELECT 1, ?1, json_group_array(json_array(at, match, center, red, blue, green)) ' +
+    'FROM (SELECT * FROM kills WHERE match IN (' + keys + ') AND at > ?2 ORDER BY at) WHERE true ' +
+    'ON CONFLICT (id) DO UPDATE SET at = excluded.at, rows = excluded.rows'
+  ).bind(now, now * 1000 - RECENT_MS, ...MATCHES).run();
 }
 
 // Reads at most max bytes and gives up past that, so a chunked body with no
@@ -166,12 +216,42 @@ function relinkStatement(db, d, t) {
   ).bind(d.beat, none ? null : d.window, none ? null : d.published, d.fails);
 }
 
-async function health(env) {
-  const { results } = await env.DB.prepare('SELECT name, received FROM source').all();
-  const out = {};
-  for (const r of results) out[r.name] = r.received;
-  return new Response(JSON.stringify(out), {
-    headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=30', 'x-content-type-options': 'nosniff' }
+// Each read is one row of D1 (saude: two), whatever anyone asks, and takes
+// nothing from the request - no parameter reaches a query.
+const READS = {
+  '/api/saude': async (env) => {
+    const { results } = await env.DB.prepare('SELECT name, received FROM source').all();
+    const out = {};
+    for (const r of results) out[r.name] = r.received;
+    return json(JSON.stringify(out), 30);
+  },
+
+  '/api/kills': async (env) => {
+    const r = await env.DB.prepare('SELECT at, rows FROM recent WHERE id = 1').first();
+    if (!r || nowS() - r.at > STALE_KILLS_S || r.rows === '[]') return text(503, 'stale');
+    // Built by rebuildRecent from rows the entrance checked, as JSON by SQLite.
+    return json('{"rows":' + r.rows + '}', 60);
+  },
+
+  '/api/relink': async (env) => {
+    const r = await env.DB.prepare('SELECT beat, window_at, published FROM relink WHERE id = 1').first();
+    // A1 not parsing is refused here as the page refuses it from the sheet.
+    if (!r || nowS() - r.beat > STALE_RELINK_S || r.window_at === null) return text(503, 'stale');
+    return json(JSON.stringify({ window: r.window_at, published: r.published }), 60);
+  }
+};
+
+function nowS() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function json(body, maxAge) {
+  return new Response(body, {
+    headers: {
+      'content-type': 'application/json',
+      'cache-control': 'public, max-age=' + maxAge,
+      'x-content-type-options': 'nosniff'
+    }
   });
 }
 
