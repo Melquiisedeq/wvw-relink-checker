@@ -46,6 +46,11 @@ Policy does not behave the same on a `file://` URL:
 
 Then open `http://localhost:8000`. No API key, no account, nothing to set up.
 
+The Worker behind `wvwrelink.com/api` has tests, with nothing to install
+(Node 22.13 or later):
+
+    node --test "tests/*.test.mjs"
+
 ## Style
 
 Match whatever is around you. The one habit worth knowing: comments explain

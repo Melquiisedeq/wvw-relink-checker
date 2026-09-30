@@ -45,7 +45,7 @@ export default {
       if (request.method !== 'POST') return text(405, 'method');
       return accept(request, env, m[1], url.pathname);
     }
-    // hasOwn, so a path like /api/constructor is not a read.
+    // hasOwn: only a route named below is a read, never something inherited.
     if (Object.hasOwn(READS, url.pathname)) {
       if (request.method !== 'GET') return text(405, 'method');
       // Any failure is a 503: the page reads the sheet on any failure, and a
