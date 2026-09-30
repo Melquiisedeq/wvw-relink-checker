@@ -1237,7 +1237,21 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
   // in one function, so a live update runs the same code as the first
   // draw. The listeners live on the group itself, so emptying it is safe,
   // and the selected class is carried across.
+  // What each marker was last drawn from, so the 30 s refresh redraws only
+  // the objectives that changed. Redrawing all of them rebuilt every icon,
+  // shield and emblem - the emblem through an SVG filter - to paint the
+  // same picture again. The tier and the waypoint are part of it, not just
+  // the objective: they come from upgradeCatalogue, which usually lands
+  // after the first drawing, and a key of the objective alone left those
+  // markers without their shields for good.
+  const drawnFrom = new WeakMap();
+  const markerKey = (p) => {
+    const tierInfo = objectiveTier(p.meta, p.ob);
+    return JSON.stringify(p.ob) + '|' + (tierInfo ? tierInfo.tier : '-')
+      + '|' + hasWaypoint(mapData.type, p.ob, tierInfo);
+  };
   const paintMarker = (g, p) => {
+    drawnFrom.set(g, markerKey(p));
     const r = OBJ_SIZE[p.ob.type] || 14;
     const owner = String(p.ob.owner || 'neutral').toLowerCase();
     const tierInfo = objectiveTier(p.meta, p.ob);
@@ -1436,7 +1450,7 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
       // and holding on to what was there would leave a map claiming an
       // ownership nobody is asserting any more.
       pts[i].ob = owners.get(pts[i].meta.id) || blank(pts[i].meta);
-      paintMarker(nodes[i], pts[i]);
+      if (drawnFrom.get(nodes[i]) !== markerKey(pts[i])) paintMarker(nodes[i], pts[i]);
     }
     waiting.hidden = owners.size > 0;
     const ownerNow = new Map();
@@ -1445,10 +1459,11 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
     }
     for (const t of tinted) {
       const owner = String(ownerNow.get(t.id) || 'neutral').toLowerCase();
+      if (t.edge.getAttribute('class') === `own-${owner}`) continue;
       t.fill.setAttribute('class', `wvw-sector own-${owner}`);
       t.edge.setAttribute('class', `own-${owner}`);
     }
-    apply();   // markers were repainted, so their zoom scale is gone
+    apply();   // repainted markers lost their zoom scale
   };
 
   return wrap;
