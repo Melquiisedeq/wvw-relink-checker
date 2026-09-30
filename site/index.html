@@ -16,6 +16,13 @@
 -->
 <link rel="preconnect" href="https://api.guildwars2.com" crossorigin>
 <link rel="preconnect" href="https://render.guildwars2.com">
+<!--
+  The standings' first request, started while this is still being read
+  instead of after the scripts: it lands about when they do. The URL, the
+  mode and the credentials have to match the fetch in js/standings.js
+  (fetchAllMatches) exactly, or the browser fetches twice.
+-->
+<link rel="preload" as="fetch" crossorigin href="https://api.guildwars2.com/v2/wvw/matches?ids=all">
 <title>WvW Relink Checker - Guild Wars 2 World vs World Teams and Standings</title>
 <!--
   The tool circulates as a bare URL in Discord, so the unfurled card is
