@@ -82,9 +82,24 @@ def script_tags(html):
     return out
 
 
+def csp_from_headers():
+    """The Content-Security-Policy _headers sets for /*, or None."""
+    rule = None
+    for line in read('_headers').splitlines():
+        if not line.strip() or line.startswith('#'):
+            continue
+        if not line[0].isspace():
+            rule = line.strip()
+        elif rule == '/*':
+            name, _, value = line.strip().partition(':')
+            if name.strip().lower() == 'content-security-policy':
+                return value.strip()
+    return None
+
+
 def check_hosts(problems):
     found = {}
-    tree = ['index.html'] \
+    tree = ['index.html', '_headers'] \
         + ['js/' + f for f in files_in('js', '.js')] \
         + ['css/' + f for f in files_in('css', '.css')]
     for rel in tree:
@@ -97,21 +112,36 @@ def check_hosts(problems):
         where = ', '.join(sorted(found[host]))
         problems.append(
             '%s is a host this check has never seen, in %s. If the browser '
-            'requests it, add it to the Content Security Policy in index.html '
+            'requests it, add it to the Content Security Policy in _headers '
             'and to FETCHED in this file. If it is only mentioned in a comment '
             'or a namespace, add it to MENTIONED and leave the CSP alone.'
             % (host, where))
 
-    csp = re.search(r'Content-Security-Policy"\s*content="([^"]+)"',
-                    read('index.html'), re.S)
-    if not csp:
+    # A header, not a <meta>: a <meta> policy holds back Chromium's preload
+    # scanner and the scripts load one after another (_headers says more).
+    if re.search(r'<meta[^>]*http-equiv="Content-Security-Policy"',
+                 read('index.html'), re.I):
         problems.append(
-            'No Content-Security-Policy meta tag found in index.html. That '
-            'policy is what denies everything by default, so this is either a '
-            'typo in the tag or something much worse.')
+            'index.html has a Content-Security-Policy <meta> tag again. The '
+            'policy lives in _headers; a <meta> copy slows every load and is '
+            'one more policy to keep in step.')
+
+    policy = csp_from_headers()
+    if not policy:
+        problems.append(
+            'No Content-Security-Policy under /* in _headers. That policy is '
+            'what denies everything by default, so this is either a typo in '
+            'the file or something much worse.')
         return
 
-    policy = csp.group(1)
+    # Cloudflare's limit per _headers line (developers.cloudflare.com/workers/
+    # static-assets/headers/); the whole policy is one line and grows by host.
+    longest = max(len(line) for line in read('_headers').splitlines())
+    if longest > 2000:
+        problems.append(
+            'A line in _headers is %d characters; Cloudflare allows 2,000. '
+            'The Content Security Policy is one line and grows with every '
+            'host.' % longest)
     # With the scheme, so cloudflareinsights.com is not found inside
     # static.cloudflareinsights.com.
     for host in sorted(FETCHED):

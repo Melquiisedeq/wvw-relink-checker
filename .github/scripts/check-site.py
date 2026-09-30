@@ -11,6 +11,10 @@ and every one of them is fetched. A 404 on js/maps.js is the whole maps panel
 gone, and the only place it shows is the console of whoever happened to open
 the site.
 
+The Content Security Policy is a response header, so it is compared with the
+line in site/_headers: a deploy that dropped or mangled that file serves the
+page with no policy at all, and it looks exactly the same.
+
 Two more facts about the domain, each a date or a status and no judgement:
 the old GitHub Pages address stays gone (removing the custom domain did not
 unpublish it, and it kept serving a copy of the repository for a day), and
@@ -21,7 +25,9 @@ Run it by hand any time:  python .github/scripts/check-site.py
 """
 
 import datetime
+import io
 import json
+import os
 import re
 import sys
 import time
@@ -29,6 +35,9 @@ import urllib.error
 import urllib.request
 
 SITE = 'https://wvwrelink.com/'
+HEADERS_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    'site', '_headers')
 ATTEMPTS = 3
 PAUSE_SECONDS = 5
 TIMEOUT_SECONDS = 30
@@ -38,7 +47,7 @@ RENEW_WARN_DAYS = 60
 
 
 def fetch(url):
-    """GET and return (status, body, error). Retries before giving up."""
+    """GET and return (status, body, error, headers). Retries first."""
     last = None
     for attempt in range(ATTEMPTS):
         if attempt:
@@ -47,12 +56,13 @@ def fetch(url):
             req = urllib.request.Request(
                 url, headers={'User-Agent': 'wvwrelink-health-check'})
             with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as res:
-                return res.status, res.read().decode('utf-8', 'replace'), None
+                return (res.status, res.read().decode('utf-8', 'replace'),
+                        None, res.headers)
         except urllib.error.HTTPError as exc:
             last = 'HTTP %s' % exc.code
         except Exception as exc:
             last = '%s: %s' % (type(exc).__name__, exc)
-    return None, None, '%s after %d attempts' % (last, ATTEMPTS)
+    return None, None, '%s after %d attempts' % (last, ATTEMPTS), None
 
 
 def status_of(url):
@@ -68,6 +78,22 @@ def status_of(url):
         return None
 
 
+def csp_written():
+    """The policy site/_headers sets for /*, as the page should receive it."""
+    rule = None
+    with io.open(HEADERS_FILE, encoding='utf-8') as fh:
+        for line in fh:
+            if not line.strip() or line.startswith('#'):
+                continue
+            if not line[0].isspace():
+                rule = line.strip()
+            elif rule == '/*':
+                name, _, value = line.strip().partition(':')
+                if name.strip().lower() == 'content-security-policy':
+                    return value.strip()
+    return None
+
+
 def domain_checks(problems, notes):
     status = status_of(OLD_PAGES)
     if status == 200:
@@ -77,7 +103,7 @@ def domain_checks(problems, notes):
     else:
         notes.append('%-46s HTTP %s' % ('old GitHub Pages address', status))
 
-    _, body, error = fetch(RDAP)
+    _, body, error, _ = fetch(RDAP)
     expires = None
     if not error:
         try:
@@ -104,7 +130,7 @@ def domain_checks(problems, notes):
 def main():
     problems, notes = [], []
 
-    status, html, error = fetch(SITE)
+    status, html, error, headers = fetch(SITE)
     if error:
         print('::error::%s did not answer (%s). The site is down, or DNS or '
               'the certificate is broken.' % (SITE, error))
@@ -115,13 +141,24 @@ def main():
     # Enough to tell the real page from a placeholder, a parked domain, or a
     # half-finished deploy that happens to answer 200.
     for needle, what in (
-            ('Content-Security-Policy', 'the Content Security Policy'),
             ('rel="canonical"', 'the canonical link'),
             ('js/boot.js', 'the script that starts the page')):
         if needle not in html:
             problems.append('The served page does not contain %s. Something is '
                             'answering on the domain, but it is not this site '
                             'as it is written here.' % what)
+
+    written = csp_written()
+    served = headers.get('Content-Security-Policy')
+    if not served:
+        problems.append('The page is served with no Content-Security-Policy '
+                        'header. Nothing denies anything by default; site/'
+                        '_headers did not deploy, or its /* rule broke.')
+    elif served.strip() != written:
+        problems.append('The served Content-Security-Policy is not the one in '
+                        'site/_headers. Served: %s' % served)
+    else:
+        notes.append('%-46s as written in _headers' % 'Content-Security-Policy')
 
     # From the served HTML, not from the repository: the point is to catch a
     # file the deploy left behind.
@@ -136,7 +173,7 @@ def main():
 
     missing = []
     for path in assets:
-        status, _, error = fetch(SITE + path.lstrip('/'))
+        status, _, error, _ = fetch(SITE + path.lstrip('/'))
         if error:
             missing.append('%s (%s)' % (path, error))
 

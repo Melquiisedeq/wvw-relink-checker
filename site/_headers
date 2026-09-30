@@ -1,9 +1,35 @@
 # Read by Cloudflare, never served: wrangler leaves _headers out of the upload.
 
-# The page's own CSP is a <meta> tag, which cannot say frame-ancestors. The
-# two policies are both enforced, so this one only adds.
+# The Content Security Policy. A header, not a <meta> in index.html: Chromium
+# holds back its preload scanner's fetches until a <meta> policy is parsed, and
+# the seventeen scripts then came down one after another, ~3s instead of ~1s
+# (cold loads of the live site, 30/09/2026). A header also covers the document from its first byte and can say
+# frame-ancestors, which a <meta> cannot.
+#
+# default-src 'none' denies everything, then:
+#
+# script-src and style-src 'self', no unsafe-inline: every script comes from
+# js/, GoatCounter's vendored copy included, and styles set from JS go through
+# the CSSOM, which no CSP governs. One script comes from elsewhere, named down
+# to its path: Cloudflare Web Analytics' beacon.
+#
+# connect-src - this site's /api, the GW2 API, three read-only Google Sheets,
+# Cloudflare Web Analytics' collector and GoatCounter, which falls back from
+# sendBeacon to an image - hence that host in img-src too. The three sheets are
+# one host and one entry: the community guild list when a shield is clicked,
+# this project's own kills history when a tier's maps are opened, and the one
+# cell saying whether the new teams are out.
+#
+# img-src - everything local except guild emblems, which come from ArenaNet's
+# asset host; there are hundreds of thousands of them and they change.
+#
+# base-uri and form-action 'none' - no <base> hijacking, no forms.
+# frame-ancestors 'none' - no other site can frame this one.
+#
+# check-structure.py reads the policy from this line; check-site.py compares
+# it with what wvwrelink.com serves.
 /*
-  Content-Security-Policy: frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://static.cloudflareinsights.com/beacon.min.js; style-src 'self'; connect-src 'self' https://api.guildwars2.com https://docs.google.com https://cloudflareinsights.com https://melquiisedeq.goatcounter.com; img-src 'self' data: https://render.guildwars2.com https://melquiisedeq.goatcounter.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Cross-Origin-Opener-Policy: same-origin
