@@ -20,6 +20,9 @@ const copyDiscordBtn = document.getElementById('copyDiscordBtn');
 const copyFeedback = document.getElementById('copyFeedback');
 const standingsGridNA   = document.getElementById('standingsGridNA');
 const standingsGridEU   = document.getElementById('standingsGridEU');
+// 'eu' when EU's column is on the left, set by js/region.js and the swap
+// button. Whatever lists the two regions side by side follows it.
+const railFirst = () => (document.documentElement.dataset.railFirst === 'eu' ? 'eu' : 'na');
 const standingsStatusNA = document.getElementById('standingsStatusNA');
 const standingsStatusEU = document.getElementById('standingsStatusEU');
 const relinkBanner = document.getElementById('relinkBanner');

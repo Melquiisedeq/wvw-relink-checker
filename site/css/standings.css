@@ -2,6 +2,18 @@
 .standings-card{background:rgba(255,255,255,.015);border-color:rgba(255,255,255,.06);}
 .standings-header{margin-bottom:12px;display:flex;align-items:center;gap:8px;}
 .standings-header-left{display:flex;align-items:center;gap:6px;}
+/* A window control, not part of the title: in the card's own top-left
+   corner, small and white like the popovers' close and expand. Cyan icons
+   here open a popover, and this does not. */
+.standings-card{position:relative;}
+.rail-swap{
+  position:absolute;top:4px;left:6px;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:none;border:none;box-shadow:none;text-shadow:none;
+  color:var(--muted);cursor:pointer;padding:1px;border-radius:4px;
+}
+.rail-swap:hover{color:var(--text);background:rgba(255,255,255,.06);}
+.rail-swap svg{display:block;filter:drop-shadow(0 1px .5px rgba(0,0,0,.6));}
 .standings-status{margin-left:auto;display:inline-flex;align-items:center;gap:6px;position:relative;top:-3px;}
 .live-dot{
   display:inline-block;width:5px;height:5px;border-radius:50%;flex-shrink:0;

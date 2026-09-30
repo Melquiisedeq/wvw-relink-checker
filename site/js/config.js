@@ -92,6 +92,10 @@ const MAX_RETRIES = 2;         // for 429 / transient network errors
 // Match data updates unpredictably on ArenaNet's end; 5 min balances
 // freshness vs load. Lockout barely changes, so it's checked less often.
 // Both stay under the API rate limit and only run while the tab is visible.
+// The visitor's choice of which standings column goes left, 'na' or 'eu'.
+// js/region.js reads it by this same literal, before this file loads.
+const RAIL_FIRST_KEY = 'wvw-rail-first';
+
 const STANDINGS_REFRESH_MS = 5 * 60 * 1000;  // match scores, kills/deaths, VP, relink
 const TIMERS_REFRESH_MS = 10 * 60 * 1000;    // season lockout
 // Community sheet is edited by hand; re-fetched on click with a short TTL.

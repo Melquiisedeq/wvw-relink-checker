@@ -7,6 +7,10 @@
 
 // Initial load, then keep both data sets fresh in the background for as
 // long as the tab stays open (see STANDINGS_REFRESH_MS / TIMERS_REFRESH_MS).
+placeRails();
+document.querySelectorAll('.rail-swap').forEach((btn) => {
+  btn.addEventListener('click', () => swapRails(btn));
+});
 showStandingsSkeleton(standingsGridNA);
 showStandingsSkeleton(standingsGridEU);
 refreshStandings();

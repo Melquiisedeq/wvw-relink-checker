@@ -122,7 +122,8 @@ function buildRelinkValue(naMs, euMs, naNow, euNow) {
   const euTime = document.createElement('span');
   euTime.className = euNow ? 'time is-now' : 'time';
   euTime.textContent = formatCountdown(euMs);
-  frag.append(naRegion, naTime, sep, euRegion, euTime);
+  if (railFirst() === 'eu') frag.append(euRegion, euTime, sep, naRegion, naTime);
+  else frag.append(naRegion, naTime, sep, euRegion, euTime);
   return frag;
 }
 
@@ -232,7 +233,10 @@ function buildRebuildValue(naLeft, euLeft) {
   const sep = document.createElement('span');
   sep.className = 'region';
   sep.textContent = ' \u00b7 ';
-  frag.append(...half('NA', naLeft), sep, ...half('EU', euLeft));
+  const [first, second] = railFirst() === 'eu'
+    ? [half('EU', euLeft), half('NA', naLeft)]
+    : [half('NA', naLeft), half('EU', euLeft)];
+  frag.append(...first, sep, ...second);
   return frag;
 }
 
@@ -676,6 +680,7 @@ function updateRelinkBanner() {
     const where = [];
     if (naUrgent) where.push('NA');
     if (euUrgent) where.push('EU');
+    if (railFirst() === 'eu') where.reverse();
     const text = document.createElement('span');
     text.textContent = `${where.join(' and ')} reset night. `
       + 'Big fight, and the queue that comes with it.';
