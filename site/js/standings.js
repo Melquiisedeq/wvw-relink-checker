@@ -149,34 +149,60 @@ function showRegion(gridEl, statusEl, matches, label, syncedAt) {
   setStandingsStatus(statusEl, ok, ok ? syncedAt : `Couldn't load ${label} standings.`);
 }
 
-// Loads every active match (NA + EU) in two requests and powers the
-// standings rails. Results are cached, so a later guild check reuses them.
+// The fallback when the one request fails: the id list, then one request
+// per region, the answers kept apart all the way down. null means that
+// region's request failed; [] means it answered and has no matches.
+// Collapsing the two is what let one region take the other down with it -
+// Promise.all rejects whole, so a single 500 on EU threw away an NA answer
+// that had already arrived and blanked both columns.
+async function loadStandingsByRegion() {
+  const idList = await fetchJson(`${API_BASE}/wvw/matches`);
+  if (!Array.isArray(idList) || idList.length === 0) {
+    throw new Error('No active matches returned');
+  }
+
+  const naIds = idList.filter((id) => id.startsWith('1-'));
+  const euIds = idList.filter((id) => id.startsWith('2-'));
+
+  const fetchRegion = async (ids) => {
+    if (ids.length === 0) return [];
+    const data = await fetchJson(`${API_BASE}/wvw/matches?ids=${ids.map(encodeURIComponent).join(',')}`);
+    return Array.isArray(data) ? data : [];
+  };
+
+  const [naMatches, euMatches] = await Promise.all([
+    fetchRegion(naIds).catch(() => null),
+    fetchRegion(euIds).catch(() => null),
+  ]);
+  return [idList, naMatches, euMatches];
+}
+
+// Every match of both regions in one request - the one index.html
+// preloads, so the first load usually finds it already here. null when it
+// fails, and then loadStandings asks region by region instead.
+async function fetchAllMatches() {
+  try {
+    const all = await fetchJson(`${API_BASE}/wvw/matches?ids=all`);
+    const ok = Array.isArray(all) ? all.filter((m) => m && typeof m.id === 'string') : [];
+    return ok.length > 0 ? ok : null;
+  } catch {
+    return null;
+  }
+}
+
+// Loads every active match (NA + EU) and powers the standings rails.
+// Results are cached, so a later guild check reuses them.
 async function loadStandings() {
   try {
-    const idList = await fetchJson(`${API_BASE}/wvw/matches`);
-    if (!Array.isArray(idList) || idList.length === 0) {
-      throw new Error('No active matches returned');
+    let idList, naMatches, euMatches;
+    const all = await fetchAllMatches();
+    if (all) {
+      idList = all.map((m) => m.id);
+      naMatches = all.filter((m) => m.id.startsWith('1-'));
+      euMatches = all.filter((m) => m.id.startsWith('2-'));
+    } else {
+      [idList, naMatches, euMatches] = await loadStandingsByRegion();
     }
-
-    // One request per region, and the answers are kept apart all the
-    // way down. null means that region's request failed; [] means it
-    // answered and has no matches. Collapsing the two is what let one
-    // region take the other down with it - Promise.all rejects whole, so
-    // a single 500 on EU threw away an NA answer that had already
-    // arrived and blanked both columns.
-    const naIds = idList.filter((id) => id.startsWith('1-'));
-    const euIds = idList.filter((id) => id.startsWith('2-'));
-
-    const fetchRegion = async (ids) => {
-      if (ids.length === 0) return [];
-      const data = await fetchJson(`${API_BASE}/wvw/matches?ids=${ids.map(encodeURIComponent).join(',')}`);
-      return Array.isArray(data) ? data : [];
-    };
-
-    const [naMatches, euMatches] = await Promise.all([
-      fetchRegion(naIds).catch(() => null),
-      fetchRegion(euIds).catch(() => null),
-    ]);
     const answered = [...(naMatches || []), ...(euMatches || [])];
 
     // Every refresh leaves a kills/deaths snapshot behind on its way
