@@ -54,11 +54,16 @@ const MAX_ZOOM = 4.5;
 // the same 5-unit white line and 14 buries it. EBG printed a second one
 // beside it, 23 units in the home team's colour, which 14 did not cover -
 // that line was taken out of the image instead.
+//
+// `lite` is the same picture LITE_WIDTH pixels wide, a third to a half of
+// the bytes. A map opens on it and takes `src` only once the zoom puts
+// more pixels on screen than it holds - see upgradeTerrain.
+const LITE_WIDTH = 1280;
 const MAP_IMAGE = Object.freeze({
-  38: { src: 'assets/map-ebg.webp', x: 8846.4, y: 12710.9, w: 3308.0, h: 3293.5, edge: 14 },
-  1099: { src: 'assets/map-rbl.webp', x: 9133.8, y: 8866.1, w: 3228.6, h: 3245.6, edge: 14 },
-  96: { src: 'assets/map-bbl.webp', x: 12718.3, y: 10865.3, w: 2660.6, h: 3623.1, edge: 14 },
-  95: { src: 'assets/map-gbl.webp', x: 5534.1, y: 11493.7, w: 2693.0, h: 3638.3, edge: 14 },
+  38: { src: 'assets/map-ebg.webp', lite: 'assets/map-ebg-1280.webp', x: 8846.4, y: 12710.9, w: 3308.0, h: 3293.5, edge: 14 },
+  1099: { src: 'assets/map-rbl.webp', lite: 'assets/map-rbl-1280.webp', x: 9133.8, y: 8866.1, w: 3228.6, h: 3245.6, edge: 14 },
+  96: { src: 'assets/map-bbl.webp', lite: 'assets/map-bbl-1280.webp', x: 12718.3, y: 10865.3, w: 2660.6, h: 3623.1, edge: 14 },
+  95: { src: 'assets/map-gbl.webp', lite: 'assets/map-gbl-1280.webp', x: 5534.1, y: 11493.7, w: 2693.0, h: 3638.3, edge: 14 },
 });
 
 // The three EBG mercenary camps are the only objectives the API publishes
@@ -1191,14 +1196,19 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
   }
   // Terrain first, everything else on top of it.
   const picture = MAP_IMAGE[mapData.id];
-  if (picture) {
+  const terrainAt = (src) => {
     const img = svgEl('image', {
-      href: picture.src, x: picture.x, y: picture.y,
+      href: src, x: picture.x, y: picture.y,
       width: picture.w, height: picture.h,
       preserveAspectRatio: 'none',
     });
-    img.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', picture.src);
-    svg.appendChild(img);
+    img.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', src);
+    return img;
+  };
+  let terrain = null;
+  if (picture) {
+    terrain = terrainAt(picture.lite);
+    svg.appendChild(terrain);
   }
 
   // Three passes, not one. A single pass lets the next sector's fill paint
@@ -1327,6 +1337,43 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
   // terrain instead of leaving them floating above it at a fixed size.
   const view = { x: minX, y: minY, w: fullW, h: fullH };
 
+  // The full picture, once the terrain is drawn wider on screen than the
+  // lite one has pixels. Decoded off to the side and laid over the lite
+  // one, which only goes once the new node has loaded and a frame has
+  // shown both - swapping the href instead leaves the ground blank while
+  // the file decodes. The node asks for the file again (a revalidation,
+  // assets are max-age=0), hence waiting on its own load. Width comes
+  // from a ResizeObserver, so a zoom never has to ask for layout.
+  let shownWidth = 0;
+  let upgrading = false;
+  const upgradeTerrain = () => {
+    if (!terrain || upgrading) return;
+    const onScreen = shownWidth * (window.devicePixelRatio || 1) * (picture.w / view.w);
+    if (onScreen <= LITE_WIDTH) return;
+    upgrading = true;
+    const full = new Image();
+    full.src = picture.src;
+    const lite = terrain;
+    const swap = () => {
+      const next = terrainAt(picture.src);
+      next.addEventListener('load', () => {
+        terrain = next;
+        requestAnimationFrame(() => requestAnimationFrame(() => lite.remove()));
+      }, { once: true });
+      next.addEventListener('error', () => next.remove(), { once: true });
+      svg.insertBefore(next, lite.nextSibling);
+    };
+    // A full picture that fails leaves the lite one where it is.
+    if (full.decode) full.decode().then(swap, () => {});
+    else full.onload = swap;
+  };
+  if (terrain && window.ResizeObserver) {
+    new ResizeObserver((entries) => {
+      shownWidth = entries[entries.length - 1].contentRect.width;
+      upgradeTerrain();
+    }).observe(svg);
+  }
+
   const apply = () => {
     svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
     const k = Math.pow(view.w / fullW, MARKER_FOLLOW);
@@ -1353,6 +1400,7 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
     view.y = cy - (cy - view.y) * scale;
     clamp();
     apply();
+    upgradeTerrain();
   };
 
   const atEvent = (e) => {
@@ -2225,8 +2273,9 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
 
   // The other three terrain pictures, once the first map is up and being
   // looked at. A tab switch used to start its own download at the click:
-  // a few hundred kilobytes plus the decode of a seven-megapixel image,
-  // all of it between the click and anything appearing. decode() rather
+  // a few hundred kilobytes plus the decode, all of it between the click
+  // and anything appearing. The lite pictures only: the full ones wait
+  // for a zoom that needs them. decode() rather
   // than just src, because the decode runs on the main thread and that is
   // the half that would be seen. One at a time, in tab order - all three
   // at once is a couple of megabytes racing the pictures the VISIBLE map
@@ -2240,7 +2289,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
       const pic = MAP_IMAGE[(byType.get(type) || {}).id];
       if (!pic) { next(); return; }
       const im = new Image();
-      im.src = pic.src;
+      im.src = pic.lite;
       // A warm-up that fails is not an error: the tab that needs it
       // asks again, which is exactly what happens today. Either way the
       // queue moves on.
@@ -2297,7 +2346,7 @@ async function toggleTierMaps(match, regionName, tierNum, triggerEl) {
   // download used to queue up behind a second of API. Same URL, so the
   // <image> finds it in the browser's cache instead of asking again.
   const firstPic = firstMap && MAP_IMAGE[firstMap.id];
-  if (firstPic) { const pre = new Image(); pre.src = firstPic.src; }
+  if (firstPic) { const pre = new Image(); pre.src = firstPic.lite; }
 
   // Started, never awaited. None of these draws a map - tiers only light
   // the rings, tactics only name the list in the detail panel, and the
