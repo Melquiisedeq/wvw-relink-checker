@@ -177,6 +177,35 @@ async function loadStandingsByRegion() {
   return [idList, naMatches, euMatches];
 }
 
+// Puts the column js/region.js chose on the left in the DOM, not only on
+// screen: CSS order moves what is seen, while Tab and a screen reader
+// follow the source. The two asides and their left/right classes swap in
+// one step and the pre-paint override in css/layout.css switches off with
+// them, so nothing moves.
+function placeRails() {
+  const na = standingsGridNA.closest('.rail');
+  const eu = standingsGridEU.closest('.rail');
+  const [first, second] = railFirst() === 'eu' ? [eu, na] : [na, eu];
+  if (first.nextElementSibling !== second) first.parentNode.insertBefore(first, second);
+  first.classList.replace('rail-right', 'rail-left');
+  second.classList.replace('rail-left', 'rail-right');
+  document.documentElement.classList.add('rails-placed');
+}
+
+// The swap button: the other column first, remembered for next time. A
+// popover open on the old side would be left pointing at a column that
+// moved, so it closes first; the button moves with its column and loses
+// focus on the way, so it gets it back.
+function swapRails(btn) {
+  if (activePopover) closePopover();
+  const next = railFirst() === 'eu' ? 'na' : 'eu';
+  document.documentElement.dataset.railFirst = next;
+  try { localStorage.setItem(RAIL_FIRST_KEY, next); } catch {}
+  placeRails();
+  updateRelinkBanner();
+  if (btn) btn.focus({ preventScroll: true });
+}
+
 // Every match of both regions in one request - the one index.html
 // preloads, so the first load usually finds it already here. null when it
 // fails, and then loadStandings asks region by region instead.

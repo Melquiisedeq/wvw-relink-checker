@@ -10,6 +10,10 @@
 .rail{width:100%;max-width:720px;}
 .rail-left{order:1;}
 .rail-right{order:2;}
+/* EU first, before placeRails() has moved the columns in the DOM: this
+   only covers the first paint, see js/region.js. */
+html[data-rail-first="eu"]:not(.rails-placed) .rail-left{order:2;}
+html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:1;}
 @media (min-width:1400px){
   .page{flex-direction:row;justify-content:center;align-items:flex-start;}
   /* Deliberately NOT sticky. These rails hold every tier, so they are
@@ -20,6 +24,8 @@
   .rail{width:372px;flex:0 0 372px;max-width:none;margin-top:-40px;}
   .rail-left{order:-1;}
   .rail-right{order:1;}
+  html[data-rail-first="eu"]:not(.rails-placed) .rail-left{order:1;}
+  html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:-1;}
   .wrap{order:0;}
 }
 .title-row{display:flex;align-items:center;gap:12px;margin-bottom:8px;}

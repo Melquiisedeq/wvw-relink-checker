@@ -65,12 +65,13 @@ def files_in(directory, suffix):
 
 
 def script_tags(html):
-    """Every <script> tag, with its src and whether it is async.
+    """Every <script> tag: its src, whether it is async, whether in <head>.
 
     Parsed rather than grepped, for two reasons: the GoatCounter tag spans two
     lines, and the JSON-LD block has no src at all. A line-based grep reports
     the first as an orphan file and trips over the second.
     """
+    body = html.find('<body')
     out = []
     for m in re.finditer(r'<script\b[^>]*>', html):
         tag = m.group(0)
@@ -78,6 +79,7 @@ def script_tags(html):
         out.append({
             'src': src.group(1) if src else None,
             'async': re.search(r'\basync\b', tag) is not None,
+            'head': m.start() < body,
         })
     return out
 
@@ -187,7 +189,10 @@ def check_scripts(problems):
     # The scripts are not modules and share one global scope, so this order is
     # load-bearing rather than a convention: config.js and dom.js are read by
     # everything, and boot.js starts the page once the rest is defined.
-    ordered = [t['src'] for t in tags if t['src'] and not t['async']]
+    # A script in <head> (js/region.js) runs before config.js and reads
+    # nothing from the others; the order is the <body>'s.
+    ordered = [t['src'] for t in tags
+               if t['src'] and not t['async'] and not t['head']]
     if ordered[:2] != ['js/config.js', 'js/dom.js']:
         problems.append(
             'The first two scripts in index.html are %s. They have to be '
