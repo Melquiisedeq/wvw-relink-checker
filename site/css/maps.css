@@ -7,7 +7,8 @@
    API drawn over it. ArenaNet publishes no WvW map tiles, so the terrain is
    the wiki's renders, whose printed sector borders are what the API polygons
    get fitted to - see MAP_IMAGE in js/maps.js. Sized 2700px on the long side,
-   the most a 1x screen can show at MAX_ZOOM. */
+   the most a 1x screen can show at MAX_ZOOM, with a 1280px-wide copy that
+   the map opens on. */
 
 .wvw-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
 .wvw-tab{
