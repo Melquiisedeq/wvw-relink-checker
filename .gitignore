@@ -16,7 +16,7 @@ __pycache__/
 # feature, a sweep of everything the GW2 API can return, and the working copies
 # of the Apps Script code that runs in Google rather than here. Also where the
 # full-size image originals live - git keeps every byte forever, so the 4 MB
-# versions stay out and only the cut-down file in assets/ goes in.
+# versions stay out and only the cut-down file in site/assets/ goes in.
 _source
 
 # The local test bench for the teams notice: a copy of the page with a control

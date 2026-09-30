@@ -41,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Compare live team IDs against the table in js/config.js
+      - name: Compare live team IDs against the table in site/js/config.js
         run: |
           set -euo pipefail
 
@@ -58,11 +58,11 @@ jobs:
 
           missing=""
           for id in $ids; do
-            grep -q "\"$id\":" js/config.js || missing="$missing $id"
+            grep -q "\"$id\":" site/js/config.js || missing="$missing $id"
           done
 
           if [ -n "$missing" ]; then
-            echo "::error::TEAM_NAMES in js/config.js is missing team ID(s):$missing"
+            echo "::error::TEAM_NAMES in site/js/config.js is missing team ID(s):$missing"
             echo "Names are published at https://wiki.guildwars2.com/wiki/API:2/wvw/matches"
             exit 1
           fi

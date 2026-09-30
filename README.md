@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo.svg" width="100" alt="WvW Relink Checker">
+<img src="site/assets/logo.svg" width="100" alt="WvW Relink Checker">
 
 # WvW Relink Checker
 
@@ -126,7 +126,7 @@ only the hosts above. Every script is served from this repository but one
 exception is Cloudflare Web Analytics' beacon, named in the policy down to
 its path and loaded from Cloudflare, which already serves every byte of
 this site. The other piece of third-party code is GoatCounter's counter,
-vendored unmodified into `js/count.js`. Anything the API or the community
+vendored unmodified into `site/js/count.js`. Anything the API or the community
 sheet returns is treated as text, never as markup.
 
 The reasoning for each of these lives in a comment next to the code that
@@ -136,7 +136,7 @@ does it.
 
 - Match data updates inconsistently on ArenaNet's end, which no amount of
   client-side polling can fix.
-- Team names come from a static table in `js/config.js`, since the API has
+- Team names come from a static table in `site/js/config.js`, since the API has
   no endpoint for them. A scheduled GitHub Action fails when the live team
   IDs drift from that table.
 - The NA alliance list is community-maintained — not by ArenaNet, not by
@@ -146,15 +146,18 @@ does it.
 
 ## 📁 Project layout
 
-Plain static files. `index.html` sits at the repository root, and
-Cloudflare serves the files as they are, as a Worker with no code:
-`wrangler.jsonc` says so, and `.assetsignore` lists what gets published.
+Plain static files. Everything the browser downloads is in `site/`, and
+Cloudflare serves that folder as it is, as a Worker with no code:
+`wrangler.jsonc` says so. Nothing outside `site/` is published.
 
 ```
-index.html   markup, the CSP, and the ordered list of scripts
-css/         one stylesheet per concern
-js/          one file per concern, loaded in order; boot.js runs last
-assets/      map renders, game icons, and the link-preview card
+site/
+  index.html   markup, the CSP, and the ordered list of scripts
+  css/         one stylesheet per concern
+  js/          one file per concern, loaded in order; boot.js runs last
+  assets/      map renders, game icons, and the link-preview card
+  _headers     security headers Cloudflare adds to every response
+.github/       the checks, and the workflows that run them
 ```
 
 The scripts are plain (non-module) and share one global scope, so the
@@ -169,7 +172,7 @@ or sponsored by **ArenaNet** or **NCsoft**. All game content belongs to
 its respective owners. Data is pulled live from the official Guild Wars 2
 API.
 
-Released under the [MIT license](LICENSE). `js/count.js` is GoatCounter's
+Released under the [MIT license](LICENSE). `site/js/count.js` is GoatCounter's
 counting script, used unmodified under the ISC license; its license header
 is preserved in the file.
 

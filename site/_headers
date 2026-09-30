@@ -1,4 +1,4 @@
-# Read by Cloudflare, never served: .assetsignore leaves it out.
+# Read by Cloudflare, never served: wrangler leaves _headers out of the upload.
 
 # The page's own CSP is a <meta> tag, which cannot say frame-ancestors. The
 # two policies are both enforced, so this one only adds.
