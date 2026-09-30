@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Structural checks for a site that has no tests and cannot easily have any.
 
-Nothing in this file is shipped. It lives under .github/, which .assetsignore
-leaves out of what Cloudflare publishes, and it runs only in CI. It exists
-because the mistakes this project can actually make - a script missing from
+Nothing in this file is shipped. Cloudflare publishes site/ and nothing
+else, and this lives under .github/; it runs only in CI. It exists because the mistakes this project can actually make - a script missing from
 index.html, a host missing from the Content Security Policy - fail *silently*
 in production: the page looks completely fine and the feature simply does not
 happen. No error, no test, nothing to notice until somebody reports it.
@@ -19,6 +18,8 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# The folder Cloudflare publishes: every path below is relative to it.
+SITE = os.path.join(ROOT, 'site')
 
 # Every host that appears anywhere in the served files, and which kind it is.
 #
@@ -54,12 +55,12 @@ MENTIONED = {
 
 
 def read(rel):
-    with io.open(os.path.join(ROOT, rel), encoding='utf-8') as fh:
+    with io.open(os.path.join(SITE, rel), encoding='utf-8') as fh:
         return fh.read()
 
 
 def files_in(directory, suffix):
-    d = os.path.join(ROOT, directory)
+    d = os.path.join(SITE, directory)
     return sorted(f for f in os.listdir(d) if f.endswith(suffix))
 
 
@@ -129,7 +130,7 @@ def check_scripts(problems):
     for src in referenced:
         if src.startswith('https://'):
             continue
-        if not os.path.exists(os.path.join(ROOT, src)):
+        if not os.path.exists(os.path.join(SITE, src)):
             problems.append(
                 'index.html loads %s, which does not exist. The browser 404s '
                 'it and carries on without whatever was in it.' % src)
@@ -162,7 +163,7 @@ def check_styles(problems):
                             read('index.html'))
 
     for href in referenced:
-        if not os.path.exists(os.path.join(ROOT, href)):
+        if not os.path.exists(os.path.join(SITE, href)):
             problems.append('index.html links %s, which does not exist.' % href)
 
     for name in files_in('css', '.css'):

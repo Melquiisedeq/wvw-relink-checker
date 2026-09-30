@@ -80,7 +80,7 @@ def sheet_ids():
     fails here loudly, instead of quietly leaving this pointed at a sheet
     nobody reads any more.
     """
-    with io.open(os.path.join(ROOT, 'js', 'config.js'), encoding='utf-8') as fh:
+    with io.open(os.path.join(ROOT, 'site', 'js', 'config.js'), encoding='utf-8') as fh:
         config = fh.read()
     found = {}
     for key, name in CONFIG_ID.items():
@@ -122,7 +122,7 @@ def fallbacks_in_code():
     Copying them would mean this file and the code drifting apart in silence,
     which is the exact failure the check is about.
     """
-    body = io.open(os.path.join(ROOT, 'js', 'sheet.js'), encoding='utf-8').read()
+    body = io.open(os.path.join(ROOT, 'site', 'js', 'sheet.js'), encoding='utf-8').read()
     return {m.group(1): int(m.group(2)) for m in
             re.finditer(r'const (\w+_FALLBACK)\s*=\s*(\d+)', body)}
 

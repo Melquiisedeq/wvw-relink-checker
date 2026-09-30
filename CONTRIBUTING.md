@@ -41,7 +41,7 @@ that turns this tool into a way to attack the person using it.
 Serve it over http rather than double-clicking the file — the Content Security
 Policy does not behave the same on a `file://` URL:
 
-    python -m http.server 8000
+    python -m http.server 8000 --directory site
 
 Then open `http://localhost:8000`. No API key, no account, nothing to set up.
 

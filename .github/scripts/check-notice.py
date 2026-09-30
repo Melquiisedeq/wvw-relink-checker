@@ -145,7 +145,7 @@ def sheet_url():
     rather than assumed, so renaming that constant fails loudly here instead of
     quietly checking the wrong sheet.
     """
-    with io.open(os.path.join(ROOT, 'js', 'config.js'), encoding='utf-8') as fh:
+    with io.open(os.path.join(ROOT, 'site', 'js', 'config.js'), encoding='utf-8') as fh:
         config = fh.read()
     found = SHEET_URL_LINE.search(config)
     if not found:
