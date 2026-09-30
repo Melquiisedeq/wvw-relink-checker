@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Structural checks for a site that has no tests and cannot easily have any.
 
-Nothing in this file is shipped. It lives under .github/, which Pages never
-serves, and it runs only in CI. It exists because the mistakes this project
-can actually make - a script missing from index.html, a host missing from the
-Content Security Policy - fail *silently* in production: the page looks
-completely fine and the feature simply does not happen. No error, no test,
-nothing to notice until somebody reports it.
+Nothing in this file is shipped. It lives under .github/, which .assetsignore
+leaves out of what Cloudflare publishes, and it runs only in CI. It exists
+because the mistakes this project can actually make - a script missing from
+index.html, a host missing from the Content Security Policy - fail *silently*
+in production: the page looks completely fine and the feature simply does not
+happen. No error, no test, nothing to notice until somebody reports it.
 
 Run it by hand any time:  python .github/scripts/check-structure.py
 """
