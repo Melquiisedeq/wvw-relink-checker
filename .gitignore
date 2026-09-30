@@ -13,9 +13,9 @@ Thumbs.db
 __pycache__/
 
 # Notes to self, and nothing the site needs to run: the research behind each
-# feature, a sweep of everything the GW2 API can return, and the working copies
-# of the Apps Script code that runs in Google rather than here. Also where the
-# full-size image originals live - git keeps every byte forever, so the 4 MB
+# feature and a sweep of everything the GW2 API can return. The Apps Script
+# code is not here but in apps-script/. Also where the full-size image
+# originals live - git keeps every byte forever, so the 4 MB
 # versions stay out and only the cut-down file in site/assets/ goes in.
 _source
 

@@ -11,9 +11,17 @@ and every one of them is fetched. A 404 on js/maps.js is the whole maps panel
 gone, and the only place it shows is the console of whoever happened to open
 the site.
 
+Two more facts about the domain, each a date or a status and no judgement:
+the old GitHub Pages address stays gone (removing the custom domain did not
+unpublish it, and it kept serving a copy of the repository for a day), and
+the domain is not about to expire - it is renewed by hand, on purpose, so
+this is what remembers.
+
 Run it by hand any time:  python .github/scripts/check-site.py
 """
 
+import datetime
+import json
 import re
 import sys
 import time
@@ -24,6 +32,9 @@ SITE = 'https://wvwrelink.com/'
 ATTEMPTS = 3
 PAUSE_SECONDS = 5
 TIMEOUT_SECONDS = 30
+OLD_PAGES = 'https://melquiisedeq.github.io/wvw-relink-checker/'
+RDAP = 'https://rdap.verisign.com/com/v1/domain/wvwrelink.com'
+RENEW_WARN_DAYS = 60
 
 
 def fetch(url):
@@ -42,6 +53,52 @@ def fetch(url):
         except Exception as exc:
             last = '%s: %s' % (type(exc).__name__, exc)
     return None, None, '%s after %d attempts' % (last, ATTEMPTS)
+
+
+def status_of(url):
+    """The HTTP status, 404 included, or None if nothing answered."""
+    try:
+        req = urllib.request.Request(
+            url, headers={'User-Agent': 'wvwrelink-health-check'})
+        with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as res:
+            return res.status
+    except urllib.error.HTTPError as exc:
+        return exc.code
+    except Exception:
+        return None
+
+
+def domain_checks(problems, notes):
+    status = status_of(OLD_PAGES)
+    if status == 200:
+        problems.append('%s answers 200: GitHub Pages is publishing the '
+                        'repository again. Settings > Pages > Unpublish.'
+                        % OLD_PAGES)
+    else:
+        notes.append('%-46s HTTP %s' % ('old GitHub Pages address', status))
+
+    _, body, error = fetch(RDAP)
+    expires = None
+    if not error:
+        try:
+            for event in json.loads(body).get('events', []):
+                if event.get('eventAction') == 'expiration':
+                    expires = datetime.datetime.fromisoformat(
+                        event['eventDate'].replace('Z', '+00:00'))
+        except (ValueError, KeyError, TypeError):
+            pass
+    if expires is None:
+        problems.append('Could not read when wvwrelink.com expires from %s '
+                        '(%s).' % (RDAP, error or 'no expiration event'))
+        return
+    left = (expires - datetime.datetime.now(datetime.timezone.utc)).days
+    if left < RENEW_WARN_DAYS:
+        problems.append('wvwrelink.com expires on %s, in %d days, and '
+                        'auto-renew is off on purpose. Renew it at Dynadot.'
+                        % (expires.date(), left))
+    else:
+        notes.append('%-46s %s, %d days left' % ('domain expires',
+                                                 expires.date(), left))
 
 
 def main():
@@ -91,6 +148,8 @@ def main():
     else:
         notes.append('%-46s all %d served' % ('scripts and stylesheets',
                                               len(assets)))
+
+    domain_checks(problems, notes)
 
     for note in notes:
         print(note)
