@@ -223,7 +223,8 @@ def check_heartbeat(page_url, now):
               % shown)
         print('::error::If it is empty, the script in the Apps Script project '
               'is older than the heartbeat: paste the current '
-              '_source/relink-notice.gs in and run relinkTick once by hand. If '
+              'apps-script/relink-notice/relink-notice.gs in and run '
+              'relinkTick once by hand. If '
               'it holds something else, it was written over.')
         return True
 

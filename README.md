@@ -157,6 +157,9 @@ site/
   js/          one file per concern, loaded in order; boot.js runs last
   assets/      map renders, game icons, and the link-preview card
   _headers     security headers Cloudflare adds to every response
+apps-script/   the two Google Apps Script projects behind the spreadsheets:
+               the teams notice and the kills history. They run in Google;
+               these are the copies they are pasted from.
 .github/       the checks, and the workflows that run them
 ```
 
