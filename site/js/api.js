@@ -62,6 +62,21 @@ async function fetchJson(url, attempt = 0, cacheMode = 'no-store') {
   }
 }
 
+// wvwrelink.com/api, the reads that stand in for the two project sheets. One
+// try, no retry: the caller's retry is the sheet. Throws on anything but a
+// 200 carrying JSON.
+async function fetchOwnApi(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), OWN_API_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // The static catalogues - objectives, upgrades, sectors, tactics, emblem
 // foregrounds - are served with max-age=3600, and the blanket 'no-store'
 // threw all of it away on every page load. These go through 'default' so

@@ -118,6 +118,15 @@ const KILLS_SHEET_ID = '1Lh6dGhlYVvvKlXT_tofEUKZhYGW71Jij1IstbdPF2fg';
 const KILLS_SHEET_URL =
   `https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=kills`;
 const KILLS_SHEET_TTL_MS = 5 * 60 * 1000;
+
+// This project's own copy of the same two things, served by the wvwrelink-api
+// Worker from its database, which both Apps Scripts push to after every tick.
+// Tried first; any failure - quota, rate limit, a stale copy, a timeout - reads
+// the sheet as before, so the page is never worse off than without it. The
+// shorter deadline is what a failure costs before that fallback.
+const OWN_KILLS_URL = '/api/kills';
+const OWN_RELINK_URL = '/api/relink';
+const OWN_API_TIMEOUT_MS = 4000;
 // Must match the column order the Apps Script writes.
 const KILLS_MAP_ORDER = Object.freeze(['Center', 'RedHome', 'BlueHome', 'GreenHome']);
 

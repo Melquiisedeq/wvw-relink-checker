@@ -2,8 +2,9 @@
 
 The page runs in the visitor's browser, with no account and no session. There
 is one server of mine, `wvwrelink.com/api` (`worker/`), and one database behind
-it, and neither ever sees anything a visitor types: they only take in game data
-that this project's two Apps Scripts send, each message signed. So the reports
+it, and neither ever sees anything a visitor types: they take in game data that
+this project's two Apps Scripts send, each message signed, and hand two small
+parts of it back to the page. So the reports
 worth making are about the page being turned against the person using it, and
 about getting something into that database that the scripts did not send.
 

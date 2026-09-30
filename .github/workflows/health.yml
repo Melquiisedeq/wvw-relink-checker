@@ -1,5 +1,5 @@
 # Everything this page shows comes from somewhere else: ArenaNet's API, three
-# Google Sheets, and Cloudflare. None of them owes this project a warning
+# Google Sheets, and Cloudflare, where this project's own /api lives. None of them owes this project a warning
 # before changing, and none of the ways they break is loud. A renamed column
 # reads the wrong column. A file that fails to deploy 404s into a console
 # nobody is watching. A stopped Apps Script trigger just stops.
@@ -82,6 +82,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: wvwrelink.com serves every file it asks for; old Pages gone; domain not expiring
         run: python3 .github/scripts/check-site.py
+
+  # wvwrelink.com/api: both Apps Scripts still pushing, the two reads the page
+  # tries first still answering, the entrance still shut. Its own job, so the
+  # email says "worker": the page carries on from the sheets when this fails.
+  worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Both sources pushing, the reads answering, the entrance shut
+        run: python3 .github/scripts/check-worker.py
 
   # The teams notice is meant to appear every month. A month where it did not is
   # a bug, and the only way anybody finds out is this asking - the Apps Script
