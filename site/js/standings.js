@@ -196,14 +196,79 @@ function placeRails() {
 // popover open on the old side would be left pointing at a column that
 // moved, so it closes first; the button moves with its column and loses
 // focus on the way, so it gets it back.
+//
+// Everything that swapped slides to its new place - the two columns and
+// the NA / EU halves of the relink bar (FLIP: measured before and after
+// the move, then animated back from where each was). The columns pass
+// under the centre column, shrinking and fading at the crossing so the
+// text there stays readable, like two cards being shuffled. View
+// Transitions were tried and dropped: capturing columns this tall froze
+// the page for about 300ms before anything moved.
+const SWAP_MS = 650;
+const SWAP_EASE = 'cubic-bezier(.45, 0, .2, 1)';
+
+// The relink bar's region labels and countdowns, keyed so the same half
+// can be found again after updateRelinkBanner rebuilds them.
+function bannerHalves() {
+  const out = new Map();
+  let region = null;
+  for (const el of relinkBanner.querySelectorAll('.region, .time')) {
+    if (el.classList.contains('region')) {
+      region = el.textContent.trim();
+      if (region === 'NA' || region === 'EU') out.set(region, el);
+    } else if (region === 'NA' || region === 'EU') {
+      out.set(region + ' time', el);
+    }
+  }
+  return out;
+}
+
 function swapRails(btn) {
   if (activePopover) closePopover();
+  const rails = [...document.querySelectorAll('.rail')];
+  const railsWere = new Map(rails.map((r) => [r, r.getBoundingClientRect()]));
+  const halvesWere = new Map([...bannerHalves()].map(([k, el]) => [k, el.getBoundingClientRect()]));
+
   const next = railFirst() === 'eu' ? 'na' : 'eu';
   document.documentElement.dataset.railFirst = next;
   try { localStorage.setItem(RAIL_FIRST_KEY, next); } catch {}
   placeRails();
   updateRelinkBanner();
   if (btn) btn.focus({ preventScroll: true });
+
+  for (const r of rails) {
+    const was = railsWere.get(r);
+    const now = r.getBoundingClientRect();
+    const dx = was.left - now.left;
+    const dy = was.top - now.top;
+    if (!dx && !dy) continue;
+    r.classList.add('is-swapping');
+    // Linear time, eased per step: the fade has to cover the whole middle
+    // stretch of the path, and one easing over the whole run bunched the
+    // travel into the first frames, still opaque over the centre's text.
+    r.animate([
+      { transform: `translate(${dx}px, ${dy}px)`, opacity: 1, easing: 'ease-in' },
+      { transform: `translate(${dx * .7}px, ${dy * .7}px) scale(.92)`, opacity: .08, offset: .3 },
+      { transform: `translate(${dx * .3}px, ${dy * .3}px) scale(.92)`, opacity: .08, offset: .7, easing: 'ease-out' },
+      { transform: 'none', opacity: 1 },
+    ], { duration: SWAP_MS }).finished.finally(() => r.classList.remove('is-swapping'));
+  }
+  for (const [key, el] of bannerHalves()) {
+    const was = halvesWere.get(key);
+    if (!was) continue;
+    const dx = was.left - el.getBoundingClientRect().left;
+    if (!dx) continue;
+    // The halves cross on one line, so one rises and the other dips as they
+    // pass, faded, instead of running through each other.
+    const lift = dx > 0 ? -7 : 7;
+    el.classList.add('is-swapping');
+    el.animate([
+      { transform: `translateX(${dx}px)`, opacity: 1 },
+      { transform: `translate(${dx / 2}px, ${lift}px)`, opacity: .35, offset: .5 },
+      { transform: 'none', opacity: 1 },
+    ], { duration: SWAP_MS, easing: SWAP_EASE })
+      .finished.finally(() => el.classList.remove('is-swapping'));
+  }
 }
 
 // Every match of both regions in one request - the one index.html
