@@ -3,30 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<!--
-  default-src 'none' denies everything, then:
-
-  connect-src - the GW2 API, three read-only Google Sheets, Cloudflare
-  Web Analytics' collector and GoatCounter, which falls back from
-  sendBeacon to an image - hence that host in img-src too. The three
-  sheets are one host and one entry: the community guild list when a
-  shield is clicked, this project's own kills history when a tier's maps
-  are opened, and the one cell saying whether the new teams are out, read
-  only in the days before a relink.
-
-  script-src and style-src 'self', no unsafe-inline: every script comes
-  from js/, GoatCounter's vendored copy included, and styles set from JS
-  go through the CSSOM, which no CSP governs. One script comes from
-  elsewhere, named down to its path: Cloudflare Web Analytics' beacon.
-
-  img-src - everything local except guild emblems, which come from
-  ArenaNet's asset host; there are hundreds of thousands of them and
-  they change.
-
-  base-uri and form-action 'none' - no <base> hijacking, no forms.
--->
-<meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self' https://static.cloudflareinsights.com/beacon.min.js; style-src 'self'; connect-src 'self' https://api.guildwars2.com https://docs.google.com https://cloudflareinsights.com https://melquiisedeq.goatcounter.com; img-src 'self' data: https://render.guildwars2.com https://melquiisedeq.goatcounter.com; base-uri 'none'; form-action 'none';">
+<!-- The Content Security Policy is a response header, set in _headers. -->
 <meta name="referrer" content="no-referrer">
 <!--
   Both hosts are reached on a click, never at load. Measured cold,
