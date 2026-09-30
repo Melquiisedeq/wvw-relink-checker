@@ -12,6 +12,11 @@
    left the footer mid-screen, and filling them threw it off the bottom -
    0.73 of the page's 0.76 CLS (30/09/2026). Filled, they are taller. */
 .rail{min-height:100vh;}
+/* While the swap slides a column across, it passes under the centre
+   column instead of over it; the bar's halves need to be boxes to move,
+   and pre keeps the space each ends with (js/standings.js, swapRails). */
+.rail.is-swapping{position:relative;z-index:-1;}
+.relink-banner .is-swapping{display:inline-block;white-space:pre;}
 .rail-left{order:1;}
 .rail-right{order:2;}
 /* EU first, before placeRails() has moved the columns in the DOM: this
