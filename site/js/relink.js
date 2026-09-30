@@ -513,8 +513,8 @@ function updateTeamsNotice(rebuilding) {
   // as the tab stayed open. Nothing is lost, since coming back runs this
   // within the minute.
   //
-  // visibilityState only, and deliberately not document.hasFocus() as the map
-  // poll adds: an unfocused window on a second monitor is exactly where
+  // visibilityState only, and deliberately not document.hasFocus(), like the
+  // map poll: an unfocused window on a second monitor is exactly where
   // somebody parks this page waiting for the teams. Animation can stop when
   // nobody is watching; news cannot.
   if (document.visibilityState === 'hidden') return;
