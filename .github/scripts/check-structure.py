@@ -34,6 +34,8 @@ FETCHED = {
     'docs.google.com': 'the three public spreadsheets',
     'render.guildwars2.com': 'guild emblem images',
     'melquiisedeq.goatcounter.com': 'one page view per visit',
+    'static.cloudflareinsights.com': 'the Web Analytics beacon script',
+    'cloudflareinsights.com': 'where the Web Analytics beacon reports',
 }
 
 MENTIONED = {
@@ -109,8 +111,10 @@ def check_hosts(problems):
         return
 
     policy = csp.group(1)
+    # With the scheme, so cloudflareinsights.com is not found inside
+    # static.cloudflareinsights.com.
     for host in sorted(FETCHED):
-        if host not in policy:
+        if 'https://' + host not in policy:
             problems.append(
                 '%s is fetched (%s) but is not named in the Content Security '
                 'Policy, so the browser blocks it - quietly, with the page '
@@ -121,7 +125,10 @@ def check_scripts(problems):
     tags = script_tags(read('index.html'))
     referenced = [t['src'] for t in tags if t['src']]
 
+    # A script from another host is check_hosts' business, not a file here.
     for src in referenced:
+        if src.startswith('https://'):
+            continue
         if not os.path.exists(os.path.join(ROOT, src)):
             problems.append(
                 'index.html loads %s, which does not exist. The browser 404s '

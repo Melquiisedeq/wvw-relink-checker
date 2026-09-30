@@ -1,6 +1,6 @@
 // The site as a Cloudflare Worker made only of static files: no `main`, so no
-// code of ours runs there. Read by Cloudflare's build only; GitHub Pages
-// ignores it. What gets uploaded is decided by .assetsignore.
+// code of ours runs there. Read by Cloudflare's build only. What gets
+// uploaded is decided by .assetsignore.
 {
   // Must match the Worker's name in the dashboard, or the build fails.
   "name": "wvwrelink",
@@ -8,6 +8,11 @@
   "assets": {
     "directory": "."
   },
+  // The site lives at wvwrelink.com; workers.dev would be a second copy.
+  // Turning it off also turns off version URLs unless they are named here,
+  // and those are where branch previews live.
+  "workers_dev": false,
+  "preview_urls": true,
   // Required by Worker previews, even when empty.
   "previews": {}
 }

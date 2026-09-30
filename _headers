@@ -1,5 +1,4 @@
-# Read by Cloudflare only, never served; GitHub Pages does not publish files
-# that start with an underscore.
+# Read by Cloudflare, never served: .assetsignore leaves it out.
 
 # The page's own CSP is a <meta> tag, which cannot say frame-ancestors. The
 # two policies are both enforced, so this one only adds.
@@ -9,10 +8,9 @@
   Referrer-Policy: no-referrer
   Cross-Origin-Opener-Policy: same-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()
+  Strict-Transport-Security: max-age=31536000
 
-# Both addresses mirror main and must not be indexed.
+# The preview project's production address mirrors main and must not be
+# indexed.
 https://wvwrelink-preview.pages.dev/*
-  X-Robots-Tag: noindex
-
-https://wvwrelink.wvwgw2.workers.dev/*
   X-Robots-Tag: noindex

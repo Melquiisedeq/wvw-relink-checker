@@ -9,7 +9,9 @@ people opening the code.
 Plain static files. **No build step, no dependencies, no package manager,
 nothing pulled from a CDN.** That is not something waiting to be fixed, it is
 the point — the page works because there is nothing between the browser and
-the files, and it will still work in five years for the same reason.
+the files, and it will still work in five years for the same reason. The one
+script from elsewhere is Cloudflare's visit counter, and the page does not
+need it to work.
 
 So a pull request that adds a library, a bundler or a framework will not be
 merged, however good the library is. If something really does need one, open
@@ -23,10 +25,11 @@ everything reads them, and `boot.js` comes last because it starts the page. A
 new file goes into that list at the right position, not at the end by default.
 
 **The Content Security Policy is strict.** It sits at the top of `index.html`
-and names four hosts. Anything fetched from a host that is not on that list is
-blocked by the browser — quietly, with the page looking perfectly fine and the
-feature simply not happening. Adding a host is a decision, not a side effect:
-if a change needs one, say so in the pull request and say why.
+and names every host the page talks to. Anything fetched from a host that is
+not on that list is blocked by the browser — quietly, with the page looking
+perfectly fine and the feature simply not happening. Adding a host is a
+decision, not a side effect: if a change needs one, say so in the pull request
+and say why.
 
 **What comes back from the API or the spreadsheet is text, never markup.**
 Guild names are written by other people and end up on the page. They go in as

@@ -6,16 +6,18 @@
 <!--
   default-src 'none' denies everything, then:
 
-  connect-src - the GW2 API, three read-only Google Sheets and
-  GoatCounter, which falls back from sendBeacon to an image - hence that
-  host in img-src too. The three sheets are one host and one entry: the
-  community guild list when a shield is clicked, this project's own kills
-  history when a tier's maps are opened, and the one cell saying whether
-  the new teams are out, read only in the days before a relink.
+  connect-src - the GW2 API, three read-only Google Sheets, Cloudflare
+  Web Analytics' collector and GoatCounter, which falls back from
+  sendBeacon to an image - hence that host in img-src too. The three
+  sheets are one host and one entry: the community guild list when a
+  shield is clicked, this project's own kills history when a tier's maps
+  are opened, and the one cell saying whether the new teams are out, read
+  only in the days before a relink.
 
   script-src and style-src 'self', no unsafe-inline: every script comes
   from js/, GoatCounter's vendored copy included, and styles set from JS
-  go through the CSSOM, which no CSP governs.
+  go through the CSSOM, which no CSP governs. One script comes from
+  elsewhere, named down to its path: Cloudflare Web Analytics' beacon.
 
   img-src - everything local except guild emblems, which come from
   ArenaNet's asset host; there are hundreds of thousands of them and
@@ -24,7 +26,7 @@
   base-uri and form-action 'none' - no <base> hijacking, no forms.
 -->
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://api.guildwars2.com https://docs.google.com https://melquiisedeq.goatcounter.com; img-src 'self' data: https://render.guildwars2.com https://melquiisedeq.goatcounter.com; base-uri 'none'; form-action 'none';">
+      content="default-src 'none'; script-src 'self' https://static.cloudflareinsights.com/beacon.min.js; style-src 'self'; connect-src https://api.guildwars2.com https://docs.google.com https://cloudflareinsights.com https://melquiisedeq.goatcounter.com; img-src 'self' data: https://render.guildwars2.com https://melquiisedeq.goatcounter.com; base-uri 'none'; form-action 'none';">
 <meta name="referrer" content="no-referrer">
 <!--
   Both hosts are reached on a click, never at load. Measured cold,
@@ -62,8 +64,8 @@
   why a card that kept one made the crest look pasted on.
 -->
 <!--
-  One address for this page, named in the page itself. GitHub Pages
-  already redirects plain http and the github.io URL here, so this is
+  One address for this page, named in the page itself. Cloudflare
+  already redirects plain http and www here, so this is
   for a crawler still holding an older one - not hypothetical, since the
   result Google shows still carries a title this site dropped several
   commits ago. js/count.js reads the same tag to normalise the path it
@@ -420,10 +422,19 @@ One More Guild Name"></textarea>
 
 <!-- Page views only: no cookies, no fingerprint, nothing that identifies
      a visitor between one request and the next. count.js is served from
-     this repo rather than gc.zgo.at, so script-src stays 'self'. Opt out
+     this repo rather than gc.zgo.at, so script-src needs no host for it. Opt out
      with localStorage.skipgc = 't'. Counts on wvwrelink.com only: see the
      end of js/boot.js. -->
 <script data-goatcounter="https://melquiisedeq.goatcounter.com/count"
         async src="js/count.js"></script>
+
+<!-- Cloudflare Web Analytics: visits and real visitors' page speed, no
+     cookies. Loaded from Cloudflare, which already serves every byte of
+     this site, and without integrity because Cloudflare does not version
+     the file (developers.cloudflare.com/web-analytics/faq/). Cloudflare
+     counts only wvwrelink.com and its subdomains, so a preview or a
+     local copy adds nothing. -->
+<script type="module" async src="https://static.cloudflareinsights.com/beacon.min.js"
+        data-cf-beacon='{"token": "de8b6c5ab92746a2815175bdd8979b54"}'></script>
 </body>
 </html>
