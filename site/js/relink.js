@@ -225,6 +225,26 @@ function updateRelinkFromMatches(naMatches, euMatches) {
   if (bannerMayDraw) updateRelinkBanner();
 }
 
+// The beat's green layer is .relink-inner::before (css/facets.css), and
+// .relink-inner is rebuilt every minute: its animation restarted each time
+// and fell out of step with the red and blue ones on the bar itself, two
+// colours landing together and the third late. Pinned to the red's clock,
+// which never restarts, the three stay 2.1 s apart. By currentTime, not
+// startTime: while the page idles (.is-idle pauses every animation) a
+// paused animation has no startTime, and a rebuild in that time left the
+// green out of step again once the page woke.
+function keepBeatInStep(inner) {
+  if (!document.getAnimations) return;
+  let red = null;
+  let green = null;
+  for (const a of document.getAnimations()) {
+    if (a.animationName !== 'rebuild-beat') continue;
+    if (a.effect.target === relinkBanner && a.effect.pseudoElement === '::before') red = a;
+    else if (a.effect.target === inner) green = a;
+  }
+  if (red && green && red.currentTime !== null) green.currentTime = red.currentTime;
+}
+
 // The relink's own value line. Same shape as the weekly one, with one
 // difference: a region that has already relinked shows that it is done
 // rather than a countdown, because 'any moment now' would be a lie for
@@ -281,6 +301,7 @@ function buildRebuildBanner(naLeft, euLeft) {
   inner.appendChild(stat);
   relinkBanner.style.display = 'block';
   relinkBanner.appendChild(inner);
+  keepBeatInStep(inner);
 
   const alert = document.createElement('div');
   alert.className = 'relink-alert';
