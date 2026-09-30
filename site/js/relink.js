@@ -131,6 +131,16 @@ function buildRelinkValue(naMs, euMs, naNow, euNow) {
 // independent schedules and both read the latest values.
 let lockoutTime = null;
 let timersLoaded = false;
+// The first drawing has to be the right one. The matches alone can only
+// draw the weekly countdown, and during a relink window the timers then
+// turned it into the relink's own, taller bar: on reload the small one
+// showed first and the page jumped. So nothing is drawn until the timers
+// have answered or failed - or three seconds have gone, so a hung
+// request cannot keep the bar away.
+let bannerMayDraw = false;
+setTimeout(() => {
+  if (!bannerMayDraw) { bannerMayDraw = true; updateRelinkBanner(); }
+}, 3000);
 
 // Weekly relink: when tier matchups end and everyone is shuffled into
 // new pairings. Read straight from the match data's own end_time, so
@@ -176,6 +186,7 @@ async function fetchTimers() {
   } catch {
     // Same reasoning: the last figures stand.
   }
+  bannerMayDraw = true;
   updateRelinkBanner();
 }
 
@@ -211,7 +222,7 @@ function updateRelinkFromMatches(naMatches, euMatches) {
     resetEU = latestOf(euMatches, 'start_time');
     liveEU = euMatches.some(matchIsLive);
   }
-  updateRelinkBanner();
+  if (bannerMayDraw) updateRelinkBanner();
 }
 
 // The relink's own value line. Same shape as the weekly one, with one

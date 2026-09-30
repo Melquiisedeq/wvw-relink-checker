@@ -8,6 +8,10 @@
 }
 .wrap{width:100%;max-width:720px;order:0;}
 .rail{width:100%;max-width:720px;}
+/* At least a screen tall before the standings arrive: empty, the columns
+   left the footer mid-screen, and filling them threw it off the bottom -
+   0.73 of the page's 0.76 CLS (30/09/2026). Filled, they are taller. */
+.rail{min-height:100vh;}
 .rail-left{order:1;}
 .rail-right{order:2;}
 /* EU first, before placeRails() has moved the columns in the DOM: this
@@ -36,9 +40,10 @@ html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:1;}
    page spanning the viewport. The closed contour earns its keep too:
    the urgency pulse needs one to travel around. */
 .relink-banner{
-  /* Hidden until there is a timer to show; updateRelinkBanner sets
-     style.display itself from then on. */
-  display:none;
+  /* Shown from the first paint at the weekly bar's height, so its arrival
+     does not push the page down; updateRelinkBanner sets style.display
+     itself from then on, none only when there is nothing to show. */
+  display:block;min-height:50px;
   position:relative;z-index:1;
   width:100%;max-width:720px;
   margin:12px auto 0;padding:8px 22px;border-radius:10px;
