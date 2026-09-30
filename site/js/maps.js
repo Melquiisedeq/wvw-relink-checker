@@ -94,9 +94,18 @@ const MARKER_ICON = Object.freeze({
 let plotSerial = 0;
 // How often open tier maps re-read their own match. The API serves match
 // data with max-age=1, so the only lag is ours. One match is 82KB, and
-// this runs only while the maps are open and the window has focus.
+// this runs only while the maps are open and the page is visible.
 const MAP_REFRESH_MS = 30 * 1000;
 let mapPollTimer = null;
+// Set while a tier's maps are open: pulls at once if the last pull is a
+// poll interval old. A tab hidden for half an hour otherwise came back
+// showing the map it left, for up to thirty more seconds, with the
+// capture clocks still counting as if it were current.
+let mapCatchUp = null;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && mapCatchUp) mapCatchUp();
+});
+window.addEventListener('focus', () => { if (mapCatchUp) mapCatchUp(); });
 // The last answer a poll got, paired with the standings match it was
 // pulled against - one slot, because only one tier's maps are ever
 // open. toggleTierMaps says what the pairing is for.
@@ -2085,11 +2094,19 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
 
   // One fetch of this tier's match, and everything that has to be
   // repainted when it lands. Called on opening and then on the poll.
+  // Stamped when asked, not when answered, so a catch-up and the poll do
+  // not both fire for the same gap. The sequence number keeps a slow
+  // answer from painting over a newer one that overtook it.
+  let pulledAt = 0;
+  let pullSeq = 0;
   const pullFresh = async () => {
+    pulledAt = Date.now();
+    const seq = ++pullSeq;
     let fresh;
     try {
       fresh = await fetchJson(`${API_BASE}/wvw/matches?id=${encodeURIComponent(match.id)}`);
     } catch { return; }
+    if (seq !== pullSeq) return;
     if (activeTrigger !== triggerEl || !fresh || !Array.isArray(fresh.maps)) return;
     for (const m of fresh.maps) if (byType.has(m.type)) byType.set(m.type, m);
     liveMatch = fresh;
@@ -2122,14 +2139,23 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   // refresh cannot do it for them: it rebuilds the whole board, and the
   // button this popover is anchored to goes with it. So this asks for one
   // match, not all nine, and repaints in place.
+  //
+  // Visible is enough, focus is not asked for: the window beside the game,
+  // unfocused on a second monitor, is where these maps are read. Gated on
+  // focus, they froze for as long as the game had it. Only a hidden tab
+  // skips the tick, and mapCatchUp pulls the moment it is shown again.
   clearInterval(mapPollTimer);
   mapPollTimer = setInterval(() => {
     if (activeTrigger !== triggerEl) { clearInterval(mapPollTimer); return; }
-    // Same rule as the animations: no work for a window nobody is
-    // looking at. It catches up on the next tick after you come back.
-    if (document.visibilityState === 'hidden' || !document.hasFocus()) return;
+    if (document.visibilityState === 'hidden') return;
+    // A catch-up just ran; this tick would ask again seconds later.
+    if (Date.now() - pulledAt < MAP_REFRESH_MS / 2) return;
     pullFresh();
   }, MAP_REFRESH_MS);
+  mapCatchUp = () => {
+    if (activeTrigger !== triggerEl) return;
+    if (Date.now() - pulledAt >= MAP_REFRESH_MS) pullFresh();
+  };
 
   clearInterval(mapTickTimer);
   mapTickTimer = setInterval(() => {
