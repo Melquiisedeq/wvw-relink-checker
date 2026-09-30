@@ -9,8 +9,3 @@
   Cross-Origin-Opener-Policy: same-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()
   Strict-Transport-Security: max-age=31536000
-
-# The preview project's production address mirrors main and must not be
-# indexed.
-https://wvwrelink-preview.pages.dev/*
-  X-Robots-Tag: noindex
