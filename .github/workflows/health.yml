@@ -1,5 +1,5 @@
 # Everything this page shows comes from somewhere else: ArenaNet's API, three
-# Google Sheets, and GitHub Pages. None of them owes this project a warning
+# Google Sheets, and Cloudflare. None of them owes this project a warning
 # before changing, and none of the ways they break is loud. A renamed column
 # reads the wrong column. A file that fails to deploy 404s into a console
 # nobody is watching. A stopped Apps Script trigger just stops.

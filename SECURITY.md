@@ -23,7 +23,7 @@ than hours.
   the reason people come here. A crafted link that shows a relink or a lockout
   that is not real uses the site to mislead someone.
 - **A way to make the page send what somebody typed anywhere** other than the
-  four hosts named in the Content Security Policy, at the top of
+  hosts named in the Content Security Policy, at the top of
   `index.html`.
 - **A way to get something into what the site serves** that did not come from
   this repository.
@@ -48,5 +48,5 @@ turns out to be writable by anyone with the link, that is a finding here and a
 serious one, because whoever can write that cell decides what this page tells
 people about their team.
 
-ArenaNet's API, the community guild sheet, Google as a platform and GoatCounter
-are other people's services — report those to them.
+ArenaNet's API, the community guild sheet, Google as a platform, Cloudflare and
+GoatCounter are other people's services — report those to them.

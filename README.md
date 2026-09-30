@@ -79,6 +79,7 @@ anything to.**
 | `render.guildwars2.com` | Guild emblem images, for objectives claimed by a guild. Images only. |
 | `docs.google.com` | Three public spreadsheets, read-only: the community guild list when you click a shield icon, the kills history when you open a tier's maps, and one cell saying whether the new teams are out — read only in the days before a relink. |
 | `melquiisedeq.goatcounter.com` | One anonymous page view per visit. Nothing else. |
+| `static.cloudflareinsights.com`, `cloudflareinsights.com` | Cloudflare Web Analytics: its script, and one anonymous report per visit with how fast the page loaded. |
 
 Four things are kept in your browser's own storage. None of them ever
 leave your device; two clear themselves out as they age, and the last is
@@ -107,16 +108,26 @@ anywhere else sends nothing.
 To keep your own browser out of the count, run `localStorage.skipgc = 't'`
 in the developer console on the site.
 
+Cloudflare, which serves the site, also counts visits with its
+[Web Analytics](https://developers.cloudflare.com/web-analytics/about/): no
+cookies, no persistent identifier. One report per page load records the
+page address and referrer, how long the page took to load and draw, the
+browser and its version, and how much memory the page used — and nothing
+you type. Its script comes from Cloudflare. It has no switch of its own to
+opt out; a content blocker stops it.
+
 </details>
 
 ## 🛡️ Security
 
 A strict Content Security Policy denies everything by default and allows
-only the four hosts above. Every script is served from this repository —
-no CDN, nothing fetched from someone else's host to be run. The one piece
-of third-party code is GoatCounter's counter, vendored unmodified into
-`js/count.js`. Anything the API or the community sheet returns is treated
-as text, never as markup.
+only the hosts above. Every script is served from this repository but one
+— no CDN, nothing else fetched from someone else's host to be run. The
+exception is Cloudflare Web Analytics' beacon, named in the policy down to
+its path and loaded from Cloudflare, which already serves every byte of
+this site. The other piece of third-party code is GoatCounter's counter,
+vendored unmodified into `js/count.js`. Anything the API or the community
+sheet returns is treated as text, never as markup.
 
 The reasoning for each of these lives in a comment next to the code that
 does it.
@@ -135,8 +146,9 @@ does it.
 
 ## 📁 Project layout
 
-Plain static files. `index.html` sits at the repository root, which is all
-GitHub Pages needs in order to serve it.
+Plain static files. `index.html` sits at the repository root, and
+Cloudflare serves the files as they are, as a Worker with no code:
+`wrangler.jsonc` says so, and `.assetsignore` lists what gets published.
 
 ```
 index.html   markup, the CSP, and the ordered list of scripts
