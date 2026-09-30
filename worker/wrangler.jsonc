@@ -1,0 +1,22 @@
+// wvwrelink.com/api/*: the only Worker bound to the database. Built by
+// Cloudflare from this folder (root directory "worker"), separately from the
+// site, which stays files only.
+{
+  // Must match the Worker's name in the dashboard, or the build fails.
+  "name": "wvwrelink-api",
+  "main": "index.mjs",
+  "compatibility_date": "2026-09-29",
+  // Runs in front of the site's custom domain for these paths only.
+  "routes": [{ "pattern": "wvwrelink.com/api/*", "zone_name": "wvwrelink.com" }],
+  // No second door: a workers.dev address or a preview would reach the same
+  // database, and a preview built from a branch would write to it.
+  "workers_dev": false,
+  "preview_urls": false,
+  "d1_databases": [
+    { "binding": "DB", "database_name": "wvwrelink", "database_id": "8d7859f0-f132-4c4d-8883-bab659827110" }
+  ],
+  // The daily cleanup of old kills. Any hour does: it deletes one day of rows.
+  "triggers": { "crons": ["17 9 * * *"] },
+  // Each refused message says why, here and nowhere public.
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
+}

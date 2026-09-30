@@ -56,11 +56,12 @@
  *
  * The closure below is kept even so. In a project of its own nothing can
  * collide with it, but it costs nothing and it keeps that true if anything is
- * ever added here. Exactly three names are global, and two of those only
- * because a trigger has to find them by name:
+ * ever added here. Exactly four names are global, and three of those only
+ * because they are run by name:
  *
  *   relinkTick    the function the trigger calls
  *   relinkSetup   the function you run once, by hand
+ *   relinkSecret  the other function you run once, by hand
  *   RelinkNotice_ everything else, private inside it
  * ---------------------------------------------------------------------------
  *
@@ -99,6 +100,9 @@
  * format the sheet happens to be using, and a thousands separator is a comma
  * inside a comma-separated file.
  *
+ * After every tick both cells also go to wvwrelink.com/api, signed - see push().
+ * The cells stay the one source: what is sent is read back from them.
+ *
  * Cost. Outside the window it reads two small timers and returns - a second or
  * so, a hundred times a day. Inside the window (about four days a month) it
  * also reads the two tables, which is the only expensive part. That keeps it
@@ -123,6 +127,7 @@ function relinkTick() {
   try {
     RelinkNotice_.tick();
   } finally {
+    RelinkNotice_.push();
     lock.releaseLock();
   }
 }
@@ -138,6 +143,16 @@ function relinkTick() {
  */
 function relinkSetup() {
   RelinkNotice_.setup();
+}
+
+/**
+ * Run once by hand. Creates the secret the messages to wvwrelink.com/api are
+ * signed with and logs it this once, to be pasted into the Worker's
+ * ENTRADA_RELINK secret and nowhere else. Until it exists nothing is sent.
+ * To change it: delete the "entrada" script property, run this again, paste.
+ */
+function relinkSecret() {
+  RelinkNotice_.secret();
 }
 
 
@@ -221,6 +236,9 @@ var RelinkNotice_ = (function () {
 
   // Per request, against the 360 s default; see getAll().
   var TIMEOUT_SECONDS = 20;
+
+  var ENTRADA = 'https://wvwrelink.com';
+  var ENTRADA_PATH = '/api/entrada/relink';
 
 
   function num(v) {
@@ -676,5 +694,72 @@ var RelinkNotice_ = (function () {
   }
 
 
-  return { tick: tick, setup: setup };
+  function hex(bytes) {
+    return bytes.map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('');
+  }
+
+
+  /**
+   * Sends A1 and A2, as they stand after the tick, with the failure streak.
+   *
+   * Runs after every tick, including one that threw, and never throws itself:
+   * the tick's exception is the one worth an email, and a push that fails is
+   * simply sent again fifteen minutes later with newer values. Whoever watches
+   * for pushes stopping is outside this script - the Worker's health route.
+   */
+  function push() {
+    try {
+      var props = PropertiesService.getScriptProperties();
+      var secret = props.getProperty('entrada');
+      if (!secret) return;
+      var v = stateTab().getRange('A1:A2').getDisplayValues();
+      var found = STATE_RE.exec(String(v[0][0]));
+      var body = JSON.stringify({
+        beat: num(v[1][0]),
+        window: found ? Number(found[1]) : null,
+        published: found ? Number(found[2]) : null,
+        fails: num(props.getProperty('fails'))
+      });
+      var t = Math.floor(Date.now() / 1000);
+      var sig = hex(Utilities.computeHmacSha256Signature(
+        Utilities.newBlob(t + '\n' + ENTRADA_PATH + '\n' + body).getBytes(),
+        Utilities.newBlob(secret).getBytes()));
+      var res = UrlFetchApp.fetch(ENTRADA + ENTRADA_PATH, {
+        method: 'post',
+        contentType: 'application/json',
+        payload: body,
+        headers: { 'x-wvw-time': String(t), 'x-wvw-sig': sig },
+        muteHttpExceptions: true,
+        followRedirects: false,
+        timeoutSeconds: TIMEOUT_SECONDS
+      });
+      if (res.getResponseCode() !== 200) Logger.log('push: HTTP ' + res.getResponseCode());
+    } catch (e) {
+      Logger.log('push: ' + e);
+    }
+  }
+
+
+  function secret() {
+    var props = PropertiesService.getScriptProperties();
+    if (props.getProperty('entrada')) {
+      Logger.log('A secret already exists. Delete the "entrada" script property '
+        + 'first to replace it.');
+      return;
+    }
+    // getUuid is java.util.UUID.randomUUID, a cryptographically strong
+    // generator: four of them, hashed into 512 bits.
+    var bytes = [];
+    for (var i = 0; i < 2; i++) {
+      bytes = bytes.concat(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,
+        Utilities.getUuid() + Utilities.getUuid() + Date.now()));
+    }
+    var value = hex(bytes);
+    props.setProperty('entrada', value);
+    Logger.log('Paste this into the Worker secret ENTRADA_RELINK, and nowhere else:');
+    Logger.log(value);
+  }
+
+
+  return { tick: tick, setup: setup, push: push, secret: secret };
 })();

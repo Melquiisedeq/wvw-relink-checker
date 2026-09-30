@@ -1,8 +1,11 @@
 # Security
 
-Everything here runs in the visitor's browser. There is no server of mine, no
-database, no account and no session. So the reports worth making are the ones
-about the page being turned against the person using it.
+The page runs in the visitor's browser, with no account and no session. There
+is one server of mine, `wvwrelink.com/api` (`worker/`), and one database behind
+it, and neither ever sees anything a visitor types: they only take in game data
+that this project's two Apps Scripts send, each message signed. So the reports
+worth making are about the page being turned against the person using it, and
+about getting something into that database that the scripts did not send.
 
 ## Reporting
 
@@ -27,6 +30,9 @@ than hours.
   `index.html`.
 - **A way to get something into what the site serves** that did not come from
   this repository.
+- **A way to get the Worker to write anything** without the secret a script
+  signs with — a replay it accepts, a check it skips, a value it stores that
+  it should have refused.
 
 ## What is not a security report
 
@@ -37,10 +43,13 @@ than hours.
 - Scanner output with no described effect on somebody using the site. A static
   page with no cookies, no login and nothing to log into does not have the
   same surface as an app, and a missing header is not by itself a finding.
+- The `/api` routes answering "refused" or 404 to requests without a
+  signature. That is what they are for.
 
 ## Scope
 
-This repository, and the site it serves at `wvwrelink.com` — including the two
+This repository, and the site it serves at `wvwrelink.com` — including
+`wvwrelink.com/api` and its database, and the two
 spreadsheets this project fills and publishes itself: the kills history behind
 the crossed swords, and the one cell that decides whether the page announces
 that new teams are out. Both are published read-only on purpose. If either

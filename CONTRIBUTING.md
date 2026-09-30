@@ -11,7 +11,8 @@ nothing pulled from a CDN.** That is not something waiting to be fixed, it is
 the point — the page works because there is nothing between the browser and
 the files, and it will still work in five years for the same reason. The one
 script from elsewhere is Cloudflare's visit counter, and the page does not
-need it to work.
+need it to work. `worker/`, the only code that runs on a server, follows the
+same rule: one file, no dependencies, nothing to install.
 
 So a pull request that adds a library, a bundler or a framework will not be
 merged, however good the library is. If something really does need one, open

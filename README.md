@@ -70,8 +70,10 @@ in those few days and puts a line at the top when it has.
 
 ## 🔒 Privacy
 
-**Everything runs in your browser. There is no backend of mine to send
-anything to.**
+**Everything the page does runs in your browser, and nothing it does is sent
+to me.** There is one small server of mine, at `wvwrelink.com/api`, but all it
+does is receive game data from this project's own two scripts, signed; the
+page does not talk to it, and nothing you type goes near it.
 
 | Host | What for |
 |---|---|
@@ -148,7 +150,9 @@ does it.
 
 Plain static files. Everything the browser downloads is in `site/`, and
 Cloudflare serves that folder as it is, as a Worker with no code:
-`wrangler.jsonc` says so. Nothing outside `site/` is published.
+`wrangler.jsonc` says so. Nothing outside `site/` is published. The one piece
+with code on the server is `worker/`, a second Worker at `wvwrelink.com/api/*`
+that stores what the two Apps Scripts send it, in a Cloudflare D1 database.
 
 ```
 site/
@@ -160,6 +164,8 @@ site/
 apps-script/   the two Google Apps Script projects behind the spreadsheets:
                the teams notice and the kills history. They run in Google;
                these are the copies they are pasted from.
+worker/        wvwrelink.com/api: takes each script's signed results into
+               the database, and says when each last reported (/api/saude)
 .github/       the checks, and the workflows that run them
 ```
 

@@ -38,11 +38,12 @@ jobs:
 
       # A syntax error in any of these files takes the whole page down, and
       # says so nowhere except the browser console of whoever opened it.
-      # node --check parses a file without running a line of it.
+      # node --check parses a file without running a line of it. The Worker
+      # behind /api too: .mjs, so it parses as a module on any Node version.
       - name: Parse every script
         run: |
           set -euo pipefail
-          for f in site/js/*.js; do
+          for f in site/js/*.js worker/*.mjs; do
             node --check "$f"
           done
-          echo "$(ls site/js/*.js | wc -l) scripts parse."
+          echo "$(ls site/js/*.js worker/*.mjs | wc -l) scripts parse."
