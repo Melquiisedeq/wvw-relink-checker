@@ -295,40 +295,33 @@
    before this exists, and the two are never on screen together. */
 .relink-banner.is-rebuild{
   padding:9px 26px;
+  border-color:rgba(190,170,200,.34);
+}
+/* The beat is three still layers - one per team, each with its border and
+   halo already drawn - and only their opacity moves, so it runs on the
+   compositor. Animating the banner's own border-color and box-shadow, as
+   it did, repainted the bar on every frame for as long as the window was
+   open. The layers sit a third of the cycle apart: red, blue, green. */
+.relink-banner.is-rebuild::before,
+.relink-banner.is-rebuild::after,
+.relink-banner.is-rebuild .relink-inner::before{
+  /* 10px, the bar's own: inherit would give the green one .relink-inner's 0. */
+  content:'';position:absolute;inset:-1px;border-radius:10px;
+  pointer-events:none;opacity:0;
   animation:rebuild-beat 6.3s ease-in-out infinite;
 }
-@keyframes rebuild-beat{
-  0%,100%{
-    border-color:rgba(225,92,92,.40);
-    box-shadow:inset 0 1px 0 rgba(200,240,255,.18),inset 0 -1px 0 rgba(0,0,0,.4),
-      0 2px 3px rgba(0,0,0,.4),0 16px 32px -16px rgba(0,0,0,.85),0 0 0 0 rgba(225,92,92,0);
-  }
-  16.6%{
-    border-color:rgba(255,150,148,.98);
-    box-shadow:inset 0 1px 0 rgba(200,240,255,.18),inset 0 -1px 0 rgba(0,0,0,.4),
-      0 2px 3px rgba(0,0,0,.4),0 16px 32px -16px rgba(0,0,0,.85),0 0 40px 0 rgba(225,92,92,.72);
-  }
-  33.3%{
-    border-color:rgba(91,143,240,.40);
-    box-shadow:inset 0 1px 0 rgba(200,240,255,.18),inset 0 -1px 0 rgba(0,0,0,.4),
-      0 2px 3px rgba(0,0,0,.4),0 16px 32px -16px rgba(0,0,0,.85),0 0 0 0 rgba(91,143,240,0);
-  }
-  50%{
-    border-color:rgba(160,196,255,.98);
-    box-shadow:inset 0 1px 0 rgba(200,240,255,.18),inset 0 -1px 0 rgba(0,0,0,.4),
-      0 2px 3px rgba(0,0,0,.4),0 16px 32px -16px rgba(0,0,0,.85),0 0 40px 0 rgba(91,143,240,.76);
-  }
-  66.6%{
-    border-color:rgba(76,175,125,.40);
-    box-shadow:inset 0 1px 0 rgba(200,240,255,.18),inset 0 -1px 0 rgba(0,0,0,.4),
-      0 2px 3px rgba(0,0,0,.4),0 16px 32px -16px rgba(0,0,0,.85),0 0 0 0 rgba(76,175,125,0);
-  }
-  83.3%{
-    border-color:rgba(140,232,186,.98);
-    box-shadow:inset 0 1px 0 rgba(200,240,255,.18),inset 0 -1px 0 rgba(0,0,0,.4),
-      0 2px 3px rgba(0,0,0,.4),0 16px 32px -16px rgba(0,0,0,.85),0 0 40px 0 rgba(76,175,125,.70);
-  }
+.relink-banner.is-rebuild::before{
+  border:1px solid rgba(255,150,148,.98);box-shadow:0 0 40px 0 rgba(225,92,92,.72);
 }
+.relink-banner.is-rebuild::after{
+  border:1px solid rgba(160,196,255,.98);box-shadow:0 0 40px 0 rgba(91,143,240,.76);
+  animation-delay:-4.2s;
+}
+.relink-banner.is-rebuild .relink-inner::before{
+  border:1px solid rgba(140,232,186,.98);box-shadow:0 0 40px 0 rgba(76,175,125,.70);
+  animation-delay:-2.1s;
+}
+@keyframes rebuild-beat{0%,33.3%,100%{opacity:0;}16.6%{opacity:1;}}
 .relink-banner.is-rebuild .relink-stat{cursor:default;gap:4px;align-self:stretch;}
 /* Serif, where the whole page is not. One hero moment a month earns a
    face of its own, and destoning is the point rather than an accident.
