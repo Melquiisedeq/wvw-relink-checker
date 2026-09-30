@@ -8,6 +8,10 @@
  * a lord, a guard or a fall, which is a roamer soloing a camp, and that would
  * inflate exactly the empty borderland.
  * The site reads columns 0 to 5; the 7th is for this script only.
+ *
+ * After the sheet, the same rows go to wvwrelink.com/api, signed - see push_.
+ * Run killsSecret() once by hand before that starts; until then the sheet is
+ * all there is, as before.
  */
 const SHEET_NAME  = 'kills';
 const KEEP_MS     = 2 * 60 * 60 * 1000;   // window kept in the sheet
@@ -25,6 +29,14 @@ const ROUTES      = [API + '/stats?ids=all', API + '/overview?ids=all'];
 // Without this a hung request waits 360 s, the whole execution, and spends
 // the daily trigger quota this script shares with the relink one.
 const TIMEOUT_S   = 20;
+const ENTRADA     = 'https://wvwrelink.com';
+const ENTRADA_PATH = '/api/entrada/kills';
+// Rows not yet accepted are sent again with the next tick, so a failed push
+// costs nothing if the one after it lands. Past this age they are dropped:
+// the Worker refuses rows much older than the message anyway.
+const PENDING_MS  = 30 * 60 * 1000;
+// A property value holds at most 9 KB; nine matches a tick are ~600 characters.
+const PENDING_MAX_CHARS = 8000;
 
 function snapshot() {
   // Triggers are not queued: if a tick runs long, the next one starts on top
@@ -98,6 +110,81 @@ function run_() {
   while (cut < old.length && Number(old[cut][0]) < now - KEEP_MS) cut++;
   cut = Math.min(cut, lastRow);
   if (cut > 0) sh.deleteRows(1, cut);
+
+  // Last, so nothing here can stop the sheet the page reads from being written.
+  push_(props, rows, now);
+}
+
+/**
+ * Sends this tick's rows, with any earlier ones not yet accepted, and never
+ * throws: a push that fails is logged and retried next tick, and the one
+ * watching for it is outside this script - the Worker's health route.
+ */
+function push_(props, rows, now) {
+  const secret = props.getProperty('entrada');
+  if (!secret) return;
+  let pending = [];
+  try {
+    pending = JSON.parse(props.getProperty('pending') || '[]');
+  } catch (e) {
+    pending = [];
+  }
+  pending = pending.filter(function (r) { return Number(r[0]) >= now - PENDING_MS; })
+    .concat(rows);
+  while (JSON.stringify(pending).length > PENDING_MAX_CHARS && pending.length > rows.length) {
+    pending.shift();
+  }
+  try {
+    const t = Math.floor(Date.now() / 1000);
+    const body = JSON.stringify({ rows: pending });
+    const sig = hex_(Utilities.computeHmacSha256Signature(
+      Utilities.newBlob(t + '\n' + ENTRADA_PATH + '\n' + body).getBytes(),
+      Utilities.newBlob(secret).getBytes()));
+    const res = UrlFetchApp.fetch(ENTRADA + ENTRADA_PATH, {
+      method: 'post',
+      contentType: 'application/json',
+      payload: body,
+      headers: { 'x-wvw-time': String(t), 'x-wvw-sig': sig },
+      muteHttpExceptions: true,
+      followRedirects: false,
+      timeoutSeconds: TIMEOUT_S
+    });
+    if (res.getResponseCode() === 200) pending = [];
+    else Logger.log('push: HTTP ' + res.getResponseCode());
+  } catch (e) {
+    Logger.log('push: ' + e);
+  }
+  if (pending.length) props.setProperty('pending', JSON.stringify(pending));
+  else props.deleteProperty('pending');
+}
+
+/**
+ * Run once by hand. Creates the secret the kills messages are signed with and
+ * logs it this once, to be pasted into the Worker's ENTRADA_KILLS secret and
+ * nowhere else. To change it: delete the "entrada" script property, run this
+ * again, paste the new one.
+ */
+function killsSecret() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('entrada')) {
+    Logger.log('A secret already exists. Delete the "entrada" script property first to replace it.');
+    return;
+  }
+  // getUuid is java.util.UUID.randomUUID, a cryptographically strong
+  // generator: four of them, hashed into 512 bits.
+  let bytes = [];
+  for (let i = 0; i < 2; i++) {
+    bytes = bytes.concat(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,
+      Utilities.getUuid() + Utilities.getUuid() + Date.now()));
+  }
+  const secret = hex_(bytes);
+  props.setProperty('entrada', secret);
+  Logger.log('Paste this into the Worker secret ENTRADA_KILLS, and nowhere else:');
+  Logger.log(secret);
+}
+
+function hex_(bytes) {
+  return bytes.map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('');
 }
 
 function rowFor_(m, prevRow, now) {
