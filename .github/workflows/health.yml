@@ -80,7 +80,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: wvwrelink.com answers and serves every file it asks for
+      - name: wvwrelink.com serves every file it asks for; old Pages gone; domain not expiring
         run: python3 .github/scripts/check-site.py
 
   # The teams notice is meant to appear every month. A month where it did not is

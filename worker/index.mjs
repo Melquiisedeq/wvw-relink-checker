@@ -1,5 +1,4 @@
-// wvwrelink.com/api. What it accepts, and why each check is where it is:
-// _source/migracao/entrada.md in the private repository is the threat model.
+// wvwrelink.com/api. What it accepts, and what is worth reporting: SECURITY.md.
 //
 //   POST /api/entrada/kills    the kills script, after every tick
 //   POST /api/entrada/relink   the teams notice script, after every tick
@@ -16,6 +15,9 @@
 const MAX_BYTES = 64 * 1024;      // kills sends at most 30 min of rows, ~4 KB
 const MAX_SKEW_S = 300;
 const SOURCES = { kills: 'ENTRADA_KILLS', relink: 'ENTRADA_RELINK' };
+// The scripts make 128 hex characters. Anything much shorter was pasted in
+// half, and a weak secret that works is worse than one that fails loudly.
+const MIN_SECRET = 64;
 // The running match and the one before it (the owner, 30/09/2026). Raising it
 // keeps more from then on; what was already deleted does not come back.
 const KEEP_DAYS = 14;
@@ -42,6 +44,7 @@ export default {
 async function accept(request, env, source, path) {
   const secret = Object.hasOwn(SOURCES, source) && env[SOURCES[source]];
   if (!secret) return refuse(404, source, 'unknown source or no secret');
+  if (secret.length < MIN_SECRET) return refuse(404, source, 'secret too short');
 
   // Everything up to the signature costs no database access, so an unsigned
   // flood costs CPU milliseconds and nothing else.
@@ -168,7 +171,7 @@ async function health(env) {
   const out = {};
   for (const r of results) out[r.name] = r.received;
   return new Response(JSON.stringify(out), {
-    headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=30' }
+    headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=30', 'x-content-type-options': 'nosniff' }
   });
 }
 
@@ -190,6 +193,6 @@ function refuse(status, source, why) {
 
 function text(status, body) {
   return new Response(body + '\n', {
-    status, headers: { 'content-type': 'text/plain', 'cache-control': 'no-store' }
+    status, headers: { 'content-type': 'text/plain', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }
   });
 }
