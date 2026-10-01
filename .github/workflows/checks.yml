@@ -1,11 +1,11 @@
-# The page has no tests and cannot easily have any: there is no pure function
-# to call, just a page and the scripts that build it. What it does have is a
-# small set of mistakes that fail *silently* in production - a script missing
-# from the ordered list in index.html, a host missing from the Content Security
-# Policy, a syntax error in a file nothing parses until a browser does. All of
-# them leave the page looking fine. The first two jobs are aimed at exactly
-# those. The Worker behind /api is different: it is rules - what it refuses,
-# keeps and serves - and the third job runs them.
+# The page has no unit tests: there is no pure function to call, just a page and
+# the scripts that build it. What it has is a set of mistakes that fail
+# *silently* in production - a script missing from the ordered list in
+# index.html, a host missing from the Content Security Policy, a syntax error in
+# a file nothing parses until a browser does. The first two jobs are aimed at
+# exactly those, and the fourth opens the page in a real Chrome and fails on
+# whatever the browser objects to. The Worker behind /api is different: it is
+# rules - what it refuses, keeps and serves - and the third job runs them.
 name: Checks
 
 on:
@@ -59,3 +59,16 @@ jobs:
       # the image carries (22.23.2 on ubuntu-24.04, read 30/09/2026).
       - name: What the /api Worker refuses, keeps and serves
         run: node --test "tests/*.test.mjs"
+
+  page:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The runner's own Chrome and Node, nothing installed: Node drives Chrome
+      # over DevTools. The API and the sheets answer from a recording, so a GW2
+      # outage cannot turn a pull request red. It runs the pull request's
+      # JavaScript in a browser, like `rules` does in Node: throwaway machine,
+      # read-only token, no secret.
+      - name: The page loads with no exception, no CSP violation, every tier
+        run: node .github/scripts/check-page.mjs
