@@ -51,6 +51,24 @@ The Worker behind `wvwrelink.com/api` has tests, with nothing to install
 
     node --test "tests/*.test.mjs"
 
+The page itself has a check that opens it in a real Chrome (Node 22 and one
+installed Chrome or Chromium, nothing else to install):
+
+    node .github/scripts/check-page.mjs
+
+It finds `google-chrome` or `chromium` on the PATH; `--chrome PATH` or the
+`CHROME` variable say which one otherwise. The API and the sheets answer from
+a recording in `.github/scripts/check-page/recordings.json.gz`, so it runs
+offline. It fails on an exception, a console error, a Content Security Policy
+violation or a standings tier that never appears, and names the URL when the
+page asks for something that was not recorded. After a change that makes the
+page fetch something new, record again from the real hosts and commit the file:
+
+    node .github/scripts/check-page.mjs --record
+
+The page runs your JavaScript in that Chrome, so run a stranger's pull request
+in CI, not on your own machine.
+
 ## Style
 
 Match whatever is around you. The one habit worth knowing: comments explain
