@@ -1,6 +1,8 @@
 // Loads the page in a real Chrome, with the API and the sheets answered from a
-// recording, and fails on anything the browser objects to: an exception, a
-// console error, a Content Security Policy violation, a tier that never shows.
+// recording, walks it as a visitor would (guild search, every map, every icon
+// button and popover, the NA/EU swap, then a second load with /api/* down), and
+// fails on anything the browser objects to: an exception, a console error, a
+// Content Security Policy violation, a step whose element never appears.
 //
 //   node .github/scripts/check-page.mjs [--chrome PATH]           replay (the check)
 //   node .github/scripts/check-page.mjs --record [--chrome PATH]  re-record from the real hosts
@@ -28,10 +30,18 @@ const OWN_API = new Map([
   ['/api/kills', 'https://wvwrelink.com/api/kills'],
   ['/api/relink', 'https://wvwrelink.com/api/relink'],
 ]);
-const DEADLINE_MS = 90000;
+// The only outside hosts the page may reach; recording fetches from these
+// constants, never from an address the page built.
+const ORIGINS = {
+  'api.guildwars2.com': 'https://api.guildwars2.com',
+  'docs.google.com': 'https://docs.google.com',
+};
 
 const argv = process.argv.slice(2);
 const RECORD = argv.includes('--record');
+// A guard against a hang, not a speed bar: the walk takes ~47 s here, and a
+// shared CI machine can be twice as slow. Recording waits on the real hosts.
+const DEADLINE_MS = RECORD ? 240000 : 180000;
 const ci = argv.indexOf('--chrome');
 
 const problems = [];
@@ -116,11 +126,13 @@ function serve() {
 
 // url -> [status, content-type, body, base64?]
 let recordedAt = Date.now();
+let guilds = [];                  // names the search step types: one per region, picked at record time
 const recorded = new Map();
 
 function loadRecordings() {
   const data = JSON.parse(gunzipSync(readFileSync(RECORDINGS)).toString('utf8'));
   recordedAt = data.recordedAt;
+  guilds = data.guilds || [];
   for (const [url, e] of Object.entries(data.entries)) recorded.set(url, e);
 }
 
@@ -128,7 +140,29 @@ function saveRecordings() {
   const entries = {};
   for (const url of [...recorded.keys()].sort()) entries[url] = recorded.get(url);
   mkdirSync(dirname(RECORDINGS), { recursive: true });
-  writeFileSync(RECORDINGS, gzipSync(JSON.stringify({ recordedAt, entries }), { level: 9 }));
+  writeFileSync(RECORDINGS, gzipSync(JSON.stringify({ recordedAt, guilds, entries }), { level: 9 }));
+}
+
+// Recording freezes the world at first sight: each URL is fetched once, from
+// here, kept, and answered from the keep ever after - so the walk sees what the
+// replay will. Live data moves between two fetches of one URL, and a later
+// answer would send the page asking for URLs the first never had.
+const inFlight = new Map();
+function record(url) {
+  if (recorded.has(url)) return Promise.resolve();
+  if (!inFlight.has(url)) {
+    let target = null;
+    if ([...OWN_API.values()].includes(url)) target = url;
+    else {
+      const u = new URL(url);
+      if (Object.hasOwn(ORIGINS, u.host)) target = ORIGINS[u.host] + u.pathname + u.search;
+    }
+    if (!target) return Promise.reject(new Error(`record: host not allowed, not fetched: ${url}`));
+    inFlight.set(url, fetch(target).then(async res => {
+      remember(url, res.status, res.headers.get('content-type') || '', Buffer.from(await res.arrayBuffer()));
+    }));
+  }
+  return inFlight.get(url);
 }
 
 function remember(url, status, type, bytes) {
@@ -183,6 +217,7 @@ console.log(`Chrome: ${ver.stdout.trim()} (${chromePath})`);
 if (!RECORD) {
   if (!existsSync(RECORDINGS)) { console.error('check-page: no recordings; run with --record first.'); process.exit(2); }
   loadRecordings();
+  if (!guilds.length) { console.error('check-page: the recording has no guild names; re-record with --record.'); process.exit(2); }
 }
 
 const server = await serve();
@@ -205,8 +240,9 @@ function finish(code) {
   process.exit(code);
 }
 let seen = 'no tier counts read';
+let stepNow = 'load';             // the walk's current step, for the 90 s message
 setTimeout(() => {
-  problem(`timeout: the page did not finish within ${DEADLINE_MS / 1000} s (${seen})`);
+  problem(`timeout: the page did not finish within ${DEADLINE_MS / 1000} s, in step '${stepNow}' (${seen})`);
   report();
 }, DEADLINE_MS).unref();
 
@@ -254,8 +290,9 @@ async function main() {
 
   const BLOCKED = /goatcounter|cloudflareinsights/;
   const EXTERNAL = /^https:\/\/(api\.guildwars2\.com|docs\.google\.com)\//;
-  const ids = new Set();            // in-flight requests, for "the page has gone quiet"
-  const origin = new Map();         // networkId -> first URL of a redirect chain
+  const ids = new Map();            // in-flight requests, for "the page has gone quiet"
+  let apiDown = false;              // second load: /api/* answers 503
+  let apiRefused = 0, sheetReads = 0;
 
   const reply = (requestId, status, type, body) => send('Fetch.fulfillRequest', {
     requestId, responseCode: status,
@@ -265,7 +302,7 @@ async function main() {
   });
 
   async function paused(p) {
-    const { requestId, request, networkId } = p;
+    const { requestId, request } = p;
     const url = request.url;
     const isApi = url.startsWith(base + '/api/');
     const own = isApi ? OWN_API.get(url.slice(base.length)) : null;
@@ -278,19 +315,17 @@ async function main() {
         responseHeaders: [{ name: 'Access-Control-Allow-Origin', value: '*' }, { name: 'Access-Control-Allow-Headers', value: '*' }] });
       if (BLOCKED.test(url)) return await send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' });
       if (url.startsWith('https://render.guildwars2.com/')) return await reply(requestId, 200, 'image/png', PNG);
-      if (p.responseStatusCode !== undefined || p.responseErrorReason) return await responded(p, networkId, url);
+      if (own && apiDown) {
+        apiRefused++;
+        return await reply(requestId, 503, 'application/json', Buffer.from('{"error":"down"}'));
+      }
       if (own || EXTERNAL.test(url)) {
         const key = own || url;
-        if (RECORD && own) {
-          const res = await fetch(own);
-          const bytes = Buffer.from(await res.arrayBuffer());
-          remember(own, res.status, res.headers.get('content-type') || '', bytes);
-          return await reply(requestId, res.status, res.headers.get('content-type') || '', bytes);
-        }
-        if (RECORD) return await send('Fetch.continueRequest', { requestId });
+        if (/^https:\/\/docs\.google\.com\//.test(url)) sheetReads++;
+        if (RECORD) await record(key);
         const hit = recorded.get(key);
         if (!hit) {
-          problem(`not recorded: ${key} - re-record with --record`);
+          problem(`not recorded: ${key}${apiDown ? ' (load with /api down)' : ''} during step '${stepNow}' - re-record with --record`);
           return await send('Fetch.failRequest', { requestId, errorReason: 'Failed' });
         }
         return await reply(requestId, hit[0], hit[1], bodyOf(hit));
@@ -299,26 +334,9 @@ async function main() {
       problem(`unexpected host, blocked: ${url}`);
       await send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' });
     } catch (e) {
+      if (/Invalid InterceptionId/.test(e.message)) return;   // the page gave up on the request first (an abort)
       problem(`check-page: while answering ${url}: ${e.message}`);
     }
-  }
-
-  // Record mode, response stage: the answer is read where it arrives. A
-  // redirect hop is passed on, and the final answer is kept under the URL the
-  // page asked for.
-  async function responded(p, networkId, url) {
-    const { requestId } = p;
-    const first = origin.get(networkId) || url;
-    origin.set(networkId, first);
-    const status = p.responseStatusCode;
-    if (p.responseErrorReason || (status >= 300 && status < 400)) {
-      return await send(p.responseErrorReason ? 'Fetch.failRequest' : 'Fetch.continueResponse',
-        p.responseErrorReason ? { requestId, errorReason: p.responseErrorReason } : { requestId });
-    }
-    const { body, base64Encoded } = await send('Fetch.getResponseBody', { requestId });
-    const type = (p.responseHeaders || []).find(h => h.name.toLowerCase() === 'content-type');
-    remember(first, status, type ? type.value : '', Buffer.from(body, base64Encoded ? 'base64' : 'utf8'));
-    await send('Fetch.continueResponse', { requestId });
   }
 
   let loaded = false;
@@ -333,7 +351,10 @@ async function main() {
     const p = msg.params || {};
     switch (msg.method) {
       case 'Fetch.requestPaused': paused(p); break;
-      case 'Network.requestWillBeSent': ids.add(p.requestId); break;
+      case 'Network.requestWillBeSent': ids.set(p.requestId, p.request.url); break;
+      // An error answer the page never reads (fetchOwnApi throws on !ok) is not
+      // waiting on the network, and Chrome holds its loadingFinished back.
+      case 'Network.responseReceived': if (p.response.status >= 400) ids.delete(p.requestId); break;
       case 'Network.loadingFinished': case 'Network.loadingFailed': ids.delete(p.requestId); break;
       case 'Page.loadEventFired': loaded = true; break;
       case 'Runtime.exceptionThrown': {
@@ -346,7 +367,8 @@ async function main() {
         break;
       case 'Log.entryAdded': {
         const e = p.entry;
-        if (e.level === 'error' && !BLOCKED.test(e.url || '') && !BLOCKED.test(e.text)) {
+        const refused = apiDown && /\/api\//.test(e.url || '');   // the 503 we sent on purpose
+        if (e.level === 'error' && !refused && !BLOCKED.test(e.url || '') && !BLOCKED.test(e.text)) {
           problem(`log error (${e.source}): ${e.text}${e.url ? ' ' + e.url : ''}`);
         }
         break;
@@ -363,38 +385,239 @@ async function main() {
   });
 
   for (const d of ['Runtime', 'Log', 'Page', 'Network', 'Audits']) await send(d + '.enable');
-  await send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' },
-    ...(RECORD ? [{ urlPattern: 'https://api.guildwars2.com/*', requestStage: 'Response' },
-      { urlPattern: 'https://docs.google.com/*', requestStage: 'Response' }] : [])] });
+  await send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] });
   if (!RECORD) await send('Page.addScriptToEvaluateOnNewDocument', { source: clockShim(recordedAt) });
-  if (RECORD) recordedAt = Date.now();
-  await send('Page.navigate', { url: base + '/' });
+  // ---- Driving the page ---------------------------------------------------
 
-  // The walk: load, then wait for every tier of both regions.
+  // Evaluate in the page; a throw there is an error here.
+  async function ev(expression) {
+    const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+    if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
+    return r.result.value;
+  }
+
+  // Wait for a condition, never for a fixed time. A page that already threw
+  // gets less patience: it is not going to recover.
+  async function until(name, expr, what) {
+    stepNow = name;
+    const t0 = Date.now();
+    while (true) {
+      if (await ev(expr)) return true;
+      if (Date.now() - t0 > (problems.length ? 3000 : 15000)) { problem(`step '${name}': ${what} never appeared`); return false; }
+      await sleep(25);
+    }
+  }
+
+  // A visitor's click: scroll the element in, wait until it is the thing under
+  // its own centre (so a covering overlay fails the step), then press and
+  // release the mouse there over the protocol. Not el.click(): that would
+  // fire the handler even where a visitor could not reach the button.
+  async function click(name, el) {
+    stepNow = name;
+    const t0 = Date.now();
+    let r;
+    while (true) {
+      r = await ev(`(() => {
+        const el = ${el};
+        if (!el) return { gone: true };
+        el.scrollIntoView({ block: 'center', inline: 'center' });
+        const b = el.getBoundingClientRect();
+        if (!b.width || !b.height) return { hidden: true };
+        const x = b.left + b.width / 2, y = b.top + b.height / 2, top = document.elementFromPoint(x, y);
+        return { x, y, hit: !!top && (top === el || el.contains(top)), over: top ? top.tagName + '.' + top.className : 'nothing' };
+      })()`);
+      if (r.hit) break;
+      if (r.gone || r.hidden || Date.now() - t0 > 3000) {
+        problem(`step '${name}': ${r.gone ? 'target missing' : r.hidden ? 'target has no size' : 'target covered by ' + r.over}`);
+        return false;
+      }
+      await sleep(50);
+    }
+    const at = { x: r.x, y: r.y, button: 'left', clickCount: 1 };
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: r.x, y: r.y });
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...at });
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at });
+    return true;
+  }
+
+  // Nothing in flight on three looks running. A step that moves on while the
+  // page is still asking (a popover closed mid-lookup) makes the set of URLs
+  // depend on how fast the answers come, and the recording is slower than its replay.
+  async function idle(name) {
+    stepNow = name;
+    const t0 = Date.now();
+    for (let quiet = 0; quiet < 3; ) {
+      quiet = ids.size === 0 ? quiet + 1 : 0;
+      if (Date.now() - t0 > 15000) return void problem(`step '${name}': requests never settled (${[...ids.values()].join(' ').slice(0, 200)})`);
+      await sleep(25);
+    }
+  }
+
+  async function escape() {
+    for (const type of ['keyDown', 'keyUp']) {
+      await send('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    }
+  }
+
+  // Navigate and wait for the page to go quiet with every tier of both regions up.
+  async function load(name) {
+    loaded = false;
+    ids.clear();
+    await send('Page.navigate', { url: base + '/' });
+    let quiet = 0, tiersUp = false;
+    while (true) {
+      await sleep(100);
+      want = expectedTiers();
+      got = JSON.parse((await send('Runtime.evaluate', { expression: probe, returnByValue: true })).result.value);
+      seen = `${name}: tiers shown: NA ${got.NA}/${want ? want.NA : '?'}, EU ${got.EU}/${want ? want.EU : '?'}; ${ids.size} request(s) in flight${ids.size ? ': ' + [...ids.values()].join(' ').slice(0, 300) : ''}`;
+      tiersUp = !!want && want.NA > 0 && want.EU > 0 && got.NA >= want.NA && got.EU >= want.EU;
+      // Tiers up, then nothing in flight on two looks in a row: late requests
+      // and late exceptions get their chance to show.
+      // A page that threw and then went quiet is not going to recover: say so now, not at 90 s.
+      quiet = loaded && ids.size === 0 && (tiersUp || problems.length) ? quiet + 1 : 0;
+      if (quiet >= 3) break;
+    }
+    if (!tiersUp) problem(`step '${name}': tiers never appeared (${seen})`);
+    return tiersUp;
+  }
+
   const probe = `JSON.stringify({
     NA: document.querySelectorAll('#standingsGridNA > .standing-match').length,
     EU: document.querySelectorAll('#standingsGridEU > .standing-match').length })`;
-  let want = null, got = null, quiet = 0;
-  while (true) {
-    await sleep(100);
-    want = expectedTiers();
-    got = JSON.parse((await send('Runtime.evaluate', { expression: probe, returnByValue: true })).result.value);
-    seen = `tiers shown: NA ${got.NA}/${want ? want.NA : '?'}, EU ${got.EU}/${want ? want.EU : '?'}; ${ids.size} request(s) in flight`;
-    const tiersUp = want && want.NA > 0 && want.EU > 0 && got.NA >= want.NA && got.EU >= want.EU;
-    // Tiers up, then nothing in flight on two looks in a row: late requests
-    // and late exceptions get their chance to show.
-    // A page that threw and then went quiet is not going to recover: say so now, not at 90 s.
-    quiet = loaded && ids.size === 0 && (tiersUp || problems.length) ? quiet + 1 : 0;
-    if (quiet >= 3) break;
+  let want = null, got = null;
+  const clicked = new Set();
+
+  // What each icon button's popover must hold once it has finished loading.
+  const POPOVERS = {
+    'tier-map-btn': ".info-popover .wvw-plot g[role='button']",
+    'server-guilds-btn': '.info-popover .info-popover-body',
+    'map-kd-btn': '.info-popover > :nth-child(2)',
+    'activity-btn': '.info-popover > :nth-child(2)',
+    'activity-info-btn': '.info-popover > :nth-child(2)',
+  };
+  const BUTTON = i => `document.querySelectorAll('.icon-btn')[${i}]`;
+  const NO_POPOVER = "!document.querySelector('.info-popover')";
+
+  async function closePopover(name) {
+    if (await ev(NO_POPOVER)) return;
+    if (!(await click(name + ' close', "document.querySelector('.info-popover .info-popover-close')"))) return escape();
+    await until(name, NO_POPOVER, 'closing popover (it stayed open)');
   }
 
-  if (RECORD) {
-    if (!problems.length) {
-      saveRecordings();
-      console.log(`recorded ${recorded.size} responses (${statSync(RECORDINGS).size} bytes gzipped) at ${new Date(recordedAt).toISOString()}`);
+  // Every tab of an opened tier map, each with its objectives drawn.
+  async function mapTabs(name) {
+    const types = await ev("[...document.querySelectorAll('.info-popover .wvw-tab')].map(b => b.dataset.type)");
+    for (const type of types) {
+      const tab = `${name} ${type}`;
+      const sel = `.info-popover .wvw-tab[data-type="${type}"]`;
+      if (!(await click(tab, `document.querySelector('${sel}')`))) continue;
+      await until(tab, `!!document.querySelector('${sel}.is-active') && !!document.querySelector("${POPOVERS['tier-map-btn']}")`,
+        'drawn objectives');
+      await idle(tab);
     }
-  } else {
-    console.log(`tiers: NA ${got.NA}/${want.NA}, EU ${got.EU}/${want.EU}`);
   }
-  report();
+
+  // Every icon button, in page order: open, content, close.
+  async function iconButtons() {
+    for (let i = 0; i < (await ev("document.querySelectorAll('.icon-btn').length")); i++) {
+      const read = await ev(`(() => { const b = ${BUTTON(i)}; return { label: b.getAttribute('aria-label'),
+        classes: [...b.classList], shown: !!b.offsetParent }; })()`);
+      const info = { label: read.label, shown: read.shown, kind: Object.keys(POPOVERS).find(k => read.classes.includes(k)) };
+      if (!info.shown) continue;   // folded away at this width: a visitor cannot press it either
+      const name = `${info.kind} '${info.label}'`;
+      if (!(await ev(NO_POPOVER))) await closePopover(name);
+      if (!(await click(name, BUTTON(i)))) continue;
+      clicked.add(info.kind);
+      if (!(await until(name, `!!document.querySelector("${POPOVERS[info.kind]}")`, 'popover content'))) { await escape(); continue; }
+      await idle(name);
+      if (info.kind === 'tier-map-btn') await mapTabs(name);
+      await closePopover(name);
+    }
+    for (const kind of Object.keys(POPOVERS)) {
+      if (!clicked.has(kind)) problem(`step 'icon buttons': no visible ${kind} to press`);
+    }
+  }
+
+  // The walk, the same for the recording and for the replay: whatever it asks
+  // of the hosts, the recording has. Recording picks the guild names first.
+  recordedAt = RECORD ? Date.now() : recordedAt;
+  if (!(await load('load'))) return finishWalk();
+
+  if (RECORD) {
+    guilds = await ev(`(async () => {
+      const out = [];
+      for (const region of ['na', 'eu']) {
+        const table = await (await fetch('https://api.guildwars2.com/v2/wvw/guilds/' + region)).json();
+        const keys = Object.keys(table).sort(() => Math.random() - 0.5);
+        for (const id of keys.slice(0, 20)) {
+          const r = await fetch('https://api.guildwars2.com/v2/guild/' + id);
+          const g = r.ok ? await r.json() : null;
+          if (g && g.name && !/[\\n\\r]/.test(g.name)) { out.push(g.name); break; }
+        }
+      }
+      return out;
+    })()`);
+    if (guilds.length < 2) problem(`record: found ${guilds.length} guild name(s) for NA and EU, wanted 2`);
+  }
+  // What the first load showed of the relink: the 503 load must still show it.
+  const notice = "getComputedStyle(document.getElementById('teamsNotice')).display !== 'none'"
+    + " || getComputedStyle(document.getElementById('relinkBanner')).display !== 'none'";
+  const hadNotice = await ev(notice);
+
+  // 4. NA/EU swap, and back.
+  const first = () => ev('document.documentElement.dataset.railFirst');
+  const was = await first();
+  if (await click('swap NA/EU', "document.querySelector('.rail-swap')")) {
+    await until('swap NA/EU', `document.documentElement.dataset.railFirst !== '${was}'`, 'swapped columns (data-rail-first unchanged)');
+    await until('swap NA/EU', `document.querySelector('.rail-left #standingsGrid${was === 'na' ? 'EU' : 'NA'}') && document.querySelector('.rail-right #standingsGrid${was === 'na' ? 'NA' : 'EU'}')`, 'columns on their new sides');
+    if (await click('swap back', "document.querySelector('.rail-swap')")) {
+      await until('swap back', `document.documentElement.dataset.railFirst === '${was}'`, 'columns back on their sides');
+    }
+  }
+
+  // 1. Guild search: one name per region, typed as a visitor does.
+  await ev("document.getElementById('guildInput').focus()");
+  await send('Input.insertText', { text: guilds.join('\n') });
+  if (await click('search', "document.getElementById('runBtn')")) {
+    await until('search', "/^Done/.test(document.getElementById('statusMsg').textContent)", 'the "Done" status');
+    await until('search', "document.querySelectorAll('#resultBody tr').length > 0 && !!document.querySelector('#matchPanelsContainer > *')", 'result rows and match panels');
+    await until('search', "!document.getElementById('runBtn').disabled", 'the Check button enabled again');
+    await idle('search');
+  }
+
+  // 2 and 3. Every icon button, maps and popovers.
+  await iconButtons();
+
+  // 5. A second load, /api/* answering 503: the page falls back to the sheets.
+  apiDown = true;
+  // The page keeps guild names in localStorage on a timer; what that timer got
+  // to would decide which guild URLs the second load asks for.
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: "try { localStorage.removeItem('wvw-guilds-v1'); } catch {}" });
+  if (await load('load with /api down')) {
+    if (!apiRefused) problem("step 'load with /api down': the page never asked /api");
+    if (!sheetReads) problem("step 'load with /api down': the page never read the sheets instead");
+    if (hadNotice) await until('relink notice from the sheets', notice, 'the relink notice');
+  }
+  finishWalk();
+
+  function finishWalk() {
+    if (RECORD) {
+      if (!problems.length) {
+        // A recording is only good if the replay of it passes: the page's
+        // lookups can depend on how slow the real hosts were that day.
+        const before = existsSync(RECORDINGS) ? readFileSync(RECORDINGS) : null;
+        saveRecordings();
+        console.log(`recorded ${recorded.size} responses (${statSync(RECORDINGS).size} bytes gzipped) at ${new Date(recordedAt).toISOString()}; guilds: ${guilds.join(' | ')}`);
+        console.log('replaying it to check it holds...');
+        const replay = spawnSync(process.execPath, [fileURLToPath(import.meta.url), ...(ci >= 0 ? ['--chrome', argv[ci + 1]] : [])], { stdio: 'inherit' });
+        if (replay.status !== 0) {
+          if (before) writeFileSync(RECORDINGS, before); else rmSync(RECORDINGS);
+          problem('the new recording does not replay (the old one is back); record again');
+        }
+      }
+    } else if (!problems.length) {
+      console.log(`walked: ${clicked.size} kinds of popover, tiers NA ${got.NA}/${want.NA}, EU ${got.EU}/${want.EU}`);
+    }
+    report();
+  }
 }
