@@ -59,10 +59,14 @@ installed Chrome or Chromium, nothing else to install):
 It finds `google-chrome` or `chromium` on the PATH; `--chrome PATH` or the
 `CHROME` variable say which one otherwise. The API and the sheets answer from
 a recording in `.github/scripts/check-page/recordings.json.gz`, so it runs
-offline. It fails on an exception, a console error, a Content Security Policy
-violation or a standings tier that never appears, and names the URL when the
-page asks for something that was not recorded. After a change that makes the
-page fetch something new, record again from the real hosts and commit the file:
+offline. It loads the page, then walks it as a visitor would: a guild search,
+every tier map and each of its tabs, every icon button and popover, the NA/EU
+swap, and a second load with `/api` answering 503. It fails on an exception, a
+console error, a Content Security Policy violation, or a step whose element
+never appears (the message names the step), and names the URL when the page
+asks for something that was not recorded. After a change that makes the page
+fetch something new, record again from the real hosts and commit the file; the
+recording replays itself at the end, and is kept only if that passes:
 
     node .github/scripts/check-page.mjs --record
 
