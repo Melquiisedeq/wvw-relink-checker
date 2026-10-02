@@ -161,7 +161,13 @@
   display:flex;flex-direction:column;gap:10px;
   flex:0 0 378px;min-width:0;
 }
-@media (max-width:760px){ .wvw-side{flex:1 1 auto;} }
+/* Stacked narrow, the column dissolves into the stage so the scoreboard can
+   sit between the tabs and the map: tabs, board, map, detail. The stage's
+   12px gap then spaces all three blocks. */
+@media (max-width:760px){
+  .wvw-side{display:contents;}
+  .wvw-board{order:-1;}
+}
 
 /* Stands in while a tab's outline is still coming, or did not come at all.
    The min-height stops the popover collapsing and jumping back. */
