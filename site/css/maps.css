@@ -325,23 +325,23 @@
 }
 
 /* The two top corners of the map, either side of the score bar: kills on
-   the left, the age of the last accepted answer on the right. Text with a
-   shadow over a gradient from the corner, no box. They go while zoomed. */
+   the left, the age of the last accepted answer on the right. A dark glass
+   chip under each: the borderlands run light terrain right up to the top
+   edge, where a shadow alone was unreadable. They go while zoomed. */
 .wvw-hud{
   position:absolute;top:0;z-index:3;
-  padding:7px 26px 16px 9px;pointer-events:none;
-  background:radial-gradient(farthest-side at 0 0,rgba(0,0,0,.78),rgba(0,0,0,.5) 55%,transparent);
+  padding:6px;pointer-events:none;
 }
 .wvw-hud[hidden]{display:none;}
 .wvw-hud > *{pointer-events:auto;}
 .wvw-hud-l{left:0;}
 .wvw-hud-r{
-  right:0;padding:7px 9px 16px 26px;
-  background:radial-gradient(farthest-side at 100% 0,rgba(0,0,0,.78),rgba(0,0,0,.5) 55%,transparent);
+  right:0;
 }
 .wvw-hud-btn{
   display:flex;align-items:center;gap:6px;
-  padding:0;border:0;border-radius:0;background:none;box-shadow:none;
+  padding:3px 9px;border:0;border-radius:8px;box-shadow:none;
+  background:rgba(8,11,15,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
   color:#dbe3ec;font:inherit;text-align:left;cursor:help;
   text-shadow:0 1px 2px #000,0 0 6px rgba(0,0,0,.8);transition:none;
 }
@@ -352,6 +352,8 @@
 .wvw-hud-small{font-size:.66rem;color:#c3ccd6;}
 .wvw-hud-ago{font-size:.68rem;color:#dbe3ec;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .wvw-hud-ago.is-stale{color:#ffb347;font-weight:700;}
+.wvw-hud-l.is-cold img{filter:grayscale(1) brightness(1.1) drop-shadow(0 1px 1px #000);opacity:.75;}
+.wvw-hud-l.is-cold .wvw-hud-big{color:#dbe3ec;}
 .wvw-hud-short{display:none;}
 /* Clipped, not hidden, so a screen reader still gets the turn. */
 .wvw-hud-live{
@@ -368,16 +370,16 @@
 .wvw-hud-note.at-r{right:8px;border-left:0;border-right:2px solid #57b6d6;}
 .wvw-plot-wrap.is-zoomed .wvw-hud,
 .wvw-plot-wrap.is-zoomed .wvw-hud-note{display:none;}
-/* Narrow map: the words go, the numbers stay. "No update" stays: the
-   amber alone would be colour and nothing else. */
+/* Narrow map: the words go, the numbers and the mark stay (the mark is
+   the signal that is not colour: dot or warning sign). */
 @container plot (max-width:480px){
-  .wvw-hud-ago:not(.is-stale) .wvw-hud-word,.wvw-hud-long{display:none;}
+  .wvw-hud-word,.wvw-hud-long{display:none;}
   .wvw-hud-short{display:inline;}
   .wvw-hud-txt{flex-direction:column;align-items:flex-start;gap:0;}
   .wvw-hud-big{font-size:.8rem;line-height:1.1;}
   .wvw-hud-small{font-size:.6rem;}
-  .wvw-hud-l{padding:5px 20px 12px 7px;}
-  .wvw-hud-r{padding:5px 7px 12px 20px;}
+  .wvw-hud{padding:4px;}
+  .wvw-hud-btn{padding:2px 5px;gap:4px;}
 }
 
 /* The detail panel: everything the API knows about one objective. */

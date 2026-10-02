@@ -660,8 +660,8 @@ async function main() {
     const q = sel => `document.querySelector('.info-popover .wvw-plot-wrap ${sel}')`;
     const shown = sel => `(() => { const e = ${q(sel)}; return !!e && !!e.offsetParent; })()`;
     const text = sel => `(${q(sel)}?.textContent || '')`;
-    if (!(await until(step, shown('.wvw-hud-r'), '"Updated" corner'))) return;
-    if (!/^Updated /.test(await ev(text('.wvw-hud-ago')))) problem(`step '${step}': the corner does not start with "Updated"`);
+    if (!(await until(step, shown('.wvw-hud-r'), '"Live" corner'))) return;
+    if (!/^\u25cf Live /.test(await ev(text('.wvw-hud-ago')))) problem(`step '${step}': the corner does not start with "Live"`);
     await idle(step);
     if (await ev('window.__amber') || (await ev(text('.wvw-hud-live')))) problem(`step '${step}': the corner showed no update, or spoke, on opening`);
     if (await ev(`!!${q('.wvw-hud-ago.is-stale')}`)) problem(`step '${step}': the corner is amber after the opening read`);
@@ -671,11 +671,18 @@ async function main() {
       await until(step, shown('.wvw-hud-l'), 'kills corner on the hot tab');
       const kills = await ev(text('.wvw-hud-big'));
       if (!hot.title.includes(` ${kills} kills `)) problem(`step '${step}': corner says ${kills} kills, the tab says "${hot.title}"`);
+      if (await ev(`!!${q('.wvw-hud-l.is-cold')}`)) problem(`step '${step}': the swords are neutral on the hot tab`);
+    }
+    const cold = await ev(`(() => { const b = [...document.querySelectorAll('.info-popover .wvw-tab')].find(t => !t.classList.contains('is-hot')); return b ? b.dataset.type : null; })()`);
+    if (hot && cold) {
+      await click(step + ': other tab', `document.querySelector('.info-popover .wvw-tab[data-type="${cold}"]')`);
+      await until(step, `!!${q('.wvw-hud-l.is-cold')}`, 'neutral swords on a tab without swords');
     }
     await ev('__skewClock(100000)');
-    await until(step, `${q('.wvw-hud-ago.is-stale')} && /^No update/.test(${text('.wvw-hud-ago')})`, 'amber "No update" after 100 s');
+    await until(step, `${q('.wvw-hud-ago.is-stale')} && /^\u26a0 Paused /.test(${text('.wvw-hud-ago')})`, 'amber "Paused" after 100 s');
+    if (!/Map updates paused for/.test(await ev(text('.wvw-hud-live')))) problem(`step '${step}': the pause was not spoken`);
     await ev("window.dispatchEvent(new Event('focus'))");
-    await until(step, `${q('.wvw-hud-ago')} && !${q('.wvw-hud-ago.is-stale')} && /^Updated/.test(${text('.wvw-hud-ago')})`, '"Updated" back after focus');
+    await until(step, `${q('.wvw-hud-ago')} && !${q('.wvw-hud-ago.is-stale')} && /^\u25cf Live /.test(${text('.wvw-hud-ago')})`, '"Live" back after focus');
     if (await click(step + ': zoom in', "document.querySelector('.info-popover .wvw-zoom button')")) {
       await until(step, `!(${shown('.wvw-hud-r')})`, 'corners hidden while zoomed');
       if (await click(step + ': home', "document.querySelector('.info-popover .wvw-zoom button:last-child')")) {

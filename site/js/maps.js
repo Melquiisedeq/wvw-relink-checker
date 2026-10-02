@@ -1008,8 +1008,9 @@ const HUD_EXPLAIN = {
     + " the game's API. The crossed swords on a tab mark the map with the most."
     + ' The API has no player positions: this says where the fighting is, not'
     + ' how many players are there.',
-  when: "When this page last got an answer from the game's API; it asks every"
-    + ' 30 s. The API itself runs about a minute behind the game.',
+  when: 'Live: this page gets fresh data from the API every 30 s. Paused: it'
+    + ' stopped getting it (your internet, the API, or a sleeping computer), so'
+    + " what you see may be old. The game's API itself runs about 40 s behind the game.",
 };
 
 // The two corners over the map: kills on the left, the age of the last
@@ -1082,11 +1083,12 @@ function buildMapCorners(wrap) {
   const left = corner('l', 'fights', fightsBtn);
 
   const ago = mk('time', 'wvw-hud-ago');
+  const mark = mk('span', 'wvw-hud-mark');
   const word = mk('span', 'wvw-hud-word');
   const val = mk('span');
   const unitLong = mk('span', 'wvw-hud-long');
   const unitShort = mk('span', 'wvw-hud-short');
-  ago.append(word, val, unitLong, unitShort);
+  ago.append(mark, word, val, unitLong, unitShort);
   const whenBtn = mk('button');
   whenBtn.appendChild(ago);
   // Spoken only when the state turns, not every second.
@@ -1114,24 +1116,24 @@ function buildMapCorners(wrap) {
       ago.classList.toggle('is-stale', isStale);
       ago.dateTime = new Date(at).toISOString();
       const mins = Math.floor(age / 60000);
+      // The word is the signal, never the colour alone; narrow keeps the mark.
+      put(mark, isStale ? '\u26a0 ' : '\u25cf ');
+      put(word, isStale ? 'Paused \u00b7 ' : 'Live \u00b7 ');
       if (isStale) {
-        put(word, 'No update \u00b7 ');
         put(val, String(mins));
-        put(unitLong, ' min');
-        put(unitShort, 'm');
+        put(unitLong, ' min old');
+        put(unitShort, ' min');
       } else if (mins < 1) {
-        put(word, 'Updated ');
-        put(val, `${Math.floor(age / 1000)}s ago`);
-        put(unitLong, '');
+        put(val, `${Math.floor(age / 1000)}s`);
+        put(unitLong, ' ago');
         put(unitShort, '');
       } else {
-        put(word, 'Updated ');
         put(val, String(mins));
         put(unitLong, ' min ago');
-        put(unitShort, 'm ago');
+        put(unitShort, 'm');
       }
       if (stale !== null && stale !== isStale) {
-        put(live, isStale ? `No update from the game's API for ${mins} min` : 'Updates are back');
+        put(live, isStale ? `Map updates paused for ${mins} min` : 'Map updates are live again');
       }
       stale = isStale;
     },
@@ -2203,6 +2205,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   // reading that picked the hot tab (null when none is hot).
   let corners = null;
   let hotRates = null;
+  let hotType = null; // the tab markHotTab chose, null when none is hot
   // The age on the right is the page's, not the standings': until this
   // popover's own first read ends, the instant it would show is the
   // standings' (up to five minutes old) and would flash as no update.
@@ -2211,6 +2214,9 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     if (!corners) return;
     corners.paint(hotRates && current ? fightCount(hotRates, current) : null,
       firstReadDone ? matchAcceptedAt(match.id) : 0);
+    // Orange swords only on the busiest map; elsewhere they are neutral.
+    const l = plotWrap && plotWrap.querySelector('.wvw-hud-l');
+    if (l) l.classList.toggle('is-cold', current !== hotType);
   };
 
   const draw = (type, sectors) => {
@@ -2296,6 +2302,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     }
     if (bestN < HOT_FLOOR) hot = null;
     hotRates = hot ? rates : null;
+    hotType = hot;
     paintCorners();
 
     for (const [type, b] of tabByType) {
