@@ -333,6 +333,7 @@ async function loadStandings() {
     const syncedAt = `Synced ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     showRegion(standingsGridNA, standingsStatusNA, naMatches, 'NA', syncedAt);
     showRegion(standingsGridEU, standingsStatusEU, euMatches, 'EU', syncedAt);
+    primeMapBadges();
   } catch {
     // The id list itself failed, so there is nothing to say about either
     // region - but the same rule holds: what is on screen stays, because
