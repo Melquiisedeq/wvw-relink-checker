@@ -193,8 +193,10 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 // all read Date.now(). So the page's clock starts at the moment of the
 // recording and runs normally from there. Date.parse and new Date(x) stay real.
 const clockShim = anchor => `(() => {
-  const Real = Date, off = ${anchor} - Real.now();
+  const Real = Date;
+  let off = ${anchor} - Real.now();
   const now = () => Real.now() + off;
+  globalThis.__skewClock = ms => { off += ms; };
   globalThis.Date = new Proxy(Real, {
     construct: (t, a, nt) => Reflect.construct(t, a.length ? a : [now()], nt),
     apply: () => new Real(now()).toString(),
@@ -640,6 +642,58 @@ async function main() {
     substitutes.clear();
   }
 
+  // The corners over a map: the age of the last accepted answer turns amber
+  // with words after 90 s and comes back on the next answer; the kills match
+  // the hot tab's title; zoom hides both and "home" shows them.
+  async function mapCorners() {
+    const step = 'map corners';
+    const name = "document.querySelector('.tier-map-btn')";
+    // The standings' accepted instant made old before the map opens: the corner must
+    // not show it. A page-side observer notes any amber or spoken turn from the start.
+    await ev(`__skewClock(100000); window.__amber = false;
+      new MutationObserver(() => {
+        if (document.querySelector('.wvw-hud-ago.is-stale') || document.querySelector('.wvw-hud-live')?.textContent) window.__amber = true;
+      }).observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true })`);
+    if (!(await click(step + ': open', name))) return;
+    if (!(await until(step, `!!document.querySelector("${POPOVERS['tier-map-btn']}")`, 'drawn objectives'))) return;
+    await idle(step);
+    const q = sel => `document.querySelector('.info-popover .wvw-plot-wrap ${sel}')`;
+    const shown = sel => `(() => { const e = ${q(sel)}; return !!e && !!e.offsetParent; })()`;
+    const text = sel => `(${q(sel)}?.textContent || '')`;
+    if (!(await until(step, shown('.wvw-hud-r'), '"Updated" corner'))) return;
+    if (!/^Updated /.test(await ev(text('.wvw-hud-ago')))) problem(`step '${step}': the corner does not start with "Updated"`);
+    await idle(step);
+    if (await ev('window.__amber') || (await ev(text('.wvw-hud-live')))) problem(`step '${step}': the corner showed no update, or spoke, on opening`);
+    if (await ev(`!!${q('.wvw-hud-ago.is-stale')}`)) problem(`step '${step}': the corner is amber after the opening read`);
+    const hot = await ev(`(() => { const b = document.querySelector('.info-popover .wvw-tab.is-hot'); return b ? { type: b.dataset.type, title: b.title } : null; })()`);
+    if (hot) {
+      await click(step + ': hot tab', `document.querySelector('.info-popover .wvw-tab[data-type="${hot.type}"]')`);
+      await until(step, shown('.wvw-hud-l'), 'kills corner on the hot tab');
+      const kills = await ev(text('.wvw-hud-big'));
+      if (!hot.title.includes(` ${kills} kills `)) problem(`step '${step}': corner says ${kills} kills, the tab says "${hot.title}"`);
+      if (await ev(`!!${q('.wvw-hud-l.is-cold')}`)) problem(`step '${step}': the swords are neutral on the hot tab`);
+    }
+    const cold = await ev(`(() => { const b = [...document.querySelectorAll('.info-popover .wvw-tab')].find(t => !t.classList.contains('is-hot')); return b ? b.dataset.type : null; })()`);
+    if (hot && cold) {
+      await click(step + ': other tab', `document.querySelector('.info-popover .wvw-tab[data-type="${cold}"]')`);
+      await until(step, `!!${q('.wvw-hud-l.is-cold')}`, 'neutral swords on a tab without swords');
+    }
+    await ev('__skewClock(100000)');
+    await until(step, `${q('.wvw-hud-ago.is-stale')} && /^\u26a0 No update /.test(${text('.wvw-hud-ago')})`, 'amber "No update" after 100 s');
+    if (!/No map update for/.test(await ev(text('.wvw-hud-live')))) problem(`step '${step}': the gap was not spoken`);
+    await ev("window.dispatchEvent(new Event('focus'))");
+    await until(step, `${q('.wvw-hud-ago')} && !${q('.wvw-hud-ago.is-stale')} && /^Updated /.test(${text('.wvw-hud-ago')})`, '"Updated" back after focus');
+    if (await click(step + ': zoom in', "document.querySelector('.info-popover .wvw-zoom button')")) {
+      await until(step, `!(${shown('.wvw-hud-r')})`, 'corners hidden while zoomed');
+      if (await click(step + ': home', "document.querySelector('.info-popover .wvw-zoom button:last-child')")) {
+        await until(step, shown('.wvw-hud-r'), 'corners back after "home"');
+      }
+    }
+    await closePopover(step);
+    // The clock back, and the fight log this step fed dropped: the frozen-match step reads the log's totals.
+    await ev("__skewClock(-200000); localStorage.removeItem('wvw-fight-v1')");
+  }
+
   // The walk, the same for the recording and for the replay: whatever it asks
   // of the hosts, the recording has. Recording picks the guild names first.
   recordedAt = RECORD ? Date.now() : recordedAt;
@@ -690,7 +744,10 @@ async function main() {
   // 2 and 3. Every icon button, maps and popovers.
   await iconButtons();
 
-  // 6. A frozen answer: some API servers serve a match body from the past.
+  // 6. The corners over a map, while the page's kept bodies are the recorded ones.
+  await mapCorners();
+
+  // 7. A frozen answer: some API servers serve a match body from the past.
   await frozenMatch();
 
   // 5. A second load, /api/* answering 503: the page falls back to the sheets.

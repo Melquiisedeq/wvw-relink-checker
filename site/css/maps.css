@@ -203,6 +203,7 @@
   cursor:grab;touch-action:none;
 }
 .wvw-plot-wrap.is-panning{cursor:grabbing;}
+.wvw-plot-wrap{container:plot / inline-size;}
 /* While a map has no owners yet. Ground, sectors and positions are all
    already right - only the colours are late - so this explains rather
    than apologises. */
@@ -321,6 +322,64 @@
 .wvw-zoom button{
   width:26px;height:26px;padding:0;font-size:1rem;line-height:1;
   border-radius:6px;
+}
+
+/* The two top corners of the map, either side of the score bar: kills on
+   the left, the age of the last accepted answer on the right. A dark glass
+   chip under each: the borderlands run light terrain right up to the top
+   edge, where a shadow alone was unreadable. They go while zoomed. */
+.wvw-hud{
+  position:absolute;top:0;z-index:3;
+  padding:6px;pointer-events:none;
+}
+.wvw-hud[hidden]{display:none;}
+.wvw-hud > *{pointer-events:auto;}
+.wvw-hud-l{left:0;}
+.wvw-hud-r{
+  right:0;
+}
+.wvw-hud-btn{
+  display:flex;align-items:center;gap:6px;
+  padding:3px 9px;border:0;border-radius:8px;box-shadow:none;
+  background:rgba(8,11,15,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  color:#dbe3ec;font:inherit;text-align:left;cursor:help;
+  text-shadow:0 1px 2px #000,0 0 6px rgba(0,0,0,.8);transition:none;
+}
+.wvw-hud-btn:active{transform:none;box-shadow:none;}
+.wvw-hud-btn img{display:block;flex:none;filter:drop-shadow(0 1px 1px #000);}
+.wvw-hud-txt{display:flex;align-items:baseline;gap:5px;white-space:nowrap;}
+.wvw-hud-big{font-size:.86rem;font-weight:800;color:#ffb070;font-variant-numeric:tabular-nums;}
+.wvw-hud-small{font-size:.66rem;color:#c3ccd6;}
+.wvw-hud-ago{font-size:.68rem;color:#dbe3ec;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.wvw-hud-ago.is-stale{color:#ffb347;font-weight:700;}
+.wvw-hud-l.is-cold img{filter:grayscale(1) brightness(1.1) drop-shadow(0 1px 1px #000);opacity:.75;}
+.wvw-hud-l.is-cold .wvw-hud-big{color:#dbe3ec;}
+.wvw-hud-short{display:none;}
+/* Clipped, not hidden, so a screen reader still gets the turn. */
+.wvw-hud-live{
+  position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;
+  clip-path:inset(50%);white-space:nowrap;
+}
+.wvw-hud-note{
+  position:absolute;top:44px;z-index:4;max-width:min(78%,300px);margin:0;
+  padding:7px 9px;background:rgba(8,11,16,.94);border-left:2px solid #ff973f;
+  color:#c9d2dd;font-size:.68rem;line-height:1.4;cursor:pointer;
+}
+.wvw-hud-note[hidden]{display:none;}
+.wvw-hud-note.at-l{left:8px;}
+.wvw-hud-note.at-r{right:8px;border-left:0;border-right:2px solid #57b6d6;}
+.wvw-plot-wrap.is-zoomed .wvw-hud,
+.wvw-plot-wrap.is-zoomed .wvw-hud-note{display:none;}
+/* Narrow map: the words go, the numbers and the mark stay (the mark is
+   the signal that is not colour: dot or warning sign). */
+@container plot (max-width:480px){
+  .wvw-hud-word,.wvw-hud-long{display:none;}
+  .wvw-hud-short{display:inline;}
+  .wvw-hud-txt{flex-direction:column;align-items:flex-start;gap:0;}
+  .wvw-hud-big{font-size:.8rem;line-height:1.1;}
+  .wvw-hud-small{font-size:.6rem;}
+  .wvw-hud{padding:4px;}
+  .wvw-hud-btn{padding:2px 5px;gap:4px;}
 }
 
 /* The detail panel: everything the API knows about one objective. */

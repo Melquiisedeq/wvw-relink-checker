@@ -989,6 +989,168 @@ function fightRates(match, wantMs) {
   return { per, span };
 }
 
+// The kills a map shows over the span fightRates measured. The tab's title
+// and the corner read it through this one function, so the figures cannot
+// part.
+function fightCount(rates, type) {
+  return {
+    kills: Math.round((rates.per.get(type) || 0) * rates.span / 600000),
+    mins: Math.round(rates.span / 60000),
+  };
+}
+
+// Past this, the corner stops calling the map "updated" and says how long
+// it has had no answer. The poll runs every 30 s, so three missed.
+const HUD_STALE_MS = 90 * 1000;
+
+const HUD_EXPLAIN = {
+  fights: 'Player kills on this map in the last few minutes, from snapshots of'
+    + " the game's API. The crossed swords on a tab mark the map with the most."
+    + ' The API has no player positions: this says where the fighting is, not'
+    + ' how many players are there.',
+  when: 'Updated: when this page last got fresh data from the API; it asks every'
+    + ' 30 s. No update: it stopped getting it (your internet, the API, or a sleeping computer), so'
+    + " what you see may be old. The game's API itself runs about 40 s behind the game.",
+};
+
+// The two corners over the map: kills on the left, the age of the last
+// accepted answer on the right. Text on a shadow, no box, so the map shows
+// through; they go while the map is zoomed, as the score bar's smear would
+// cover what the visitor came to look at. Built once per map; paint()
+// rewrites them in place, so the status region keeps its identity.
+function buildMapCorners(wrap) {
+  const svg = wrap.querySelector('.wvw-plot');
+  const mk = (tag, cls, text) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text) e.textContent = text;
+    return e;
+  };
+  const note = mk('p', 'wvw-hud-note');
+  note.id = `wvw-hud-note-${++plotSerial}`;
+  note.hidden = true;
+  let openKey = null;
+  const close = () => {
+    openKey = null;
+    note.hidden = true;
+    for (const b of wrap.querySelectorAll('.wvw-hud-btn')) b.setAttribute('aria-expanded', 'false');
+  };
+  note.addEventListener('click', (e) => { e.stopPropagation(); close(); });
+
+  // One text for the hover title and the touch balloon.
+  const corner = (side, key, btn) => {
+    const box = mk('div', `wvw-hud wvw-hud-${side}`);
+    btn.type = 'button';
+    btn.className = 'wvw-hud-btn';
+    btn.setAttribute('aria-expanded', 'false');
+    btn.setAttribute('aria-controls', note.id);
+    if (window.matchMedia && matchMedia('(hover: hover)').matches) btn.title = HUD_EXPLAIN[key];
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const was = openKey === key;
+      close();
+      if (was) return;
+      openKey = key;
+      note.textContent = HUD_EXPLAIN[key];
+      note.className = `wvw-hud-note at-${side}`;
+      note.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+    });
+    btn.addEventListener('keydown', (e) => {
+      // Closes the balloon, not the popover behind it.
+      if (e.key === 'Escape' && openKey) { e.stopPropagation(); close(); }
+    });
+    box.appendChild(btn);
+    box.hidden = true;
+    return box;
+  };
+
+  const swords = mk('img');
+  swords.src = 'assets/icons/Event_Swords.webp';
+  swords.alt = '';
+  swords.width = 18;
+  swords.height = 18;
+  const big = mk('span', 'wvw-hud-big');
+  const small = mk('span', 'wvw-hud-small');
+  const smallMins = mk('span');
+  const smallLong = mk('span', 'wvw-hud-long', ' min');
+  const smallShort = mk('span', 'wvw-hud-short', 'm');
+  small.append('kills \u00b7 ', smallMins, smallLong, smallShort);
+  const fightsBtn = mk('button');
+  const txt = mk('span', 'wvw-hud-txt');
+  txt.append(big, small);
+  fightsBtn.append(swords, txt);
+  const left = corner('l', 'fights', fightsBtn);
+
+  const ago = mk('time', 'wvw-hud-ago');
+  const mark = mk('span', 'wvw-hud-mark');
+  const word = mk('span', 'wvw-hud-word');
+  const val = mk('span');
+  const unitLong = mk('span', 'wvw-hud-long');
+  const unitShort = mk('span', 'wvw-hud-short');
+  ago.append(mark, word, val, unitLong, unitShort);
+  const whenBtn = mk('button');
+  whenBtn.appendChild(ago);
+  // Spoken only when the state turns, not every second.
+  const live = mk('span', 'wvw-hud-live');
+  live.setAttribute('role', 'status');
+  const right = corner('r', 'when', whenBtn);
+  right.appendChild(live);
+
+  wrap.append(left, right, note);
+
+  const put = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+  let stale = null;
+  const state = {
+    // line: {kills, mins} or null; at: ms of the last accepted answer, 0 if none.
+    paint(line, at) {
+      left.hidden = !line;
+      if (line) {
+        put(big, String(line.kills));
+        put(smallMins, String(line.mins));
+      }
+      right.hidden = !at;
+      if (!at) { stale = null; return; }
+      const age = Math.max(0, Date.now() - at);
+      const isStale = age > HUD_STALE_MS;
+      ago.classList.toggle('is-stale', isStale);
+      ago.dateTime = new Date(at).toISOString();
+      const mins = Math.floor(age / 60000);
+      // Past the limit the word and the sign are the signal, never the
+      // colour alone; narrow drops the word and keeps the sign.
+      put(mark, isStale ? '\u26a0 ' : '');
+      put(word, isStale ? 'No update \u00b7 ' : 'Updated ');
+      if (isStale) {
+        put(val, String(mins));
+        put(unitLong, ' min');
+        put(unitShort, ' min');
+      } else if (mins < 1) {
+        put(val, `${Math.floor(age / 1000)}s`);
+        put(unitLong, ' ago');
+        put(unitShort, ' ago');
+      } else {
+        put(val, String(mins));
+        put(unitLong, ' min ago');
+        put(unitShort, 'm ago');
+      }
+      if (stale !== null && stale !== isStale) {
+        put(live, isStale ? `No map update for ${mins} min` : 'Map updates resumed');
+      }
+      stale = isStale;
+    },
+  };
+
+  if (svg && window.MutationObserver) {
+    const full = svg.viewBox.baseVal.width;
+    new MutationObserver(() => {
+      const zoomed = svg.viewBox.baseVal.width < full * 0.98;
+      wrap.classList.toggle('is-zoomed', zoomed);
+      if (zoomed) close();
+    }).observe(svg, { attributes: true, attributeFilter: ['viewBox'] });
+  }
+  return state;
+}
+
 // ---- Righteous Indignation ------------------------------------------
 // Five minutes, from the wiki, on every objective but sentries. During it
 // the guards cannot be hurt, so it answers "can I take it back yet"
@@ -1423,7 +1585,7 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
     // calls setPointerCapture on the wrapper - which retargets the
     // click to the wrapper and means the button's own click listener
     // never runs. That is why the buttons did nothing.
-    if (e.target.closest('.wvw-marker, .wvw-zoom')) return;
+    if (e.target.closest('.wvw-marker, .wvw-zoom, .wvw-hud, .wvw-hud-note')) return;
     dragging = { at: atEvent(e), x: view.x, y: view.y };
     wrap.classList.add('is-panning');
     wrap.setPointerCapture(e.pointerId);
@@ -2040,6 +2202,23 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
 
   let current = null;
   let plotWrap = null;
+  // The corners' state, and what they last read: the fight rates of the
+  // reading that picked the hot tab (null when none is hot).
+  let corners = null;
+  let hotRates = null;
+  let hotType = null; // the tab markHotTab chose, null when none is hot
+  // The age on the right is the page's, not the standings': until this
+  // popover's own first read ends, the instant it would show is the
+  // standings' (up to five minutes old) and would flash as no update.
+  let firstReadDone = false;
+  const paintCorners = () => {
+    if (!corners) return;
+    corners.paint(hotRates && current ? fightCount(hotRates, current) : null,
+      firstReadDone ? matchAcceptedAt(match.id) : 0);
+    // Orange swords only on the busiest map; elsewhere they are neutral.
+    const l = plotWrap && plotWrap.querySelector('.wvw-hud-l');
+    if (l) l.classList.toggle('is-cold', current !== hotType);
+  };
 
   const draw = (type, sectors) => {
     paintMapBoard(board, match, matchIsLive(match));
@@ -2053,6 +2232,8 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
       // everything in it pans and zooms with the terrain.
       const sb = buildScoreBar(byType.get(type), matchIsLive(match));
       if (sb) plotWrap.appendChild(sb);
+      corners = buildMapCorners(plotWrap);
+      paintCorners();
       stage.appendChild(plotWrap);
     } else {
       // The outline is what the drawing gets its frame from, so without
@@ -2121,6 +2302,9 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
       }
     }
     if (bestN < HOT_FLOOR) hot = null;
+    hotRates = hot ? rates : null;
+    hotType = hot;
+    paintCorners();
 
     for (const [type, b] of tabByType) {
       const had = b.querySelector('.wvw-tab-swords');
@@ -2137,10 +2321,9 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
           // text flow: pinned to the corner they would land on top of it.
           b.classList.add('is-hot');
         }
-        const mins = Math.round(rates.span / 60000);
+        const c = fightCount(rates, type);
         b.title = `${MAP_PANEL_NAME[type] || type} —`
-          + ` ${Math.round(bestN * rates.span / 600000)} kills in the last`
-          + ` ${mins} min, more than any other map`;
+          + ` ${c.kills} kills in the last ${c.mins} min, more than any other map`;
       } else {
         if (had) { had.remove(); b.classList.remove('is-hot'); }
         b.title = MAP_PANEL_NAME[type] || type;
@@ -2170,7 +2353,8 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     try {
       // Never behind what this page has already seen: see fetchMatches.
       fresh = await fetchMatches(`${API_BASE}/wvw/matches?id=${encodeURIComponent(match.id)}`);
-    } catch { return; }
+    } catch { firstReadDone = true; return; }
+    firstReadDone = true;
     if (seq !== pullSeq) return;
     if (activeTrigger !== triggerEl || !fresh || !Array.isArray(fresh.maps)) return;
     for (const m of fresh.maps) if (byType.has(m.type)) byType.set(m.type, m);
@@ -2199,6 +2383,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
       if (old) old.remove();
       if (sb) plotWrap.appendChild(sb);
     }
+    paintCorners();
   };
 
   // The maps keep themselves current while they are open. The standings
@@ -2227,6 +2412,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   mapTickTimer = setInterval(() => {
     if (activeTrigger !== triggerEl) { clearInterval(mapTickTimer); return; }
     tickRi(stage);
+    paintCorners();
   }, 1000);
 
   for (const type of available) {
