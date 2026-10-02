@@ -15,6 +15,7 @@
 .proto-when{flex-direction:column;align-items:flex-end;gap:0;}
 .proto-ago{font-size:.68rem;color:#dbe3ec;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .proto-ago.is-stale{color:#ffb347;font-weight:700;}
+.proto-short{display:none;}
 .proto-cap{font-size:.6rem;color:#9aa5b2;white-space:nowrap;font-variant-numeric:tabular-nums;}
 
 /* B: two corners of the map, either side of the team bar, like the game's
@@ -40,7 +41,8 @@
 
 /* Narrow map: the words go, the numbers stay. */
 @container plot (max-width:480px){
-  .proto-word{display:none;}
+  .proto-word,.proto-long{display:none;}
+  .proto-short{display:inline;}
   .proto-txt{flex-direction:column;align-items:flex-start;gap:0;}
   .proto-big{font-size:.8rem;line-height:1.1;}
   .proto-small{font-size:.6rem;}

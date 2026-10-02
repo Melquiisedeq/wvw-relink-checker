@@ -84,7 +84,12 @@
     b.appendChild(im);
     const txt = el('span', 'proto-txt');
     txt.appendChild(el('span', 'proto-big', f ? String(f.kills) : '—'));
-    txt.appendChild(el('span', 'proto-small', f ? `kills · ${f.mins} min` : 'kills · waiting'));
+    const small = el('span', 'proto-small', f ? `kills · ${f.mins}` : 'kills · waiting');
+    if (f) {
+      small.appendChild(el('span', 'proto-long', ' min'));
+      small.appendChild(el('span', 'proto-short', 'm'));
+    }
+    txt.appendChild(small);
     b.appendChild(txt);
     tappable(b, 'fights');
     return b;
