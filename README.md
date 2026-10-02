@@ -145,7 +145,7 @@ does it.
   IDs drift from that table.
 - The NA alliance list is community-maintained — not by ArenaNet, not by
   this project — and may be incomplete or out of date.
-- The score for the 2-hour skirmish being played lands about 15 minutes late.
+- The score for the 2-hour block being played lands about 15 minutes late.
   Until it does, the trend popover says so rather than inventing a number.
 
 ## 📁 Project layout

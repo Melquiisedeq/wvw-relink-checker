@@ -221,8 +221,8 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     const avg = Math.round(mine.done.reduce((a, b) => a + b, 0) / mine.done.length);
     const figures = document.createElement('div');
     figures.className = 'pop-figures pop-figures--three';
-    const fLast = popFigure('Last skirmish', mine.done[mine.done.length - 1].toLocaleString());
-    fLast.title = 'The most recent skirmish that has finished - not the one being played now.';
+    const fLast = popFigure('Last block', mine.done[mine.done.length - 1].toLocaleString());
+    fLast.title = 'The most recent block that has finished - not the one being played now.';
     // An average needs something to average over and a peak needs
     // something to stand out from. With one finished block both would
     // report that same score under labels promising a comparison, so
@@ -236,7 +236,7 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
       : waiting;
     const fPeak = popFigure('Peak',
       comparable ? Math.max(...mine.done).toLocaleString() : '—');
-    fPeak.title = comparable ? 'The best single skirmish this week.' : waiting;
+    fPeak.title = comparable ? 'The best single block this week.' : waiting;
     figures.appendChild(fLast);
     figures.appendChild(fAvg);
     figures.appendChild(fPeak);
@@ -335,7 +335,7 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
       val.className = 'trend-legend-val';
       val.textContent = sideAvg.toLocaleString();
       item.appendChild(val);
-      item.title = 'Average score per finished skirmish this week';
+      item.title = 'Average score per finished block this week';
       legend.appendChild(item);
     }
     popover.appendChild(legend);
@@ -346,8 +346,8 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     why.className = 'hint';
     why.style.margin = '0';
     why.textContent = finished === 1
-      ? 'Only one skirmish done so far. The chart shows up once there are two.'
-      : 'First skirmish of the week is still being played.';
+      ? 'Only one block done so far. The chart shows up once there are two.'
+      : 'First block of the week is still being played.';
     popover.appendChild(why);
   }
 
@@ -363,13 +363,13 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     // Says "the finished ones" rather than "the chart": this band is on
     // screen from the first minutes of a week, when there is no chart to
     // point at yet.
-    now.title = 'A skirmish is a 2-hour slice, 84 of them from reset to reset. This one '
+    now.title = 'A skirmish is a 2-hour block, 84 of them from reset to reset. This one '
       + 'is still being played, so its score cannot be compared with the finished ones - '
-      + 'the projection can. ArenaNet publishes a running skirmish late, so no projection '
+      + 'the projection can. ArenaNet publishes a running block late, so no projection '
       + 'is offered before the 45-minute mark.';
     const head = document.createElement('span');
     head.className = 'trend-live-head';
-    head.innerHTML = `<i class="trend-live-dot"></i>Skirmish ${progress.index} playing · `
+    head.innerHTML = `<i class="trend-live-dot"></i>Block ${progress.index} playing · `
       + `${mins} of 120 min`;
     const body = document.createElement('span');
     if (running === null) {
@@ -377,7 +377,7 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
       // running because we can compute it; saying so beats an empty
       // space that reads as "nothing is happening" - and naming whose
       // delay it is stops the gap reading as a fault in this page.
-      body.textContent = "ArenaNet hasn't published this skirmish yet";
+      body.textContent = "ArenaNet hasn't published this block yet";
     } else if (progress.fraction >= LIVE_PROJECT_AFTER) {
       // Two segments, not three. What the projection is read against is
       // the Average card above - repeating it here bought nothing and
@@ -409,7 +409,7 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     const sum = values.reduce((a, b) => a + b, 0) || 1;
 
     popover.appendChild(popSection(
-      liveOnly ? 'This skirmish by map' : 'Last skirmish by map',
+      liveOnly ? 'This block by map' : 'Last block by map',
       [popCell('pop-bar-value', 'Points'), popCell('pop-bar-pct', 'Share')]));
     MAP_ORDER.forEach((type, i) => {
       popover.appendChild(popBarRow(MAP_LABELS[type], MAP_LABEL_CLASS[type],
@@ -423,11 +423,11 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
   // chart went. Without this the popover ended by explaining a panel
   // that is not on the screen - which is how it read all morning for
   // every NA side, one finished block into the week.
-  const note = 'A skirmish is a 2-hour slice - 84 of them in a week. Most of the score '
+  const note = 'A skirmish is a 2-hour block - 84 of them in a week. Most of the score '
     + 'comes from holding objectives, not from kills, so a big number usually means '
     + 'map control.';
   popover.appendChild(popNote(
-    finished >= 2 ? `${note} The chart shows finished skirmishes only.` : note));
+    finished >= 2 ? `${note} The chart shows finished blocks only.` : note));
 }
 
 // Trend icon on the Skirmish stat, opening the score-over-time chart we
