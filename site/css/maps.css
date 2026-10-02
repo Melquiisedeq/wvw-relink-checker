@@ -203,6 +203,7 @@
   cursor:grab;touch-action:none;
 }
 .wvw-plot-wrap.is-panning{cursor:grabbing;}
+.wvw-plot-wrap{container:plot / inline-size;}
 /* While a map has no owners yet. Ground, sectors and positions are all
    already right - only the colours are late - so this explains rather
    than apologises. */
@@ -321,6 +322,62 @@
 .wvw-zoom button{
   width:26px;height:26px;padding:0;font-size:1rem;line-height:1;
   border-radius:6px;
+}
+
+/* The two top corners of the map, either side of the score bar: kills on
+   the left, the age of the last accepted answer on the right. Text with a
+   shadow over a gradient from the corner, no box. They go while zoomed. */
+.wvw-hud{
+  position:absolute;top:0;z-index:3;
+  padding:7px 26px 16px 9px;pointer-events:none;
+  background:radial-gradient(farthest-side at 0 0,rgba(0,0,0,.78),rgba(0,0,0,.5) 55%,transparent);
+}
+.wvw-hud[hidden]{display:none;}
+.wvw-hud > *{pointer-events:auto;}
+.wvw-hud-l{left:0;}
+.wvw-hud-r{
+  right:0;padding:7px 9px 16px 26px;
+  background:radial-gradient(farthest-side at 100% 0,rgba(0,0,0,.78),rgba(0,0,0,.5) 55%,transparent);
+}
+.wvw-hud-btn{
+  display:flex;align-items:center;gap:6px;
+  padding:0;border:0;border-radius:0;background:none;box-shadow:none;
+  color:#dbe3ec;font:inherit;text-align:left;cursor:help;
+  text-shadow:0 1px 2px #000,0 0 6px rgba(0,0,0,.8);transition:none;
+}
+.wvw-hud-btn:active{transform:none;box-shadow:none;}
+.wvw-hud-btn img{display:block;flex:none;filter:drop-shadow(0 1px 1px #000);}
+.wvw-hud-txt{display:flex;align-items:baseline;gap:5px;white-space:nowrap;}
+.wvw-hud-big{font-size:.86rem;font-weight:800;color:#ffb070;font-variant-numeric:tabular-nums;}
+.wvw-hud-small{font-size:.66rem;color:#c3ccd6;}
+.wvw-hud-ago{font-size:.68rem;color:#dbe3ec;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.wvw-hud-ago.is-stale{color:#ffb347;font-weight:700;}
+.wvw-hud-short{display:none;}
+/* Clipped, not hidden, so a screen reader still gets the turn. */
+.wvw-hud-live{
+  position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;
+  clip-path:inset(50%);white-space:nowrap;
+}
+.wvw-hud-note{
+  position:absolute;top:44px;z-index:4;max-width:min(78%,300px);margin:0;
+  padding:7px 9px;background:rgba(8,11,16,.94);border-left:2px solid #ff973f;
+  color:#c9d2dd;font-size:.68rem;line-height:1.4;cursor:pointer;
+}
+.wvw-hud-note[hidden]{display:none;}
+.wvw-hud-note.at-l{left:8px;}
+.wvw-hud-note.at-r{right:8px;border-left:0;border-right:2px solid #57b6d6;}
+.wvw-plot-wrap.is-zoomed .wvw-hud,
+.wvw-plot-wrap.is-zoomed .wvw-hud-note{display:none;}
+/* Narrow map: the words go, the numbers stay. "No update" stays: the
+   amber alone would be colour and nothing else. */
+@container plot (max-width:480px){
+  .wvw-hud-ago:not(.is-stale) .wvw-hud-word,.wvw-hud-long{display:none;}
+  .wvw-hud-short{display:inline;}
+  .wvw-hud-txt{flex-direction:column;align-items:flex-start;gap:0;}
+  .wvw-hud-big{font-size:.8rem;line-height:1.1;}
+  .wvw-hud-small{font-size:.6rem;}
+  .wvw-hud-l{padding:5px 20px 12px 7px;}
+  .wvw-hud-r{padding:5px 7px 12px 20px;}
 }
 
 /* The detail panel: everything the API knows about one objective. */
