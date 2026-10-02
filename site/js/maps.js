@@ -1114,11 +1114,27 @@ function buildMapCorners(wrap) {
       ago.classList.toggle('is-stale', isStale);
       ago.dateTime = new Date(at).toISOString();
       const mins = Math.floor(age / 60000);
-      if (isStale) {
+      const PT = (window.__proto || {}).text || 'a';
+      if (isStale && PT === 'b') {
+        put(word, '\u26a0 Paused \u00b7 ');
+        put(val, `${mins} min old`);
+        put(unitLong, '');
+        put(unitShort, '');
+      } else if (isStale && PT === 'c') {
+        put(word, '\u26a0 Map data ');
+        put(val, `${mins} min old`);
+        put(unitLong, '');
+        put(unitShort, '');
+      } else if (isStale) {
         put(word, 'No update \u00b7 ');
         put(val, String(mins));
         put(unitLong, ' min');
         put(unitShort, 'm');
+      } else if (PT === 'b') {
+        put(word, '\u25cf Live \u00b7 ');
+        put(val, mins < 1 ? `${Math.floor(age / 1000)}s ago` : `${mins} min ago`);
+        put(unitLong, '');
+        put(unitShort, '');
       } else if (mins < 1) {
         put(word, 'Updated ');
         put(val, `${Math.floor(age / 1000)}s ago`);
@@ -2203,14 +2219,19 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   // reading that picked the hot tab (null when none is hot).
   let corners = null;
   let hotRates = null;
+  let hotType = null;
   // The age on the right is the page's, not the standings': until this
   // popover's own first read ends, the instant it would show is the
   // standings' (up to five minutes old) and would flash as no update.
   let firstReadDone = false;
   const paintCorners = () => {
     if (!corners) return;
-    corners.paint(hotRates && current ? fightCount(hotRates, current) : null,
-      firstReadDone ? matchAcceptedAt(match.id) : 0);
+    const P = window.__proto || {};
+    let at = firstReadDone ? matchAcceptedAt(match.id) : 0;
+    if (at && P.stale) at = Date.now() - 150000;
+    corners.paint(hotRates && current ? fightCount(hotRates, current) : null, at);
+    const l = plotWrap && plotWrap.querySelector('.wvw-hud-l');
+    if (l) l.classList.toggle('is-cold', !!P.cold && current !== hotType);
   };
 
   const draw = (type, sectors) => {
@@ -2296,6 +2317,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     }
     if (bestN < HOT_FLOOR) hot = null;
     hotRates = hot ? rates : null;
+    hotType = hot;
     paintCorners();
 
     for (const [type, b] of tabByType) {
