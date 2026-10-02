@@ -166,7 +166,7 @@ async function loadStandingsByRegion() {
 
   const fetchRegion = async (ids) => {
     if (ids.length === 0) return [];
-    const data = await fetchJson(`${API_BASE}/wvw/matches?ids=${ids.map(encodeURIComponent).join(',')}`);
+    const data = await fetchMatches(`${API_BASE}/wvw/matches?ids=${ids.map(encodeURIComponent).join(',')}`);
     return Array.isArray(data) ? data : [];
   };
 
@@ -276,7 +276,7 @@ function swapRails(btn) {
 // fails, and then loadStandings asks region by region instead.
 async function fetchAllMatches() {
   try {
-    const all = await fetchJson(`${API_BASE}/wvw/matches?ids=all`);
+    const all = await fetchMatches(`${API_BASE}/wvw/matches?ids=all`);
     const ok = Array.isArray(all) ? all.filter((m) => m && typeof m.id === 'string') : [];
     return ok.length > 0 ? ok : null;
   } catch {
@@ -288,6 +288,7 @@ async function fetchAllMatches() {
 // Results are cached, so a later guild check reuses them.
 async function loadStandings() {
   try {
+    const asked = Date.now();
     let idList, naMatches, euMatches;
     const all = await fetchAllMatches();
     if (all) {
@@ -303,8 +304,9 @@ async function loadStandings() {
     // past. Nothing here waits on it and nothing extra is fetched - it is
     // what lets the maps popover say which map is busy the moment it
     // opens, instead of having to sample twice itself. See the fight log
-    // in js/maps.js.
-    recordFightSamples(answered);
+    // in js/maps.js. Only bodies accepted by this refresh: a frozen one
+    // answered with the kept body would be logged as a reading taken now.
+    recordFightSamples(answered.filter((m) => m && matchAcceptedAt(m.id) >= asked));
 
     // Forget matches that no longer exist. IDs are stable week to week, so
     // this only bites when a region loses a tier: a leftover "1-4" would

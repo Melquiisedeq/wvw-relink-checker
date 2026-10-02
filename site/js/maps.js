@@ -2164,10 +2164,12 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   let pullSeq = 0;
   const pullFresh = async () => {
     pulledAt = Date.now();
+    const asked = Date.now();
     const seq = ++pullSeq;
     let fresh;
     try {
-      fresh = await fetchJson(`${API_BASE}/wvw/matches?id=${encodeURIComponent(match.id)}`);
+      // Never behind what this page has already seen: see fetchMatches.
+      fresh = await fetchMatches(`${API_BASE}/wvw/matches?id=${encodeURIComponent(match.id)}`);
     } catch { return; }
     if (seq !== pullSeq) return;
     if (activeTrigger !== triggerEl || !fresh || !Array.isArray(fresh.maps)) return;
@@ -2176,7 +2178,8 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     // Outlives the popover, so reopening starts from here.
     if (freshRecall) freshRecall.data = fresh;
     hotFresh = true;
-    recordFightSamples([fresh]);
+    // A frozen answer hands back the kept body, which is no reading of now.
+    if (matchAcceptedAt(fresh.id) >= asked) recordFightSamples([fresh]);
     markHotTab(liveMatch);
     const now = byType.get(current);
     // Asked of the answer that just arrived, not of the match this

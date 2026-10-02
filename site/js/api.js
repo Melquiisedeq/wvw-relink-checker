@@ -224,6 +224,77 @@ function findLink(guildId, maps) {
   return null;
 }
 
+// ---- The newest body per match ---------------------------------------
+// Some of the API's servers answer wvw/matches with a body frozen in the
+// past (measured 02/10/2026 over 2207 reads: ~35% of answers for 1-1,
+// ~60% for 2-1, one stuck over 67 min; no header tells the servers
+// apart). Painted, it walks the maps, the scores and the kill rate
+// backwards. Every reader of a match goes through fetchMatches, which
+// never hands out a body behind one already seen.
+// matchId -> { match, at }; `at` is when that match last had a body
+// accepted (a newer one, or the same again) - "how fresh is this".
+const newestMatches = new Map();
+
+const colorSum = (obj) => COLORS.reduce((n, c) => n + (Number(obj && obj[c]) || 0), 0);
+const matchActivity = (m) => colorSum(m.kills) + colorSum(m.deaths);
+
+// True only when `fresh` is certainly behind `kept`. A later start_time is
+// a new week and wins with every counter at zero; an earlier one is last
+// week's, frozen. Inside one week kills+deaths and the scores only grow.
+// An unreadable start_time cannot be judged, so the fresh body is taken:
+// guessing wrong the other way would freeze the match for good.
+function matchIsBehind(fresh, kept) {
+  const a = Date.parse(fresh.start_time);
+  const b = Date.parse(kept.start_time);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  if (a !== b) return a < b;
+  const actA = matchActivity(fresh);
+  const actB = matchActivity(kept);
+  if (actA !== actB) return actA < actB;
+  return colorSum(fresh.scores) < colorSum(kept.scores);
+}
+
+// Offers one body; returns the one kept for its match. Anything that is
+// not a match passes through untouched.
+function keepNewestMatch(match) {
+  if (!match || typeof match.id !== 'string') return match;
+  const kept = newestMatches.get(match.id);
+  if (kept && matchIsBehind(match, kept.match)) return kept.match;
+  newestMatches.set(match.id, { match, at: Date.now() });
+  return match;
+}
+
+// When this match last had a body accepted; 0 if never. A frozen answer
+// does not move it.
+function matchAcceptedAt(matchId) {
+  const kept = newestMatches.get(matchId);
+  return kept ? kept.at : 0;
+}
+
+// fetchJson for any wvw/matches URL that returns match bodies, one or a
+// list, same shape back. If any body is behind the kept one, the URL is
+// read twice more at once and the furthest along wins. In parallel, not
+// in turn: reads in a row come back from the same server (24 of 28
+// identical, 02/10/2026).
+const MATCH_REREADS = 2;
+
+async function fetchMatches(url) {
+  const raw = await fetchJson(url);
+  const list = Array.isArray(raw) ? raw : [raw];
+  const behind = list.some((m) => m && typeof m.id === 'string'
+    && newestMatches.has(m.id) && matchIsBehind(m, newestMatches.get(m.id).match));
+  if (behind) {
+    const again = await Promise.allSettled(
+      Array.from({ length: MATCH_REREADS }, () => fetchJson(url)));
+    for (const r of again) {
+      if (r.status !== 'fulfilled') continue;
+      for (const m of Array.isArray(r.value) ? r.value : [r.value]) keepNewestMatch(m);
+    }
+  }
+  const out = list.map(keepNewestMatch);
+  return Array.isArray(raw) ? out : out[0];
+}
+
 // Fetches the current match for a team ID, cached by team and match ID
 // so guilds sharing a team never trigger duplicate requests.
 async function getMatchForTeam(teamId) {
@@ -231,7 +302,7 @@ async function getMatchForTeam(teamId) {
     return matchDataCache.get(teamToMatchId.get(teamId));
   }
 
-  const raw = await fetchJson(`${API_BASE}/wvw/matches?world=${encodeURIComponent(teamId)}`);
+  const raw = await fetchMatches(`${API_BASE}/wvw/matches?world=${encodeURIComponent(teamId)}`);
   const match = Array.isArray(raw) ? raw[0] : raw;
 
   if (!match || typeof match.id !== 'string' || typeof match.all_worlds !== 'object') {
