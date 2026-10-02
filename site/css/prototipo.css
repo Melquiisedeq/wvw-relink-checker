@@ -8,11 +8,16 @@
 }
 .proto-item:active{transform:none;box-shadow:none;}
 .proto-label{color:#8d97a6;font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:.64rem;}
-.proto-n{font-weight:700;font-variant-numeric:tabular-nums;}
-.proto-red{color:#ff7a6e;}
-.proto-blue{color:#5fc6e3;}
-.proto-green{color:#8fd14f;}
-.proto-soon{color:#ffb070;}
+.proto-item{text-align:left;}
+.proto-fights{display:grid;grid-template-columns:auto auto;column-gap:9px;row-gap:1px;align-items:center;}
+.proto-fights img{grid-row:1 / span 2;width:24px;height:24px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.7));}
+.proto-head{display:flex;gap:8px;align-items:center;white-space:nowrap;}
+.proto-val{color:#c9d2dd;white-space:nowrap;}
+.proto-val strong{color:#ffb070;font-variant-numeric:tabular-nums;}
+.proto-tag{padding:0 5px;background:rgba(255,151,63,.16);color:#ffb070;border:1px solid rgba(255,151,63,.45);
+  font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
+.proto-when{display:flex;flex-direction:column;align-items:flex-end;gap:1px;}
+.proto-cap{color:#6f7a89;white-space:nowrap;font-size:.64rem;}
 .proto-ago{color:#8d97a6;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .proto-ago.is-stale{color:#ffb347;font-weight:700;}
 .proto-explain{margin:4px 0 0;color:#aeb8c4;font-size:.68rem;line-height:1.35;}
@@ -27,12 +32,13 @@
 
 /* B: over the map, top left; goes away while zoomed. */
 .proto-b{
-  position:absolute;top:8px;left:8px;z-index:3;max-width:min(44%,240px);
+  position:absolute;top:8px;left:8px;z-index:3;max-width:min(44%,260px);
   padding:5px 7px;background:rgba(8,11,16,.78);border-radius:3px;font-size:.66rem;
   transition:opacity .2s;
 }
-.proto-b .proto-list{flex-direction:column;align-items:flex-start;gap:2px;}
-.proto-b .proto-ago{display:block;margin-top:3px;}
+.proto-b{display:flex;flex-direction:column;align-items:flex-start;gap:5px;}
+.proto-b .proto-when{align-items:flex-start;padding-left:33px;}
+.proto-b .proto-cap,.proto-b .proto-val{white-space:normal;}
 .proto-b.is-hidden{opacity:0;pointer-events:none;}
 
 .proto-switch{
