@@ -2153,6 +2153,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   // has to read this, or it quietly undoes the opening pull - which is
   // exactly what the kill sheet's callback used to do.
   let liveMatch = match;
+  if (window.__protoOpen) window.__protoOpen(match);
   let hotFresh = false;
 
   // One fetch of this tier's match, and everything that has to be
@@ -2173,6 +2174,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     if (activeTrigger !== triggerEl || !fresh || !Array.isArray(fresh.maps)) return;
     for (const m of fresh.maps) if (byType.has(m.type)) byType.set(m.type, m);
     liveMatch = fresh;
+    if (window.__protoGood) window.__protoGood(fresh);
     // Outlives the popover, so reopening starts from here.
     if (freshRecall) freshRecall.data = fresh;
     hotFresh = true;
