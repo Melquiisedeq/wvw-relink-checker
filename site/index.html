@@ -61,12 +61,12 @@
   reports.
 -->
 <link rel="canonical" href="https://wvwrelink.com/">
-<meta name="description" content="Guild Wars 2 WvW relink checker. Paste your guild names and see which WvW team each one landed on after the relink, with live NA and EU tier standings.">
+<meta name="description" content="Guild Wars 2 WvW relink checker. Paste your guild names, see which team each landed on after the relink, and watch live maps that show where the fighting is.">
 <meta name="theme-color" content="#0f1216">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="WvW Relink Checker">
 <meta property="og:title" content="WvW Relink Checker - Guild Wars 2 WvW">
-<meta property="og:description" content="Guild Wars 2 WvW relink checker. Paste your alliance's guild names and see which WvW team each one landed on after the relink, plus live NA and EU tier standings.">
+<meta property="og:description" content="Guild Wars 2 WvW relink checker. Paste your guild names, see which team each landed on after the relink, and watch live maps that show where the fighting is.">
 <meta property="og:url" content="https://wvwrelink.com/">
 <meta property="og:image" content="https://wvwrelink.com/assets/social-card.jpg">
 <meta property="og:image:width" content="1200">
@@ -93,7 +93,7 @@
   "isAccessibleForFree": true,
   "sameAs": "https://github.com/Melquiisedeq/wvw-relink-checker",
   "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
-  "description": "Check which Guild Wars 2 WvW team your alliance's guilds landed on after the relink, with live NA and EU tier standings, scores and maps.",
+  "description": "Check which Guild Wars 2 WvW team your alliance's guilds landed on after the relink, with NA and EU tier standings, scores, and live maps that show where the fighting is.",
   "about": {
     "@type": "VideoGame",
     "name": "Guild Wars 2",
@@ -213,11 +213,12 @@
     Drop in your alliance's guild names (one per line) and find out which
     WvW team each one landed on after the relink - plus the tier, the
     score, and which guilds are sitting on every side of the match.
-    Live for NA and EU.
+    For NA and EU, with live maps that show where the fighting is and the
+    Righteous Indignation timers.
   </p>
 
   <div class="card">
-    <label for="guildInput">Guild names, one per line (a raw GUID works too)</label>
+    <label for="guildInput">Guild names, one per line (a guild ID works too)</label>
     <textarea id="guildInput" placeholder="Guild Name
 Another Guild Name
 One More Guild Name"></textarea>
@@ -242,7 +243,7 @@ One More Guild Name"></textarea>
           <th>Guild</th>
           <th>Tag</th>
           <th>Region</th>
-          <th>Server (link)</th>
+          <th>Team</th>
         </tr>
       </thead>
       <tbody id="resultBody"></tbody>

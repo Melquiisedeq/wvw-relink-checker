@@ -1773,7 +1773,7 @@ function paintMapBoard(board, match, isLive) {
   head.className = 'wvw-board-row wvw-board-head';
   const headLabel = document.createElement('span');
   headLabel.className = 'wvw-board-team';
-  headLabel.textContent = 'Contested areas';
+  headLabel.textContent = 'Objectives held';
   head.appendChild(headLabel);
   const headCells = document.createElement('span');
   headCells.className = 'wvw-board-counts';
@@ -2118,7 +2118,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   const header = document.createElement('div');
   header.className = 'info-popover-header';
   const title = document.createElement('span');
-  title.textContent = `${regionName} Tier ${tierNum} · objective maps`;
+  title.textContent = `${regionName} Tier ${tierNum} · Live map`;
   header.appendChild(title);
 
   const actions = document.createElement('div');
@@ -2595,8 +2595,8 @@ function buildTierMapButton(match, regionName, tierNum) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'icon-btn tier-map-btn';
-  btn.setAttribute('aria-label', `Show the objective maps for ${regionName} Tier ${tierNum}`);
-  btn.title = `Objective maps · ${regionName} Tier ${tierNum}`;
+  btn.setAttribute('aria-label', `Show the live map for ${regionName} Tier ${tierNum}`);
+  btn.title = `Live map · ${regionName} Tier ${tierNum}`;
   markPopoverTrigger(btn);
   // The folded map. A miniature of the territory was tried and came out
   // worse - four coloured patches at this size read as a badge, not a
