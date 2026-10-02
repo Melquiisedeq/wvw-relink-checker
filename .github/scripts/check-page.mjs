@@ -1,6 +1,7 @@
 // Loads the page in a real Chrome, with the API and the sheets answered from a
 // recording, walks it as a visitor would (guild search, every map, every icon
-// button and popover, the NA/EU swap, then a second load with /api/* down), and
+// button and popover, the NA/EU swap, a frozen match answer that must not be
+// painted, then a second load with /api/* down), and
 // fails on anything the browser objects to: an exception, a console error, a
 // Content Security Policy violation, a step whose element never appears.
 //
@@ -293,6 +294,9 @@ async function main() {
   const ids = new Map();            // in-flight requests, for "the page has gone quiet"
   let apiDown = false;              // second load: /api/* answers 503
   let apiRefused = 0, sheetReads = 0;
+  // url -> { body, served }: answers the step 'frozen match' puts in place of
+  // the recording, filled only from constants and the recording itself.
+  const substitutes = new Map();
 
   const reply = (requestId, status, type, body) => send('Fetch.fulfillRequest', {
     requestId, responseCode: status,
@@ -315,6 +319,11 @@ async function main() {
         responseHeaders: [{ name: 'Access-Control-Allow-Origin', value: '*' }, { name: 'Access-Control-Allow-Headers', value: '*' }] });
       if (BLOCKED.test(url)) return await send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' });
       if (url.startsWith('https://render.guildwars2.com/')) return await reply(requestId, 200, 'image/png', PNG);
+      const swap = substitutes.get(url);
+      if (swap) {
+        swap.served++;
+        return await reply(requestId, 200, 'application/json; charset=utf-8', swap.body);
+      }
       if (own && apiDown) {
         apiRefused++;
         return await reply(requestId, 503, 'application/json', Buffer.from('{"error":"down"}'));
@@ -538,6 +547,99 @@ async function main() {
     }
   }
 
+  // Every red/green/blue count of a match times `k`, objective owners moved
+  // one colour on: a body behind the real one that, painted, changes the map.
+  const ROTATE = { Red: 'Blue', Blue: 'Green', Green: 'Red' };
+  const rewind = (v, k, key = '') => {
+    if (key === 'worlds' || key === 'all_worlds') return v;
+    if (Array.isArray(v)) return v.map(x => rewind(x, k));
+    if (!v || typeof v !== 'object') return v;
+    return Object.fromEntries(Object.entries(v).map(([n, x]) => [n,
+      n === 'owner' && Object.hasOwn(ROTATE, x) ? ROTATE[x]
+        : ['red', 'green', 'blue'].includes(n) && typeof x === 'number' ? Math.floor(x * k)
+          : rewind(x, k, n)]));
+  };
+  const activity = m => ['kills', 'deaths'].reduce((n, f) => n + Object.values(m[f] || {}).reduce((a, b) => a + b, 0), 0);
+
+  // A tier's maps open, then the same match answered with half its counters
+  // (the map pull and ids=all): the map, the standings and the fight log stay,
+  // with at most two re-reads each. Then a body from the next week, every
+  // counter zero, which must still replace it.
+  async function frozenMatch() {
+    const step = 'frozen match';
+    const label = await ev("document.querySelector('.tier-map-btn')?.getAttribute('aria-label') || ''");
+    const t = /\b(NA|EU) Tier (\d+)/.exec(label);
+    if (!t) return void problem(`step '${step}': no tier map button to read a match from`);
+    const matchId = `${t[1] === 'NA' ? 1 : 2}-${t[2]}`;
+    const allUrl = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
+    const oneUrl = `https://api.guildwars2.com/v2/wvw/matches?id=${matchId}`;
+    const allHit = recorded.get(allUrl), oneHit = recorded.get(oneUrl);
+    if (!allHit || !oneHit) return void problem(`step '${step}': ${allHit ? oneUrl : allUrl} not recorded`);
+    const all = JSON.parse(bodyOf(allHit).toString('utf8'));
+    const one = JSON.parse(bodyOf(oneHit).toString('utf8'));
+    if (!(activity(rewind(one, 0.5)) < activity(one))) return void problem(`step '${step}': ${matchId} has no kills to rewind`);
+    const withMatch = m => all.map(x => (x.id === matchId ? m : x));
+
+    const mapState = `JSON.stringify({
+      owners: [...document.querySelectorAll('.info-popover .wvw-plot [class*="own-"]')].map(e => e.getAttribute('class')),
+      board: document.querySelector('.info-popover .wvw-board')?.textContent || '',
+      bar: [...document.querySelectorAll('.info-popover .wvw-scorebar-seg')].map(e => e.getAttribute('style')) })`;
+    const grid = `document.getElementById('standingsGrid${t[1]}').textContent`;
+    // Every reading the fight log holds for this match, as one total each.
+    const fightLog = `(JSON.parse(localStorage.getItem('wvw-fight-v1') || '{}')['${matchId}'] || [])
+      .map(s => Object.values(s.n).reduce((a, b) => a + b, 0))`;
+    const openMap = async (name) => {
+      if (!(await click(name, "document.querySelector('.tier-map-btn')"))) return false;
+      const ok = await until(name, `!!document.querySelector("${POPOVERS['tier-map-btn']}")`, 'drawn objectives');
+      await idle(name);
+      return ok;
+    };
+
+    if (!(await openMap(step + ': open'))) return;
+    const mapBefore = await ev(mapState);
+    await closePopover(step);
+    // The map pulls left newer bodies than the recorded ids=all: a refresh
+    // first, so the standings show what this page already knows.
+    await ev('loadStandings()');
+    await idle(step);
+    const gridBefore = await ev(grid);
+    // Older than the log's one-minute gap, so a frozen reading would be kept.
+    await ev(`(() => { const log = JSON.parse(localStorage.getItem('wvw-fight-v1') || '{}');
+      for (const s of log['${matchId}'] || []) s.at -= 120000;
+      localStorage.setItem('wvw-fight-v1', JSON.stringify(log)); })()`);
+    const logBefore = await ev(fightLog);
+
+    const frozenOne = { body: Buffer.from(JSON.stringify(rewind(one, 0.5))), served: 0 };
+    const frozenAll = { body: Buffer.from(JSON.stringify(withMatch(rewind(one, 0.5)))), served: 0 };
+    substitutes.set(oneUrl, frozenOne);
+    substitutes.set(allUrl, frozenAll);
+    if (await openMap(step + ': reopen')) {
+      if (await ev(mapState) !== mapBefore) problem(`step '${step}': the map repainted from the frozen answer`);
+      await closePopover(step);
+    }
+    await ev('loadStandings()');
+    await idle(step);
+    if (await ev(grid) !== gridBefore) problem(`step '${step}': the standings repainted from the frozen answer`);
+    const logAfter = await ev(fightLog);
+    if (logAfter.some(n => n < Math.max(...logBefore, 0))) problem(`step '${step}': the fight log took a frozen reading (${logAfter.join(' ')})`);
+    for (const [name, s] of [['map pull', frozenOne], ['ids=all', frozenAll]]) {
+      if (s.served < 1 || s.served - 1 > 2) problem(`step '${step}': ${name} asked ${s.served} time(s), wanted 1 and at most 2 re-reads`);
+    }
+
+    const end = Date.parse(one.end_time);
+    if (!Number.isFinite(end)) return void problem(`step '${step}': ${matchId} has no end_time`);
+    const nextWeek = { ...rewind(one, 0), start_time: new Date(end).toISOString().replace('.000Z', 'Z'),
+      end_time: new Date(end + 7 * 86400000).toISOString().replace('.000Z', 'Z') };
+    substitutes.delete(oneUrl);
+    substitutes.set(allUrl, { body: Buffer.from(JSON.stringify(withMatch(nextWeek))), served: 0 });
+    await ev('loadStandings()');
+    await idle(step + ': next week');
+    if (await ev(`matchDataCache.get('${matchId}')?.start_time`) !== nextWeek.start_time) {
+      problem(`step '${step}': a body from the next week did not replace the kept one`);
+    }
+    substitutes.clear();
+  }
+
   // The walk, the same for the recording and for the replay: whatever it asks
   // of the hosts, the recording has. Recording picks the guild names first.
   recordedAt = RECORD ? Date.now() : recordedAt;
@@ -587,6 +689,9 @@ async function main() {
 
   // 2 and 3. Every icon button, maps and popovers.
   await iconButtons();
+
+  // 6. A frozen answer: some API servers serve a match body from the past.
+  await frozenMatch();
 
   // 5. A second load, /api/* answering 503: the page falls back to the sheets.
   apiDown = true;
