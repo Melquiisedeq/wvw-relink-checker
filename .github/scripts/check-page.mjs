@@ -397,7 +397,7 @@ async function main() {
 
   for (const d of ['Runtime', 'Log', 'Page', 'Network', 'Audits']) await send(d + '.enable');
   await send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] });
-  if (!RECORD) await send('Page.addScriptToEvaluateOnNewDocument', { source: clockShim(recordedAt) });
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: clockShim(RECORD ? Date.now() : recordedAt) });
   // ---- Driving the page ---------------------------------------------------
 
   // Evaluate in the page; a throw there is an error here.
@@ -647,7 +647,12 @@ async function main() {
   // the hot tab's title; zoom hides both and "home" shows them.
   async function mapCorners() {
     const step = 'map corners';
-    const name = "document.querySelector('.tier-map-btn')";
+    // The tier button with the swords badge, when the recording has a busy map:
+    // its label must name the map the tab with swords shows on opening.
+    const badged = await ev("!!document.querySelector('.tier-map-btn .tier-map-badge')");
+    if (!badged) problem(`step '${step}': no tier button carries the swords badge`);
+    const name = badged ? "document.querySelector('.tier-map-btn:has(.tier-map-badge)')" : "document.querySelector('.tier-map-btn')";
+    const busiest = badged ? await ev(`/busiest: (.+)$/.exec(${name}.getAttribute('aria-label'))?.[1] || ''`) : '';
     // The standings' accepted instant made old before the map opens: the corner must
     // not show it. A page-side observer notes any amber or spoken turn from the start.
     await ev(`__skewClock(100000); window.__amber = false;
@@ -665,7 +670,8 @@ async function main() {
     await idle(step);
     if (await ev('window.__amber') || (await ev(text('.wvw-hud-live')))) problem(`step '${step}': the corner showed no update, or spoke, on opening`);
     if (await ev(`!!${q('.wvw-hud-ago.is-stale')}`)) problem(`step '${step}': the corner is amber after the opening read`);
-    const hot = await ev(`(() => { const b = document.querySelector('.info-popover .wvw-tab.is-hot'); return b ? { type: b.dataset.type, title: b.title } : null; })()`);
+    const hot = await ev(`(() => { const b = document.querySelector('.info-popover .wvw-tab.is-hot'); return b ? { type: b.dataset.type, title: b.title, label: b.textContent.trim() } : null; })()`);
+    if (badged && (!hot || hot.label !== busiest)) problem(`step '${step}': the button says busiest "${busiest}", the hot tab is ${hot ? `"${hot.label}"` : 'none'}`);
     if (hot) {
       await click(step + ': hot tab', `document.querySelector('.info-popover .wvw-tab[data-type="${hot.type}"]')`);
       await until(step, shown('.wvw-hud-l'), 'kills corner on the hot tab');

@@ -192,6 +192,15 @@
   transition:opacity .15s ease, filter .15s ease;
 }
 .tier-map-btn:hover svg,.tier-map-btn.active svg{opacity:1;}
+/* The swords on the corner of the icon say a map of this tier is busy;
+   they take the place of the dot, which would only sit under them. */
+.tier-map-btn{position:relative;}
+.tier-map-badge{
+  position:absolute;right:-6px;top:-5px;display:block;
+  filter:drop-shadow(0 1px 1px #000);pointer-events:none;
+}
+.tier-map-badge img{display:block;}
+.tier-map-btn.has-badge svg circle{display:none;}
 /* Same as .stat-label on purpose - that is what "Skirmish" is. The size
    is fixed rather than inherited because the button appears at .72rem in
    the standings card and .95rem in the panel header. */

@@ -989,6 +989,36 @@ function fightRates(match, wantMs) {
   return { per, span };
 }
 
+// Which map is busy, from the fight log the standings refresh has been
+// filling since the tab opened - see recordFightSamples. Ten minutes
+// back is what the baseline aims for: long enough that one gank does
+// not decide it, short enough that "busy" still means now. The tab's
+// swords and the tier button's badge both read it here, so they cannot
+// disagree.
+const HOT_WANT_MS = 10 * 60 * 1000;
+const HOT_FLOOR = 10;      // kills and deaths per ten minutes
+
+function hotMapOf(match, types) {
+  // Nothing is marked on a match that is not running. Between the
+  // reset and the API publishing the new one, everything else on the
+  // popover goes neutral - see ownersOf - and a pair of swords over a
+  // blank map would be the one thing still claiming to know something.
+  const rates = matchIsLive(match) ? fightRates(match, HOT_WANT_MS) : null;
+  let hot = null;
+  let bestN = 0;
+  // Walked in the given order and taken on a strict win, so a tie keeps
+  // whichever map comes first rather than swapping the swords back and
+  // forth on every refresh.
+  if (rates) {
+    for (const type of types) {
+      const n = rates.per.get(type) || 0;
+      if (n > bestN) { bestN = n; hot = type; }
+    }
+  }
+  if (bestN < HOT_FLOOR) hot = null;
+  return { hot, rates };
+}
+
 // The kills a map shows over the span fightRates measured. The tab's title
 // and the corner read it through this one function, so the figures cannot
 // part.
@@ -2271,37 +2301,10 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     });
   };
 
-  // Which map is busy, from the fight log the standings refresh has been
-  // filling since the tab opened - see recordFightSamples. Ten minutes
-  // back is what the baseline aims for: long enough that one gank does
-  // not decide it, short enough that "busy" still means now.
-  const HOT_WANT_MS = 10 * 60 * 1000;
-  const HOT_FLOOR = 10;      // kills and deaths per ten minutes
   const tabByType = new Map();
 
   const markHotTab = (src) => {
-    // Nothing is marked on a match that is not running. Between the
-    // reset and the API publishing the new one, everything else on this
-    // popover goes neutral - see ownersOf - and a pair of swords over a
-    // blank map would be the one thing still claiming to know something.
-    const rates = matchIsLive(src) ? fightRates(src, HOT_WANT_MS) : null;
-    let hot = null;
-    let bestN = 0;
-    let nextN = 0;
-    // Walked in tab order and taken on a strict win, so a tie keeps
-    // whichever map comes first rather than swapping the swords back and
-    // forth on every refresh. The runner-up is kept because the count on
-    // its own does not travel: a normally empty borderland can be the
-    // whole match's fight at a number that would be a quiet hour on
-    // Eternal Battlegrounds.
-    if (rates) {
-      for (const type of available) {
-        const n = rates.per.get(type) || 0;
-        if (n > bestN) { nextN = bestN; bestN = n; hot = type; }
-        else if (n > nextN) { nextN = n; }
-      }
-    }
-    if (bestN < HOT_FLOOR) hot = null;
+    const { hot, rates } = hotMapOf(src, available);
     hotRates = hot ? rates : null;
     hotType = hot;
     paintCorners();
@@ -2591,6 +2594,47 @@ async function toggleTierMaps(match, regionName, tierNum, triggerEl) {
     sectorsByType, pendingSectors, triggerEl);
 }
 
+// The matches the tier buttons were built for, so the badge can be painted
+// again when the shared kill history lands. A WeakMap: the buttons are
+// rebuilt with every standings refresh and the old ones are dropped.
+const tierMapButtons = new WeakMap();
+let mapBadgesAsked = false;
+
+function paintMapBadge(btn) {
+  const info = tierMapButtons.get(btn);
+  if (!info) return;
+  const { match, regionName, tierNum } = info;
+  const types = MAP_PANEL_ORDER.filter((t) => (match.maps || []).some((m) => m.type === t));
+  const { hot } = hotMapOf(match, types);
+  const had = btn.querySelector('.tier-map-badge');
+  const name = hot ? (MAP_TAB_NAME[hot] || hot) : '';
+  btn.setAttribute('aria-label', `Show the live map for ${regionName} Tier ${tierNum}` + (name ? ` \u2014 busiest: ${name}` : ''));
+  btn.title = `Live map \u00b7 ${regionName} Tier ${tierNum}` + (name ? ` \u00b7 busiest: ${name}` : '');
+  btn.classList.toggle('has-badge', !!hot);
+  if (!hot) { if (had) had.remove(); return; }
+  if (had) return;
+  const badge = document.createElement('span');
+  badge.className = 'tier-map-badge';
+  const im = document.createElement('img');
+  im.src = 'assets/icons/Event_Swords.webp';
+  im.alt = '';
+  im.width = 11;
+  im.height = 11;
+  badge.appendChild(im);
+  btn.appendChild(badge);
+}
+
+// Once, after the first standings: the badge needs the shared history,
+// which is otherwise read only when a map opens. Cached and with its own
+// fallback, so this is the one extra read of /api/kills.
+function primeMapBadges() {
+  if (mapBadgesAsked) return;
+  mapBadgesAsked = true;
+  getKillSheet().then(() => {
+    for (const btn of document.querySelectorAll('.tier-map-btn')) paintMapBadge(btn);
+  });
+}
+
 function buildTierMapButton(match, regionName, tierNum) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -2603,7 +2647,7 @@ function buildTierMapButton(match, regionName, tierNum) {
   // map. The dot does the same job as the zigzag: the zigzag says the
   // sheet is folded, the dot says something is drawn on it. Word first,
   // glyph after, matching the server cards.
-  btn.innerHTML = '<span class="tier-map-label">Maps</span>' +
+  btn.innerHTML = '<span class="tier-map-label">Live maps</span>' +
     '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
     '<g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M3 6.5 9 3l6 3.5 6-3.5v14.5l-6 3.5-6-3.5-6 3.5Z"/>' +
@@ -2615,5 +2659,7 @@ function buildTierMapButton(match, regionName, tierNum) {
     e.stopPropagation();
     toggleTierMaps(match, regionName, tierNum, btn);
   });
+  tierMapButtons.set(btn, { match, regionName, tierNum });
+  paintMapBadge(btn);
   return btn;
 }
