@@ -1008,8 +1008,8 @@ const HUD_EXPLAIN = {
     + " the game's API. The crossed swords on a tab mark the map with the most."
     + ' The API has no player positions: this says where the fighting is, not'
     + ' how many players are there.',
-  when: 'Live: this page gets fresh data from the API every 30 s. Paused: it'
-    + ' stopped getting it (your internet, the API, or a sleeping computer), so'
+  when: 'Updated: when this page last got fresh data from the API; it asks every'
+    + ' 30 s. No update: it stopped getting it (your internet, the API, or a sleeping computer), so'
     + " what you see may be old. The game's API itself runs about 40 s behind the game.",
 };
 
@@ -1116,24 +1116,25 @@ function buildMapCorners(wrap) {
       ago.classList.toggle('is-stale', isStale);
       ago.dateTime = new Date(at).toISOString();
       const mins = Math.floor(age / 60000);
-      // The word is the signal, never the colour alone; narrow keeps the mark.
-      put(mark, isStale ? '\u26a0 ' : '\u25cf ');
-      put(word, isStale ? 'Paused \u00b7 ' : 'Live \u00b7 ');
+      // Past the limit the word and the sign are the signal, never the
+      // colour alone; narrow drops the word and keeps the sign.
+      put(mark, isStale ? '\u26a0 ' : '');
+      put(word, isStale ? 'No update \u00b7 ' : 'Updated ');
       if (isStale) {
         put(val, String(mins));
-        put(unitLong, ' min old');
+        put(unitLong, ' min');
         put(unitShort, ' min');
       } else if (mins < 1) {
         put(val, `${Math.floor(age / 1000)}s`);
         put(unitLong, ' ago');
-        put(unitShort, '');
+        put(unitShort, ' ago');
       } else {
         put(val, String(mins));
         put(unitLong, ' min ago');
-        put(unitShort, 'm');
+        put(unitShort, 'm ago');
       }
       if (stale !== null && stale !== isStale) {
-        put(live, isStale ? `Map updates paused for ${mins} min` : 'Map updates are live again');
+        put(live, isStale ? `No map update for ${mins} min` : 'Map updates resumed');
       }
       stale = isStale;
     },
