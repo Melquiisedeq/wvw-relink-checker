@@ -122,8 +122,8 @@
   .wvw-board-ppt{font-size:.84rem;}
 }
 
-/* The war-score bar the game prints across the top of the WvW map: three
-   segments, each as wide as that side's share. Over the plot and never
+/* A bar across the top of the map, drawn after the game's: three
+   segments, each as wide as that side's share of this map's PPT. Over the plot and never
    inside the SVG - the SVG is the camera, so anything in it would pan and
    zoom away with the ground. The height follows the width at the game's
    35:1 (318 x 9 measured off its bar, tips included), never under 4px. */
@@ -150,12 +150,14 @@
   background:url(../assets/scorebar-smear.webp) 50% 0 / 100% 100% no-repeat;
   pointer-events:none;
 }
-/* Both ends fade into the black, as in the game. A black wash over the
-   segments rather than a mask on the bar: a mask there would also clip the
-   smear to the bar's box. */
+/* Both ends fade into the black, as in the game, but only at the very tips:
+   the bar measures each side's share of this map's PPT, so a
+   wider wash would eat the first and last segments and make them look smaller
+   than they are. A black wash over the segments rather than a mask on the
+   bar: a mask there would also clip the smear to the bar's box. */
 .wvw-scorebar::after{
   content:'';position:absolute;z-index:2;inset:0;
-  background:linear-gradient(90deg,#000 0,rgba(0,0,0,.6) 4%,rgba(0,0,0,.3) 10%,transparent 27%,transparent 76%,rgba(0,0,0,.4) 88%,#000 100%);
+  background:linear-gradient(90deg,#000 0,rgba(0,0,0,.35) 3%,transparent 8%,transparent 92%,rgba(0,0,0,.35) 97%,#000 100%);
   pointer-events:none;
 }
 /* Positioned so it paints over ::before, which comes earlier. */
