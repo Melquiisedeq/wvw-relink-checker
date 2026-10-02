@@ -2625,6 +2625,7 @@ function buildTierMapButton(match, regionName, tierNum) {
     '</g>' +
     '<circle cx="12" cy="9.2" r="1.6" fill="currentColor"/>' +
     '</svg>';
+  btn.__match = match; // PROTOTYPE
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     toggleTierMaps(match, regionName, tierNum, btn);
