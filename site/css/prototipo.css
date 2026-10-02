@@ -1,45 +1,62 @@
 /* PROTOTYPE - preview branch only, never merged. */
-.proto-box{font-size:.72rem;color:#c9d2dd;}
-.proto-list{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;}
-.proto-item{
-  display:inline-flex;gap:6px;align-items:baseline;
-  padding:0;border:0;border-radius:0;background:none;color:inherit;font:inherit;cursor:help;
-  box-shadow:none;text-shadow:none;transition:none;
+.wvw-plot-wrap{container-type:inline-size;container-name:plot;}
+
+.proto-fights,.proto-when{
+  display:flex;align-items:center;gap:6px;
+  padding:0;border:0;border-radius:0;background:none;box-shadow:none;
+  color:#dbe3ec;font:inherit;text-align:left;cursor:help;
+  text-shadow:0 1px 2px #000,0 0 6px rgba(0,0,0,.8);transition:none;
 }
-.proto-item:active{transform:none;box-shadow:none;}
-.proto-label{color:#8d97a6;font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:.64rem;}
-.proto-item{text-align:left;}
-.proto-fights{display:grid;grid-template-columns:auto auto;column-gap:9px;row-gap:1px;align-items:center;}
-.proto-fights img{grid-row:1 / span 2;width:24px;height:24px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.7));}
-.proto-head{display:flex;gap:8px;align-items:center;white-space:nowrap;}
-.proto-val{color:#c9d2dd;white-space:nowrap;}
-.proto-val strong{color:#ffb070;font-variant-numeric:tabular-nums;}
-.proto-tag{padding:0 5px;background:rgba(255,151,63,.16);color:#ffb070;border:1px solid rgba(255,151,63,.45);
-  font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
-.proto-when{display:flex;flex-direction:column;align-items:flex-end;gap:1px;}
-.proto-cap{color:#6f7a89;white-space:nowrap;font-size:.64rem;}
-.proto-ago{color:#8d97a6;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.proto-fights:active,.proto-when:active{transform:none;box-shadow:none;}
+.proto-fights img{display:block;flex:none;filter:drop-shadow(0 1px 1px #000);}
+.proto-txt{display:flex;align-items:baseline;gap:5px;white-space:nowrap;}
+.proto-big{font-size:.86rem;font-weight:800;color:#ffb070;font-variant-numeric:tabular-nums;}
+.proto-small{font-size:.66rem;color:#c3ccd6;}
+.proto-when{flex-direction:column;align-items:flex-end;gap:0;}
+.proto-ago{font-size:.68rem;color:#dbe3ec;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .proto-ago.is-stale{color:#ffb347;font-weight:700;}
-.proto-explain{margin:4px 0 0;color:#aeb8c4;font-size:.68rem;line-height:1.35;}
+.proto-cap{font-size:.6rem;color:#9aa5b2;white-space:nowrap;font-variant-numeric:tabular-nums;}
 
-/* A: one strip between the tabs and the map. */
-.proto-a{
-  display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 14px;
-  margin:-2px 0 10px;padding:6px 10px;
-  background:rgba(12,16,22,.7);border-left:2px solid #57b6d6;
-}
-.proto-a .proto-explain{flex-basis:100%;}
-
-/* B: over the map, top left; goes away while zoomed. */
-.proto-b{
-  position:absolute;top:8px;left:8px;z-index:3;max-width:min(44%,260px);
-  padding:5px 7px;background:rgba(8,11,16,.78);border-radius:3px;font-size:.66rem;
+/* B: two corners of the map, either side of the team bar, like the game's
+   own HUD - text on a shadow, no box. */
+.proto-hud{
+  position:absolute;top:0;z-index:3;
+  padding:7px 26px 16px 9px;pointer-events:none;
   transition:opacity .2s;
 }
-.proto-b{display:flex;flex-direction:column;align-items:flex-start;gap:5px;}
-.proto-b .proto-when{align-items:flex-start;padding-left:33px;}
-.proto-b .proto-cap,.proto-b .proto-val{white-space:normal;}
-.proto-b.is-hidden{opacity:0;pointer-events:none;}
+.proto-hud > *{pointer-events:auto;}
+.proto-hud-l{left:0;background:radial-gradient(farthest-side at 0 0,rgba(0,0,0,.78),rgba(0,0,0,.5) 55%,transparent);}
+.proto-hud-r{right:0;padding:7px 9px 16px 26px;
+  background:radial-gradient(farthest-side at 100% 0,rgba(0,0,0,.78),rgba(0,0,0,.5) 55%,transparent);}
+.proto-hud.is-hidden,.proto-bubble.is-hidden{opacity:0;pointer-events:none;}
+.proto-hud.is-hidden > *{pointer-events:none;}
+.proto-bubble{
+  position:absolute;top:44px;z-index:4;max-width:min(78%,300px);margin:0;
+  padding:7px 9px;background:rgba(8,11,16,.94);border-left:2px solid #ff973f;
+  color:#c9d2dd;font-size:.68rem;line-height:1.4;cursor:pointer;
+}
+.proto-bubble.at-l{left:8px;}
+.proto-bubble.at-r{right:8px;border-left:0;border-right:2px solid #57b6d6;}
+
+/* Narrow map: the words go, the numbers stay. */
+@container plot (max-width:480px){
+  .proto-word{display:none;}
+  .proto-txt{flex-direction:column;align-items:flex-start;gap:0;}
+  .proto-big{font-size:.8rem;line-height:1.1;}
+  .proto-small{font-size:.6rem;}
+  .proto-hud-l{padding:5px 20px 12px 7px;}
+  .proto-hud-r{padding:5px 7px 12px 20px;}
+}
+
+/* A: one line above the map, no box. */
+.proto-strip{
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 12px;
+  margin:-4px 0 8px;padding:0 2px;
+}
+.proto-strip .proto-fights,.proto-strip .proto-when{text-shadow:none;}
+.proto-strip .proto-when{flex-direction:row;align-items:baseline;gap:6px;}
+.proto-strip .proto-cap::before{content:'\00b7  ';}
+.proto-strip .proto-explain{flex-basis:100%;margin:2px 0 0;color:#aeb8c4;font-size:.68rem;line-height:1.4;}
 
 .proto-switch{
   position:fixed;left:8px;bottom:8px;z-index:99999;

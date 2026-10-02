@@ -1,11 +1,12 @@
-// PROTOTYPE - preview branch only, never merged. Two places for the live
-// fights line and the "Updated Xs ago", switched by the bar at the bottom left.
+// PROTOTYPE - preview branch only, never merged. Two places for the fights
+// line and the update age, switched by the bar at the bottom left.
 (function () {
-  let mode = /[?&]proto=b\b/.test(location.search) ? 'b' : 'a';
+  let mode = /[?&]proto=a\b/.test(location.search) ? 'a' : 'b';
   let match = null;
   let lastGood = 0;
   let fullW = 0;
   let zoomed = false;
+  let openKey = null;
   const FIGHT_WANT_MS = 10 * 60 * 1000;
 
   window.__protoOpen = (m) => { match = m; lastGood = 0; fullW = 0; };
@@ -21,11 +22,9 @@
     const rates = match && matchIsLive(match) ? fightRates(match, FIGHT_WANT_MS) : null;
     if (!rates) return null;
     const rate = rates.per.get(type) || 0;
-    const hotTab = document.querySelector('.wvw-tab.is-hot');
     return {
       kills: Math.round(rate * rates.span / 600000),
       mins: Math.round(rates.span / 60000),
-      hot: !!hotTab && hotTab.dataset.type === type,
     };
   }
 
@@ -42,122 +41,117 @@
     return best;
   }
 
-  const minsAgo = (ms) => {
-    const m = Math.floor(ms / 60000);
-    return m < 1 ? 'under a minute ago' : `${m} min ago`;
+  const shortAgo = (ms) => {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}s ago`;
+    return `${Math.floor(s / 60)} min ago`;
   };
 
-  const ago = () => {
-    if (!lastGood) return { text: 'Updating…', stale: false };
-    const s = Math.floor((Date.now() - lastGood) / 1000);
-    if (s > 90) return { text: `No update for ${Math.round(s / 60)} min`, stale: true };
-    return { text: `Updated ${s}s ago`, stale: false };
+  const EXPLAIN = {
+    fights: 'Player kills on this map in the last few minutes, from snapshots of the game\'s API. '
+      + 'The crossed swords on a map\'s tab mark the map with the most. The API has no player '
+      + 'positions: this says where the fighting is, not how many players are there.',
+    when: 'Updated: when this page last got an answer from the game\'s API; it asks every 30 s. '
+      + 'Capture: the newest objective change in that answer. The API can run minutes behind '
+      + 'the game, so this is the real age of what the map shows.',
   };
 
-  function explainOn(el, key, text) {
-    el.title = text;
-    el.addEventListener('click', (e) => {
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  function tappable(node, key) {
+    node.title = EXPLAIN[key];
+    node.addEventListener('click', (e) => {
       e.stopPropagation();
-      const box = el.closest('.proto-box');
-      const ex = box && box.querySelector('.proto-explain');
-      if (!ex) return;
-      const same = ex.dataset.for === key && !ex.hidden;
-      ex.hidden = same;
-      ex.dataset.for = key;
-      ex.textContent = text;
+      openKey = openKey === key ? null : key;
+      paint();
     });
   }
 
-  function build() {
-    const type = currentType();
-    const f = fights(type);
-    const box = document.createElement('div');
-    box.className = `proto-box proto-${mode}`;
-
-    const fb = document.createElement('button');
-    fb.type = 'button';
-    fb.className = 'proto-item proto-fights' + (f && f.hot ? ' is-hot' : '');
-    const im = document.createElement('img');
+  function buildFights() {
+    const f = fights(currentType());
+    const b = el('button', 'proto-fights');
+    b.type = 'button';
+    const im = el('img');
     im.src = 'assets/icons/Event_Swords.webp';
     im.alt = '';
-    im.width = 16;
-    im.height = 16;
-    fb.appendChild(im);
-    const head = document.createElement('span');
-    head.className = 'proto-head';
-    const lab = document.createElement('span');
-    lab.className = 'proto-label';
-    lab.textContent = 'Fights';
-    head.appendChild(lab);
-    fb.appendChild(head);
-    const val = document.createElement('span');
-    val.className = 'proto-val';
-    if (f) {
-      const n = document.createElement('strong');
-      n.textContent = String(f.kills);
-      val.appendChild(n);
-      val.appendChild(document.createTextNode(` kills · last ${f.mins} min`));
+    im.width = 18;
+    im.height = 18;
+    b.appendChild(im);
+    const txt = el('span', 'proto-txt');
+    txt.appendChild(el('span', 'proto-big', f ? String(f.kills) : '—'));
+    txt.appendChild(el('span', 'proto-small', f ? `kills · ${f.mins} min` : 'kills · waiting'));
+    b.appendChild(txt);
+    tappable(b, 'fights');
+    return b;
+  }
+
+  function buildWhen() {
+    const b = el('button', 'proto-when');
+    b.type = 'button';
+    const t = el('time', 'proto-ago');
+    b.appendChild(t);
+    b.appendChild(el('span', 'proto-cap'));
+    fillWhen(b);
+    tappable(b, 'when');
+    return b;
+  }
+
+  function fillWhen(b) {
+    const t = b.querySelector('.proto-ago');
+    const c = b.querySelector('.proto-cap');
+    t.textContent = '';
+    if (!lastGood) {
+      t.textContent = 'Updating…';
     } else {
-      val.textContent = 'not enough history yet';
+      const age = Date.now() - lastGood;
+      const stale = age > 90 * 1000;
+      t.classList.toggle('is-stale', stale);
+      t.dateTime = new Date(lastGood).toISOString();
+      if (stale) {
+        t.textContent = `No update · ${Math.floor(age / 60000)} min`;
+      } else {
+        t.appendChild(el('span', 'proto-word', 'Updated '));
+        t.appendChild(document.createTextNode(shortAgo(age)));
+      }
     }
-    fb.appendChild(val);
-    if (f && f.hot) {
-      const tag = document.createElement('span');
-      tag.className = 'proto-tag';
-      tag.textContent = 'busiest map';
-      head.appendChild(tag);
-    }
-    explainOn(fb, 'fights',
-      'Player kills on this map, from snapshots of the game\'s API taken every few minutes. '
-      + 'The crossed swords on a map\'s tab mark the map with the most fighting (10 kills or more per 10 min). '
-      + 'The API has no player positions, so this says where the fighting is, not how many players are there.');
-
-    const right = document.createElement('button');
-    right.type = 'button';
-    right.className = 'proto-item proto-when';
-    const a = ago();
-    const t = document.createElement('time');
-    t.className = 'proto-ago' + (a.stale ? ' is-stale' : '');
-    if (lastGood) t.dateTime = new Date(lastGood).toISOString();
-    t.textContent = a.text;
-    right.appendChild(t);
     const cap = latestCapture();
-    const c = document.createElement('span');
-    c.className = 'proto-cap';
-    c.textContent = cap ? `latest capture ${minsAgo(Date.now() - cap)}` : '';
-    right.appendChild(c);
-    explainOn(right, 'when',
-      'Updated: when this page last got an answer from the game\'s API; it asks every 30 s. '
-      + 'Latest capture: the newest objective change in that answer. The API can run several minutes behind the game, '
-      + 'so this is the honest age of what the map shows.');
-
-    box.appendChild(fb);
-    box.appendChild(right);
-    const ex = document.createElement('p');
-    ex.className = 'proto-explain';
-    ex.hidden = true;
-    box.appendChild(ex);
-    return box;
+    c.textContent = cap ? `capture ${shortAgo(Math.max(0, Date.now() - cap))}` : '';
   }
 
   function paint() {
     const tabs = document.querySelector('.wvw-tabs');
     if (!tabs) return;
-    const old = document.querySelector('.proto-box');
-    const keep = old && old.querySelector('.proto-explain');
-    const box = build();
-    if (keep && !keep.hidden) {
-      const ex = box.querySelector('.proto-explain');
-      ex.hidden = false; ex.dataset.for = keep.dataset.for; ex.textContent = keep.textContent;
+    for (const old of document.querySelectorAll('.proto-el')) old.remove();
+    const fightsEl = buildFights();
+    const whenEl = buildWhen();
+    const ex = openKey ? el('p', 'proto-explain', EXPLAIN[openKey]) : null;
+    if (mode === 'a') {
+      const strip = el('div', 'proto-el proto-strip');
+      strip.appendChild(fightsEl);
+      strip.appendChild(whenEl);
+      if (ex) strip.appendChild(ex);
+      tabs.after(strip);
+      return;
     }
-    if (old) old.remove();
-    if (mode === 'a') tabs.after(box);
-    else {
-      const wrap = document.querySelector('.wvw-plot-wrap');
-      if (!wrap) return;
-      wrap.appendChild(box);
-      box.classList.toggle('is-hidden', zoomed);
+    const wrap = document.querySelector('.wvw-plot-wrap');
+    if (!wrap) return;
+    const left = el('div', 'proto-el proto-hud proto-hud-l');
+    left.appendChild(fightsEl);
+    const right = el('div', 'proto-el proto-hud proto-hud-r');
+    right.appendChild(whenEl);
+    wrap.appendChild(left);
+    wrap.appendChild(right);
+    if (ex) {
+      ex.classList.add('proto-el', 'proto-bubble', openKey === 'fights' ? 'at-l' : 'at-r');
+      ex.addEventListener('click', (e) => { e.stopPropagation(); openKey = null; paint(); });
+      wrap.appendChild(ex);
     }
+    for (const n of wrap.querySelectorAll('.proto-el')) n.classList.toggle('is-hidden', zoomed);
   }
 
   function watchZoom() {
@@ -169,46 +163,33 @@
       const z = svg.viewBox.baseVal.width < fullW * 0.98;
       if (z === zoomed) return;
       zoomed = z;
-      const box = document.querySelector('.proto-box.proto-b');
-      if (box) box.classList.toggle('is-hidden', zoomed);
+      for (const n of document.querySelectorAll('.wvw-plot-wrap .proto-el')) n.classList.toggle('is-hidden', zoomed);
     }).observe(svg, { attributes: true, attributeFilter: ['viewBox'] });
   }
 
   let lastTab = null;
+  let lastKills = null;
   setInterval(() => {
     if (!document.querySelector('.wvw-tabs')) return;
     const tab = currentType();
     const svg = document.querySelector('.wvw-plot');
     if (svg && !svg.__proto) { zoomed = false; watchZoom(); }
-    if (tab !== lastTab || !document.querySelector('.proto-box')
-      || (mode === 'b' && !document.querySelector('.wvw-plot-wrap .proto-box'))) {
-      lastTab = tab; paint(); return;
+    const f = fights(tab);
+    const k = f ? `${f.kills}/${f.mins}` : '';
+    if (tab !== lastTab || k !== lastKills || !document.querySelector('.proto-el')
+      || (mode === 'b' && !document.querySelector('.wvw-plot-wrap .proto-el'))) {
+      lastTab = tab; lastKills = k; paint(); return;
     }
-    const t = document.querySelector('.proto-ago');
-    if (t) {
-      const a = ago();
-      t.textContent = a.text;
-      t.classList.toggle('is-stale', a.stale);
-    }
-    // markHotTab runs after the hook, so the tag catches up here.
-    const hotTab = document.querySelector('.wvw-tab.is-hot');
-    const isHot = !!hotTab && hotTab.dataset.type === tab;
-    if (isHot !== !!document.querySelector('.proto-tag')) { paint(); return; }
-    const cap = document.querySelector('.proto-cap');
-    const at = latestCapture();
-    if (cap && at) cap.textContent = `latest capture ${minsAgo(Date.now() - at)}`;
+    const w = document.querySelector('.proto-when');
+    if (w) fillWhen(w);
   }, 1000);
 
   // The switch, bottom left.
-  const bar = document.createElement('div');
-  bar.className = 'proto-switch';
-  const lab = document.createElement('span');
-  lab.textContent = 'Prototype:';
-  bar.appendChild(lab);
-  for (const [m, name] of [['a', 'A · strip'], ['b', 'B · on the map']]) {
-    const b = document.createElement('button');
+  const bar = el('div', 'proto-switch');
+  bar.appendChild(el('span', null, 'Prototype:'));
+  for (const [m, name] of [['b', 'B · on the map'], ['a', 'A · above the map']]) {
+    const b = el('button', null, name);
     b.type = 'button';
-    b.textContent = name;
     b.dataset.m = m;
     b.addEventListener('click', (e) => {
       e.stopPropagation();
