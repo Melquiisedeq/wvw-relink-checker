@@ -1,7 +1,7 @@
 'use strict';
 // ---------------------------------------------------------------------
 // Stat popovers
-// K/D by map, the skirmish score trend chart, and what Kills + deaths means.
+// K/D by map, the skirmish score trend chart, and what Activity means.
 // Built from the pieces in popover-parts.js.
 // ---------------------------------------------------------------------
 
@@ -459,7 +459,7 @@ function buildSkirmishTrendButton(serverName, match, color) {
 
 function renderActivityInfoPopoverContent(popover, serverName, match, color) {
   popover.textContent = '';
-  popHeader(popover, `${serverName} · Kills + deaths`);
+  popHeader(popover, `${serverName} · Activity`);
 
   const kills = Number(match.kills?.[color] ?? 0);
   const deaths = Number(match.deaths?.[color] ?? 0);
@@ -468,7 +468,7 @@ function renderActivityInfoPopoverContent(popover, serverName, match, color) {
   figures.className = 'pop-figures pop-figures--three';
   figures.appendChild(popFigure('Kills', kills.toLocaleString()));
   figures.appendChild(popFigure('Deaths', deaths.toLocaleString()));
-  figures.appendChild(popFigure('Kills + deaths', (kills + deaths).toLocaleString()));
+  figures.appendChild(popFigure('Activity', (kills + deaths).toLocaleString()));
   popover.appendChild(figures);
 
   // A number of fights means nothing on its own - it only says whether
@@ -496,7 +496,7 @@ function renderActivityInfoPopoverContent(popover, serverName, match, color) {
   popover.appendChild(popBarTotal('Tier total', 'pop-bar-label--wide',
     all.toLocaleString()));
 
-  popover.appendChild(popNote('Kills plus deaths this week - a straightforward measure '
+  popover.appendChild(popNote('Activity is kills + deaths this week - a straightforward measure '
     + 'of combat, with none of the PPT ambiguity skirmish score has. It counts fights, not '
     + 'whether they were won; the K/D beside it says that.'));
 }
@@ -508,15 +508,15 @@ function buildActivityInfoButton(serverName, match, color) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'icon-btn activity-info-btn';
-  btn.setAttribute('aria-label', `What kills + deaths count for ${serverName}`);
-  btn.title = `What kills + deaths count for ${serverName}`;
+  btn.setAttribute('aria-label', `What is Activity for ${serverName}?`);
+  btn.title = `What is Activity for ${serverName}?`;
   markPopoverTrigger(btn);
   btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
     'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">' +
     '<path d="M13 2 L4 14 h6 l-1 8 l9 -12 h-6 Z"/></svg>';
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
-    openPopover(btn, `What kills + deaths count for ${serverName}`, (popover) => {
+    openPopover(btn, `What Activity means for ${serverName}`, (popover) => {
       renderActivityInfoPopoverContent(popover, serverName, match, color);
     }, 'info-popover--data');
   });
