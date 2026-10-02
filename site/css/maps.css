@@ -105,11 +105,20 @@
 }
 
 /* Narrow: the team name goes first - the row colour and the icons already
-   say whose it is. */
+   say whose it is. Every row is its own grid, so nothing here may depend on
+   what a row holds: the name takes the same width in all three, and a cell
+   is icon + gap + a number box two digits wide, left-aligned, whatever the
+   digits are. */
 @media (max-width:620px){
-  /* 43, not 41: the cell always holds its full 42px of content now. */
-  .wvw-board{--board-cell:43px;}
-  .wvw-board-team{flex:0 1 auto;max-width:34%;}
+  /* 18 + 3 + the box. The box is 1.4em of the number (two digits at ~.7em,
+     measured: ch undersized the 8s), and the cell repeats it as 1.4 x .84rem,
+     since an em on the grid is not the number's em. */
+  .wvw-board{--board-cell:calc(21px + 1.176rem);}
+  .wvw-board-team{flex:1 1 0;max-width:none;}
+  .wvw-board-counts{column-gap:4px;}
+  .wvw-board-cell{justify-content:flex-start;gap:3px;}
+  .wvw-board-cell img{width:18px;height:18px;}
+  .wvw-board-cell b{width:1.4em;min-width:0;}
   .wvw-board-ppt{font-size:.84rem;}
 }
 
