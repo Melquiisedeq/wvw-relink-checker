@@ -383,7 +383,7 @@ function buildStatsLine(pairs, className) {
   return container;
 }
 
-// Builds the "Skirmish · Activity · K/D" line with icons and leader
+// Builds the "Skirmish · Kills + deaths · K/D" line with icons and leader
 // underline. Shared by the standings rail and the match panel.
 function buildStandingStats(match, color, stats, className) {
   const { kills, deaths, kd, skirmish, serverName, leaders } = stats;
@@ -392,7 +392,7 @@ function buildStandingStats(match, color, stats, className) {
   let skirmishIndex = -1;
   if (skirmish !== null) { skirmishIndex = statPairs.length; statPairs.push(['Skirmish', formatCompact(skirmish)]); }
   const activityIndex = statPairs.length;
-  statPairs.push(['Activity', formatCompact(kills + deaths)]);
+  statPairs.push(['Kills + deaths', formatCompact(kills + deaths)]);
   const kdIndex = statPairs.length;
   statPairs.push(['K/D', kd]);
 

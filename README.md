@@ -7,8 +7,8 @@
 **Find out which WvW team your alliance landed on — in one paste.**
 
 A web tool for Guild Wars 2 World vs World. Paste a list of guild names
-and see which team each one landed on after a relink, plus live tier
-standings and interactive maps for every NA and EU match.
+and see which team each one landed on after a relink, plus tier
+standings and live maps that show where the fighting is, for every NA and EU match.
 
 [![Live demo](https://img.shields.io/badge/demo-wvwrelink.com-7fd6f2?style=for-the-badge)](https://wvwrelink.com/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3fa9cc?style=for-the-badge)](LICENSE)
@@ -26,10 +26,10 @@ https://github.com/user-attachments/assets/372a3ade-0d54-4f39-aa1f-d4fc1354904d
 ## 🎯 Why this exists
 
 After every relink, alliance members ask the same question: **which
-server did we land on?** Answering it by hand means looking up each
+team did we land on?** Answering it by hand means looking up each
 guild's ID and cross referencing it against the API one at a time.
 
-This does it for a whole list at once, and puts live match data around
+This does it for a whole list at once, and puts match data around
 the answer.
 
 ## ✨ Features
@@ -38,14 +38,14 @@ the answer.
 |---|---|
 | 🔍 | **Guild lookup** — paste names, get the team each one landed on |
 | 📋 | **One-click summaries** — sized for in-game chat, or for Discord |
-| 📊 | **Live standings** — every NA and EU tier, refreshing on their own |
-| 🗺️ | **Interactive maps** — all four battlegrounds, objectives live |
+| 📊 | **Standings** — every NA and EU tier, updating on their own |
+| 🗺️ | **Live maps** — all four battlegrounds, showing where the fighting is |
 | 📈 | **Match detail** — weekly skirmish scores, per-map K/D, alliances per server |
 | ⏱️ | **Timers** — relink and season lockout, each with its own warning beforehand |
 
 > [!NOTE]
 > Guild names must match **exactly** — the API only does exact search, not
-> partial or tag matches. A raw GUID works too. Up to 60 per run. The
+> partial or tag matches. A guild ID works too. Up to 60 per run. The
 > alliance list behind the shield icon is NA only.
 
 ## ⚙️ How it works
@@ -145,7 +145,7 @@ does it.
   IDs drift from that table.
 - The NA alliance list is community-maintained — not by ArenaNet, not by
   this project — and may be incomplete or out of date.
-- The score for the 2-hour block being played lands about 15 minutes late.
+- The score for the 2-hour skirmish being played lands about 15 minutes late.
   Until it does, the trend popover says so rather than inventing a number.
 
 ## 📁 Project layout

@@ -1,7 +1,7 @@
 'use strict';
 // ---------------------------------------------------------------------
 // Stat popovers
-// K/D by map, the skirmish score trend chart, and what Activity means.
+// K/D by map, the skirmish score trend chart, and what Kills + deaths means.
 // Built from the pieces in popover-parts.js.
 // ---------------------------------------------------------------------
 
@@ -221,8 +221,8 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     const avg = Math.round(mine.done.reduce((a, b) => a + b, 0) / mine.done.length);
     const figures = document.createElement('div');
     figures.className = 'pop-figures pop-figures--three';
-    const fLast = popFigure('Last block', mine.done[mine.done.length - 1].toLocaleString());
-    fLast.title = 'The most recent block that has finished - not the one being played now.';
+    const fLast = popFigure('Last skirmish', mine.done[mine.done.length - 1].toLocaleString());
+    fLast.title = 'The most recent skirmish that has finished - not the one being played now.';
     // An average needs something to average over and a peak needs
     // something to stand out from. With one finished block both would
     // report that same score under labels promising a comparison, so
@@ -236,7 +236,7 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
       : waiting;
     const fPeak = popFigure('Peak',
       comparable ? Math.max(...mine.done).toLocaleString() : '—');
-    fPeak.title = comparable ? 'The best single block this week.' : waiting;
+    fPeak.title = comparable ? 'The best single skirmish this week.' : waiting;
     figures.appendChild(fLast);
     figures.appendChild(fAvg);
     figures.appendChild(fPeak);
@@ -335,7 +335,7 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
       val.className = 'trend-legend-val';
       val.textContent = sideAvg.toLocaleString();
       item.appendChild(val);
-      item.title = 'Average score per finished block this week';
+      item.title = 'Average score per finished skirmish this week';
       legend.appendChild(item);
     }
     popover.appendChild(legend);
@@ -346,8 +346,8 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     why.className = 'hint';
     why.style.margin = '0';
     why.textContent = finished === 1
-      ? 'Only one block done so far. The chart shows up once there are two.'
-      : 'First block of the week is still being played.';
+      ? 'Only one skirmish done so far. The chart shows up once there are two.'
+      : 'First skirmish of the week is still being played.';
     popover.appendChild(why);
   }
 
@@ -363,13 +363,13 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     // Says "the finished ones" rather than "the chart": this band is on
     // screen from the first minutes of a week, when there is no chart to
     // point at yet.
-    now.title = 'A skirmish is a 2-hour block, 84 of them from reset to reset. This one '
+    now.title = 'A skirmish is a 2-hour slice, 84 of them from reset to reset. This one '
       + 'is still being played, so its score cannot be compared with the finished ones - '
-      + 'the projection can. ArenaNet publishes a running block late, so no projection '
+      + 'the projection can. ArenaNet publishes a running skirmish late, so no projection '
       + 'is offered before the 45-minute mark.';
     const head = document.createElement('span');
     head.className = 'trend-live-head';
-    head.innerHTML = `<i class="trend-live-dot"></i>Block ${progress.index} playing · `
+    head.innerHTML = `<i class="trend-live-dot"></i>Skirmish ${progress.index} playing · `
       + `${mins} of 120 min`;
     const body = document.createElement('span');
     if (running === null) {
@@ -377,7 +377,7 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
       // running because we can compute it; saying so beats an empty
       // space that reads as "nothing is happening" - and naming whose
       // delay it is stops the gap reading as a fault in this page.
-      body.textContent = "ArenaNet hasn't published this block yet";
+      body.textContent = "ArenaNet hasn't published this skirmish yet";
     } else if (progress.fraction >= LIVE_PROJECT_AFTER) {
       // Two segments, not three. What the projection is read against is
       // the Average card above - repeating it here bought nothing and
@@ -409,7 +409,7 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     const sum = values.reduce((a, b) => a + b, 0) || 1;
 
     popover.appendChild(popSection(
-      liveOnly ? 'This block by map' : 'Last block by map',
+      liveOnly ? 'This skirmish by map' : 'Last skirmish by map',
       [popCell('pop-bar-value', 'Points'), popCell('pop-bar-pct', 'Share')]));
     MAP_ORDER.forEach((type, i) => {
       popover.appendChild(popBarRow(MAP_LABELS[type], MAP_LABEL_CLASS[type],
@@ -423,11 +423,11 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
   // chart went. Without this the popover ended by explaining a panel
   // that is not on the screen - which is how it read all morning for
   // every NA side, one finished block into the week.
-  const note = 'A skirmish is a 2-hour block - 84 of them in a week. Most of the score '
+  const note = 'A skirmish is a 2-hour slice - 84 of them in a week. Most of the score '
     + 'comes from holding objectives, not from kills, so a big number usually means '
     + 'map control.';
   popover.appendChild(popNote(
-    finished >= 2 ? `${note} The chart shows finished blocks only.` : note));
+    finished >= 2 ? `${note} The chart shows finished skirmishes only.` : note));
 }
 
 // Trend icon on the Skirmish stat, opening the score-over-time chart we
@@ -459,7 +459,7 @@ function buildSkirmishTrendButton(serverName, match, color) {
 
 function renderActivityInfoPopoverContent(popover, serverName, match, color) {
   popover.textContent = '';
-  popHeader(popover, `${serverName} · Activity`);
+  popHeader(popover, `${serverName} · Kills + deaths`);
 
   const kills = Number(match.kills?.[color] ?? 0);
   const deaths = Number(match.deaths?.[color] ?? 0);
@@ -468,7 +468,7 @@ function renderActivityInfoPopoverContent(popover, serverName, match, color) {
   figures.className = 'pop-figures pop-figures--three';
   figures.appendChild(popFigure('Kills', kills.toLocaleString()));
   figures.appendChild(popFigure('Deaths', deaths.toLocaleString()));
-  figures.appendChild(popFigure('Activity', (kills + deaths).toLocaleString()));
+  figures.appendChild(popFigure('Kills + deaths', (kills + deaths).toLocaleString()));
   popover.appendChild(figures);
 
   // A number of fights means nothing on its own - it only says whether
@@ -496,7 +496,7 @@ function renderActivityInfoPopoverContent(popover, serverName, match, color) {
   popover.appendChild(popBarTotal('Tier total', 'pop-bar-label--wide',
     all.toLocaleString()));
 
-  popover.appendChild(popNote('Activity is kills + deaths this week - a straightforward measure '
+  popover.appendChild(popNote('Kills plus deaths this week - a straightforward measure '
     + 'of combat, with none of the PPT ambiguity skirmish score has. It counts fights, not '
     + 'whether they were won; the K/D beside it says that.'));
 }
@@ -508,15 +508,15 @@ function buildActivityInfoButton(serverName, match, color) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'icon-btn activity-info-btn';
-  btn.setAttribute('aria-label', `What is Activity for ${serverName}?`);
-  btn.title = `What is Activity for ${serverName}?`;
+  btn.setAttribute('aria-label', `What kills + deaths count for ${serverName}`);
+  btn.title = `What kills + deaths count for ${serverName}`;
   markPopoverTrigger(btn);
   btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
     'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">' +
     '<path d="M13 2 L4 14 h6 l-1 8 l9 -12 h-6 Z"/></svg>';
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
-    openPopover(btn, `What Activity means for ${serverName}`, (popover) => {
+    openPopover(btn, `What kills + deaths count for ${serverName}`, (popover) => {
       renderActivityInfoPopoverContent(popover, serverName, match, color);
     }, 'info-popover--data');
   });
