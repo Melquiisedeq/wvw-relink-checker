@@ -116,11 +116,12 @@
 /* The war-score bar the game prints across the top of the WvW map: three
    segments, each as wide as that side's share. Over the plot and never
    inside the SVG - the SVG is the camera, so anything in it would pan and
-   zoom away with the ground. */
+   zoom away with the ground. The height follows the width at the game's
+   ~34:1 (measured off its bar, 339 x ~10), never under 4px. */
 .wvw-scorebar{
   position:absolute;top:9px;left:50%;transform:translateX(-50%);
   display:flex;gap:2px;
-  width:min(42%, 250px);height:8px;
+  width:min(42%, 250px);aspect-ratio:34 / 1;min-height:4px;
   pointer-events:none;
 }
 /* The smear: a black wash pinned to the top edge that bleeds far wider
@@ -144,10 +145,10 @@
 .wvw-scorebar-seg{
   position:relative;z-index:1;
   display:block;height:100%;min-width:0;border-radius:1px;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.3), inset 0 -2px 3px rgba(0,0,0,.3);
+  box-shadow:inset 0 -2px 3px rgba(0,0,0,.3);
 }
 /* The game's own three, sampled off a screenshot: that green is a lime,
-   not the emerald the markers use. At 7px the bar is read by colour. */
+   not the emerald the markers use. At 4-7px the bar is read by colour. */
 .wvw-scorebar-seg.own-red{background:linear-gradient(180deg,#ff6a42,#d8301a);}
 .wvw-scorebar-seg.own-blue{background:linear-gradient(180deg,#5cc8f7,#1287cc);}
 .wvw-scorebar-seg.own-green{background:linear-gradient(180deg,#a3e055,#5aa622);}
