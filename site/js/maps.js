@@ -1003,7 +1003,12 @@ function hotMapOf(match, types) {
   // reset and the API publishing the new one, everything else on the
   // popover goes neutral - see ownersOf - and a pair of swords over a
   // blank map would be the one thing still claiming to know something.
-  const rates = matchIsLive(match) ? fightRates(match, HOT_WANT_MS) : null;
+  // Nor on data that has stopped moving: a count and swords built on a
+  // frozen score would read "0 kills" beside a fight that is running.
+  // Stale or never seen, it claims nothing; the tab, the tier badge and
+  // the corner all read this, so all three go quiet together.
+  const stale = Date.now() - matchScoreRoseAt(match.id) > HUD_STALE_MS;
+  const rates = matchIsLive(match) && !stale ? fightRates(match, HOT_WANT_MS) : null;
   let hot = null;
   let bestN = 0;
   // Walked in the given order and taken on a strict win, so a tie keeps
