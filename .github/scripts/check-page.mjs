@@ -304,6 +304,18 @@ async function main() {
   let failing = null;
   let failingLog = null;            // what the step may log errors for, kept past the end of the 503s (the log is late)
 
+  // The hot-map floor is 50 kills in ten minutes and the recording may sit in a
+  // lull, so the kills history is served with 200 fewer EBG kills before its
+  // newest snapshot: a real fight, for the swords steps to find.
+  function withFight(body) {
+    try {
+      const j = JSON.parse(body.toString('utf8'));
+      const newest = Math.max(...j.rows.map(r => r[0]));
+      for (const r of j.rows) if (r[0] < newest) r[2] = Math.max(0, r[2] - 200);
+      return Buffer.from(JSON.stringify(j));
+    } catch { return body; }
+  }
+
   const reply = (requestId, status, type, body) => send('Fetch.fulfillRequest', {
     requestId, responseCode: status,
     responseHeaders: [{ name: 'Content-Type', value: type || 'application/octet-stream' },
@@ -346,7 +358,7 @@ async function main() {
           problem(`not recorded: ${key}${apiDown ? ' (load with /api down)' : ''} during step '${stepNow}' - re-record with --record`);
           return await send('Fetch.failRequest', { requestId, errorReason: 'Failed' });
         }
-        return await reply(requestId, hit[0], hit[1], bodyOf(hit));
+        return await reply(requestId, hit[0], hit[1], key === OWN_API.get('/api/kills') ? withFight(bodyOf(hit)) : bodyOf(hit));
       }
       if (url.startsWith(base + '/') || url.startsWith('data:') || url.startsWith('blob:')) return await send('Fetch.continueRequest', { requestId });
       problem(`unexpected host, blocked: ${url}`);
@@ -692,9 +704,12 @@ async function main() {
       if (await ev(`!!${q('.wvw-hud-l.is-cold')}`)) problem(`step '${step}': the swords are neutral on the hot tab`);
     }
     const cold = await ev(`(() => { const b = [...document.querySelectorAll('.info-popover .wvw-tab')].find(t => !t.classList.contains('is-hot')); return b ? b.dataset.type : null; })()`);
-    if (hot && cold) {
+    if (cold) {
       await click(step + ': other tab', `document.querySelector('.info-popover .wvw-tab[data-type="${cold}"]')`);
-      await until(step, `!!${q('.wvw-hud-l.is-cold')}`, 'neutral swords on a tab without swords');
+      await until(step, `!!${q('.wvw-hud-l.is-cold')} && ${shown('.wvw-hud-l')}`, 'the kills corner, neutral, on a tab without swords');
+      // With a hot tab there are rates, so a number; without, a dash. Never a bare 0 from no measurement.
+      const big = await ev(text('.wvw-hud-big'));
+      if (!(hot ? /^\d+$/.test(big) : /^(\d+|\u2013)$/.test(big))) problem(`step '${step}': the neutral corner reads "${big}"`);
     }
     // A frozen API: the recorded body answered again on every pull for 400 s
     // more. Each answer arrives; none is new data.
@@ -708,6 +723,10 @@ async function main() {
     if (same.served < 4) problem(`step '${step}': the map asked ${same.served} time(s) over 400 s, wanted 4`);
     await until(step, `${q('.wvw-hud-ago.is-stale')} && /^\u26a0 No new data /.test(${text('.wvw-hud-ago')})`, 'amber "No new data" after 6 min of the same body');
     if (!/No new map data for/.test(await ev(text('.wvw-hud-live')))) problem(`step '${step}': the gap was not spoken`);
+    // Stale data claims nothing: no swords on a tab, and the kills corner shows a dash,
+    // neutral, with no minutes (never a 0, which would say nobody fought).
+    if (await ev(`!!document.querySelector('.info-popover .wvw-tab.is-hot')`)) problem(`step '${step}': swords still show on a tab on stale data`);
+    if (!(await ev(`${shown('.wvw-hud-l')} && !!${q('.wvw-hud-l.is-cold')} && ${text('.wvw-hud-big')} === '\u2013' && ${q('.wvw-hud-small')}.innerText === 'kills'`))) problem(`step '${step}': on stale data the kills corner is not a neutral dash with only "kills"`);
     // The score one point up: new data, the corner back to "Updated".
     const bumped = { ...one, scores: { ...one.scores, red: (Number(one.scores?.red) || 0) + 1 } };
     substitutes.set(oneUrl, { body: Buffer.from(JSON.stringify(bumped)), served: 0 });
@@ -785,6 +804,137 @@ async function main() {
     failingLog = null;
   }
 
+  // The tiers in the standings: one whose match has answered the same score for
+  // over 15 min ends its card with "\u26a0 No new data for N min", outside the
+  // title row; the others wear nothing; a higher score takes it off; the number
+  // moves with the minute tick and, at 320 px wide, no title row spills over.
+  async function tierMarks() {
+    const step = 'tier marks';
+    const allUrl = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
+    const allHit = recorded.get(allUrl);
+    if (!allHit) return void problem(`step '${step}': ${allUrl} not recorded`);
+    const all = JSON.parse(bodyOf(allHit).toString('utf8'));
+    const live = all.find(x => x.id.startsWith('1-'));
+    if (!live) return void problem(`step '${step}': no NA match in the recording`);
+    const marks = `[...document.querySelectorAll('.standing-match')].map(b => {
+      const m = b.querySelector('.tier-age');
+      return {
+        tier: b.querySelector('.standing-match-title span')?.textContent,
+        region: b.closest('.standings-grid').id,
+        mark: m?.textContent || '',
+        nodes: m ? m.childNodes.length : 0,
+        last: !!m && b.lastElementChild === m,
+        inTitle: !!b.querySelector('.standing-match-title .tier-age'),
+        title: m?.title || '' };
+    })`;
+    const markOf = (rows, region, tier) => rows.find(r => r.region === region && r.tier === tier);
+    const tier = `Tier ${live.id.split('-')[1]}`;
+    await ev("__skewClock(600000); localStorage.removeItem('wvw-fight-v1')");
+    // 0. The recorded bodies again, 600 s later: past the map's 6 min, short of the
+    // table's 15, so no tier wears a mark yet.
+    substitutes.set(allUrl, { body: bodyOf(allHit), served: 0 });
+    await ev('loadStandings()');
+    await idle(step);
+    let rows = await ev(marks);
+    if (!rows.length) return void problem(`step '${step}': no tiers in the standings`);
+    if (rows.some(r => r.mark)) problem(`step '${step}': a tier wears a mark after only 600 s of the same body`);
+    // 1. 1600 s in all: past 15 min even for the tier first seen last, every tier is marked.
+    await ev('__skewClock(1000000); updateTierAges()');
+    rows = await ev(marks);
+    for (const r of rows) {
+      if (!/^\u26a0 No new data for \d+ min$/.test(r.mark) || r.nodes !== 1 || !r.last || r.inTitle || !r.title.includes('No new data from the game')) problem(`step '${step}': ${r.region} ${r.tier} wears "${r.mark}" (${r.nodes} nodes, last ${r.last}, in the title ${r.inTitle}) / "${r.title}" after 1600 s of the same body`);
+    }
+    const first = markOf(rows, 'standingsGridNA', tier).mark;
+    // 2. The minute tick moves the number.
+    await ev("__skewClock(120000); updateTierAges()");
+    rows = await ev(marks);
+    if (markOf(rows, 'standingsGridNA', tier).mark === first) problem(`step '${step}': "${first}" did not move two minutes later`);
+    // 3. One match answers a higher score: its mark goes, the others stay.
+    const bumped = { ...live, scores: { ...live.scores, red: (Number(live.scores?.red) || 0) + 1 } };
+    substitutes.set(allUrl, { body: Buffer.from(JSON.stringify(all.map(x => (x.id === live.id ? bumped : x)))), served: 0 });
+    await ev('loadStandings()');
+    await idle(step);
+    rows = await ev(marks);
+    if (markOf(rows, 'standingsGridNA', tier).mark) problem(`step '${step}': ${tier} still wears its mark after a higher score`);
+    if (rows.length > 1 && !rows.some(r => r.mark)) problem(`step '${step}': the other tiers lost their marks with it`);
+    // 4. The mark back, 320 px wide: no tier box wider than the screen.
+    await ev("__skewClock(500000); updateTierAges()");
+    await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 800, deviceScaleFactor: 1, mobile: true });
+    await idle(step + ': 320 px');
+    const spill = await ev(`(() => ({
+      page: Math.max(0, ...[...document.querySelectorAll('.standing-match')].map(b => Math.round(b.getBoundingClientRect().right - innerWidth))),
+      rows: [...document.querySelectorAll('.standing-match-title')].filter(t => t.scrollWidth > t.clientWidth).length,
+      tall: [...document.querySelectorAll('.standing-match-title')].filter(t => t.offsetHeight > 24).length,
+      marks: [...document.querySelectorAll('.tier-age')].filter(m => m.scrollWidth > m.clientWidth).length }))()`);
+    if (spill.page > 0 || spill.rows || spill.tall || spill.marks) problem(`step '${step}': at 320 px a tier box spills ${spill.page}px, ${spill.rows} title row(s) overflow, ${spill.tall} grew taller, ${spill.marks} mark(s) overflow`);
+    await send('Emulation.clearDeviceMetricsOverride');
+    substitutes.delete(allUrl);
+    await ev("__skewClock(-2220000); localStorage.removeItem('wvw-fight-v1')");
+    await ev('loadStandings()');
+    await idle(step);
+  }
+
+  // The kill history says a match stopped before this page ever saw it move:
+  // the corner opens amber with a dash, with the history put in place before
+  // the map opens (awaited, so the order is certain). With every line old the
+  // history is not trusted and nothing turns amber. A score up clears it.
+  // Only the replay is changed: /api/kills is swapped, the recording is intact.
+  async function historyAge() {
+    const step = 'history ages first sight';
+    const label = await ev("document.querySelector('.tier-map-btn')?.getAttribute('aria-label') || ''");
+    const t = /\b(NA|EU) Tier (\d+)/.exec(label);
+    if (!t) return void problem(`step '${step}': no tier map button to read a match from`);
+    const matchId = `${t[1] === 'NA' ? 1 : 2}-${t[2]}`;
+    const killsUrl = base + '/api/kills';   // what the page asks; the swap is checked before the recording's key
+    const q = sel => `document.querySelector('.info-popover .wvw-plot-wrap ${sel}')`;
+    const text = sel => `(${q(sel)}?.textContent || '')`;
+    const history = (ageOfTarget, ageOfOthers) => `(async () => {
+      const now = Date.now();
+      const rows = [...newestMatches.keys()].map(id => [now - (id === '${matchId}' ? ${ageOfTarget} : ${ageOfOthers}), id, 5, 5, 5, 5]);
+      return JSON.stringify({ rows });
+    })()`;
+    // The page's kept matches as a first sight with no rise, the history asked again.
+    const reset = async (ageOfTarget, ageOfOthers) => {
+      const body = await ev(history(ageOfTarget, ageOfOthers));
+      substitutes.set(killsUrl, { body: Buffer.from(body), served: 0 });
+      await ev(`(async () => {
+        for (const k of newestMatches.values()) { k.rose = false; k.at = Date.now(); }
+        killSheetAt = 0;
+        await getKillSheet();
+      })()`);
+    };
+    const open = async (name) => {
+      if (!(await click(name, "document.querySelector('.tier-map-btn')"))) return false;
+      if (!(await until(name, `!!document.querySelector("${POPOVERS['tier-map-btn']}")`, 'drawn objectives'))) return false;
+      await idle(name);
+      return await until(name, `!!${q('.wvw-hud-ago')}`, 'the age corner');
+    };
+    const kept = `(() => { const k = newestMatches.get('${matchId}'); return Date.now() - k.at; })()`;
+
+    await reset(7 * 60000, 60000);
+    if (await ev(kept) < 6 * 60000) problem(`step '${step}': the match was not backdated by a live history (${await ev(kept)} ms)`);
+    if (await open(step + ': open')) {
+      if (!(await ev(`!!${q('.wvw-hud-ago.is-stale')} && /^⚠ No new data /.test(${text('.wvw-hud-ago')})`))) problem(`step '${step}': the corner did not open amber`);
+      if ((await ev(text('.wvw-hud-big'))) !== '–') problem(`step '${step}': the kills corner is not a dash on opening`);
+      // The score up, on the kept body: back to "Updated".
+      const bumped = await ev(`(() => { const m = JSON.parse(JSON.stringify(newestMatches.get('${matchId}').match));
+        m.scores.red = (Number(m.scores.red) || 0) + 1; return JSON.stringify(m); })()`);
+      substitutes.set(`https://api.guildwars2.com/v2/wvw/matches?id=${matchId}`, { body: Buffer.from(bumped), served: 0 });
+      await ev("__skewClock(31000); window.dispatchEvent(new Event('focus'))");
+      await until(step, `${q('.wvw-hud-ago')} && !${q('.wvw-hud-ago.is-stale')} && /^Updated /.test(${text('.wvw-hud-ago')})`, '"Updated" back on a higher score');
+      substitutes.delete(`https://api.guildwars2.com/v2/wvw/matches?id=${matchId}`);
+      await closePopover(step);
+    }
+
+    await reset(30 * 60000, 30 * 60000);
+    if (await ev(kept) > 60000) problem(`step '${step}': a history with every line old moved the match's time`);
+    if (await open(step + ': all old')) {
+      if (await ev(`!!${q('.wvw-hud-ago.is-stale')}`) || !/^Updated /.test(await ev(text('.wvw-hud-ago')))) problem(`step '${step}': a history with every line old turned the corner amber`);
+      await closePopover(step);
+    }
+    substitutes.delete(killsUrl);
+  }
+
   // The walk, the same for the recording and for the replay: whatever it asks
   // of the hosts, the recording has. Recording picks the guild names first.
   recordedAt = RECORD ? Date.now() : recordedAt;
@@ -837,6 +987,12 @@ async function main() {
 
   // 6. The corners over a map, while the page's kept bodies are the recorded ones.
   await mapCorners();
+
+  // 6b. The tiers whose data is old.
+  await tierMarks();
+
+  // 6b. The kill history backdating a match this page never saw move.
+  await historyAge();
 
   // 7. A frozen answer: some API servers serve a match body from the past.
   await frozenMatch();

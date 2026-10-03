@@ -16,6 +16,7 @@ showStandingsSkeleton(standingsGridEU);
 refreshStandings();
 fetchTimers();
 setInterval(updateRelinkBanner, 60000); // ticks the countdown display only
+setInterval(updateTierAges, 60000); // the minutes on a tier with old data
 schedulePeriodicRefresh(refreshStandings, STANDINGS_REFRESH_MS);
 schedulePeriodicRefresh(fetchTimers, TIMERS_REFRESH_MS);
 
