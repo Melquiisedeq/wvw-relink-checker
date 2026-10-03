@@ -698,9 +698,12 @@ async function main() {
       if (await ev(`!!${q('.wvw-hud-l.is-cold')}`)) problem(`step '${step}': the swords are neutral on the hot tab`);
     }
     const cold = await ev(`(() => { const b = [...document.querySelectorAll('.info-popover .wvw-tab')].find(t => !t.classList.contains('is-hot')); return b ? b.dataset.type : null; })()`);
-    if (hot && cold) {
+    if (cold) {
       await click(step + ': other tab', `document.querySelector('.info-popover .wvw-tab[data-type="${cold}"]')`);
-      await until(step, `!!${q('.wvw-hud-l.is-cold')}`, 'neutral swords on a tab without swords');
+      await until(step, `!!${q('.wvw-hud-l.is-cold')} && ${shown('.wvw-hud-l')}`, 'the kills corner, neutral, on a tab without swords');
+      // With a hot tab there are rates, so a number; without, a dash. Never a bare 0 from no measurement.
+      const big = await ev(text('.wvw-hud-big'));
+      if (!(hot ? /^\d+$/.test(big) : /^(\d+|\u2013)$/.test(big))) problem(`step '${step}': the neutral corner reads "${big}"`);
     }
     // A frozen API: the recorded body answered again on every pull for 400 s
     // more. Each answer arrives; none is new data.
@@ -714,8 +717,10 @@ async function main() {
     if (same.served < 4) problem(`step '${step}': the map asked ${same.served} time(s) over 400 s, wanted 4`);
     await until(step, `${q('.wvw-hud-ago.is-stale')} && /^\u26a0 No new data /.test(${text('.wvw-hud-ago')})`, 'amber "No new data" after 6 min of the same body');
     if (!/No new map data for/.test(await ev(text('.wvw-hud-live')))) problem(`step '${step}': the gap was not spoken`);
-    // Stale data claims nothing: no swords on a tab, no kills corner.
-    if (await ev(`!!document.querySelector('.info-popover .wvw-tab.is-hot') || ${shown('.wvw-hud-l')}`)) problem(`step '${step}': swords or the kills corner still show on stale data`);
+    // Stale data claims nothing: no swords on a tab, and the kills corner shows a dash,
+    // neutral, with no minutes (never a 0, which would say nobody fought).
+    if (await ev(`!!document.querySelector('.info-popover .wvw-tab.is-hot')`)) problem(`step '${step}': swords still show on a tab on stale data`);
+    if (!(await ev(`${shown('.wvw-hud-l')} && !!${q('.wvw-hud-l.is-cold')} && ${text('.wvw-hud-big')} === '\u2013' && ${q('.wvw-hud-small')}.innerText === 'kills'`))) problem(`step '${step}': on stale data the kills corner is not a neutral dash with only "kills"`);
     // The score one point up: new data, the corner back to "Updated".
     const bumped = { ...one, scores: { ...one.scores, red: (Number(one.scores?.red) || 0) + 1 } };
     substitutes.set(oneUrl, { body: Buffer.from(JSON.stringify(bumped)), served: 0 });
