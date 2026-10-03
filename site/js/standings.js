@@ -304,9 +304,9 @@ async function loadStandings() {
     // past. Nothing here waits on it and nothing extra is fetched - it is
     // what lets the maps popover say which map is busy the moment it
     // opens, instead of having to sample twice itself. See the fight log
-    // in js/maps.js. Only bodies accepted by this refresh: a frozen one
-    // answered with the kept body would be logged as a reading taken now.
-    recordFightSamples(answered.filter((m) => m && matchAcceptedAt(m.id) >= asked));
+    // in js/maps.js. Only bodies whose score rose in this refresh: a frozen
+    // or repeated one would be logged as a reading taken now.
+    recordFightSamples(answered.filter((m) => m && matchScoreRoseAt(m.id) >= asked));
 
     // Forget matches that no longer exist. IDs are stable week to week, so
     // this only bites when a region loses a tier: a leftover "1-4" would

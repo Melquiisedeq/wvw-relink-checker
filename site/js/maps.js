@@ -1030,22 +1030,25 @@ function fightCount(rates, type) {
 }
 
 // Past this, the corner stops calling the map "updated" and says how long
-// it has had no answer. The poll runs every 30 s, so three missed.
-const HUD_STALE_MS = 90 * 1000;
+// its data has not moved, frozen or unanswered: one 5-min score tick
+// missed, plus a minute. Not less: a low tier at night was never measured.
+const HUD_STALE_MS = 6 * 60 * 1000;
 
 const HUD_EXPLAIN = {
   fights: 'Player kills on this map in the last few minutes, from snapshots of'
     + " the game's API. The crossed swords on a tab mark the map with the most."
     + ' The API has no player positions: this says where the fighting is, not'
     + ' how many players are there.',
-  when: 'Updated: when this page last got fresh data from the API; it asks every'
-    + ' 30 s. No update: it stopped getting it (your internet, the API, or a sleeping computer), so'
-    + " what you see may be old. The game's API itself runs about 40 s behind the game.",
+  when: "Updated: when this match's score last changed in the game's API; this page"
+    + ' asks every 30 s. The API sometimes repeats an old answer for a while; that does not'
+    + ' count. No new data: no change for over 6 minutes, or no answer at all (the API stuck,'
+    + ' your internet, or a sleeping computer), so what you see may be old.'
+    + " The game's API itself runs about 40 s behind the game.",
 };
 
-// The two corners over the map: kills on the left, the age of the last
-// accepted answer on the right. Text on a shadow, no box, so the map shows
-// through; they go while the map is zoomed, as the score bar's smear would
+// The two corners over the map: kills on the left, on the right the age
+// of the match's data (matchScoreRoseAt). Text on a shadow, no box, so
+// the map shows through; they go while the map is zoomed, as the score bar's smear would
 // cover what the visitor came to look at. Built once per map; paint()
 // rewrites them in place, so the status region keeps its identity.
 function buildMapCorners(wrap) {
@@ -1132,7 +1135,7 @@ function buildMapCorners(wrap) {
   const put = (node, text) => { if (node.textContent !== text) node.textContent = text; };
   let stale = null;
   const state = {
-    // line: {kills, mins} or null; at: ms of the last accepted answer, 0 if none.
+    // line: {kills, mins} or null; at: ms the score last rose, 0 if unknown.
     paint(line, at) {
       left.hidden = !line;
       if (line) {
@@ -1149,7 +1152,7 @@ function buildMapCorners(wrap) {
       // Past the limit the word and the sign are the signal, never the
       // colour alone; narrow drops the word and keeps the sign.
       put(mark, isStale ? '\u26a0 ' : '');
-      put(word, isStale ? 'No update \u00b7 ' : 'Updated ');
+      put(word, isStale ? 'No new data \u00b7 ' : 'Updated ');
       if (isStale) {
         put(val, String(mins));
         put(unitLong, ' min');
@@ -1164,7 +1167,7 @@ function buildMapCorners(wrap) {
         put(unitShort, 'm ago');
       }
       if (stale !== null && stale !== isStale) {
-        put(live, isStale ? `No map update for ${mins} min` : 'Map updates resumed');
+        put(live, isStale ? `No new map data for ${mins} min` : 'New map data again');
       }
       stale = isStale;
     },
@@ -2237,14 +2240,13 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   let corners = null;
   let hotRates = null;
   let hotType = null; // the tab markHotTab chose, null when none is hot
-  // The age on the right is the page's, not the standings': until this
-  // popover's own first read ends, the instant it would show is the
-  // standings' (up to five minutes old) and would flash as no update.
+  // Until this popover's own first read ends, the score time is the
+  // standings' read (up to five minutes old) and could flash amber.
   let firstReadDone = false;
   const paintCorners = () => {
     if (!corners) return;
     corners.paint(hotRates && current ? fightCount(hotRates, current) : null,
-      firstReadDone ? matchAcceptedAt(match.id) : 0);
+      firstReadDone ? matchScoreRoseAt(match.id) : 0);
     // Orange swords only on the busiest map; elsewhere they are neutral.
     const l = plotWrap && plotWrap.querySelector('.wvw-hud-l');
     if (l) l.classList.toggle('is-cold', current !== hotType);
@@ -2365,8 +2367,9 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     // Outlives the popover, so reopening starts from here.
     if (freshRecall) freshRecall.data = fresh;
     hotFresh = true;
-    // A frozen answer hands back the kept body, which is no reading of now.
-    if (matchAcceptedAt(fresh.id) >= asked) recordFightSamples([fresh]);
+    // Only a body whose score rose is a reading of now; a frozen or
+    // repeated answer is not.
+    if (matchScoreRoseAt(fresh.id) >= asked) recordFightSamples([fresh]);
     markHotTab(liveMatch);
     const now = byType.get(current);
     // Asked of the answer that just arrived, not of the match this

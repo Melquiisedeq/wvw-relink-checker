@@ -231,8 +231,10 @@ function findLink(guildId, maps) {
 // apart). Painted, it walks the maps, the scores and the kill rate
 // backwards. Every reader of a match goes through fetchMatches, which
 // never hands out a body behind one already seen.
-// matchId -> { match, at }; `at` is when that match last had a body
-// accepted (a newer one, or the same again) - "how fresh is this".
+// matchId -> { match, at }; `at` is when this page last saw the match's
+// score go up. A frozen server repeats the same body, so the time of an
+// answer says nothing about the data's age; the score sum of a live match
+// rises every 20-40 s and jumps at each 5-min tick (measured 02-03/10/2026).
 const newestMatches = new Map();
 
 const colorSum = (obj) => COLORS.reduce((n, c) => n + (Number(obj && obj[c]) || 0), 0);
@@ -260,13 +262,16 @@ function keepNewestMatch(match) {
   if (!match || typeof match.id !== 'string') return match;
   const kept = newestMatches.get(match.id);
   if (kept && matchIsBehind(match, kept.match)) return kept.match;
-  newestMatches.set(match.id, { match, at: Date.now() });
+  // First sight, a new week, or a higher score: the data moved. The same
+  // body again keeps the old time.
+  const moved = !kept || match.start_time !== kept.match.start_time
+    || colorSum(match.scores) > colorSum(kept.match.scores);
+  newestMatches.set(match.id, { match, at: moved ? Date.now() : kept.at });
   return match;
 }
 
-// When this match last had a body accepted; 0 if never. A frozen answer
-// does not move it.
-function matchAcceptedAt(matchId) {
+// When this page last saw the match's score go up; 0 if never.
+function matchScoreRoseAt(matchId) {
   const kept = newestMatches.get(matchId);
   return kept ? kept.at : 0;
 }
