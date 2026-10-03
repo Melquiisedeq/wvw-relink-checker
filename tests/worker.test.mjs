@@ -161,28 +161,84 @@ test('/api/kills gives the last 30 minutes, one row of D1, as the page reads it'
   assert.equal((await w.get('/api/kills')).status, 503, 'nothing pushed yet');
   // Fourteen days in the table, a tick every five minutes.
   const ins = w.sql.prepare('INSERT INTO kills VALUES (?,?,?,?,?,?,?)');
+  // One start for all of them, as in one week of a match.
+  const start = w.now - 86400e3;
   for (let i = 1; i < 14 * 288; i++) {
-    for (const r of w.rows(w.now - i * 300e3)) ins.run(r[1], r[0], r[2], r[3], r[4], r[5], r[6]);
+    for (const r of w.rows(w.now - i * 300e3)) ins.run(r[1], r[0], r[2], r[3], r[4], r[5], start);
   }
-  assert.equal(await w.post('kills', { rows: w.rows(w.now) }), 200);
+  assert.equal(await w.post('kills', { rows: w.rows(w.now).map((r) => [...r.slice(0, 6), start]) }), 200);
   const r = await w.get('/api/kills?at=0&match=1-1');
   assert.equal(r.status, 200);
   assert.equal(r.headers.get('cache-control'), 'public, max-age=60');
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
   const rows = JSON.parse(r.body).rows;
-  // Strictly newer than 30 minutes: the ticks at 0, 5 ... 25 minutes back.
-  assert.equal(rows.length, 9 * 6);
-  assert.ok(rows.every((row) => row.length === 6 && w.now - row[0] < 30 * 60e3));
+  // Strictly newer than 30 minutes: the ticks at 0, 5 ... 25 minutes back,
+  // and each match's base, the tick at 30 minutes back.
+  assert.equal(rows.length, 9 * 6 + 9);
+  assert.ok(rows.every((row) => row.length === 6 && w.now - row[0] <= 30 * 60e3));
+  assert.equal(rows.filter((row) => w.now - row[0] === 30 * 60e3).length, 9);
+  assert.deepEqual(rows.map((row) => row[0]), rows.map((row) => row[0]).sort((a, b) => a - b));
+});
+
+test('/api/kills keeps a base for a frozen match, and only a recent one of its week', async () => {
+  const w = setup();
+  const ins = w.sql.prepare('INSERT INTO kills VALUES (?,?,?,?,?,?,?)');
+  const min = 60e3;
+  const week = w.now - 86400e3;
+  const old = week - 7 * 86400e3;
+  // 1-1 frozen: its last row 50 minutes back, nothing in the window.
+  ins.run('1-1', w.now - 50 * min, 1, 1, 1, 1, week);
+  ins.run('1-1', w.now - 70 * min, 2, 2, 2, 2, week);
+  // 1-2 frozen too long: its newest row is 4 hours back, past the base reach.
+  ins.run('1-2', w.now - 240 * min, 3, 3, 3, 3, week);
+  // 1-3: a row in the window; the newest one before it is of last week, so
+  // no base (the older this-week row is not taken in its place).
+  ins.run('1-3', w.now - 5 * min, 4, 4, 4, 4, week);
+  ins.run('1-3', w.now - 100 * min, 5, 5, 5, 5, week);
+  ins.run('1-3', w.now - 60 * min, 6, 6, 6, 6, old);
+  // 1-4: two rows before the window; only the newer is the base.
+  ins.run('1-4', w.now - 45 * min, 7, 7, 7, 7, week);
+  ins.run('1-4', w.now - 40 * min, 8, 8, 8, 8, week);
+  assert.equal(await w.post('kills', { rows: [[w.now, '2-1', 9, 9, 9, 9, week]] }), 200);
+  const got = JSON.parse((await w.get('/api/kills')).body).rows;
+  const by = (m) => got.filter((r) => r[1] === m).map((r) => r[2]);
+  assert.deepEqual(by('1-1'), [1], 'the newest older row, not the one before it');
+  assert.deepEqual(by('1-2'), [], 'past 3 hours');
+  assert.deepEqual(by('1-3'), [4], 'the newest older row is of last week: no base, and not the one before it');
+  assert.deepEqual(by('1-4'), [8]);
+  assert.ok(got.every((r) => w.now - r[0] <= 3 * 3600e3));
+  assert.deepEqual(got.map((r) => r[0]), got.map((r) => r[0]).sort((a, b) => a - b));
 });
 
 test('the rebuild reads kills by its key, never the whole table', async () => {
   const w = setup();
   await w.post('kills', { rows: w.rows(w.now) });
   const rebuild = w.ran.find((s) => /INSERT INTO recent/.test(s.q));
-  const plan = w.sql.prepare('EXPLAIN QUERY PLAN ' + rebuild.q).all(...rebuild.args)
-    .map((p) => p.detail).join('; ');
+  const steps = w.sql.prepare('EXPLAIN QUERY PLAN ' + rebuild.q).all(...rebuild.args).map((p) => p.detail);
+  const plan = steps.join('; ');
   assert.match(plan, /SEARCH kills USING PRIMARY KEY/);
   assert.doesNotMatch(plan, /SCAN kills/);
+  // Every step over kills must bound `at` as well as the match: a search by
+  // match alone walks every row of that match, 14 days of them.
+  const over = steps.filter((d) => /^(SCAN|SEARCH) (kills|k|b|n)\b/.test(d));
+  assert.ok(over.length >= 3, plan);
+  for (const d of over) {
+    assert.match(d, /^SEARCH .* USING (COVERING )?INDEX|^SEARCH .* USING PRIMARY KEY \(match=\? AND at/, d);
+  }
+});
+
+test('the base is right with 14 days of one match in the table', async () => {
+  const w = setup();
+  const ins = w.sql.prepare('INSERT INTO kills VALUES (?,?,?,?,?,?,?)');
+  const start = w.now - 86400e3;
+  for (let i = 1; i <= 14 * 288; i++) ins.run('1-1', w.now - i * 300e3, i, 0, 0, 0, start);
+  ins.run('1-2', w.now - 2 * 3600e3, 99, 0, 0, 0, start);
+  assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 0, 0, 0, 0, start]] }), 200);
+  const got = JSON.parse((await w.get('/api/kills')).body).rows;
+  const one = got.filter((r) => r[1] === '1-1');
+  assert.equal(one.length, 1 + 5 + 1, 'now, five in the window, one base');
+  assert.equal(one[0][2], 6, 'the base is the tick 30 minutes back');
+  assert.deepEqual(got.filter((r) => r[1] === '1-2').map((r) => r[2]), [99]);
 });
 
 test('/api/kills says 503 once kills stops arriving', async () => {
