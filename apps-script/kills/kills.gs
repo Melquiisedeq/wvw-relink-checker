@@ -14,8 +14,10 @@
  * frozen up to ~60 min, seen 02-03/10/2026), and a row stamped with the tick's
  * time over frozen numbers reads as "no kills". The clock is the sum of the
  * match's scores - it rises every few seconds in a live match and by about one
- * tick's points every 5 minutes; kills cannot serve as a clock. When no match
- * moved, nothing is written and nothing is sent: that is not a failure.
+ * tick's points every 5 minutes. The kills in the row come from the same body
+ * as that score. Of the two bodies read each tick, a match keeps the newer:
+ * latest start_time, then higher score sum, then higher kills+deaths.
+ * When no match moved, nothing is written and nothing is sent: not a failure.
  *
  * After the sheet, the same rows go to wvwrelink.com/api, signed - see push_.
  * Run killsSecret() once by hand before that starts; until then the sheet is
@@ -29,13 +31,15 @@ const RESET_RATIO = 0.5;                  // below this it is the weekly reset
 const ALARM_AFTER = 6;                    // 6 ticks ~ 30 min to the 1st alarm
 const ALARM_EVERY = 72;                   // then a reminder every ~6 h
 const API         = 'https://api.guildwars2.com/v2/wvw/matches';
-// Three small routes instead of the whole match: stats carries the kills per
-// map, overview the start_time, scores the clock. ~15 KB for stats+overview
-// (measured 29/09/2026) plus ~175 KB for scores (curl, 03/10/2026), ~190 KB
-// per tick instead of ~700 KB, same numbers. Each can come from a different API node;
-// the rules in rowFor_ correct themselves within a tick (see there).
-const ROUTES      = [API + '/stats?ids=all', API + '/overview?ids=all',
-                     API + '/scores?ids=all'];
+// The whole match body, read twice at once: score, kills and start_time come
+// from one node in one body, so they agree. The small routes (stats, overview,
+// scores) are served by different nodes and disagreed in 71 of 360 reads
+// (03/10/2026), which wrote old kills under a new time. ~382 KB a body,
+// uncompressed (measured 03/10/2026). One read had the freshest body 57% of
+// the time, the best of 3 in parallel 74% (03/10/2026); two is the cost
+// compromise against the Apps Script quota (90 min/day for both scripts, so
+// under ~14 s an execution on average).
+const ROUTES      = [API + '?ids=all', API + '?ids=all'];
 // Without this a hung request waits 360 s, the whole execution, and spends
 // the daily trigger quota this script shares with the relink one.
 const TIMEOUT_S   = 20;
@@ -68,22 +72,26 @@ function run_() {
   let matches;
   const sums = {};
   try {
-    const got = fetchAllJson_(ROUTES);
-    const stats = got[0];
-    const overview = got[1];
-    const scores = got[2];
-    if (!Array.isArray(stats) || !stats.length) throw new Error('stats empty');
-    if (!Array.isArray(overview)) throw new Error('overview empty');
-    if (!Array.isArray(scores)) throw new Error('scores empty');
-    const start = {};
-    for (const o of overview) if (o && o.id) start[o.id] = o.start_time;
-    for (const o of scores) if (o && o.id) sums[o.id] = scoreSum_(o.scores);
-    // A match without a start_time is left out of this tick rather than
-    // written without the date that guards against a lagging node.
-    // Nor one without a score sum: without it there is no telling live from frozen.
-    matches = stats.filter(function (m) { return m && start[m.id] && sums[m.id] !== undefined; })
-      .map(function (m) { return { id: m.id, maps: m.maps, start_time: start[m.id] }; });
-    if (!matches.length) throw new Error('stats and overview share no match');
+    const bodies = fetchAllJson_(ROUTES);
+    const best = {};
+    for (const body of bodies) {
+      if (!Array.isArray(body)) continue;
+      for (const m of body) {
+        // Without a start_time, a score sum or maps the match is left out of
+        // this body: no telling live from frozen, no guard against a lagging node.
+        if (!m || typeof m.id !== 'string' || !m.start_time || !Array.isArray(m.maps)) continue;
+        const sum = scoreSum_(m.scores);
+        if (sum === undefined) continue;
+        const c = { m: m, st: Date.parse(m.start_time) || 0, sum: sum, kd: killsDeaths_(m.maps) };
+        if (!best[m.id] || newer_(c, best[m.id])) best[m.id] = c;
+      }
+    }
+    matches = [];
+    for (const id in best) {
+      matches.push({ id: id, maps: best[id].m.maps, start_time: best[id].m.start_time });
+      sums[id] = best[id].sum;
+    }
+    if (!matches.length) throw new Error('no usable match in the answers');
   } catch (e) {
     alarm_(props, e);
     return;
@@ -227,6 +235,24 @@ function scoreSum_(sc) {
   return n;
 }
 
+function killsDeaths_(maps) {
+  let n = 0;
+  for (const map of maps) {
+    if (!map) continue;
+    for (const c of COLORS) n += num_((map.kills || {})[c]) + num_((map.deaths || {})[c]);
+  }
+  return n;
+}
+
+// Is candidate a the newer body of the same match than b? A new week wins
+// (a lagging node serves the week before), then the higher score sum, then the
+// more kills+deaths. On a full tie the first read stays.
+function newer_(a, b) {
+  if (a.st !== b.st) return a.st > b.st;
+  if (a.sum !== b.sum) return a.sum > b.sum;
+  return a.kd > b.kd;
+}
+
 function readSaved_(props) {
   try {
     const v = JSON.parse(props.getProperty('scores') || '{}');
@@ -290,23 +316,31 @@ function rowFor_(m, prevRow, now) {
 }
 
 function fetchAllJson_(urls) {
-  // Two attempts: a dropped connection is the most common failure and
-  // retrying costs nothing, while giving up costs a 5-minute hole in the data.
+  // Returns every body that came back whole; one failed read is not a failed
+  // tick while another succeeded. Two rounds: a dropped connection is the most
+  // common failure and retrying costs nothing, while giving up costs a
+  // 5-minute hole in the data.
   const reqs = urls.map(function (url) {
     return { url: url, muteHttpExceptions: true, timeoutSeconds: TIMEOUT_S };
   });
   let err;
   for (let i = 0; i < 2; i++) {
+    const ok = [];
     try {
-      return UrlFetchApp.fetchAll(reqs).map(function (res, k) {
-        const code = res.getResponseCode();
-        if (code !== 200) throw new Error('HTTP ' + code + ' ' + urls[k]);
-        return JSON.parse(res.getContentText());
+      UrlFetchApp.fetchAll(reqs).forEach(function (res, k) {
+        try {
+          const code = res.getResponseCode();
+          if (code !== 200) throw new Error('HTTP ' + code + ' ' + urls[k]);
+          ok.push(JSON.parse(res.getContentText()));
+        } catch (e) {
+          err = e;
+        }
       });
     } catch (e) {
       err = e;
-      if (i === 0) Utilities.sleep(2000);
     }
+    if (ok.length) return ok;
+    if (i === 0) Utilities.sleep(2000);
   }
   throw err;
 }
