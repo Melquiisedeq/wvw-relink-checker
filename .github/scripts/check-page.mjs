@@ -728,6 +728,67 @@ async function main() {
     await ev("__skewClock(-531000); localStorage.removeItem('wvw-fight-v1')");
   }
 
+  // The kill history says a match stopped before this page ever saw it move:
+  // the corner opens amber with a dash, with the history put in place before
+  // the map opens (awaited, so the order is certain). With every line old the
+  // history is not trusted and nothing turns amber. A score up clears it.
+  // Only the replay is changed: /api/kills is swapped, the recording is intact.
+  async function historyAge() {
+    const step = 'history ages first sight';
+    const label = await ev("document.querySelector('.tier-map-btn')?.getAttribute('aria-label') || ''");
+    const t = /\b(NA|EU) Tier (\d+)/.exec(label);
+    if (!t) return void problem(`step '${step}': no tier map button to read a match from`);
+    const matchId = `${t[1] === 'NA' ? 1 : 2}-${t[2]}`;
+    const killsUrl = base + '/api/kills';   // what the page asks; the swap is checked before the recording's key
+    const q = sel => `document.querySelector('.info-popover .wvw-plot-wrap ${sel}')`;
+    const text = sel => `(${q(sel)}?.textContent || '')`;
+    const history = (ageOfTarget, ageOfOthers) => `(async () => {
+      const now = Date.now();
+      const rows = [...newestMatches.keys()].map(id => [now - (id === '${matchId}' ? ${ageOfTarget} : ${ageOfOthers}), id, 5, 5, 5, 5]);
+      return JSON.stringify({ rows });
+    })()`;
+    // The page's kept matches as a first sight with no rise, the history asked again.
+    const reset = async (ageOfTarget, ageOfOthers) => {
+      const body = await ev(history(ageOfTarget, ageOfOthers));
+      substitutes.set(killsUrl, { body: Buffer.from(body), served: 0 });
+      await ev(`(async () => {
+        for (const k of newestMatches.values()) { k.rose = false; k.at = Date.now(); }
+        killSheetAt = 0;
+        await getKillSheet();
+      })()`);
+    };
+    const open = async (name) => {
+      if (!(await click(name, "document.querySelector('.tier-map-btn')"))) return false;
+      if (!(await until(name, `!!document.querySelector("${POPOVERS['tier-map-btn']}")`, 'drawn objectives'))) return false;
+      await idle(name);
+      return await until(name, `!!${q('.wvw-hud-ago')}`, 'the age corner');
+    };
+    const kept = `(() => { const k = newestMatches.get('${matchId}'); return Date.now() - k.at; })()`;
+
+    await reset(7 * 60000, 60000);
+    if (await ev(kept) < 6 * 60000) problem(`step '${step}': the match was not backdated by a live history (${await ev(kept)} ms)`);
+    if (await open(step + ': open')) {
+      if (!(await ev(`!!${q('.wvw-hud-ago.is-stale')} && /^⚠ No new data /.test(${text('.wvw-hud-ago')})`))) problem(`step '${step}': the corner did not open amber`);
+      if ((await ev(text('.wvw-hud-big'))) !== '–') problem(`step '${step}': the kills corner is not a dash on opening`);
+      // The score up, on the kept body: back to "Updated".
+      const bumped = await ev(`(() => { const m = JSON.parse(JSON.stringify(newestMatches.get('${matchId}').match));
+        m.scores.red = (Number(m.scores.red) || 0) + 1; return JSON.stringify(m); })()`);
+      substitutes.set(`https://api.guildwars2.com/v2/wvw/matches?id=${matchId}`, { body: Buffer.from(bumped), served: 0 });
+      await ev("__skewClock(31000); window.dispatchEvent(new Event('focus'))");
+      await until(step, `${q('.wvw-hud-ago')} && !${q('.wvw-hud-ago.is-stale')} && /^Updated /.test(${text('.wvw-hud-ago')})`, '"Updated" back on a higher score');
+      substitutes.delete(`https://api.guildwars2.com/v2/wvw/matches?id=${matchId}`);
+      await closePopover(step);
+    }
+
+    await reset(30 * 60000, 30 * 60000);
+    if (await ev(kept) > 60000) problem(`step '${step}': a history with every line old moved the match's time`);
+    if (await open(step + ': all old')) {
+      if (await ev(`!!${q('.wvw-hud-ago.is-stale')}`) || !/^Updated /.test(await ev(text('.wvw-hud-ago')))) problem(`step '${step}': a history with every line old turned the corner amber`);
+      await closePopover(step);
+    }
+    substitutes.delete(killsUrl);
+  }
+
   // The walk, the same for the recording and for the replay: whatever it asks
   // of the hosts, the recording has. Recording picks the guild names first.
   recordedAt = RECORD ? Date.now() : recordedAt;
@@ -780,6 +841,9 @@ async function main() {
 
   // 6. The corners over a map, while the page's kept bodies are the recorded ones.
   await mapCorners();
+
+  // 6b. The kill history backdating a match this page never saw move.
+  await historyAge();
 
   // 7. A frozen answer: some API servers serve a match body from the past.
   await frozenMatch();
