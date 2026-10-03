@@ -577,7 +577,7 @@ function buildStandingStats(match, color, stats, className) {
   values[activityIndex].appendChild(buildActivityInfoButton(serverName, match, color));
 
   const kdValue = values[kdIndex];
-  if (kills !== deaths) kdValue.classList.add(kills > deaths ? 'kd-good' : 'kd-bad');
+  if (deaths > 0 && kills !== deaths) kdValue.classList.add(kills > deaths ? 'kd-good' : 'kd-bad');
   if (leaders.kd === color) markStatLeader(kdValue);
   kdValue.appendChild(buildMapKdButton(serverName, match, color));
 
@@ -628,7 +628,7 @@ function renderStandingSide(match, color, rankByColor, leaders, leaderScore) {
   vpEl.className = 'standing-vp';
   vpEl.innerHTML = `<span class="stat-label">VP </span><span class="stat-value">${vp}</span>`;
   const [regionCode, tierNum] = match.id.split('-');
-  vpEl.appendChild(buildMovementIndicator(regionCode, tierNum, rank));
+  vpEl.appendChild(buildMovementIndicator(regionCode, tierNum, rank, isTiedOnVp(match, color)));
   top.appendChild(vpEl);
 
   const statsLine = buildStandingStats(match, color,

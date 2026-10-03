@@ -59,7 +59,7 @@ function renderMapKdPopoverContent(popover, serverName, match, color) {
   figures.appendChild(popFigure('Kills', kills.toLocaleString()));
   figures.appendChild(popFigure('Deaths', deaths.toLocaleString()));
   figures.appendChild(popFigure('K/D', formatKd(kills, deaths),
-    kills === deaths ? null : (kills > deaths ? 'good' : 'bad')));
+    deaths === 0 || kills === deaths ? null : (kills > deaths ? 'good' : 'bad')));
   popover.appendChild(figures);
 
   // One row per map: the bar says where the fighting was, the numbers
@@ -100,7 +100,7 @@ function renderMapKdPopoverContent(popover, serverName, match, color) {
     const ratio = document.createElement('span');
     ratio.className = 'pop-bar-pct pop-kd-ratio';
     ratio.textContent = formatKd(r.kills, r.deaths);
-    if (r.kills !== r.deaths) ratio.classList.add(r.kills > r.deaths ? 'kd-good' : 'kd-bad');
+    if (r.deaths > 0 && r.kills !== r.deaths) ratio.classList.add(r.kills > r.deaths ? 'kd-good' : 'kd-bad');
 
     // The three numbers travel together in their own group, so the bar
     // takes the slack instead of it being shared out between them and
