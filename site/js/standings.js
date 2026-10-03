@@ -149,6 +149,39 @@ function showRegion(gridEl, statusEl, matches, label, syncedAt) {
   setStandingsStatus(statusEl, ok, ok ? syncedAt : `Couldn't load ${label} standings.`);
 }
 
+// The table shows running totals: VP moves every 2 h, Activity and K/D are the
+// week's sums, only Skirmish moves, once per 5 min tick. 15 min is three missed
+// ticks, enough to change who leads a close skirmish; sooner is only noise. The
+// map corner keeps its own, shorter HUD_STALE_MS (js/maps.js).
+const TIER_STALE_MS = 15 * 60 * 1000;
+
+// A tier whose match has had the same score for over TIER_STALE_MS ends its
+// card with "\u26a0 No new data for N min"; the other tiers wear nothing. One text node, so it is read and
+// copied once. The page cannot tell a quiet match from a frozen API, so the
+// title says what is known. Run after every paint, which rebuilds the tiers,
+// and by boot.js every minute, which is what moves the number.
+function updateTierAges() {
+  for (const grid of [standingsGridNA, standingsGridEU]) {
+    for (const box of grid.querySelectorAll('.standing-match')) {
+      const rose = matchScoreRoseAt(box.dataset.matchId);
+      const age = Date.now() - rose;
+      let mark = box.querySelector(':scope > .tier-age');
+      if (!rose || age <= TIER_STALE_MS || !box.querySelector('.standing-side')) {
+        if (mark) mark.remove();
+        continue;
+      }
+      const mins = Math.floor(age / 60000);
+      if (!mark) {
+        mark = document.createElement('div');
+        mark.className = 'tier-age';
+        box.append(mark);
+      }
+      mark.title = `No new data from the game's API for this match for ${mins} min; the API sometimes repeats an old answer.`;
+      mark.textContent = `\u26a0 No new data for ${mins} min`;
+    }
+  }
+}
+
 // The fallback when the one request fails: the id list, then one request
 // per region, the answers kept apart all the way down. null means that
 // region's request failed; [] means it answered and has no matches.
@@ -333,6 +366,7 @@ async function loadStandings() {
     const syncedAt = `Synced ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     showRegion(standingsGridNA, standingsStatusNA, naMatches, 'NA', syncedAt);
     showRegion(standingsGridEU, standingsStatusEU, euMatches, 'EU', syncedAt);
+    updateTierAges();
     primeMapBadges();
   } catch {
     // The id list itself failed, so there is nothing to say about either

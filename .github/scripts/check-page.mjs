@@ -721,6 +721,76 @@ async function main() {
     await ev("__skewClock(-531000); localStorage.removeItem('wvw-fight-v1')");
   }
 
+  // The tiers in the standings: one whose match has answered the same score for
+  // over 15 min ends its card with "\u26a0 No new data for N min", outside the
+  // title row; the others wear nothing; a higher score takes it off; the number
+  // moves with the minute tick and, at 320 px wide, no title row spills over.
+  async function tierMarks() {
+    const step = 'tier marks';
+    const allUrl = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
+    const allHit = recorded.get(allUrl);
+    if (!allHit) return void problem(`step '${step}': ${allUrl} not recorded`);
+    const all = JSON.parse(bodyOf(allHit).toString('utf8'));
+    const live = all.find(x => x.id.startsWith('1-'));
+    if (!live) return void problem(`step '${step}': no NA match in the recording`);
+    const marks = `[...document.querySelectorAll('.standing-match')].map(b => {
+      const m = b.querySelector('.tier-age');
+      return {
+        tier: b.querySelector('.standing-match-title span')?.textContent,
+        region: b.closest('.standings-grid').id,
+        mark: m?.textContent || '',
+        nodes: m ? m.childNodes.length : 0,
+        last: !!m && b.lastElementChild === m,
+        inTitle: !!b.querySelector('.standing-match-title .tier-age'),
+        title: m?.title || '' };
+    })`;
+    const markOf = (rows, region, tier) => rows.find(r => r.region === region && r.tier === tier);
+    const tier = `Tier ${live.id.split('-')[1]}`;
+    await ev("__skewClock(600000); localStorage.removeItem('wvw-fight-v1')");
+    // 0. The recorded bodies again, 600 s later: past the map's 6 min, short of the
+    // table's 15, so no tier wears a mark yet.
+    substitutes.set(allUrl, { body: bodyOf(allHit), served: 0 });
+    await ev('loadStandings()');
+    await idle(step);
+    let rows = await ev(marks);
+    if (!rows.length) return void problem(`step '${step}': no tiers in the standings`);
+    if (rows.some(r => r.mark)) problem(`step '${step}': a tier wears a mark after only 600 s of the same body`);
+    // 1. 1600 s in all: past 15 min even for the tier first seen last, every tier is marked.
+    await ev('__skewClock(1000000); updateTierAges()');
+    rows = await ev(marks);
+    for (const r of rows) {
+      if (!/^\u26a0 No new data for \d+ min$/.test(r.mark) || r.nodes !== 1 || !r.last || r.inTitle || !r.title.includes('No new data from the game')) problem(`step '${step}': ${r.region} ${r.tier} wears "${r.mark}" (${r.nodes} nodes, last ${r.last}, in the title ${r.inTitle}) / "${r.title}" after 1600 s of the same body`);
+    }
+    const first = markOf(rows, 'standingsGridNA', tier).mark;
+    // 2. The minute tick moves the number.
+    await ev("__skewClock(120000); updateTierAges()");
+    rows = await ev(marks);
+    if (markOf(rows, 'standingsGridNA', tier).mark === first) problem(`step '${step}': "${first}" did not move two minutes later`);
+    // 3. One match answers a higher score: its mark goes, the others stay.
+    const bumped = { ...live, scores: { ...live.scores, red: (Number(live.scores?.red) || 0) + 1 } };
+    substitutes.set(allUrl, { body: Buffer.from(JSON.stringify(all.map(x => (x.id === live.id ? bumped : x)))), served: 0 });
+    await ev('loadStandings()');
+    await idle(step);
+    rows = await ev(marks);
+    if (markOf(rows, 'standingsGridNA', tier).mark) problem(`step '${step}': ${tier} still wears its mark after a higher score`);
+    if (rows.length > 1 && !rows.some(r => r.mark)) problem(`step '${step}': the other tiers lost their marks with it`);
+    // 4. The mark back, 320 px wide: no tier box wider than the screen.
+    await ev("__skewClock(500000); updateTierAges()");
+    await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 800, deviceScaleFactor: 1, mobile: true });
+    await idle(step + ': 320 px');
+    const spill = await ev(`(() => ({
+      page: Math.max(0, ...[...document.querySelectorAll('.standing-match')].map(b => Math.round(b.getBoundingClientRect().right - innerWidth))),
+      rows: [...document.querySelectorAll('.standing-match-title')].filter(t => t.scrollWidth > t.clientWidth).length,
+      tall: [...document.querySelectorAll('.standing-match-title')].filter(t => t.offsetHeight > 24).length,
+      marks: [...document.querySelectorAll('.tier-age')].filter(m => m.scrollWidth > m.clientWidth).length }))()`);
+    if (spill.page > 0 || spill.rows || spill.tall || spill.marks) problem(`step '${step}': at 320 px a tier box spills ${spill.page}px, ${spill.rows} title row(s) overflow, ${spill.tall} grew taller, ${spill.marks} mark(s) overflow`);
+    await send('Emulation.clearDeviceMetricsOverride');
+    substitutes.delete(allUrl);
+    await ev("__skewClock(-2220000); localStorage.removeItem('wvw-fight-v1')");
+    await ev('loadStandings()');
+    await idle(step);
+  }
+
   // The walk, the same for the recording and for the replay: whatever it asks
   // of the hosts, the recording has. Recording picks the guild names first.
   recordedAt = RECORD ? Date.now() : recordedAt;
@@ -773,6 +843,9 @@ async function main() {
 
   // 6. The corners over a map, while the page's kept bodies are the recorded ones.
   await mapCorners();
+
+  // 6b. The tiers whose data is old.
+  await tierMarks();
 
   // 7. A frozen answer: some API servers serve a match body from the past.
   await frozenMatch();
