@@ -9,19 +9,32 @@ function renderStandingsRegion(gridEl, matches) {
   gridEl.textContent = '';
   if (matches.length === 0) return;
 
+  // A body behind the week this browser remembers, and a tier of that week
+  // the API left out, show the remembered line-up instead (weekLineup).
+  const region = matches[0].id.split('-')[0];
+  const shown = matches.map((m) => (weekAhead(m) && weekLineup(m.id)) || m);
+  for (const id of weekHeldIds(region)) {
+    if (!shown.some((m) => m.id === id)) shown.push(weekLineup(id));
+  }
+
   const tierOf = (m) => Number((m.waitingId || m.id).split('-')[1]);
-  const tiers = matches.map(tierOf).filter(Number.isInteger);
+  const tiers = shown.map(tierOf).filter(Number.isInteger);
   // A gap in the tiers (1-2 and 1-3 without 1-1) is a tier the API left out
   // of every read and this page never saw: its card stays, waiting.
   const waiting = [];
   for (let t = 1; t < Math.max(0, ...tiers); t++) {
-    if (!tiers.includes(t)) waiting.push({ waitingId: `${matches[0].id.split('-')[0]}-${t}` });
+    if (!tiers.includes(t)) waiting.push({ waitingId: `${region}-${t}` });
   }
-  const sorted = [...matches, ...waiting].sort((a, b) => tierOf(a) - tierOf(b));
+  const sorted = [...shown, ...waiting].sort((a, b) => tierOf(a) - tierOf(b));
 
   for (const match of sorted) {
     if (match.waitingId) {
       gridEl.appendChild(buildWaitingTier(match.waitingId));
+      continue;
+    }
+    if (match.fromMemory) {
+      forgetSideStats(match.id);
+      gridEl.appendChild(buildMemoryTier(match));
       continue;
     }
     const [regionCode, tierNum] = match.id.split('-');
@@ -80,6 +93,22 @@ function buildWaitingTier(matchId) {
   note.className = 'standings-waiting';
   note.textContent = 'Waiting on the API';
   box.appendChild(note);
+  return box;
+}
+
+// The card of a tier painted from this browser's memory: its number and the
+// three names, no map button (the only body to draw is last week's).
+function buildMemoryTier(line) {
+  const box = document.createElement('div');
+  box.className = 'standing-match';
+  box.dataset.matchId = line.id;
+  const label = document.createElement('div');
+  label.className = 'standing-match-title';
+  const tierText = document.createElement('span');
+  tierText.textContent = `Tier ${line.id.split('-')[1]}`;
+  label.appendChild(tierText);
+  box.appendChild(label);
+  box.appendChild(buildStandingsStale(line));
   return box;
 }
 
@@ -345,7 +374,8 @@ function renderMatchPanel(match, yourGuildsByColor) {
   // for this match, so you know which one it is. The maps button earns
   // it. What the text said lives on in the button's tooltip.
   header.appendChild(tierEl);
-  header.appendChild(buildTierMapButton(match, regionName, tierNum || '?'));
+  // A remembered line-up has no body of its own to draw.
+  if (!match.fromMemory) header.appendChild(buildTierMapButton(match, regionName, tierNum || '?'));
   panel.appendChild(header);
 
   // The same rule the standings rail follows, and the same answer: the
@@ -353,7 +383,7 @@ function renderMatchPanel(match, yourGuildsByColor) {
   // as a standing goes. The pin travels with it - the team comes from
   // wvw/guilds, which turns over with the relink, so which of the three
   // is yours is not in doubt.
-  if (!matchIsLive(match)) {
+  if (match.fromMemory || !matchIsLive(match)) {
     panel.appendChild(buildStandingsStale(match, yourGuildsByColor));
     return panel;
   }

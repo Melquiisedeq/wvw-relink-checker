@@ -134,10 +134,12 @@ async function run() {
           continue;
         }
 
-        if (!panelsByMatchId.has(match.id)) {
-          panelsByMatchId.set(match.id, { match, yourGuildsByColor: { red: [], blue: [], green: [] } });
+        // A remembered line-up and a body can share an id; each keeps its panel.
+        const key = match.fromMemory ? `${match.id} memory` : match.id;
+        if (!panelsByMatchId.has(key)) {
+          panelsByMatchId.set(key, { match, yourGuildsByColor: { red: [], blue: [], green: [] } });
         }
-        panelsByMatchId.get(match.id).yourGuildsByColor[color].push(...yourGuildNames);
+        panelsByMatchId.get(key).yourGuildsByColor[color].push(...yourGuildNames);
         (dotsByTeam.get(teamId) || []).forEach((dot) => {
           if (!dot) return;
           dot.className = `dot dot-${color}`;

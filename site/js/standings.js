@@ -62,6 +62,11 @@ function newerTierOfTeam(match, teamId) {
 // it was last week's passing for this week's. `yoursByColor` comes only
 // from the match panel, where saying which of the three is yours is the
 // whole point of the screen.
+//
+// A line-up from this browser's memory (match.fromMemory) is this week's, not
+// last week's: same rows, its own line.
+const LINEUP_NOTE = "This week's line-up \u00b7 scores not in yet";
+
 function buildStandingsStale(match, yoursByColor) {
   const wrap = document.createElement('div');
   const isNA = match.id.startsWith('1-');
@@ -75,7 +80,7 @@ function buildStandingsStale(match, yoursByColor) {
     label.className = 'standing-side-name';
     label.textContent = name;
     row.appendChild(label);
-    const tier = newerTierOfTeam(match, teamId);
+    const tier = match.fromMemory ? null : newerTierOfTeam(match, teamId);
     if (tier) {
       const moved = document.createElement('span');
       moved.className = 'standing-moved';
@@ -97,7 +102,7 @@ function buildStandingsStale(match, yoursByColor) {
   }
   const note = document.createElement('p');
   note.className = 'standings-waiting';
-  note.textContent = "Last week's line-up \u00b7 waiting on the API";
+  note.textContent = match.fromMemory ? LINEUP_NOTE : "Last week's line-up \u00b7 waiting on the API";
   wrap.appendChild(note);
   return wrap;
 }
