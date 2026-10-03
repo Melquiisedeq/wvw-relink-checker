@@ -1007,11 +1007,17 @@ function fightRates(match, wantMs) {
   const now = fightTotals(match);
   const newest = list[list.length - 1];
   const per = new Map();
+  let moved = 0;
   for (const type in now) {
     const top = Math.max(now[type], Number(newest.n[type]) || 0);
-    const d = top - (Number(base.n[type]) || 0);
-    per.set(type, (d > 0 ? d : 0) * (600000 / span));
+    const d = Math.max(0, top - (Number(base.n[type]) || 0));
+    moved += d;
+    per.set(type, d * (600000 / span));
   }
+  // Not one kill in the whole match is not a measure: when the API starts
+  // to freeze a match, kills stop before the score does (03/10/2026). One
+  // map at 0 beside another with kills is real and stays 0.
+  if (!moved) return null;
   return { per, span };
 }
 
