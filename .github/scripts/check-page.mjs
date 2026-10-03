@@ -966,6 +966,121 @@ async function main() {
     await idle(step + ': restore');
   }
 
+  // The week's line-up kept between loads (wvw-weeks-v1). A load sees 1-2 and
+  // 1-3 on a new week with each other's teams; the next load, same profile, is
+  // served last week's 1-2 and 1-3 everywhere: their cards show the new line-up
+  // by name with "This week's line-up · scores not in yet", no score, no map,
+  // and the Check gets that line-up for one of its teams, never cached.
+  // Two hours after that week began the API has the last word again. A corrupt
+  // memory (not JSON, an unknown team, a __proto__ key, 10 KB, a start ahead) is ignored with
+  // nothing logged. With one late tier, the line-up deduced from the API wins over the
+  // memory. Each load starts the page's clock at the recording's instant.
+  async function weekMemory() {
+    const step = 'week memory';
+    const KEY = 'wvw-weeks-v1';
+    const allHit = recorded.get(ALL_URL);
+    if (!allHit) return void problem(`step '${step}': ${ALL_URL} not recorded`);
+    const all = JSON.parse(bodyOf(allHit).toString('utf8'));
+    const rec = new Map(all.map(m => [m.id, m]));
+    const t2 = rec.get('1-2'), t3 = rec.get('1-3');
+    if (!t2 || !t3) return void problem(`step '${step}': the recording does not hold NA tiers 2 and 3`);
+    const json = v => ({ body: Buffer.from(JSON.stringify(v)), served: 0 });
+    const week = 7 * 86400000, iso = t => new Date(t).toISOString().replace('.000Z', 'Z');
+    const start = Math.floor((recordedAt - 600000) / 60000) * 60000;
+    const fresh = (m, worlds) => ({ ...m, start_time: iso(start), end_time: iso(start + week), all_worlds: worlds });
+    const old = m => ({ ...m, start_time: iso(Date.parse(m.start_time) - week), end_time: iso(Date.parse(m.end_time) - week) });
+    const team = m => ['red', 'blue', 'green'].map(c => String(m.all_worlds[c].find(n => n >= 10000)));
+    const card = id => `(() => { const b = document.querySelector('#standingsGridNA > .standing-match[data-match-id="${id}"]');
+      return b ? JSON.stringify({ sides: b.querySelectorAll('.standing-side').length, map: !!b.querySelector('.tier-map-btn'),
+        vp: !!b.querySelector('.standing-vp'), names: [...b.querySelectorAll('.standing-side-name')].map(e => e.textContent),
+        waiting: [...b.querySelectorAll('.standings-waiting')].map(p => p.textContent) }) : 'null'; })()`;
+    const read = async id => JSON.parse(await ev(card(id)));
+    const names = async m => ev(`${JSON.stringify(team(m))}.map(getTeamName)`);
+
+    // A clean start: earlier steps kept bodies of later weeks.
+    await ev(`localStorage.removeItem('${KEY}')`);
+    substitutes.set(ALL_URL, json(all.map(m => (m.id === '1-2' ? fresh(t2, t3.all_worlds) : m.id === '1-3' ? fresh(t3, t2.all_worlds) : m))));
+    if (!(await load(step + ': new week'))) return void substitutes.clear();
+    const seen = await read('1-2');
+    if (seen?.sides !== 3 || JSON.stringify([...seen.names].sort()) !== JSON.stringify([...(await names(t3))].sort())) problem(`step '${step}': the new week's 1-2 reads ${JSON.stringify(seen)}`);
+    const kept = await ev(`localStorage.getItem('${KEY}')`);
+    const mem = kept ? JSON.parse(kept) : {};
+    if (!mem['1-2'] || mem['1-2'].s !== start || JSON.stringify(['red', 'blue', 'green'].map(c => String(mem['1-2'].t[c]))) !== JSON.stringify(team(t3))) {
+      problem(`step '${step}': the memory holds ${JSON.stringify(mem['1-2'])} for 1-2, wanted start ${start} and 1-3's teams`);
+    }
+    console.log(`week memory: ${kept ? kept.length : 0} characters for ${Object.keys(mem).length} matches`);
+    if (!kept || kept.length >= 2048) problem(`step '${step}': the memory is ${kept ? kept.length : 0} characters, wanted under 2048`);
+
+    // Reloaded onto last week's 1-2 and 1-3, the read by id too.
+    const back = all.map(m => (m.id === '1-2' || m.id === '1-3' ? old(m) : m));
+    substitutes.set(ALL_URL, json(back));
+    const byId = json([old(t2), old(t3)]);
+    substitutes.set(IDS_URL + '1-2,1-3', byId);
+    if (await load(step + ': last week again')) {
+      const c = await read('1-2');
+      const want = JSON.stringify({ sides: 0, map: false, vp: false, names: await names(t3), waiting: ["This week's line-up · scores not in yet"] });
+      if (JSON.stringify(c) !== want) problem(`step '${step}': reloaded onto last week, 1-2 reads ${JSON.stringify(c)}, wanted ${want}`);
+      if (!byId.served) problem(`step '${step}': last week's 1-2 and 1-3 were not read again by id`);
+      // The Check: a team of the new 1-2, every body in hand and ?world= on last week.
+      const x = team(t3)[0];
+      const world = json(old(t3));
+      substitutes.set(`https://api.guildwars2.com/v2/wvw/matches?world=${x}`, world);
+      const got = await ev(`getMatchForTeam('${x}').then(m => JSON.stringify({ id: m.id, memory: !!m.fromMemory,
+        cached: [...matchDataCache.values(), ...[...newestMatches.values()].map(k => k.match)].some(b => b.fromMemory) }))`);
+      if (got !== JSON.stringify({ id: '1-2', memory: true, cached: false }) || !world.served) {
+        problem(`step '${step}': the Check for team ${x} got ${got} after ${world.served} ?world= read(s), wanted the remembered 1-2, uncached`);
+      }
+    }
+
+    // Two hours after the remembered week began: the API's body stands.
+    const later = await send('Page.addScriptToEvaluateOnNewDocument', { source: `__skewClock(${2 * 3600000});` });
+    const ok = await load(step + ': two hours on');
+    await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: later.identifier });
+    if (ok) {
+      const c = await read('1-2');
+      if (JSON.stringify(c?.names) !== JSON.stringify(await names(t2)) || c.waiting.join('|') !== "Last week's line-up · waiting on the API") {
+        problem(`step '${step}': two hours on, 1-2 reads ${JSON.stringify(c)}, wanted last week's line-up from the API`);
+      }
+    }
+    substitutes.clear();
+
+    // A corrupt memory, each would-be winner for 1-2 otherwise well formed,
+    // over last week's 1-2: a whole region on one week would rewrite it.
+    const entry = (t, s = start) => ({ s, e: s + week, t, v: start });
+    const good = Object.fromEntries(['red', 'blue', 'green'].map((c, i) => [c, Number(team(t3)[i])]));
+    const corrupt = {
+      'not JSON': '{"1-2": {"s": ',
+      'team 99999 and __proto__': `{"__proto__": ${JSON.stringify(entry(good))}, "1-2": ${JSON.stringify(entry({ ...good, green: 99999 }))}}`,
+      '10 KB': JSON.stringify({ '1-2': entry(good), pad: 'x'.repeat(10240) }),
+      'a week 20 h ahead': JSON.stringify({ '1-2': entry(good, start + 20 * 3600000) }),
+      'a start past any date': JSON.stringify({ '1-2': entry(good, 8.7e15) }),
+    };
+    // One late tier is deduced from the API before the memory is asked: a
+    // well-formed memory of 1-3's teams for 1-2 loses to the teams left over.
+    substitutes.set(ALL_URL, json(all.map(m => (m.id === '1-2' ? old(t2) : m))));
+    await ev(`localStorage.setItem('${KEY}', ${JSON.stringify(JSON.stringify({ '1-2': entry(good) }))})`);
+    if (await load(`${step}: deduced over memory`)) {
+      const c = await read('1-2');
+      const want = JSON.stringify({ sides: 0, map: false, vp: false, names: [...(await names(t2))].sort(), waiting: ["This week's line-up · scores not in yet"] });
+      if (JSON.stringify(c && { ...c, names: [...c.names].sort() }) !== want) problem(`step '${step}': one late tier with a memory, 1-2 reads ${JSON.stringify(c)}, wanted the deduced ${want}`);
+    }
+    // Two late tiers: nothing to deduce, so each corrupt memory is the only
+    // thing that could change 1-2.
+    const t4 = rec.get('1-4');
+    substitutes.set(ALL_URL, json(all.map(m => (m.id === '1-2' ? old(t2) : m.id === '1-4' && t4 ? old(t4) : m))));
+    for (const [what, text] of Object.entries(corrupt)) {
+      const before = problems.length;
+      await ev(`localStorage.setItem('${KEY}', ${JSON.stringify(text)})`);
+      if (!(await load(`${step}: ${what}`))) continue;
+      const c = await read('1-2');
+      if (c?.waiting?.join('|') !== "Last week's line-up · waiting on the API") problem(`step '${step}': with a memory of ${what}, 1-2 reads ${JSON.stringify(c)}, wanted last week's line-up from the API`);
+      if (await ev("Object.prototype.s !== undefined || ({}).t !== undefined")) problem(`step '${step}': a memory of ${what} reached Object.prototype`);
+      if (problems.length !== before) problem(`step '${step}': a memory of ${what} was not ignored quietly`);
+    }
+    substitutes.clear();
+    await ev(`localStorage.removeItem('${KEY}')`);
+  }
+
   // The corners over a map: the age of the data turns amber with words once
   // the API has answered the same body for over 6 min, and comes back on a
   // body whose score rose; the kills match the hot tab's title; zoom hides
@@ -1311,6 +1426,9 @@ async function main() {
   // 7b. Last week's tier and this week's, and a team the API does not hold yet.
   await mixedWeeks();
 
+  // 7c. The week's line-up between loads.
+  await weekMemory();
+
   // 8. A failed load, tried again.
   await failedLoad();
 
@@ -1347,3 +1465,4 @@ async function main() {
     report();
   }
 }
+

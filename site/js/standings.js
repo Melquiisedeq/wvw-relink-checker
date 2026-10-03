@@ -52,8 +52,6 @@ function newerTierOfTeam(match, teamId) {
   return null;
 }
 
-const LINEUP_NOTE = "This week's line-up \u00b7 scores not in yet";
-
 // Every team the page knows in a region: the fixed table plus whatever the
 // cached bodies name (one body per tier, so the bodies alone fall short).
 // Table ids are 1 + region (NA 11xxx, EU 12xxx).
@@ -100,6 +98,11 @@ function deduceLineup(matches, allTeams, tierCount) {
 // it was last week's passing for this week's. `yoursByColor` comes only
 // from the match panel, where saying which of the three is yours is the
 // whole point of the screen.
+//
+// A line-up only (match.lineupOnly: deduced, or from this browser's memory)
+// is this week's, not last week's: same rows, its own line.
+const LINEUP_NOTE = "This week's line-up \u00b7 scores not in yet";
+
 function buildStandingsStale(match, yoursByColor) {
   const wrap = document.createElement('div');
   const isNA = match.id.startsWith('1-');

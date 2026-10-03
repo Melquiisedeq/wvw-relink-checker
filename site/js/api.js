@@ -272,7 +272,159 @@ function keepNewestMatch(match) {
     ? (colorSum(match.scores) > colorSum(kept.match.scores) || kept.rose)
     : false;
   newestMatches.set(match.id, { match, at: moved ? Date.now() : kept.at, rose });
+  weekStoreOffer(match);
   return match;
+}
+
+// ---- The week's line-up between loads --------------------------------
+// On a relink night the API can serve a tier's new week and then last week's
+// again for about an hour (03/10/2026); a reload would forget the new one.
+// Kept per match: start, end, the three team ids, when written - not the body.
+// Threat model: only this origin writes it (a script of ours, or the user's own extension).
+// Nothing in it becomes text: only team ids that exist in TEAM_NAMES, which supplies the names.
+// Worst case: a wrong line-up for up to WEEK_HOLD_MS, in this browser only.
+const WEEK_STORE_KEY = 'wvw-weeks-v1';
+// The memory overrules the API only this long after its week began, and only
+// over a body of an earlier week. The window measured on 03/10/2026: 1 h 04.
+const WEEK_HOLD_MS = 2 * 60 * 60 * 1000;
+const WEEK_MAX_MS = 8 * 24 * 60 * 60 * 1000;
+const WEEK_CLOCK_SLACK_MS = 5 * 60 * 1000;
+const WEEK_AHEAD_MS = 60 * 60 * 1000;    // a clock that far behind still keeps a memory
+const WEEK_STORE_MAX = 12;           // NA 4 + EU 5, with room
+const WEEK_STORE_MAX_CHARS = 4096;   // twelve entries are under 1.2 KB
+const WEEK_ID_RE = /^[12]-[1-9]$/;
+
+let weekStore = null;   // matchId -> { s, e, t: { red, blue, green }, v }
+
+const weekTime = (n) => Number.isSafeInteger(n) && n > 0;
+const weekTeam = (n) => Number.isInteger(n) && n > 0 && n < 100000
+  && Object.prototype.hasOwnProperty.call(TEAM_NAMES, String(n));
+
+// The exact shape or nothing: a week that has not ended, began at most an
+// hour from now (a later start would hold for longer than WEEK_HOLD_MS, and
+// past year 275760 it is no date at all), at most 8 days long, written no
+// later than now, three distinct teams the table knows.
+function weekEntryOk(v, now) {
+  if (!v || typeof v !== 'object' || !v.t || typeof v.t !== 'object') return false;
+  if (!weekTime(v.s) || !weekTime(v.e) || !weekTime(v.v)) return false;
+  if (v.s > now + WEEK_AHEAD_MS) return false;
+  if (v.e <= v.s || v.e - v.s > WEEK_MAX_MS || v.e <= now || v.v > now + WEEK_CLOCK_SLACK_MS) return false;
+  const teams = COLORS.map((c) => v.t[c]);
+  return teams.every(weekTeam) && new Set(teams).size === COLORS.length;
+}
+
+function weekStoreRead() {
+  if (weekStore) return weekStore;
+  weekStore = new Map();
+  try {
+    const text = localStorage.getItem(WEEK_STORE_KEY);
+    if (!text || text.length > WEEK_STORE_MAX_CHARS) return weekStore;
+    const all = JSON.parse(text);
+    if (!all || typeof all !== 'object' || Array.isArray(all)) return weekStore;
+    const now = Date.now();
+    for (const [id, v] of Object.entries(all)) {
+      if (weekStore.size >= WEEK_STORE_MAX) break;
+      if (!WEEK_ID_RE.test(id) || !weekEntryOk(v, now)) continue;
+      weekStore.set(id, { s: v.s, e: v.e, t: { red: v.t.red, blue: v.t.blue, green: v.t.green }, v: v.v });
+    }
+  } catch { /* off, full, or corrupt - an empty memory is the right answer */ }
+  return weekStore;
+}
+
+function weekStoreSave() {
+  const now = Date.now();
+  for (const [id, v] of weekStore) if (v.e <= now) weekStore.delete(id);
+  try {
+    localStorage.setItem(WEEK_STORE_KEY, JSON.stringify(Object.fromEntries(
+      [...weekStore].sort((a, b) => b[1].s - a[1].s).slice(0, WEEK_STORE_MAX))));
+  } catch { /* storage off or full; the page works without it */ }
+}
+
+// A live body as an entry, or null when anything about it is off.
+function weekEntryOf(m, now) {
+  if (!isMatchBody(m) || !WEEK_ID_RE.test(m.id) || !matchIsLive(m)) return null;
+  const t = {};
+  for (const c of COLORS) t[c] = Number(matchTeamId(m, c));
+  const entry = { s: Date.parse(m.start_time), e: Date.parse(m.end_time), t, v: now };
+  return weekEntryOk(entry, now) ? entry : null;
+}
+
+const sameWeek = (a, b) => a.s === b.s && a.e === b.e && COLORS.every((c) => a.t[c] === b.t[c]);
+
+// Every live body kept goes in, unless the memory holds a later week for the
+// match that may still overrule it. The same start with other teams is the
+// API correcting itself: it goes in.
+function weekStoreOffer(m) {
+  const now = Date.now();
+  const entry = weekEntryOf(m, now);
+  if (!entry) return;
+  const store = weekStoreRead();
+  const had = store.get(m.id);
+  if (had && (sameWeek(had, entry) || (entry.s < had.s && now < had.s + WEEK_HOLD_MS))) return;
+  store.set(m.id, entry);
+  weekStoreSave();
+}
+
+// A whole region in one answer - every tier from 1 up, every one this page
+// knows, all live and on one week - is the line-up, even where the memory
+// disagrees: the region's entries are written from it alone.
+function weekStoreRegion(region, list) {
+  const mine = list.filter((m) => isMatchBody(m) && m.id.startsWith(`${region}-`));
+  if (mine.length === 0) return;
+  const now = Date.now();
+  const entries = mine.map((m) => [m.id, weekEntryOf(m, now)]);
+  if (entries.some(([, e]) => !e) || new Set(entries.map(([, e]) => e.s)).size !== 1) return;
+  const ids = new Set(mine.map((m) => m.id));
+  for (let t = 1; t <= ids.size; t++) if (!ids.has(`${region}-${t}`)) return;
+  const known = [...matchDataCache.keys(), ...weekHeldIds(region)];
+  if (known.some((id) => id.startsWith(`${region}-`) && !ids.has(id))) return;
+  const store = weekStoreRead();
+  const regionIds = [...store.keys()].filter((id) => id.startsWith(`${region}-`));
+  if (regionIds.length === ids.size && entries.every(([id, e]) => store.has(id) && sameWeek(store.get(id), e))) return;
+  for (const id of regionIds) store.delete(id);
+  for (const [id, e] of entries) store.set(id, e);
+  weekStoreSave();
+}
+
+// The entry for a match while it may still overrule the API, or null.
+function weekHeld(id) {
+  const v = weekStoreRead().get(id);
+  return v && Date.now() < v.s + WEEK_HOLD_MS ? v : null;
+}
+
+function weekHeldIds(region) {
+  return [...weekStoreRead().keys()].filter((id) => id.startsWith(`${region}-`) && weekHeld(id));
+}
+
+// True when this browser saw a later week of the match than `body`. An
+// unreadable start_time cannot be judged, and the body is taken.
+function weekAhead(body) {
+  const v = isMatchBody(body) ? weekHeld(body.id) : null;
+  const start = v ? Date.parse(body.start_time) : NaN;
+  return Number.isFinite(start) && start < v.s;
+}
+
+// The remembered line-up in the shape the painters read: names only, never a
+// score. Never put in newestMatches or matchDataCache - nothing that reads a
+// score or a map may get it - and recognised by `fromMemory`.
+function weekLineup(id) {
+  const v = weekHeld(id);
+  if (!v) return null;
+  return {
+    id, fromMemory: true, lineupOnly: true,
+    start_time: new Date(v.s).toISOString(), end_time: new Date(v.e).toISOString(),
+    all_worlds: { red: [v.t.red], blue: [v.t.blue], green: [v.t.green] },
+  };
+}
+
+// The held entry that has the team in its line-up, the latest week first.
+function weekLineupOfTeam(teamId) {
+  let best = null;
+  for (const id of weekStoreRead().keys()) {
+    const v = weekHeld(id);
+    if (v && COLORS.some((c) => String(v.t[c]) === String(teamId)) && (!best || v.s > best.v.s)) best = { id, v };
+  }
+  return best ? weekLineup(best.id) : null;
 }
 
 // Backdates `at` for matches whose `at` is only a first sight, using the
@@ -321,8 +473,8 @@ const rereadMatches = async (url, timeoutMs) => (await Promise.allSettled(
   Array.from({ length: MATCH_REREADS }, () => fetchJson(url, 0, 'no-store', timeoutMs))))
   .flatMap((r) => (r.status !== 'fulfilled' ? [] : Array.isArray(r.value) ? r.value : [r.value]));
 
-// Which ids of a list answer to read again: a body behind the kept one, a
-// body whose week is over. `regions` ('1' NA, '2' EU) says the URL lists
+// Which ids of a list answer to read again: a body behind the kept one or
+// behind the week this browser remembers, a body whose week is over. `regions` ('1' NA, '2' EU) says the URL lists
 // whole regions, and then also a tier this page holds that the answer left
 // out, and a gap in the tiers (1-2 and 1-3 without 1-1). Relink nights serve
 // partial lists and tiers from both weeks (03/10/2026). `holes`: the gaps,
@@ -334,11 +486,15 @@ function matchesToReread(list, regions) {
   for (const m of list) {
     if (!isMatchBody(m)) continue;
     const kept = newestMatches.get(m.id);
-    if ((kept && matchIsBehind(m, kept.match)) || !matchIsLive(m)) need.add(m.id);
+    if ((kept && matchIsBehind(m, kept.match)) || !matchIsLive(m) || weekAhead(m)) need.add(m.id);
   }
   for (const region of regions) {
     for (const id of matchDataCache.keys()) {
       if (id.startsWith(`${region}-`) && !got.has(id)) need.add(id);
+    }
+    // A tier this browser saw this week certainly exists.
+    for (const id of weekHeldIds(region)) {
+      if (!got.has(id)) { need.add(id); holes.push(id); }
     }
     const tiers = [...got].filter((id) => id.startsWith(`${region}-`))
       .map((id) => Number(id.split('-')[1])).filter(Number.isInteger);
@@ -363,13 +519,18 @@ async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
     return keepNewestMatch(raw);
   }
   const { need, holes } = matchesToReread(raw, regions);
-  if (need.length === 0) return raw.map(keepNewestMatch);
-  const again = await rereadMatches(
-    `${API_BASE}/wvw/matches?ids=${need.map(encodeURIComponent).join(',')}`, timeoutMs);
-  const out = new Map();
-  for (const m of [...raw, ...again]) if (isMatchBody(m)) out.set(m.id, keepNewestMatch(m));
-  for (const id of holes) if (!out.has(id) && newestMatches.has(id)) out.set(id, newestMatches.get(id).match);
-  return [...out.values()].sort((a, b) => byId(a.id, b.id));
+  let list;
+  if (need.length === 0) list = raw.map(keepNewestMatch);
+  else {
+    const again = await rereadMatches(
+      `${API_BASE}/wvw/matches?ids=${need.map(encodeURIComponent).join(',')}`, timeoutMs);
+    const out = new Map();
+    for (const m of [...raw, ...again]) if (isMatchBody(m)) out.set(m.id, keepNewestMatch(m));
+    for (const id of holes) if (!out.has(id) && newestMatches.has(id)) out.set(id, newestMatches.get(id).match);
+    list = [...out.values()].sort((a, b) => byId(a.id, b.id));
+  }
+  for (const region of regions) weekStoreRegion(region, list);
+  return list;
 }
 
 // True when `offered` should take the place of `kept` as a team's match:
@@ -400,30 +561,40 @@ function keptMatchWithTeam(teamId) {
 // that holds the team is returned or remembered: ?world= has answered with
 // another team's match during a relink. Order: the cached pair, bodies
 // already in hand, then ?world= (read again, in parallel, when the first
-// answer lacks the team); otherwise it throws and keeps nothing.
+// answer lacks the team). A body behind the week this browser remembers for
+// the team does not count; when nothing else does, the remembered line-up is
+// returned, uncached (weekLineup). Otherwise it throws and keeps nothing.
 async function getMatchForTeam(teamId) {
+  let match = null;
   if (teamToMatchId.has(teamId)) {
     const cached = matchDataCache.get(teamToMatchId.get(teamId));
-    if (matchHasTeam(cached, teamId)) return cached;
-    teamToMatchId.delete(teamId);
+    if (matchHasTeam(cached, teamId)) match = cached;
+    else teamToMatchId.delete(teamId);
   }
+  if (!match) match = keptMatchWithTeam(teamId);
 
-  let match = keptMatchWithTeam(teamId);
-  if (!match) {
+  const line = weekLineupOfTeam(teamId);
+  const lineStart = line ? Date.parse(line.start_time) : NaN;
+  const fits = (m) => matchHasTeam(m, teamId) && !(Date.parse(m.start_time) < lineStart);
+  if (!match || !fits(match)) {
+    match = null;
     const url = `${API_BASE}/wvw/matches?world=${encodeURIComponent(teamId)}`;
-    const firstWith = (raw) => (Array.isArray(raw) ? raw : [raw]).find((m) => matchHasTeam(m, teamId));
-    match = firstWith(await fetchMatches(url));
-    if (!match) {
-      const again = await Promise.allSettled(
-        Array.from({ length: MATCH_REREADS }, () => fetchJson(url, 0, 'no-store')));
-      for (const r of again) {
-        if (r.status !== 'fulfilled') continue;
-        const kept = firstWith((Array.isArray(r.value) ? r.value : [r.value]).map(keepNewestMatch));
-        if (kept) { match = kept; break; }
+    const firstWith = (raw) => (Array.isArray(raw) ? raw : [raw]).find(fits);
+    try {
+      match = firstWith(await fetchMatches(url));
+      if (!match) {
+        const again = await Promise.allSettled(
+          Array.from({ length: MATCH_REREADS }, () => fetchJson(url, 0, 'no-store')));
+        for (const r of again) {
+          if (r.status !== 'fulfilled') continue;
+          const kept = firstWith((Array.isArray(r.value) ? r.value : [r.value]).map(keepNewestMatch));
+          if (kept) { match = kept; break; }
+        }
       }
-    }
+    } catch { /* no answer: the line-up below, or the throw */ }
   }
 
+  if (!match && line) return line;
   if (!match) throw new Error('No match holds this team yet');
   teamToMatchId.set(teamId, match.id);
   matchDataCache.set(match.id, match);
