@@ -1,7 +1,7 @@
 // Loads the page in a real Chrome, with the API and the sheets answered from a
 // recording, walks it as a visitor would (guild search, every map, every icon
-// button and popover, the NA/EU swap, a frozen match answer that must not be
-// painted, then a second load with /api/* down), and
+// button and popover, the NA/EU swap, a map answered with the same body for
+// minutes, a frozen match answer that must not be painted, then a second load with /api/* down), and
 // fails on anything the browser objects to: an exception, a console error, a
 // Content Security Policy violation, a step whose element never appears.
 //
@@ -296,8 +296,9 @@ async function main() {
   const ids = new Map();            // in-flight requests, for "the page has gone quiet"
   let apiDown = false;              // second load: /api/* answers 503
   let apiRefused = 0, sheetReads = 0;
-  // url -> { body, served }: answers the step 'frozen match' puts in place of
-  // the recording, filled only from constants and the recording itself.
+  // url -> { body, served }: answers the steps 'map corners' and 'frozen match'
+  // put in place of the recording, filled only from constants and the
+  // recording itself.
   const substitutes = new Map();
 
   const reply = (requestId, status, type, body) => send('Fetch.fulfillRequest', {
@@ -642,9 +643,10 @@ async function main() {
     substitutes.clear();
   }
 
-  // The corners over a map: the age of the last accepted answer turns amber
-  // with words after 90 s and comes back on the next answer; the kills match
-  // the hot tab's title; zoom hides both and "home" shows them.
+  // The corners over a map: the age of the data turns amber with words once
+  // the API has answered the same body for over 6 min, and comes back on a
+  // body whose score rose; the kills match the hot tab's title; zoom hides
+  // both and "home" shows them.
   async function mapCorners() {
     const step = 'map corners';
     // The tier button with the swords badge, when the recording has a busy map:
@@ -653,7 +655,11 @@ async function main() {
     if (!badged) problem(`step '${step}': no tier button carries the swords badge`);
     const name = badged ? "document.querySelector('.tier-map-btn:has(.tier-map-badge)')" : "document.querySelector('.tier-map-btn')";
     const busiest = badged ? await ev(`/busiest: (.+)$/.exec(${name}.getAttribute('aria-label'))?.[1] || ''`) : '';
-    // The standings' accepted instant made old before the map opens: the corner must
+    const t = /\b(NA|EU) Tier (\d+)/.exec(await ev(`${name}?.getAttribute('aria-label') || ''`));
+    const oneUrl = t && `https://api.guildwars2.com/v2/wvw/matches?id=${t[1] === 'NA' ? 1 : 2}-${t[2]}`;
+    const oneHit = oneUrl && recorded.get(oneUrl);
+    if (!oneHit) return void problem(`step '${step}': ${oneUrl || "the tier map button's match"} not recorded`);
+    // The standings' score time made old before the map opens: the corner must
     // not show it. A page-side observer notes any amber or spoken turn from the start.
     await ev(`__skewClock(100000); window.__amber = false;
       new MutationObserver(() => {
@@ -668,7 +674,7 @@ async function main() {
     if (!(await until(step, shown('.wvw-hud-r'), '"Updated" corner'))) return;
     if (!/^Updated /.test(await ev(text('.wvw-hud-ago')))) problem(`step '${step}': the corner does not start with "Updated"`);
     await idle(step);
-    if (await ev('window.__amber') || (await ev(text('.wvw-hud-live')))) problem(`step '${step}': the corner showed no update, or spoke, on opening`);
+    if (await ev('window.__amber') || (await ev(text('.wvw-hud-live')))) problem(`step '${step}': the corner went amber, or spoke, on opening`);
     if (await ev(`!!${q('.wvw-hud-ago.is-stale')}`)) problem(`step '${step}': the corner is amber after the opening read`);
     const hot = await ev(`(() => { const b = document.querySelector('.info-popover .wvw-tab.is-hot'); return b ? { type: b.dataset.type, title: b.title, label: b.textContent.trim() } : null; })()`);
     if (badged && (!hot || hot.label !== busiest)) problem(`step '${step}': the button says busiest "${busiest}", the hot tab is ${hot ? `"${hot.label}"` : 'none'}`);
@@ -684,11 +690,26 @@ async function main() {
       await click(step + ': other tab', `document.querySelector('.info-popover .wvw-tab[data-type="${cold}"]')`);
       await until(step, `!!${q('.wvw-hud-l.is-cold')}`, 'neutral swords on a tab without swords');
     }
-    await ev('__skewClock(100000)');
-    await until(step, `${q('.wvw-hud-ago.is-stale')} && /^\u26a0 No update /.test(${text('.wvw-hud-ago')})`, 'amber "No update" after 100 s');
-    if (!/No map update for/.test(await ev(text('.wvw-hud-live')))) problem(`step '${step}': the gap was not spoken`);
-    await ev("window.dispatchEvent(new Event('focus'))");
-    await until(step, `${q('.wvw-hud-ago')} && !${q('.wvw-hud-ago.is-stale')} && /^Updated /.test(${text('.wvw-hud-ago')})`, '"Updated" back after focus');
+    // A frozen API: the recorded body answered again on every pull for 400 s
+    // more. Each answer arrives; none is new data.
+    const one = JSON.parse(bodyOf(oneHit).toString('utf8'));
+    const same = { body: bodyOf(oneHit), served: 0 };
+    substitutes.set(oneUrl, same);
+    for (let i = 0; i < 4; i++) {
+      await ev("__skewClock(100000); window.dispatchEvent(new Event('focus'))");
+      await idle(step + ': same body');
+    }
+    if (same.served < 4) problem(`step '${step}': the map asked ${same.served} time(s) over 400 s, wanted 4`);
+    await until(step, `${q('.wvw-hud-ago.is-stale')} && /^\u26a0 No new data /.test(${text('.wvw-hud-ago')})`, 'amber "No new data" after 6 min of the same body');
+    if (!/No new map data for/.test(await ev(text('.wvw-hud-live')))) problem(`step '${step}': the gap was not spoken`);
+    // The score one point up: new data, the corner back to "Updated".
+    const bumped = { ...one, scores: { ...one.scores, red: (Number(one.scores?.red) || 0) + 1 } };
+    substitutes.set(oneUrl, { body: Buffer.from(JSON.stringify(bumped)), served: 0 });
+    await ev("__skewClock(31000); window.dispatchEvent(new Event('focus'))");
+    await until(step, `${q('.wvw-hud-ago')} && !${q('.wvw-hud-ago.is-stale')} && /^Updated /.test(${text('.wvw-hud-ago')})`, '"Updated" back on a higher score');
+    if (!/New map data again/.test(await ev(text('.wvw-hud-live')))) problem(`step '${step}': the return was not spoken`);
+    await idle(step);
+    substitutes.delete(oneUrl);
     if (await click(step + ': zoom in', "document.querySelector('.info-popover .wvw-zoom button')")) {
       await until(step, `!(${shown('.wvw-hud-r')})`, 'corners hidden while zoomed');
       if (await click(step + ': home', "document.querySelector('.info-popover .wvw-zoom button:last-child')")) {
@@ -697,7 +718,7 @@ async function main() {
     }
     await closePopover(step);
     // The clock back, and the fight log this step fed dropped: the frozen-match step reads the log's totals.
-    await ev("__skewClock(-200000); localStorage.removeItem('wvw-fight-v1')");
+    await ev("__skewClock(-531000); localStorage.removeItem('wvw-fight-v1')");
   }
 
   // The walk, the same for the recording and for the replay: whatever it asks
