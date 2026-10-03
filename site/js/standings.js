@@ -52,6 +52,42 @@ function newerTierOfTeam(match, teamId) {
   return null;
 }
 
+// Every team the page knows in a region: the fixed table plus whatever the
+// cached bodies name (one body per tier, so the bodies alone fall short).
+// Table ids are 1 + region (NA 11xxx, EU 12xxx).
+function regionTeamIds(regionCode) {
+  const ids = new Set(Object.keys(TEAM_NAMES).filter((id) => id.startsWith(`1${regionCode}`)));
+  for (const m of matchDataCache.values()) {
+    if (!m.id.startsWith(`${regionCode}-`)) continue;
+    for (const color of COLORS) {
+      const teamId = matchTeamId(m, color);
+      if (teamId) ids.add(teamId);
+    }
+  }
+  return ids;
+}
+
+// With exactly one tier still on last week and the rest live on the new one,
+// the teams left over are the late tier's line-up. Only when the sum closes:
+// every team of the region is 3 per tier and exactly 3 are left. A table
+// with an extra or a missing team breaks the count, so it gives null too.
+function deduceLineup(matches, allTeams, tierCount) {
+  const live = matches.filter(matchIsLive);
+  const newest = Math.max(...live.map((m) => Date.parse(m.start_time)));
+  const late = matches.filter((m) => !matchIsLive(m) || Date.parse(m.start_time) < newest);
+  if (!live.length || late.length !== 1 || allTeams.size !== 3 * tierCount) return null;
+  const taken = new Set();
+  for (const m of matches) {
+    if (m === late[0]) continue;
+    for (const color of COLORS) taken.add(matchTeamId(m, color));
+  }
+  const left = [...allTeams].filter((id) => !taken.has(id));
+  if (left.length !== 3) return null;
+  left.sort((a, b) => getTeamName(a).localeCompare(getTeamName(b)));
+  const [red, blue, green] = left.map((id) => [Number(id)]);
+  return { id: late[0].id, lineupOnly: true, all_worlds: { red, blue, green } };
+}
+
 // A tier between weeks still has to be usable. Someone opening the site
 // to look up who plays on a server should not be met with a shimmer, and
 // nothing about that question went stale: team names survive a relink -
@@ -63,8 +99,8 @@ function newerTierOfTeam(match, teamId) {
 // from the match panel, where saying which of the three is yours is the
 // whole point of the screen.
 //
-// A line-up from this browser's memory (match.fromMemory) is this week's, not
-// last week's: same rows, its own line.
+// A line-up only (match.lineupOnly: deduced, or from this browser's memory)
+// is this week's, not last week's: same rows, its own line.
 const LINEUP_NOTE = "This week's line-up \u00b7 scores not in yet";
 
 function buildStandingsStale(match, yoursByColor) {
@@ -80,7 +116,7 @@ function buildStandingsStale(match, yoursByColor) {
     label.className = 'standing-side-name';
     label.textContent = name;
     row.appendChild(label);
-    const tier = match.fromMemory ? null : newerTierOfTeam(match, teamId);
+    const tier = match.lineupOnly ? null : newerTierOfTeam(match, teamId);
     if (tier) {
       const moved = document.createElement('span');
       moved.className = 'standing-moved';
@@ -102,7 +138,7 @@ function buildStandingsStale(match, yoursByColor) {
   }
   const note = document.createElement('p');
   note.className = 'standings-waiting';
-  note.textContent = match.fromMemory ? LINEUP_NOTE : "Last week's line-up \u00b7 waiting on the API";
+  note.textContent = match.lineupOnly ? LINEUP_NOTE : "Last week's line-up \u00b7 waiting on the API";
   wrap.appendChild(note);
   return wrap;
 }

@@ -647,28 +647,96 @@ async function main() {
     r = await cycle(step + ': restore');
     if (ids(r.cards) !== '1-1 1-2 1-3 1-4') problem(`step '${step}': restored NA cards ${ids(r.cards)}`);
 
-    // (b) 1-2 on last week, holding 1-3's red team; the read by id still old.
+    // (b) Last week's bodies, each holding a team of a tier that is new; the
+    // read by id still old. Alone, 1-2 is deduced; 1-2 with 1-4, both stay old.
     const week = 7 * 86400000, iso = t => new Date(t).toISOString().replace('.000Z', 'Z');
-    const t2 = rec.get('1-2'), t3 = rec.get('1-3');
-    const shared = t3.all_worlds.red.find(n => n >= 10000);
-    const old = { ...t2, start_time: iso(Date.parse(t2.start_time) - week), end_time: iso(Date.parse(t2.end_time) - week),
-      all_worlds: { ...t2.all_worlds, red: t2.all_worlds.red.map(n => (n >= 10000 ? shared : n)) } };
+    const oldOf = (m, from) => {
+      const shared = from.all_worlds.red.find(n => n >= 10000);
+      return { shared, body: { ...m, start_time: iso(Date.parse(m.start_time) - week), end_time: iso(Date.parse(m.end_time) - week),
+        all_worlds: { ...m.all_worlds, red: m.all_worlds.red.map(n => (n >= 10000 ? shared : n)) } } };
+    };
+    const nameOf = id => ev(`getTeamName(${JSON.stringify(String(id))})`);
+    const old2 = oldOf(rec.get('1-2'), rec.get('1-3')), old4 = oldOf(rec.get('1-4'), rec.get('1-1'));
+    const LAST = "Last week's line-up · waiting on the API", LINE = "This week's line-up · scores not in yet";
+    const newLine = await Promise.all(['red', 'blue', 'green'].map(c => nameOf(rec.get('1-2').all_worlds[c].find(n => n >= 10000))));
+
+    // (b1) Only 1-2 on last week: its card holds the three teams left over.
     await ev("newestMatches.delete('1-2')");
-    substitutes.set(ALL_URL, json(all.map(m => (m.id === '1-2' ? old : m))));
-    const stillOld = json([old]);
+    substitutes.set(ALL_URL, json(all.map(m => (m.id === '1-2' ? old2.body : m))));
+    const stillOld = json([old2.body]);
     substitutes.set(IDS_URL + '1-2', stillOld);
-    r = await cycle(step + ': mixed weeks');
-    if (r.ids.length !== 2 || stillOld.served !== 2) problem(`step '${step}': mixed weeks read again ${r.ids.join(' ') || 'nothing'}, wanted ?ids=1-2 twice and nothing else`);
+    r = await cycle(step + ': one late tier');
+    if (r.ids.length !== 2 || stillOld.served !== 2) problem(`step '${step}': one late tier read again ${r.ids.join(' ') || 'nothing'}, wanted ?ids=1-2 twice and nothing else`);
     const c2 = r.cards.find(c => c.id === '1-2');
-    const name = await ev(`getTeamName(${JSON.stringify(String(shared))})`);
-    if (!c2 || c2.stale !== 3 || c2.waiting.join('|') !== "Last week's line-up · waiting on the API"
-      || JSON.stringify(c2.moved) !== JSON.stringify([[name, '→ Tier 3', 'This week: Tier 3']])) {
-      problem(`step '${step}': last week's 1-2 reads ${JSON.stringify(c2)}, wanted three names, "${name}" with "→ Tier 3", and the new line`);
+    const lineNames = await ev(`JSON.stringify([...document.querySelectorAll('#standingsGridNA > [data-match-id="1-2"] .standing-stale .standing-side-name')].map(e => e.textContent))`);
+    if (!c2 || c2.stale !== 3 || c2.sides || c2.map || c2.waiting.join('|') !== LINE || c2.moved.length
+      || JSON.parse(lineNames).sort().join('|') !== [...newLine].sort().join('|')) {
+      problem(`step '${step}': the only late tier 1-2 reads ${JSON.stringify(c2)} ${lineNames}, wanted ${JSON.stringify(newLine)}, "${LINE}", no "→" and no map`);
     }
-    if (r.cards.find(c => c.id === '1-3')?.moved.length) problem(`step '${step}': this week's 1-3 shows a "→ Tier" mark`);
     substitutes.clear();
     r = await cycle(step + ': restore');
     if (r.cards.find(c => c.id === '1-2')?.sides !== 3) problem(`step '${step}': the recorded 1-2 did not replace last week's`);
+
+    // (b2) 1-2 and 1-4 on last week: nothing to deduce, both stay old.
+    await ev("newestMatches.delete('1-2'); newestMatches.delete('1-4')");
+    substitutes.set(ALL_URL, json(all.map(m => (m.id === '1-2' ? old2.body : m.id === '1-4' ? old4.body : m))));
+    const stillOld2 = json([old2.body, old4.body]);
+    substitutes.set(IDS_URL + '1-2,1-4', stillOld2);
+    r = await cycle(step + ': two late tiers');
+    if (r.ids.length !== 2 || stillOld2.served !== 2) problem(`step '${step}': two late tiers read again ${r.ids.join(' ') || 'nothing'}, wanted ?ids=1-2,1-4 twice and nothing else`);
+    const mark = async (id, shared, tier) => {
+      const c = r.cards.find(x => x.id === id), name = await nameOf(shared);
+      if (!c || c.stale !== 3 || c.waiting.join('|') !== LAST
+        || JSON.stringify(c.moved) !== JSON.stringify([[name, `→ Tier ${tier}`, `This week: Tier ${tier}`]])) {
+        problem(`step '${step}': last week's ${id} reads ${JSON.stringify(c)}, wanted three names, "${name}" with "→ Tier ${tier}", and the old line`);
+      }
+    };
+    await mark('1-2', old2.shared, 3);
+    await mark('1-4', old4.shared, 1);
+    if (r.cards.find(c => c.id === '1-3')?.moved.length) problem(`step '${step}': this week's 1-3 shows a "→ Tier" mark`);
+    substitutes.clear();
+    r = await cycle(step + ': restore');
+    if (r.cards.some(c => c.sides !== 3)) problem(`step '${step}': the recorded tiers did not replace last week's`);
+
+    // (d) The rule itself, on the recorded bodies. Only one late tier and a
+    // count that closes give a line-up: two late tiers leave 6 teams with 10
+    // ways to split them, three leave 9 with 280, and a table with a team too
+    // many or too few breaks the count. The first late tier holds a team of a
+    // live one, so a deduced line-up is never just last week's.
+    const eu = all.filter(m => m.id.startsWith('2-')).sort((x, y) => x.id.localeCompare(y.id));
+    if (eu.length !== 5) problem(`step '${step}': the recording holds ${eu.length} EU tiers, wanted 5`);
+    const na = ['1-1', '1-2', '1-3', '1-4'].map(i => rec.get(i));
+    const lateOf = (list, late) => list.map(m => {
+      if (!late.includes(m.id)) return m;
+      const live = list.find(x => !late.includes(x.id));
+      return oldOf(m, m.id === late[0] ? live : m).body;
+    });
+    const cases = [
+      ['NA, 1-2 late', lateOf(na, ['1-2']), '1', 4, '1-2'],
+      ['NA, 1-2 live but on last week', lateOf(na, ['1-2']).map(m => (m.id === '1-2' ? { ...m, end_time: iso(Date.now() + week) } : m)), '1', 4, '1-2'],
+      ['NA, 1-2 and 1-4 late', lateOf(na, ['1-2', '1-4']), '1', 4, null],
+      ['NA, three late', lateOf(na, ['1-2', '1-3', '1-4']), '1', 4, null],
+      ['NA, all on this week', na, '1', 4, null],
+      ['NA, a team too many', lateOf(na, ['1-2']), '1+', 4, null],
+      ['NA, a team too few', lateOf(na, ['1-2']), '1-', 4, null],
+      ['EU, 2-3 late', lateOf(eu, ['2-3']), '2', 5, '2-3'],
+    ];
+    for (const [what, list, set, tiers, want] of cases) {
+      const got = JSON.parse(await ev(`(() => {
+        const list = ${JSON.stringify(list)}, set = ${JSON.stringify(set)}, want = ${JSON.stringify(want || '')};
+        const teams = new Set(Object.keys(TEAM_NAMES).filter(id => id.startsWith('1' + set[0])));
+        if (set[1] === '+') teams.add('1' + set[0] + '999');
+        if (set[1] === '-') {
+          const taken = new Set(list.filter(m => m.id !== '1-2').flatMap(m => COLORS.map(c => matchTeamId(m, c))));
+          teams.delete([...teams].find(id => !taken.has(id)));
+        }
+        const line = deduceLineup(list, teams, ${tiers});
+        return JSON.stringify(line && { id: line.id, teams: COLORS.map(c => matchTeamId(line, c)).sort() });
+      })()`));
+      const real = want && rec.get(want);
+      const expect = want && { id: want, teams: ['red', 'blue', 'green'].map(c => String(real.all_worlds[c].find(n => n >= 10000))).sort() };
+      if (JSON.stringify(got) !== JSON.stringify(expect)) problem(`step '${step}': deduceLineup for ${what} gave ${JSON.stringify(got)}, wanted ${JSON.stringify(expect)}`);
+    }
   }
 
   // Every red/green/blue count of a match times `k`, objective owners moved
@@ -905,7 +973,8 @@ async function main() {
   // and the Check gets that line-up for one of its teams, never cached.
   // Two hours after that week began the API has the last word again. A corrupt
   // memory (not JSON, an unknown team, a __proto__ key, 10 KB, a start ahead) is ignored with
-  // nothing logged. Each load starts the page's clock at the recording's instant.
+  // nothing logged. With one late tier, the line-up deduced from the API wins over the
+  // memory. Each load starts the page's clock at the recording's instant.
   async function weekMemory() {
     const step = 'week memory';
     const KEY = 'wvw-weeks-v1';
@@ -986,7 +1055,19 @@ async function main() {
       'a week 20 h ahead': JSON.stringify({ '1-2': entry(good, start + 20 * 3600000) }),
       'a start past any date': JSON.stringify({ '1-2': entry(good, 8.7e15) }),
     };
+    // One late tier is deduced from the API before the memory is asked: a
+    // well-formed memory of 1-3's teams for 1-2 loses to the teams left over.
     substitutes.set(ALL_URL, json(all.map(m => (m.id === '1-2' ? old(t2) : m))));
+    await ev(`localStorage.setItem('${KEY}', ${JSON.stringify(JSON.stringify({ '1-2': entry(good) }))})`);
+    if (await load(`${step}: deduced over memory`)) {
+      const c = await read('1-2');
+      const want = JSON.stringify({ sides: 0, map: false, vp: false, names: [...(await names(t2))].sort(), waiting: ["This week's line-up · scores not in yet"] });
+      if (JSON.stringify(c && { ...c, names: [...c.names].sort() }) !== want) problem(`step '${step}': one late tier with a memory, 1-2 reads ${JSON.stringify(c)}, wanted the deduced ${want}`);
+    }
+    // Two late tiers: nothing to deduce, so each corrupt memory is the only
+    // thing that could change 1-2.
+    const t4 = rec.get('1-4');
+    substitutes.set(ALL_URL, json(all.map(m => (m.id === '1-2' ? old(t2) : m.id === '1-4' && t4 ? old(t4) : m))));
     for (const [what, text] of Object.entries(corrupt)) {
       const before = problems.length;
       await ev(`localStorage.setItem('${KEY}', ${JSON.stringify(text)})`);

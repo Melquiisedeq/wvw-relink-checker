@@ -411,7 +411,7 @@ function weekLineup(id) {
   const v = weekHeld(id);
   if (!v) return null;
   return {
-    id, fromMemory: true,
+    id, fromMemory: true, lineupOnly: true,
     start_time: new Date(v.s).toISOString(), end_time: new Date(v.e).toISOString(),
     all_worlds: { red: [v.t.red], blue: [v.t.blue], green: [v.t.green] },
   };

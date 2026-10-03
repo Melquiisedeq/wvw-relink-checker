@@ -9,10 +9,14 @@ function renderStandingsRegion(gridEl, matches) {
   gridEl.textContent = '';
   if (matches.length === 0) return;
 
-  // A body behind the week this browser remembers, and a tier of that week
-  // the API left out, show the remembered line-up instead (weekLineup).
+  // One late tier among live ones shows the teams left over (deduceLineup):
+  // that is the API's own data, so it goes first. Otherwise a body behind
+  // the week this browser remembers, and a tier of that week the API left
+  // out, show the remembered line-up instead (weekLineup).
   const region = matches[0].id.split('-')[0];
-  const shown = matches.map((m) => (weekAhead(m) && weekLineup(m.id)) || m);
+  const apiTiers = matches.map((m) => Number(m.id.split('-')[1])).filter(Number.isInteger);
+  const line = deduceLineup(matches, regionTeamIds(region), Math.max(0, ...apiTiers));
+  const shown = matches.map((m) => (line && m.id === line.id ? line : (weekAhead(m) && weekLineup(m.id)) || m));
   for (const id of weekHeldIds(region)) {
     if (!shown.some((m) => m.id === id)) shown.push(weekLineup(id));
   }
@@ -32,13 +36,12 @@ function renderStandingsRegion(gridEl, matches) {
       gridEl.appendChild(buildWaitingTier(match.waitingId));
       continue;
     }
-    if (match.fromMemory) {
-      forgetSideStats(match.id);
-      gridEl.appendChild(buildMemoryTier(match));
+    if (match.lineupOnly) {
+      gridEl.appendChild(buildLineupTier(match));
       continue;
     }
-    const [regionCode, tierNum] = match.id.split('-');
-    const regionName = REGION_NAMES[regionCode] || `Region ${regionCode}`;
+    const tierNum = match.id.split('-')[1];
+    const regionName = REGION_NAMES[region] || `Region ${region}`;
 
     const box = document.createElement('div');
     box.className = 'standing-match';
@@ -96,9 +99,11 @@ function buildWaitingTier(matchId) {
   return box;
 }
 
-// The card of a tier painted from this browser's memory: its number and the
-// three names, no map button (the only body to draw is last week's).
-function buildMemoryTier(line) {
+// A tier painted as a line-up only (deduced, or from this browser's memory):
+// its number and the three names, no map button (the only body to draw is
+// last week's) and nothing that reads as a standing.
+function buildLineupTier(line) {
+  forgetSideStats(line.id);
   const box = document.createElement('div');
   box.className = 'standing-match';
   box.dataset.matchId = line.id;
