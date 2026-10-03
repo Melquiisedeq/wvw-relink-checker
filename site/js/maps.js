@@ -1041,7 +1041,8 @@ const HUD_STALE_MS = 6 * 60 * 1000;
 
 const HUD_EXPLAIN = {
   fights: 'Player kills on this map in the last few minutes, from snapshots of'
-    + " the game's API. The crossed swords on a tab mark the map with the most."
+    + " the game's API. Orange swords mark the map with the most, when it passes"
+    + ' 50 in 10 minutes. A dash means there is no new data yet to count.'
     + ' The API has no player positions: this says where the fighting is, not'
     + ' how many players are there.',
   when: "Updated: when this match's score last changed in the game's API; this page"
@@ -1113,7 +1114,9 @@ function buildMapCorners(wrap) {
   const smallMins = mk('span');
   const smallLong = mk('span', 'wvw-hud-long', ' min');
   const smallShort = mk('span', 'wvw-hud-short', 'm');
-  small.append('kills \u00b7 ', smallMins, smallLong, smallShort);
+  const smallTail = mk('span');
+  smallTail.append(' \u00b7 ', smallMins, smallLong, smallShort);
+  small.append('kills', smallTail);
   const fightsBtn = mk('button');
   const txt = mk('span', 'wvw-hud-txt');
   txt.append(big, small);
@@ -1140,13 +1143,14 @@ function buildMapCorners(wrap) {
   const put = (node, text) => { if (node.textContent !== text) node.textContent = text; };
   let stale = null;
   const state = {
-    // line: {kills, mins} or null; at: ms the score last rose, 0 if unknown.
+    // line: {kills, mins}, or null when nothing was measured (a dash: never
+    // 0, which would say nobody fought); at: ms the score last rose, 0 if
+    // unknown. The kills show whenever the age does.
     paint(line, at) {
-      left.hidden = !line;
-      if (line) {
-        put(big, String(line.kills));
-        put(smallMins, String(line.mins));
-      }
+      left.hidden = !at;
+      put(big, line ? String(line.kills) : '\u2013');
+      smallTail.hidden = !line;
+      if (line) put(smallMins, String(line.mins));
       right.hidden = !at;
       if (!at) { stale = null; return; }
       const age = Math.max(0, Date.now() - at);
@@ -2241,7 +2245,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   let current = null;
   let plotWrap = null;
   // The corners' state, and what they last read: the fight rates of the
-  // reading that picked the hot tab (null when none is hot).
+  // reading that picked the hot tab (null when nothing was measured).
   let corners = null;
   let hotRates = null;
   let hotType = null; // the tab markHotTab chose, null when none is hot
@@ -2312,7 +2316,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
 
   const markHotTab = (src) => {
     const { hot, rates } = hotMapOf(src, available);
-    hotRates = hot ? rates : null;
+    hotRates = rates;
     hotType = hot;
     paintCorners();
 
