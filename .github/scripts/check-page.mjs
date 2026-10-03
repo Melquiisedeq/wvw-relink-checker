@@ -1,7 +1,7 @@
 // Loads the page in a real Chrome, with the API and the sheets answered from a
 // recording, walks it as a visitor would (guild search, every map, every icon
 // button and popover, the NA/EU swap, a map answered with the same body for
-// minutes, a frozen match answer that must not be painted, then a second load with /api/* down), and
+// minutes, a frozen match answer that must not be painted, a load whose API reads fail and are tried again, then a second load with /api/* down), and
 // fails on anything the browser objects to: an exception, a console error, a
 // Content Security Policy violation, a step whose element never appears.
 //
@@ -300,6 +300,9 @@ async function main() {
   // put in place of the recording, filled only from constants and the
   // recording itself.
   const substitutes = new Map();
+  // Set by the step 'failed load': API reads answered 503 on purpose.
+  let failing = null;
+  let failingLog = null;            // what the step may log errors for, kept past the end of the 503s (the log is late)
 
   const reply = (requestId, status, type, body) => send('Fetch.fulfillRequest', {
     requestId, responseCode: status,
@@ -326,6 +329,9 @@ async function main() {
       if (swap) {
         swap.served++;
         return await reply(requestId, 200, 'application/json; charset=utf-8', swap.body);
+      }
+      if (failing && failing.test(url)) {
+        return await reply(requestId, 503, 'application/json', Buffer.from('{"error":"down"}'));
       }
       if (own && apiDown) {
         apiRefused++;
@@ -379,7 +385,7 @@ async function main() {
         break;
       case 'Log.entryAdded': {
         const e = p.entry;
-        const refused = apiDown && /\/api\//.test(e.url || '');   // the 503 we sent on purpose
+        const refused = (apiDown && /\/api\//.test(e.url || '')) || (failingLog && failingLog.test(e.url || ''));   // the 503 we sent on purpose
         if (e.level === 'error' && !refused && !BLOCKED.test(e.url || '') && !BLOCKED.test(e.text)) {
           problem(`log error (${e.source}): ${e.text}${e.url ? ' ' + e.url : ''}`);
         }
@@ -721,6 +727,64 @@ async function main() {
     await ev("__skewClock(-531000); localStorage.removeItem('wvw-fight-v1')");
   }
 
+  // 8. A failed load and a slow line: the live standings and the guild tables
+  // answer 503, the page says it will try again and counts down, and once the
+  // API answers again the table paints with no reload. Then the guild search
+  // fails the same way, and its button repeats it. The page's random is pinned
+  // to 0 for this load so the first extra try waits 5 s, the window's start.
+  async function failedLoad() {
+    const step = 'failed load';
+    const tiers = `document.querySelectorAll('#standingsGridNA > .standing-match').length > 0 && document.querySelectorAll('#standingsGridEU > .standing-match').length > 0`;
+    const status = region => `document.getElementById('standingsAlert${region}')?`;
+    failing = failingLog = /^https:\/\/api\.guildwars2\.com\//;
+    const pin = await send('Page.addScriptToEvaluateOnNewDocument', { source: 'Math.random = () => 0;' });
+    stepNow = step;
+    loaded = false;
+    ids.clear();
+    await send('Page.navigate', { url: base + '/' });
+    await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: pin.identifier });
+    await until(step, `/Trying again in \\d+ s/.test(${status('NA')}.textContent) && /Trying again in \\d+ s/.test(${status('EU')}.textContent)`, 'the "Trying again in N s" message under both standings');
+    await until(step, `!!${status('NA')}.querySelector('button.retry-btn') && ${status('NA')}.querySelector('button.retry-btn').textContent === 'Try again'`, 'the Try again button');
+    if (await ev("!!document.querySelector('.standings-header .retry-btn, .standings-header .sr-only')")) problem(`step '${step}': the error message sits in the title's row, not the card's top strip`);
+    if (await ev(tiers)) problem(`step '${step}': tiers painted while the API was failing`);
+    // The whole API down: no relink bar either, so the columns' tops must still
+    // clear the notice bar. Measured at 1920, where the columns stand beside the
+    // page: the error text's top must be on screen and hit the strip itself.
+    await send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await until(step, "document.getElementById('relinkBanner').style.display === 'none'", 'the relink bar gone with the API down');
+    const clear = await ev(`(() => {
+      window.scrollTo(0, 0);
+      const box = document.getElementById('standingsAlertNA');
+      const r = document.createRange(); r.selectNodeContents(box.querySelector('.retry-vis'));
+      const b = r.getClientRects()[0], n = document.getElementById('teamsNotice');
+      const hit = document.elementFromPoint(b.left + b.width / 2, b.top + 1);
+      return JSON.stringify({ top: Math.round(b.top), hit: !!hit && box.contains(hit),
+        under: n && getComputedStyle(n).display !== 'none' ? Math.round(n.getBoundingClientRect().bottom) : 0 });
+    })()`);
+    const seenAt = JSON.parse(clear);
+    if (!seenAt.hit || seenAt.top < seenAt.under) problem(`step '${step}': the error text's top (${seenAt.top}px) is hidden or under the notice bar (${seenAt.under}px) at 1920 px`);
+    await send('Emulation.clearDeviceMetricsOverride');
+    await ev('window.__sameDocument = true');
+    failing = null;
+    await until(step, tiers, 'the tables painted by the extra try, without a reload');
+    if (!(await ev('window.__sameDocument === true'))) problem(`step '${step}': the page was reloaded`);
+    await until(step, `!${status('NA')}.querySelector('.retry-btn')`, 'the message gone once the standings loaded');
+    await idle(step);
+
+    failing = /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/guilds\/(na|eu)$/;
+    await ev(`document.getElementById('guildInput').value = ${JSON.stringify(guilds.join('\n'))}`);
+    if (!(await click(step + ' search', "document.getElementById('runBtn')"))) return;
+    const again = "document.querySelector('#statusMsg .retry-btn')";
+    await until(step, `!!${again} && !document.getElementById('runBtn').disabled`, 'the guild search message with its Try again button');
+    failing = null;
+    if (await click(step + ' search again', again)) {
+      await until(step, "/^Done/.test(document.getElementById('statusMsg').textContent)", 'the "Done" status after Try again');
+      await idle(step);
+    }
+    await sleep(500);
+    failingLog = null;
+  }
+
   // The walk, the same for the recording and for the replay: whatever it asks
   // of the hosts, the recording has. Recording picks the guild names first.
   recordedAt = RECORD ? Date.now() : recordedAt;
@@ -776,6 +840,9 @@ async function main() {
 
   // 7. A frozen answer: some API servers serve a match body from the past.
   await frozenMatch();
+
+  // 8. A failed load, tried again.
+  await failedLoad();
 
   // 5. A second load, /api/* answering 503: the page falls back to the sheets.
   apiDown = true;

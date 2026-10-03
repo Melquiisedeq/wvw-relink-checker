@@ -27,20 +27,20 @@ function retryAfterMs(header) {
  * (respecting Retry-After), 5xx server errors, and network failures.
  * Does not retry other 4xx codes since those won't succeed on retry.
  */
-async function fetchJson(url, attempt = 0, cacheMode = 'no-store') {
+async function fetchJson(url, attempt = 0, cacheMode = 'no-store', timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const res = await fetch(url, { signal: controller.signal, cache: cacheMode });
 
     if (res.status === 429 && attempt < MAX_RETRIES) {
       await sleep(retryAfterMs(res.headers.get('Retry-After')));
-      return fetchJson(url, attempt + 1, cacheMode);
+      return fetchJson(url, attempt + 1, cacheMode, timeoutMs);
     }
     if (res.status >= 500 && attempt < MAX_RETRIES) {
       await sleep(500 * (attempt + 1));
-      return fetchJson(url, attempt + 1, cacheMode);
+      return fetchJson(url, attempt + 1, cacheMode, timeoutMs);
     }
     if (!res.ok) {
       const err = new Error(`API request failed (HTTP ${res.status})`);
@@ -54,7 +54,7 @@ async function fetchJson(url, attempt = 0, cacheMode = 'no-store') {
     }
     if (err instanceof TypeError && attempt < MAX_RETRIES) {
       await sleep(500 * (attempt + 1));
-      return fetchJson(url, attempt + 1, cacheMode);
+      return fetchJson(url, attempt + 1, cacheMode, timeoutMs);
     }
     throw err;
   } finally {
@@ -92,8 +92,8 @@ async function getWvwMaps() {
   if (wvwMapCache && Date.now() - wvwMapCachedAt < TIMERS_REFRESH_MS) return wvwMapCache;
 
   const [na, eu] = await Promise.all([
-    fetchJson(`${API_BASE}/wvw/guilds/na`),
-    fetchJson(`${API_BASE}/wvw/guilds/eu`)
+    fetchJson(`${API_BASE}/wvw/guilds/na`, 0, 'no-store', SLOW_REQUEST_TIMEOUT_MS),
+    fetchJson(`${API_BASE}/wvw/guilds/eu`, 0, 'no-store', SLOW_REQUEST_TIMEOUT_MS)
   ]);
 
   if (typeof na !== 'object' || typeof eu !== 'object' || na === null || eu === null) {
@@ -283,14 +283,14 @@ function matchScoreRoseAt(matchId) {
 // identical, 02/10/2026).
 const MATCH_REREADS = 2;
 
-async function fetchMatches(url) {
-  const raw = await fetchJson(url);
+async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const raw = await fetchJson(url, 0, 'no-store', timeoutMs);
   const list = Array.isArray(raw) ? raw : [raw];
   const behind = list.some((m) => m && typeof m.id === 'string'
     && newestMatches.has(m.id) && matchIsBehind(m, newestMatches.get(m.id).match));
   if (behind) {
     const again = await Promise.allSettled(
-      Array.from({ length: MATCH_REREADS }, () => fetchJson(url)));
+      Array.from({ length: MATCH_REREADS }, () => fetchJson(url, 0, 'no-store', timeoutMs)));
     for (const r of again) {
       if (r.status !== 'fulfilled') continue;
       for (const m of Array.isArray(r.value) ? r.value : [r.value]) keepNewestMatch(m);

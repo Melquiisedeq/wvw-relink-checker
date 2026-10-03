@@ -86,6 +86,15 @@ const SHEET_HUMAN_URL =
 const MAX_ENTRIES = 60;        // hard cap so a pasted wall of text can't hammer a public API
 const MAX_NAME_LENGTH = 64;    // real guild names and GUIDs are well under this
 const REQUEST_TIMEOUT_MS = 10000;
+// A slow line can take 40 s to bring the standings (the whole ids=all body)
+// or the guild tables (77 KB gzip for NA alone); 10 s threw those answers
+// away. Only the first standings load and the guild search wait this long;
+// every refresh after that keeps the short deadline.
+const SLOW_REQUEST_TIMEOUT_MS = 30000;
+// After a failed standings load: the window, in ms, of each extra try, full
+// jitter inside it (a random point, never a fixed step). Two tries, then
+// the ordinary 5-minute cycle takes over.
+const STANDINGS_RETRY_WINDOWS_MS = [[5000, 15000], [15000, 40000]];
 const THROTTLE_MS = 200;       // gap between sequential lookups, to stay well under rate limits
 const MAX_RETRIES = 2;         // for 429 / transient network errors
 

@@ -61,8 +61,14 @@ async function run() {
     try {
       maps = await getWvwMaps();
     } catch {
+      // Not retried by itself: the search is the visitor's action. The
+      // message says what to do, and the button does it.
       statusMsg.classList.add('status-err');
-      statusMsg.textContent = "Couldn't load WvW data right now, give it another try in a bit.";
+      statusMsg.textContent = "Couldn't load WvW data. The connection may be slow.";
+      // A search already running is not started twice: Check is disabled
+      // for the length of one.
+      const again = buildRetryButton(() => { if (!runBtn.disabled) run(); });
+      statusMsg.appendChild(again);
       return;
     }
 

@@ -15,6 +15,15 @@
 .rail-swap:hover{color:var(--text);background:rgba(255,255,255,.06);}
 .rail-swap svg{display:block;filter:drop-shadow(0 1px .5px rgba(0,0,0,.6));}
 .standings-status{margin-left:auto;display:inline-flex;align-items:center;gap:6px;position:relative;top:-3px;}
+/* A failed load's message and its button: a compact strip at the top of the
+   card, right of the swap button, so the title keeps its own row. Empty, it
+   takes no room and the card is as it always was. */
+.standings-alert{display:none;}
+.standings-alert:not(:empty){
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:2px 6px;
+  margin:0 0 8px 20px;font-size:.78rem;line-height:1.35;color:#8d97a6;text-align:right;
+}
+.standings-card:has(.standings-alert:not(:empty)){padding-top:6px;}
 .live-dot{
   display:inline-block;width:5px;height:5px;border-radius:50%;flex-shrink:0;
   background:var(--accent);opacity:.55;cursor:default;
