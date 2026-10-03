@@ -661,6 +661,52 @@ async function main() {
     substitutes.clear();
   }
 
+  // The first hours of a week: every side on 0 VP is tied with the others, so no
+  // arrow and no bar says who moves; one kill and no deaths has no ratio, so K/D
+  // is a dash and nobody is underlined. A tier left as recorded keeps its arrows.
+  async function freshWeek() {
+    const step = 'fresh week';
+    const label = await ev("document.querySelector('.tier-map-btn')?.getAttribute('aria-label') || ''");
+    const t = /\b(NA|EU) Tier (\d+)/.exec(label);
+    if (!t) return void problem(`step '${step}': no tier map button to read a match from`);
+    const matchId = `${t[1] === 'NA' ? 1 : 2}-${t[2]}`;
+    const allUrl = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
+    const allHit = recorded.get(allUrl);
+    if (!allHit) return void problem(`step '${step}': ${allUrl} not recorded`);
+    const all = JSON.parse(bodyOf(allHit).toString('utf8'));
+    const fresh = all.find(x => x.id === matchId);
+    if (!fresh) return void problem(`step '${step}': ${matchId} not in ids=all`);
+    const other = all.find(x => x.id.startsWith(matchId[0] + '-') && x.id !== matchId
+      && new Set(Object.values(x.victory_points)).size === 3);
+    if (!other) return void problem(`step '${step}': no other ${t[1]} tier with three different VP`);
+    const body = { ...fresh, start_time: new Date().toISOString(),
+      victory_points: { red: 0, green: 0, blue: 0 },
+      kills: { red: 1, green: 0, blue: 0 }, deaths: { red: 0, green: 0, blue: 0 } };
+    substitutes.set(allUrl, { body: Buffer.from(JSON.stringify(all.map(x => (x.id === matchId ? body : x)))), served: 0 });
+    await ev('loadStandings()');
+    await idle(step);
+    const read = id => ev(`(() => { const box = document.querySelector('#standingsGrid${t[1]} .standing-match[data-match-id="' + ${JSON.stringify(id)} + '"]');
+      if (!box) return null;
+      const kd = [...box.querySelectorAll('.standing-side-stats')].map(l => [...l.querySelectorAll('.stat-value')].pop());
+      return { sides: box.querySelectorAll('.standing-side').length,
+        arrows: box.querySelectorAll('.movement-up, .movement-down, .movement-bar').length,
+        tied: [...box.querySelectorAll('.movement-tied')].map(e => e.title),
+        kd: kd.map(e => e.textContent.trim()), kdLeaders: kd.filter(e => e.classList.contains('stat-leader')).length,
+        kdColoured: kd.filter(e => e.classList.contains('kd-good') || e.classList.contains('kd-bad')).length }; })()`);
+    const a = await read(matchId), b = await read(other.id);
+    if (!a || a.sides !== 3) problem(`step '${step}': ${matchId} has no card with three sides`);
+    else {
+      if (a.arrows) problem(`step '${step}': ${matchId} on 0-0-0 VP still shows ${a.arrows} arrow(s) or bar(s)`);
+      if (a.tied.length !== 3 || a.tied.some(x => x !== 'Tied on VP')) problem(`step '${step}': ${matchId} tied sides read ${JSON.stringify(a.tied)}, wanted three "Tied on VP"`);
+      if (a.kd.some(x => !x.startsWith('\u2013'))) problem(`step '${step}': ${matchId} K/D reads ${JSON.stringify(a.kd)}, wanted a dash with no deaths`);
+      if (a.kdLeaders) problem(`step '${step}': ${matchId} underlines a K/D leader with no deaths anywhere`);
+      if (a.kdColoured) problem(`step '${step}': ${matchId} colours a dash as good or bad K/D`);
+    }
+    if (!b || !b.arrows || b.tied.length) problem(`step '${step}': ${other.id}, left as recorded, lost its arrows (${JSON.stringify(b)})`);
+    // No reload to the recorded body: the page keeps a later start_time over an earlier one.
+    substitutes.clear();
+  }
+
   // The Check on a relink day: the same team in last week's tier (read last in
   // the list) and this week's must land on this week's; a team whose match the
   // API does not hold yet (?world= answers another team's) gets a grey dot and
@@ -1079,6 +1125,9 @@ async function main() {
 
   // 7. A frozen answer: some API servers serve a match body from the past.
   await frozenMatch();
+
+  // 7a. The first hours of a week: tied VP, no deaths.
+  await freshWeek();
 
   // 7b. Last week's tier and this week's, and a team the API does not hold yet.
   await mixedWeeks();

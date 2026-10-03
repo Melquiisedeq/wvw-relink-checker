@@ -159,7 +159,8 @@ function getStatLeaders(match) {
   const kdValues = COLORS.map((c) => {
     const k = Number(match.kills?.[c] ?? 0);
     const d = Number(match.deaths?.[c] ?? 0);
-    return [c, d > 0 ? k / d : (k > 0 ? Infinity : 0)];
+    // No deaths, no ratio: formatKd shows a dash, so nobody leads.
+    return [c, d > 0 ? k / d : null];
   });
   return { skirmish: best(skirmishValues), activity: best(activityValues), kd: best(kdValues) };
 }
@@ -251,9 +252,23 @@ function getRelinkMovement(rank, tierNum, maxTierForRegion) {
   return { dir: 'down', label: 'Moves down next reset' };
 }
 
+// True when another side of the match has the same VP as this one.
+function isTiedOnVp(match, color) {
+  const vp = Number(match.victory_points?.[color] ?? 0);
+  return COLORS.some((c) => c !== color && Number(match.victory_points?.[c] ?? 0) === vp);
+}
+
 // Small movement badge next to a side's VP: arrow up, arrow down, or a
 // flat bar for "stays". Full wording lives in the tooltip only.
-function buildMovementIndicator(regionCode, tierNum, rank) {
+function buildMovementIndicator(regionCode, tierNum, rank, tied) {
+  if (tied) {
+    // Kept (empty) so the VP column does not shift; a tied rank is only
+    // the tiebreak's order, not a standing to project from.
+    const el = document.createElement('span');
+    el.className = 'movement-indicator movement-tied';
+    el.title = 'Tied on VP';
+    return el;
+  }
   const maxTier = getMaxTierForRegion(regionCode);
   const { dir, label } = getRelinkMovement(rank, tierNum, maxTier);
   const el = document.createElement('span');
@@ -271,7 +286,7 @@ function buildMovementIndicator(regionCode, tierNum, rank) {
 
 function formatKd(kills, deaths) {
   if (deaths > 0) return (kills / deaths).toFixed(2);
-  return kills > 0 ? '∞' : '0.00';
+  return '\u2013';
 }
 
 // Shortens large stat numbers (11,434 -> 11.4k) so the stats line fits
@@ -352,7 +367,7 @@ function renderMatchPanel(match, yourGuildsByColor) {
     const vpEl = document.createElement('span');
     vpEl.className = 'standing-vp';
     vpEl.innerHTML = `<span class="stat-label">VP </span><span class="stat-value">${vp}</span>`;
-    vpEl.appendChild(buildMovementIndicator(regionCode, tierNum, rank));
+    vpEl.appendChild(buildMovementIndicator(regionCode, tierNum, rank, isTiedOnVp(match, color)));
     head.appendChild(vpEl);
     col.appendChild(head);
 
