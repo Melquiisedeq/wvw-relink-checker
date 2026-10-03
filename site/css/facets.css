@@ -123,8 +123,11 @@
    other "this is yours" mark on the page reads. */
 .standing-stale.is-yours{border-left-color:var(--accent);background:rgba(127,214,242,.06);}
 .standing-stale .pin-badge{margin:0 0 0 auto;}
-/* Under the shimmer while a tier is between weeks. Quiet on purpose:
-   nothing is wrong, the week simply has not been published yet. */
+/* Where the team plays this week, beside last week's name. Never wraps:
+   the name gives way first (it ellipsises). */
+.standing-stale .standing-moved{flex:none;white-space:nowrap;font-size:.72rem;color:#8d97a6;}
+/* Under a tier between weeks, or a tier with no body yet. Quiet on
+   purpose: nothing is wrong here, the game's API has not sent it yet. */
 .standings-waiting{
   margin:7px 0 2px;text-align:center;
   font-size:.68rem;color:#8d97a6;font-style:italic;

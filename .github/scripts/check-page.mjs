@@ -300,6 +300,14 @@ async function main() {
   // put in place of the recording, filled only from constants and the
   // recording itself.
   const substitutes = new Map();
+  // A list of matches by id (the page reads a tier again that way) is answered,
+  // when not recorded, from ids=all - the step's substitute, or the recording -
+  // filtered to the ids asked, each checked against a fixed pattern.
+  const IDS_URL = 'https://api.guildwars2.com/v2/wvw/matches?ids=';
+  const ALL_URL = IDS_URL + 'all';
+  const isIdsRead = url => url.startsWith(IDS_URL) && url !== ALL_URL;
+  const idsAsked = [];              // every such read, in order, for the steps to count
+  let gameReads = 0;                // every read of api.guildwars2.com
   // Set by the step 'failed load': API reads answered 503 on purpose.
   let failing = null;
   let failingLog = null;            // what the step may log errors for, kept past the end of the 503s (the log is late)
@@ -337,6 +345,8 @@ async function main() {
         responseHeaders: [{ name: 'Access-Control-Allow-Origin', value: '*' }, { name: 'Access-Control-Allow-Headers', value: '*' }] });
       if (BLOCKED.test(url)) return await send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' });
       if (url.startsWith('https://render.guildwars2.com/')) return await reply(requestId, 200, 'image/png', PNG);
+      if (url.startsWith('https://api.guildwars2.com/')) gameReads++;
+      if (isIdsRead(url)) idsAsked.push(url);
       const swap = substitutes.get(url);
       if (swap) {
         swap.served++;
@@ -344,6 +354,16 @@ async function main() {
       }
       if (failing && failing.test(url)) {
         return await reply(requestId, 503, 'application/json', Buffer.from('{"error":"down"}'));
+      }
+      if (isIdsRead(url) && !recorded.has(url)) {
+        const want = url.slice(IDS_URL.length).split(',');
+        const allBody = substitutes.get(ALL_URL)?.body || (recorded.has(ALL_URL) ? bodyOf(recorded.get(ALL_URL)) : null);
+        if (!want.every(i => /^[12]-[1-9]$/.test(i)) || !allBody) {
+          problem(`not answered: ${url} during step '${stepNow}' (${allBody ? 'ids outside 1-1..2-9' : 'ids=all not recorded'})`);
+          return await send('Fetch.failRequest', { requestId, errorReason: 'Failed' });
+        }
+        const list = JSON.parse(allBody.toString('utf8')).filter(m => want.includes(m.id));
+        return await reply(requestId, 200, 'application/json; charset=utf-8', Buffer.from(JSON.stringify(list)));
       }
       if (own && apiDown) {
         apiRefused++;
@@ -568,6 +588,157 @@ async function main() {
     }
   }
 
+  // A relink night (03/10/2026). A normal cycle asks ids=all and nothing else.
+  // A partial list is read again for the missing tiers only, by id, and they
+  // stay; a gap the second read lacks too keeps the last body seen, or, never
+  // seen, a "Waiting on the API" card; a tier missing from both reads with no
+  // gap is gone. A tier on last week (the list from both weeks) is read again
+  // by id, alone; still old, its card shows where a shared team plays now.
+  async function partialLists() {
+    const step = 'partial lists';
+    const allHit = recorded.get(ALL_URL);
+    if (!allHit) return void problem(`step '${step}': ${ALL_URL} not recorded`);
+    const all = JSON.parse(bodyOf(allHit).toString('utf8'));
+    const rec = new Map(all.map(m => [m.id, m]));
+    if (!['1-1', '1-2', '1-3', '1-4'].every(i => rec.has(i)) || rec.size !== all.length) return void problem(`step '${step}': the recording does not hold NA tiers 1 to 4`);
+    const json = v => ({ body: Buffer.from(JSON.stringify(v)), served: 0 });
+    const cards = `JSON.stringify([...document.querySelectorAll('#standingsGridNA > .standing-match')].map(b => ({
+      id: b.dataset.matchId, sides: b.querySelectorAll('.standing-side').length,
+      stale: b.querySelectorAll('.standing-stale').length, map: !!b.querySelector('.tier-map-btn'),
+      title: b.querySelector('.standing-match-title')?.textContent || '',
+      waiting: [...b.querySelectorAll('.standings-waiting')].map(p => p.textContent),
+      moved: [...b.querySelectorAll('.standing-moved')].map(e => [e.previousElementSibling?.textContent || '', e.textContent, e.title]) })))`;
+    const cycle = async (name) => {
+      const at = idsAsked.length, reads = gameReads;
+      await ev('loadStandings()');
+      await idle(name);
+      return { ids: idsAsked.slice(at), game: gameReads - reads, cards: JSON.parse(await ev(cards)) };
+    };
+    const ids = c => c.map(x => x.id).join(' ');
+
+    // (c) The normal path: the load and a cycle, no read by id.
+    if (idsAsked.length) problem(`step '${step}': the first load read again by id: ${idsAsked.join(' ')}`);
+    let r = await cycle(step + ': normal cycle');
+    if (r.ids.length || r.game !== 1) problem(`step '${step}': a normal cycle read the game's API ${r.game} time(s) (${r.ids.join(' ') || 'no ?ids='}), wanted ids=all once`);
+
+    // (a) ids=all without 1-1 and 1-4; the second read finds them.
+    const partial = all.filter(m => m.id !== '1-1' && m.id !== '1-4');
+    substitutes.set(ALL_URL, json(partial));
+    const both = json([rec.get('1-1'), rec.get('1-4')]);
+    substitutes.set(IDS_URL + '1-1,1-4', both);
+    r = await cycle(step + ': partial list');
+    if (r.ids.length !== 2 || both.served !== 2) problem(`step '${step}': partial list read again ${r.ids.join(' ') || 'nothing'}, wanted ?ids=1-1,1-4 twice`);
+    if (ids(r.cards) !== '1-1 1-2 1-3 1-4' || r.cards.some(c => c.sides !== 3)) problem(`step '${step}': partial list left NA cards ${ids(r.cards)}, wanted 1-1 to 1-4 painted`);
+
+    // The second read lacks them too: 1-1 (a gap) keeps its last body, 1-4 goes.
+    substitutes.set(IDS_URL + '1-1,1-4', json([]));
+    r = await cycle(step + ': partial twice');
+    if (ids(r.cards) !== '1-1 1-2 1-3' || r.cards[0].sides !== 3) problem(`step '${step}': partial twice left NA cards ${ids(r.cards)} (tier 1 with ${r.cards[0]?.sides} sides), wanted 1-1 from its last body, 1-2, 1-3`);
+
+    // A gap this page never saw: a waiting card, no map button.
+    await ev("newestMatches.delete('1-1'); matchDataCache.delete('1-1')");
+    substitutes.set(IDS_URL + '1-1', json([]));
+    r = await cycle(step + ': never seen');
+    const w = r.cards[0];
+    if (ids(r.cards) !== '1-1 1-2 1-3' || w.sides || w.map || w.title !== 'Tier 1' || w.waiting.join('|') !== 'Waiting on the API') {
+      problem(`step '${step}': a tier never seen reads ${JSON.stringify(w)} (cards ${ids(r.cards)}), wanted "Tier 1" and "Waiting on the API", no map`);
+    }
+    substitutes.clear();
+    r = await cycle(step + ': restore');
+    if (ids(r.cards) !== '1-1 1-2 1-3 1-4') problem(`step '${step}': restored NA cards ${ids(r.cards)}`);
+
+    // (b) Last week's bodies, each holding a team of a tier that is new; the
+    // read by id still old. Alone, 1-2 is deduced; 1-2 with 1-4, both stay old.
+    const week = 7 * 86400000, iso = t => new Date(t).toISOString().replace('.000Z', 'Z');
+    const oldOf = (m, from) => {
+      const shared = from.all_worlds.red.find(n => n >= 10000);
+      return { shared, body: { ...m, start_time: iso(Date.parse(m.start_time) - week), end_time: iso(Date.parse(m.end_time) - week),
+        all_worlds: { ...m.all_worlds, red: m.all_worlds.red.map(n => (n >= 10000 ? shared : n)) } } };
+    };
+    const nameOf = id => ev(`getTeamName(${JSON.stringify(String(id))})`);
+    const old2 = oldOf(rec.get('1-2'), rec.get('1-3')), old4 = oldOf(rec.get('1-4'), rec.get('1-1'));
+    const LAST = "Last week's line-up · waiting on the API", LINE = "This week's line-up · scores not in yet";
+    const newLine = await Promise.all(['red', 'blue', 'green'].map(c => nameOf(rec.get('1-2').all_worlds[c].find(n => n >= 10000))));
+
+    // (b1) Only 1-2 on last week: its card holds the three teams left over.
+    await ev("newestMatches.delete('1-2')");
+    substitutes.set(ALL_URL, json(all.map(m => (m.id === '1-2' ? old2.body : m))));
+    const stillOld = json([old2.body]);
+    substitutes.set(IDS_URL + '1-2', stillOld);
+    r = await cycle(step + ': one late tier');
+    if (r.ids.length !== 2 || stillOld.served !== 2) problem(`step '${step}': one late tier read again ${r.ids.join(' ') || 'nothing'}, wanted ?ids=1-2 twice and nothing else`);
+    const c2 = r.cards.find(c => c.id === '1-2');
+    const lineNames = await ev(`JSON.stringify([...document.querySelectorAll('#standingsGridNA > [data-match-id="1-2"] .standing-stale .standing-side-name')].map(e => e.textContent))`);
+    if (!c2 || c2.stale !== 3 || c2.sides || c2.map || c2.waiting.join('|') !== LINE || c2.moved.length
+      || JSON.parse(lineNames).sort().join('|') !== [...newLine].sort().join('|')) {
+      problem(`step '${step}': the only late tier 1-2 reads ${JSON.stringify(c2)} ${lineNames}, wanted ${JSON.stringify(newLine)}, "${LINE}", no "→" and no map`);
+    }
+    substitutes.clear();
+    r = await cycle(step + ': restore');
+    if (r.cards.find(c => c.id === '1-2')?.sides !== 3) problem(`step '${step}': the recorded 1-2 did not replace last week's`);
+
+    // (b2) 1-2 and 1-4 on last week: nothing to deduce, both stay old.
+    await ev("newestMatches.delete('1-2'); newestMatches.delete('1-4')");
+    substitutes.set(ALL_URL, json(all.map(m => (m.id === '1-2' ? old2.body : m.id === '1-4' ? old4.body : m))));
+    const stillOld2 = json([old2.body, old4.body]);
+    substitutes.set(IDS_URL + '1-2,1-4', stillOld2);
+    r = await cycle(step + ': two late tiers');
+    if (r.ids.length !== 2 || stillOld2.served !== 2) problem(`step '${step}': two late tiers read again ${r.ids.join(' ') || 'nothing'}, wanted ?ids=1-2,1-4 twice and nothing else`);
+    const mark = async (id, shared, tier) => {
+      const c = r.cards.find(x => x.id === id), name = await nameOf(shared);
+      if (!c || c.stale !== 3 || c.waiting.join('|') !== LAST
+        || JSON.stringify(c.moved) !== JSON.stringify([[name, `→ Tier ${tier}`, `This week: Tier ${tier}`]])) {
+        problem(`step '${step}': last week's ${id} reads ${JSON.stringify(c)}, wanted three names, "${name}" with "→ Tier ${tier}", and the old line`);
+      }
+    };
+    await mark('1-2', old2.shared, 3);
+    await mark('1-4', old4.shared, 1);
+    if (r.cards.find(c => c.id === '1-3')?.moved.length) problem(`step '${step}': this week's 1-3 shows a "→ Tier" mark`);
+    substitutes.clear();
+    r = await cycle(step + ': restore');
+    if (r.cards.some(c => c.sides !== 3)) problem(`step '${step}': the recorded tiers did not replace last week's`);
+
+    // (d) The rule itself, on the recorded bodies. Only one late tier and a
+    // count that closes give a line-up: two late tiers leave 6 teams with 10
+    // ways to split them, three leave 9 with 280, and a table with a team too
+    // many or too few breaks the count. The first late tier holds a team of a
+    // live one, so a deduced line-up is never just last week's.
+    const eu = all.filter(m => m.id.startsWith('2-')).sort((x, y) => x.id.localeCompare(y.id));
+    if (eu.length !== 5) problem(`step '${step}': the recording holds ${eu.length} EU tiers, wanted 5`);
+    const na = ['1-1', '1-2', '1-3', '1-4'].map(i => rec.get(i));
+    const lateOf = (list, late) => list.map(m => {
+      if (!late.includes(m.id)) return m;
+      const live = list.find(x => !late.includes(x.id));
+      return oldOf(m, m.id === late[0] ? live : m).body;
+    });
+    const cases = [
+      ['NA, 1-2 late', lateOf(na, ['1-2']), '1', 4, '1-2'],
+      ['NA, 1-2 live but on last week', lateOf(na, ['1-2']).map(m => (m.id === '1-2' ? { ...m, end_time: iso(Date.now() + week) } : m)), '1', 4, '1-2'],
+      ['NA, 1-2 and 1-4 late', lateOf(na, ['1-2', '1-4']), '1', 4, null],
+      ['NA, three late', lateOf(na, ['1-2', '1-3', '1-4']), '1', 4, null],
+      ['NA, all on this week', na, '1', 4, null],
+      ['NA, a team too many', lateOf(na, ['1-2']), '1+', 4, null],
+      ['NA, a team too few', lateOf(na, ['1-2']), '1-', 4, null],
+      ['EU, 2-3 late', lateOf(eu, ['2-3']), '2', 5, '2-3'],
+    ];
+    for (const [what, list, set, tiers, want] of cases) {
+      const got = JSON.parse(await ev(`(() => {
+        const list = ${JSON.stringify(list)}, set = ${JSON.stringify(set)}, want = ${JSON.stringify(want || '')};
+        const teams = new Set(Object.keys(TEAM_NAMES).filter(id => id.startsWith('1' + set[0])));
+        if (set[1] === '+') teams.add('1' + set[0] + '999');
+        if (set[1] === '-') {
+          const taken = new Set(list.filter(m => m.id !== '1-2').flatMap(m => COLORS.map(c => matchTeamId(m, c))));
+          teams.delete([...teams].find(id => !taken.has(id)));
+        }
+        const line = deduceLineup(list, teams, ${tiers});
+        return JSON.stringify(line && { id: line.id, teams: COLORS.map(c => matchTeamId(line, c)).sort() });
+      })()`));
+      const real = want && rec.get(want);
+      const expect = want && { id: want, teams: ['red', 'blue', 'green'].map(c => String(real.all_worlds[c].find(n => n >= 10000))).sort() };
+      if (JSON.stringify(got) !== JSON.stringify(expect)) problem(`step '${step}': deduceLineup for ${what} gave ${JSON.stringify(got)}, wanted ${JSON.stringify(expect)}`);
+    }
+  }
+
   // Every red/green/blue count of a match times `k`, objective owners moved
   // one colour on: a body behind the real one that, painted, changes the map.
   const ROTATE = { Red: 'Blue', Blue: 'Green', Green: 'Red' };
@@ -638,13 +809,18 @@ async function main() {
       if (await ev(mapState) !== mapBefore) problem(`step '${step}': the map repainted from the frozen answer`);
       await closePopover(step);
     }
+    const idsBefore = idsAsked.length;
     await ev('loadStandings()');
     await idle(step);
     if (await ev(grid) !== gridBefore) problem(`step '${step}': the standings repainted from the frozen answer`);
     const logAfter = await ev(fightLog);
     if (logAfter.some(n => n < Math.max(...logBefore, 0))) problem(`step '${step}': the fight log took a frozen reading (${logAfter.join(' ')})`);
-    for (const [name, s] of [['map pull', frozenOne], ['ids=all', frozenAll]]) {
-      if (s.served < 1 || s.served - 1 > 2) problem(`step '${step}': ${name} asked ${s.served} time(s), wanted 1 and at most 2 re-reads`);
+    if (frozenOne.served < 1 || frozenOne.served - 1 > 2) problem(`step '${step}': map pull asked ${frozenOne.served} time(s), wanted 1 and at most 2 re-reads`);
+    // The list is read again only for its ids that need it, answered frozen too (from the substitute ids=all).
+    const reread = idsAsked.slice(idsBefore);
+    if (frozenAll.served !== 1 || reread.length < 1 || reread.length > 2
+      || reread.some(u => !u.slice(IDS_URL.length).split(',').includes(matchId))) {
+      problem(`step '${step}': ids=all asked ${frozenAll.served} time(s), then ${reread.length} re-read(s) ${reread.join(' ')}; wanted 1, then 1 or 2 by id holding ${matchId}`);
     }
 
     const end = Date.parse(one.end_time);
@@ -1089,6 +1265,9 @@ async function main() {
   const notice = "getComputedStyle(document.getElementById('teamsNotice')).display !== 'none'"
     + " || getComputedStyle(document.getElementById('relinkBanner')).display !== 'none'";
   const hadNotice = await ev(notice);
+
+  // 3b. Partial lists and tiers from two weeks, while the kept bodies are the recorded ones.
+  await partialLists();
 
   // 4. NA/EU swap, and back.
   const first = () => ev('document.documentElement.dataset.railFirst');
