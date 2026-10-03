@@ -714,6 +714,8 @@ async function main() {
     if (same.served < 4) problem(`step '${step}': the map asked ${same.served} time(s) over 400 s, wanted 4`);
     await until(step, `${q('.wvw-hud-ago.is-stale')} && /^\u26a0 No new data /.test(${text('.wvw-hud-ago')})`, 'amber "No new data" after 6 min of the same body');
     if (!/No new map data for/.test(await ev(text('.wvw-hud-live')))) problem(`step '${step}': the gap was not spoken`);
+    // Stale data claims nothing: no swords on a tab, no kills corner.
+    if (await ev(`!!document.querySelector('.info-popover .wvw-tab.is-hot') || ${shown('.wvw-hud-l')}`)) problem(`step '${step}': swords or the kills corner still show on stale data`);
     // The score one point up: new data, the corner back to "Updated".
     const bumped = { ...one, scores: { ...one.scores, red: (Number(one.scores?.red) || 0) + 1 } };
     substitutes.set(oneUrl, { body: Buffer.from(JSON.stringify(bumped)), served: 0 });
