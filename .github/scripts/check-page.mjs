@@ -1130,6 +1130,9 @@ async function main() {
       // With a hot tab there are rates, so a number; without, a dash. Never a bare 0 from no measurement.
       const big = await ev(text('.wvw-hud-big'));
       if (!(hot ? /^\d+$/.test(big) : /^(\d+|\u2013)$/.test(big))) problem(`step '${step}': the neutral corner reads "${big}"`);
+      // A number always carries the minutes it was counted over: a count with no window is a dash.
+      const small = await ev(`${q('.wvw-hud-small')}.innerText`);
+      if (/^\d+$/.test(big) && !/^kills · (\d+ min|until \S+|\u26a0 until \S+)$/.test(small)) problem(`step '${step}': the corner reads "${big}" with "${small}", a count with no window`);
     }
     // A frozen API: the recorded body answered again on every pull for 400 s
     // more. Each answer arrives; none is new data.
@@ -1143,10 +1146,18 @@ async function main() {
     if (same.served < 4) problem(`step '${step}': the map asked ${same.served} time(s) over 400 s, wanted 4`);
     await until(step, `${q('.wvw-hud-ago.is-stale')} && /^\u26a0 No new data /.test(${text('.wvw-hud-ago')})`, 'amber "No new data" after 6 min of the same body');
     if (!/No new map data for/.test(await ev(text('.wvw-hud-live')))) problem(`step '${step}': the gap was not spoken`);
-    // Stale data claims nothing: no swords on a tab, and the kills corner shows a dash,
-    // neutral, with no minutes (never a 0, which would say nobody fought).
+    // Stale data claims no fight: no swords on a tab, and the kills corner is neutral -
+    // either a dash with only "kills" (no window), or the last count dimmed with
+    // "\u26a0 until HH:MM", the time the kills last moved (never a bare 0 from no window).
     if (await ev(`!!document.querySelector('.info-popover .wvw-tab.is-hot')`)) problem(`step '${step}': swords still show on a tab on stale data`);
-    if (!(await ev(`${shown('.wvw-hud-l')} && !!${q('.wvw-hud-l.is-cold')} && ${text('.wvw-hud-big')} === '\u2013' && ${q('.wvw-hud-small')}.innerText === 'kills'`))) problem(`step '${step}': on stale data the kills corner is not a neutral dash with only "kills"`);
+    const frozen = await ev(`(() => {
+      return { shown: ${shown('.wvw-hud-l')}, cold: !!${q('.wvw-hud-l.is-cold')}, dim: !!${q('.wvw-hud-l.is-dim')},
+        big: ${text('.wvw-hud-big')}, small: ${q('.wvw-hud-small')}.innerText,
+        when: ${q('.wvw-hud-small time')}?.dateTime || '' };
+    })()`);
+    const dash = frozen.big === '\u2013' && frozen.small === 'kills' && !frozen.dim;
+    const dimmed = /^\d+$/.test(frozen.big) && /^kills · \u26a0 until \S/.test(frozen.small) && frozen.dim && Number.isFinite(Date.parse(frozen.when));
+    if (!frozen.shown || !frozen.cold || !(dash || dimmed)) problem(`step '${step}': on stale data the kills corner reads ${JSON.stringify(frozen)}, wanted a neutral dash or the last count dimmed "\u26a0 until HH:MM"`);
     // The score one point up: new data, the corner back to "Updated".
     const bumped = { ...one, scores: { ...one.scores, red: (Number(one.scores?.red) || 0) + 1 } };
     substitutes.set(oneUrl, { body: Buffer.from(JSON.stringify(bumped)), served: 0 });

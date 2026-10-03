@@ -451,6 +451,29 @@ function ageFirstSightFromHistory(byMatch, staleMs) {
   return n;
 }
 
+// A first-sight body with fewer kills on some map than the history's newest
+// line for its week is older than that line (kills only rise in a week), so
+// its `at` goes back to the line's time: "Updated" must not say now. Needs
+// no live history, unlike the above: the line proves it on its own.
+// `totalsOf(match)`: kills per map type, the keys of the lines' `n`.
+function ageBehindHistory(byMatch, totalsOf) {
+  if (!(byMatch instanceof Map)) return 0;
+  let n = 0;
+  for (const [id, kept] of newestMatches) {
+    if (kept.rose) continue;
+    const list = byMatch.get(id);
+    const last = list && list.length ? list[list.length - 1] : null;
+    if (!last || !Number.isFinite(last.at) || last.at >= kept.at) continue;
+    const week = Date.parse(kept.match.start_time);
+    if (!Number.isFinite(week) || last.at < week) continue;
+    const now = totalsOf(kept.match);
+    if (!Object.keys(now).some((t) => now[t] < (Number(last.n && last.n[t]) || 0))) continue;
+    kept.at = last.at;
+    n++;
+  }
+  return n;
+}
+
 // When this page last saw the match's score go up; 0 if never.
 function matchScoreRoseAt(matchId) {
   const kept = newestMatches.get(matchId);

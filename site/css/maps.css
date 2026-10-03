@@ -356,6 +356,9 @@
 .wvw-hud-ago.is-stale{color:#ffb347;font-weight:700;}
 .wvw-hud-l.is-cold img{filter:grayscale(1) brightness(1.1) drop-shadow(0 1px 1px #000);opacity:.75;}
 .wvw-hud-l.is-cold .wvw-hud-big{color:#dbe3ec;}
+/* A count old for an abnormal reason is dimmed; the warning sign and "until"
+   say so, not the grey alone. */
+.wvw-hud-l.is-dim .wvw-hud-big{color:#8d97a2;}
 .wvw-hud-short{display:none;}
 /* Clipped, not hidden, so a screen reader still gets the turn. */
 .wvw-hud-live{
