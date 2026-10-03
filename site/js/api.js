@@ -266,8 +266,37 @@ function keepNewestMatch(match) {
   // body again keeps the old time.
   const moved = !kept || match.start_time !== kept.match.start_time
     || colorSum(match.scores) > colorSum(kept.match.scores);
-  newestMatches.set(match.id, { match, at: moved ? Date.now() : kept.at });
+  // `rose`: this page watched the score go up. False while `at` is only the
+  // time of the first sight, which the kill history may know to be older.
+  const rose = !!kept && match.start_time === kept.match.start_time
+    ? (colorSum(match.scores) > colorSum(kept.match.scores) || kept.rose)
+    : false;
+  newestMatches.set(match.id, { match, at: moved ? Date.now() : kept.at, rose });
   return match;
+}
+
+// Backdates `at` for matches whose `at` is only a first sight, using the
+// newest line the shared history holds for them (the script writes a line
+// when a score rose). Never newer than the current `at`, never over a rise
+// this page saw, never from a line older than the match's own week.
+// `byMatch`: Map matchId -> samples [{at}] oldest first. Returns how many
+// changed.
+function ageFirstSightFromHistory(byMatch, staleMs) {
+  if (!(byMatch instanceof Map)) return 0;
+  const now = Date.now();
+  let n = 0;
+  for (const [id, kept] of newestMatches) {
+    if (kept.rose) continue;
+    const list = byMatch.get(id);
+    const last = list && list.length ? list[list.length - 1] : null;
+    if (!last || !Number.isFinite(last.at)) continue;
+    if (now - last.at <= staleMs || last.at >= kept.at) continue;
+    const week = Date.parse(kept.match.start_time);
+    if (Number.isFinite(week) && last.at < week) continue;
+    kept.at = last.at;
+    n++;
+  }
+  return n;
 }
 
 // When this page last saw the match's score go up; 0 if never.

@@ -876,6 +876,23 @@ let killSheet = null;
 let killSheetAt = 0;
 let killSheetInFlight = null;
 
+// A match whose only age is "first seen here" is backdated to the history's
+// newest line for it, so opening during a freeze is amber at once. Only when
+// the history itself is alive: a general freeze and a stopped trigger look
+// the same from here, and without certainty nothing is claimed.
+const HISTORY_LIVE_MS = 10 * 60 * 1000;
+
+function ageFromHistory(byMatch) {
+  if (!(byMatch instanceof Map)) return;
+  const now = Date.now();
+  let alive = false;
+  for (const list of byMatch.values()) {
+    const last = list && list[list.length - 1];
+    if (last && now - last.at <= HISTORY_LIVE_MS) { alive = true; break; }
+  }
+  if (alive) ageFirstSightFromHistory(byMatch, HUD_STALE_MS);
+}
+
 async function getKillSheet() {
   if (killSheet && Date.now() - killSheetAt < KILLS_SHEET_TTL_MS) return killSheet;
   if (killSheetInFlight) return killSheetInFlight;
@@ -884,6 +901,7 @@ async function getKillSheet() {
     try {
       killSheet = await readOwnKills().catch(readKillSheet);
       killSheetAt = Date.now();
+      ageFromHistory(killSheet);
     } catch {
       // The local log still answers for anyone who has been here a
       // while; only the cold visit loses out, and it loses quietly.
@@ -2459,7 +2477,9 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   // for it to be applied to. Resolves from cache on every later open,
   // which is why this used to fire straight back over the fresh answer.
   getKillSheet().then(() => {
-    if (activeTrigger === triggerEl && hotFresh) markHotTab(liveMatch);
+    if (activeTrigger !== triggerEl) return;
+    if (hotFresh) markHotTab(liveMatch);
+    else paintCorners(); // the history may have backdated the score time
   });
   show(available[0]);
 
