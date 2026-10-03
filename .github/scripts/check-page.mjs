@@ -300,6 +300,18 @@ async function main() {
   // the recording, filled only from constants and the recording itself.
   const substitutes = new Map();
 
+  // The hot-map floor is 50 kills in ten minutes and the recording may sit in a
+  // lull, so the kills history is served with 200 fewer EBG kills before its
+  // newest snapshot: a real fight, for the swords steps to find.
+  function withFight(body) {
+    try {
+      const j = JSON.parse(body.toString('utf8'));
+      const newest = Math.max(...j.rows.map(r => r[0]));
+      for (const r of j.rows) if (r[0] < newest) r[2] = Math.max(0, r[2] - 200);
+      return Buffer.from(JSON.stringify(j));
+    } catch { return body; }
+  }
+
   const reply = (requestId, status, type, body) => send('Fetch.fulfillRequest', {
     requestId, responseCode: status,
     responseHeaders: [{ name: 'Content-Type', value: type || 'application/octet-stream' },
@@ -339,7 +351,7 @@ async function main() {
           problem(`not recorded: ${key}${apiDown ? ' (load with /api down)' : ''} during step '${stepNow}' - re-record with --record`);
           return await send('Fetch.failRequest', { requestId, errorReason: 'Failed' });
         }
-        return await reply(requestId, hit[0], hit[1], bodyOf(hit));
+        return await reply(requestId, hit[0], hit[1], key === OWN_API.get('/api/kills') ? withFight(bodyOf(hit)) : bodyOf(hit));
       }
       if (url.startsWith(base + '/') || url.startsWith('data:') || url.startsWith('blob:')) return await send('Fetch.continueRequest', { requestId });
       problem(`unexpected host, blocked: ${url}`);
