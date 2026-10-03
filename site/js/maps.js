@@ -1014,7 +1014,7 @@ function fightRates(match, wantMs) {
 // swords and the tier button's badge both read it here, so they cannot
 // disagree.
 const HOT_WANT_MS = 10 * 60 * 1000;
-const HOT_FLOOR = 10;      // kills and deaths per ten minutes
+const HOT_FLOOR = 50;      // kills per ten minutes: a real fight, not API noise
 
 function hotMapOf(match, types) {
   // Nothing is marked on a match that is not running. Between the
