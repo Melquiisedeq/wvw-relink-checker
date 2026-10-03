@@ -661,6 +661,89 @@ async function main() {
     substitutes.clear();
   }
 
+  // The Check on a relink day: the same team in last week's tier (read last in
+  // the list) and this week's must land on this week's; a team whose match the
+  // API does not hold yet (?world= answers another team's) gets a grey dot and
+  // a note, and no wrong pair is kept, so a second Check finds it once the API
+  // answers right. The guilds are the recorded two; their teams come from the
+  // recorded guild tables, the second one moved to a team no match holds.
+  async function mixedWeeks() {
+    const step = 'mixed weeks check';
+    const allUrl = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
+    const allHit = recorded.get(allUrl);
+    if (!allHit || guilds.length < 2) return void problem(`step '${step}': ${allUrl} or the two guild names not recorded`);
+    const all = JSON.parse(bodyOf(allHit).toString('utf8'));
+    const tables = {};
+    for (const r of ['na', 'eu']) {
+      const hit = recorded.get(`https://api.guildwars2.com/v2/wvw/guilds/${r}`);
+      if (!hit) return void problem(`step '${step}': wvw/guilds/${r} not recorded`);
+      tables[r] = { url: `https://api.guildwars2.com/v2/wvw/guilds/${r}`, body: JSON.parse(bodyOf(hit).toString('utf8')) };
+    }
+    const where = [];
+    for (const name of guilds.slice(0, 2)) {
+      const hit = recorded.get(`https://api.guildwars2.com/v2/guild/search?name=${encodeURIComponent(name)}`);
+      const gid = hit && JSON.parse(bodyOf(hit).toString('utf8'))[0];
+      const r = ['na', 'eu'].find(x => gid && Object.hasOwn(tables[x].body, gid));
+      if (!r) return void problem(`step '${step}': ${name} is in neither recorded guild table`);
+      where.push({ gid, r });
+    }
+    const T = String(tables[where[0].r].body[where[0].gid]);
+    const holds = (m, t) => Object.values(m.all_worlds).some(l => l.map(String).includes(String(t)));
+    const colorOf = (m, t) => ['red', 'blue', 'green'].find(c => m.all_worlds[c].map(String).includes(String(t)));
+    const fresh = all.find(m => holds(m, T));
+    const other = all.find(m => m.id !== fresh?.id && m.id.startsWith('1-') === where[1].r.startsWith('n'));
+    if (!fresh || !other) return void problem(`step '${step}': no match holds team ${T}, or no second match to borrow`);
+    const MISSING = '99999';
+    const week = 7 * 86400000, iso = t => new Date(t).toISOString().replace('.000Z', 'Z');
+    const rot = { red: 'blue', blue: 'green', green: 'red' };
+    const old = { ...fresh, id: fresh.id.replace(/-\d+$/, '-9'),
+      start_time: iso(Date.parse(fresh.start_time) - week), end_time: iso(Date.parse(fresh.end_time) - week),
+      all_worlds: Object.fromEntries(Object.entries(fresh.all_worlds).map(([c, l]) => [rot[c], l])) };
+    if (colorOf(old, T) === colorOf(fresh, T)) return void problem(`step '${step}': the old tier could not be given another side`);
+    const moved = JSON.parse(JSON.stringify(tables[where[1].r].body));
+    moved[where[1].gid] = typeof moved[where[1].gid] === 'string' ? MISSING : Number(MISSING);
+    const worldUrl = `https://api.guildwars2.com/v2/wvw/matches?world=${MISSING}`;
+    const rows = `JSON.stringify([...document.querySelectorAll('#resultBody tr')].map(tr => {
+      const d = tr.querySelector('.dot'); return d ? { cls: d.className, title: d.title } : null; }))`;
+    const check = async (name) => {
+      await ev("document.getElementById('guildInput').value = " + JSON.stringify(guilds.slice(0, 2).join('\n')));
+      if (!(await click(name, "document.getElementById('runBtn')"))) return null;
+      await until(name, "/^Done/.test(document.getElementById('statusMsg').textContent)", 'the "Done" status');
+      await until(name, "!document.getElementById('runBtn').disabled", 'the Check button enabled again');
+      await idle(name);
+      return JSON.parse(await ev(rows));
+    };
+
+    substitutes.set(allUrl, { body: Buffer.from(JSON.stringify([...all, old])), served: 0 });
+    substitutes.set(tables[where[1].r].url, { body: Buffer.from(JSON.stringify(moved)), served: 0 });
+    const wrong = { body: Buffer.from(JSON.stringify(other)), served: 0 };
+    substitutes.set(worldUrl, wrong);
+    await ev('wvwMapCache = null; loadStandings()');
+    await idle(step);
+    let got = await check(step + ': first Check');
+    if (got) {
+      const dot = `dot dot-${colorOf(fresh, T)}`;
+      if (got[0]?.cls !== dot) problem(`step '${step}': team ${T} is in ${fresh.id} (${colorOf(fresh, T)}) and in last week's ${old.id} (${colorOf(old, T)}); its dot is "${got[0]?.cls}"`);
+      if (await ev(`teamToMatchId.get('${T}')`) !== fresh.id) problem(`step '${step}': team ${T} is tied to ${await ev(`teamToMatchId.get('${T}')`)}, not to ${fresh.id}`);
+      if (got[1]?.cls !== 'dot dot-pending' || !/not on the API yet/.test(got[1]?.title || '')) problem(`step '${step}': the guild with no match has dot "${got[1]?.cls}" / "${got[1]?.title}", wanted grey with a title`);
+      const note = await ev("[...document.querySelectorAll('#matchPanelsContainer .panel-note')].map(n => n.textContent).join('|')");
+      if (note !== `Unknown team (ID ${MISSING}): this week's match isn't on the API yet.`) problem(`step '${step}': the note reads "${note}"`);
+      if (await ev(`teamToMatchId.has('${MISSING}') || teamToMatchId.has(${MISSING})`)) problem(`step '${step}': a wrong match was kept for team ${MISSING}`);
+      if (wrong.served < 1 || wrong.served > 3) problem(`step '${step}': ?world= asked ${wrong.served} time(s), wanted 1 to 3`);
+    }
+
+    // The API now answers right: a second Check finds the guild.
+    const right = { ...other, all_worlds: { ...other.all_worlds, red: [Number(MISSING)] } };
+    substitutes.set(worldUrl, { body: Buffer.from(JSON.stringify(right)), served: 0 });
+    got = await check(step + ': second Check');
+    if (got && got[1]?.cls !== 'dot dot-red') problem(`step '${step}': the second Check left the guild at "${got[1]?.cls}" once ?world= answered right`);
+    if (await ev("document.querySelectorAll('#matchPanelsContainer .panel-note').length")) problem(`step '${step}': a note is still shown after the API answered right`);
+
+    substitutes.clear();
+    await ev('wvwMapCache = null; matchDataCache.delete(' + JSON.stringify(old.id) + '); teamToMatchId.delete(' + JSON.stringify(MISSING) + '); loadStandings()');
+    await idle(step + ': restore');
+  }
+
   // The corners over a map: the age of the data turns amber with words once
   // the API has answered the same body for over 6 min, and comes back on a
   // body whose score rose; the kills match the hot tab's title; zoom hides
@@ -996,6 +1079,9 @@ async function main() {
 
   // 7. A frozen answer: some API servers serve a match body from the past.
   await frozenMatch();
+
+  // 7b. Last week's tier and this week's, and a team the API does not hold yet.
+  await mixedWeeks();
 
   // 8. A failed load, tried again.
   await failedLoad();

@@ -329,20 +329,59 @@ async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS) {
   return Array.isArray(raw) ? out : out[0];
 }
 
+// True when `offered` should take the place of `kept` as a team's match:
+// never an earlier week over a later one; the same week, the live body over
+// an ended one. An unreadable start_time falls to the same-week rule.
+function matchReplaces(offered, kept) {
+  const a = Date.parse(offered.start_time);
+  const b = Date.parse(kept.start_time);
+  if (Number.isFinite(a) && Number.isFinite(b) && a !== b) return a > b;
+  return !(matchIsLive(kept) && !matchIsLive(offered));
+}
+
+const matchHasTeam = (m, teamId) => !!m && typeof m.id === 'string'
+  && !!m.all_worlds && typeof m.all_worlds === 'object' && colorForTeam(m, teamId) !== null;
+
+// The newest-week body already in hand that holds the team, or null.
+function keptMatchWithTeam(teamId) {
+  let best = null;
+  const bodies = [...matchDataCache.values(), ...[...newestMatches.values()].map((k) => k.match)];
+  for (const m of bodies) {
+    if (matchHasTeam(m, teamId) && (!best || matchReplaces(m, best))) best = m;
+  }
+  return best;
+}
+
 // Fetches the current match for a team ID, cached by team and match ID
-// so guilds sharing a team never trigger duplicate requests.
+// so guilds sharing a team never trigger duplicate requests. Only a match
+// that holds the team is returned or remembered: ?world= has answered with
+// another team's match during a relink. Order: the cached pair, bodies
+// already in hand, then ?world= (read again, in parallel, when the first
+// answer lacks the team); otherwise it throws and keeps nothing.
 async function getMatchForTeam(teamId) {
   if (teamToMatchId.has(teamId)) {
-    return matchDataCache.get(teamToMatchId.get(teamId));
+    const cached = matchDataCache.get(teamToMatchId.get(teamId));
+    if (matchHasTeam(cached, teamId)) return cached;
+    teamToMatchId.delete(teamId);
   }
 
-  const raw = await fetchMatches(`${API_BASE}/wvw/matches?world=${encodeURIComponent(teamId)}`);
-  const match = Array.isArray(raw) ? raw[0] : raw;
-
-  if (!match || typeof match.id !== 'string' || typeof match.all_worlds !== 'object') {
-    throw new Error('No active match found for this team');
+  let match = keptMatchWithTeam(teamId);
+  if (!match) {
+    const url = `${API_BASE}/wvw/matches?world=${encodeURIComponent(teamId)}`;
+    const firstWith = (raw) => (Array.isArray(raw) ? raw : [raw]).find((m) => matchHasTeam(m, teamId));
+    match = firstWith(await fetchMatches(url));
+    if (!match) {
+      const again = await Promise.allSettled(
+        Array.from({ length: MATCH_REREADS }, () => fetchJson(url, 0, 'no-store')));
+      for (const r of again) {
+        if (r.status !== 'fulfilled') continue;
+        const kept = firstWith((Array.isArray(r.value) ? r.value : [r.value]).map(keepNewestMatch));
+        if (kept) { match = kept; break; }
+      }
+    }
   }
 
+  if (!match) throw new Error('No match holds this team yet');
   teamToMatchId.set(teamId, match.id);
   matchDataCache.set(match.id, match);
   return match;

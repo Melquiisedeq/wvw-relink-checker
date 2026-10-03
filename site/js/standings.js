@@ -482,7 +482,11 @@ async function loadStandings(origin = 'cycle') {
       matchDataCache.set(match.id, match);
       for (const color of COLORS) {
         const teamId = matchTeamId(match, color);
-        if (teamId) teamToMatchId.set(teamId, match.id);
+        if (!teamId) continue;
+        // A mixed list holds the same team in last week's tier and this
+        // week's: the newer week keeps the team, whatever the list order.
+        const had = matchDataCache.get(teamToMatchId.get(teamId));
+        if (!had || had.id === match.id || matchReplaces(match, had)) teamToMatchId.set(teamId, match.id);
       }
     }
 

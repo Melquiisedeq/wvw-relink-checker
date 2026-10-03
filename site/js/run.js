@@ -115,31 +115,34 @@ async function run() {
       const panelsByMatchId = new Map(); // matchId -> { match, yourGuildsByColor }
 
       for (const [teamId, yourGuildNames] of teamsFound) {
-        let match;
+        let match = null;
+        let color = null;
         try {
           match = await getMatchForTeam(teamId);
-        } catch {
+          color = colorForTeam(match, teamId);
+        } catch { /* said below, with the rest of the not-found cases */ }
+        if (!match || !color) {
           const note = document.createElement('p');
           note.className = 'panel-note';
-          note.textContent = `Match data unavailable for team ${getTeamName(teamId)}.`;
+          note.textContent = `${getTeamName(teamId)}: this week's match isn't on the API yet.`;
           matchPanelsContainer.appendChild(note);
+          // The dot stays grey (dot-pending); only its title changes.
+          (dotsByTeam.get(teamId) || []).forEach((dot) => {
+            if (dot) dot.title = 'Match not on the API yet';
+          });
           await sleep(THROTTLE_MS);
           continue;
         }
 
-        const color = colorForTeam(match, teamId);
         if (!panelsByMatchId.has(match.id)) {
           panelsByMatchId.set(match.id, { match, yourGuildsByColor: { red: [], blue: [], green: [] } });
         }
-        if (color) {
-          panelsByMatchId.get(match.id).yourGuildsByColor[color].push(...yourGuildNames);
-          const dots = dotsByTeam.get(teamId) || [];
-          dots.forEach((dot) => {
-            if (!dot) return;
-            dot.className = `dot dot-${color}`;
-            dot.title = `${color[0].toUpperCase()}${color.slice(1)} side`;
-          });
-        }
+        panelsByMatchId.get(match.id).yourGuildsByColor[color].push(...yourGuildNames);
+        (dotsByTeam.get(teamId) || []).forEach((dot) => {
+          if (!dot) return;
+          dot.className = `dot dot-${color}`;
+          dot.title = `${color[0].toUpperCase()}${color.slice(1)} side`;
+        });
       }
 
       for (const { match, yourGuildsByColor } of panelsByMatchId.values()) {
