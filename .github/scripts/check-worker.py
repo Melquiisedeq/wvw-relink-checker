@@ -31,7 +31,12 @@ PAUSE_SECONDS = 5
 TIMEOUT_SECONDS = 30
 # The Worker's own STALE_KILLS_S and STALE_RELINK_S: kills ticks every 5
 # minutes, relink every 15. Past these the reads already answer 503.
-STALE = {'kills': 20 * 60, 'relink': 45 * 60}
+# Kills is the exception for the report: kills.gs pushes only when a match's
+# score rose, and the GW2 API has served frozen data for up to ~60 min (seen
+# 02-03/10/2026), so a silent kills source is reported only past 90 minutes.
+# Between 20 and 90 the Worker's 503 is the honest answer and is not a failure.
+STALE = {'kills': 90 * 60, 'relink': 45 * 60}
+KILLS_WORKER_STALE = 20 * 60
 MATCH_RE = re.compile(r'^[12]-[1-9]$')
 
 
@@ -70,12 +75,18 @@ def is_int(n):
     return isinstance(n, int) and not isinstance(n, bool) and n >= 0
 
 
+kills_age = [None]
+
+
 def check_feeds(problems, notes):
     data, why = get_json(API + 'saude')
     if why:
         problems.append('/api/saude: %s. The Worker or its database is down.' % why)
         return
     now = int(time.time())
+    kills_at = data.get('kills')
+    if is_int(kills_at) and kills_at:
+        kills_age[0] = now - kills_at
     for source, limit in sorted(STALE.items()):
         at = data.get(source)
         if not is_int(at) or at == 0:
@@ -95,7 +106,12 @@ def check_feeds(problems, notes):
 def check_reads(problems, notes):
     data, why = get_json(API + 'kills')
     rows = data.get('rows') if isinstance(data, dict) else None
-    if why:
+    age = kills_age[0]
+    if why and 'HTTP 503' in why and age is not None \
+            and KILLS_WORKER_STALE < age <= STALE['kills']:
+        notes.append('%-34s 503 stale, source quiet %d min (frozen API?)'
+                     % ('/api/kills', age // 60))
+    elif why:
         problems.append('/api/kills: %s. The page is reading the kills sheet.' % why)
     elif not isinstance(rows, list) or not rows:
         problems.append('/api/kills answered without rows.')
