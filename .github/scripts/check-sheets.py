@@ -53,9 +53,11 @@ ATTEMPTS = 3
 PAUSE_SECONDS = 5
 TIMEOUT_SECONDS = 30
 
-# Six missed runs of a five-minute trigger. Loose enough that one skipped run
-# is not news, tight enough that a stopped trigger is.
-KILLS_STALE_MINUTES = 30
+# kills.gs writes a match's row only when its score rose, and the GW2 API has
+# served frozen data for up to ~60 min (seen 02-03/10/2026), so the whole sheet
+# can honestly sit still that long. 90 keeps a frozen API from being reported
+# as a stopped trigger; a stopped trigger is still caught.
+KILLS_STALE_MINUTES = 90
 
 # The columns js/sheet.js looks for, in the order it looks for them, and the
 # name of the constant it falls back to. Alliances is asked for 'World ID'
@@ -208,8 +210,8 @@ def check_kills(problems, notes, sheet_id):
 
     if age_minutes > KILLS_STALE_MINUTES:
         problems.append('The newest row in the kills sheet is %.0f minutes old. '
-                        'The Apps Script trigger writes every five minutes, so '
-                        'it has stopped - and the crossed swords stop with it, '
+                        'The Apps Script trigger runs every five minutes and '
+                        'writes whenever a score rose, so it has stopped - and the crossed swords stop with it, '
                         'silently.' % age_minutes)
 
 
