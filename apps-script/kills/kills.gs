@@ -9,6 +9,14 @@
  * inflate exactly the empty borderland.
  * The site reads columns 0 to 5; the 7th is for this script only.
  *
+ * A match's row is written only when its score has risen since its last
+ * written row. The GW2 API serves old answers for stretches (a whole match
+ * frozen up to ~60 min, seen 02-03/10/2026), and a row stamped with the tick's
+ * time over frozen numbers reads as "no kills". The clock is the sum of the
+ * match's scores - it rises every few seconds in a live match and by about one
+ * tick's points every 5 minutes; kills cannot serve as a clock. When no match
+ * moved, nothing is written and nothing is sent: that is not a failure.
+ *
  * After the sheet, the same rows go to wvwrelink.com/api, signed - see push_.
  * Run killsSecret() once by hand before that starts; until then the sheet is
  * all there is, as before.
@@ -21,11 +29,13 @@ const RESET_RATIO = 0.5;                  // below this it is the weekly reset
 const ALARM_AFTER = 6;                    // 6 ticks ~ 30 min to the 1st alarm
 const ALARM_EVERY = 72;                   // then a reminder every ~6 h
 const API         = 'https://api.guildwars2.com/v2/wvw/matches';
-// Two small routes instead of the whole match: stats carries the kills per
-// map, overview the start_time. ~15 KB instead of ~700 KB per tick, same
-// numbers (measured 29/09/2026). Each can come from a different API node;
+// Three small routes instead of the whole match: stats carries the kills per
+// map, overview the start_time, scores the clock. ~15 KB for stats+overview
+// (measured 29/09/2026) plus ~175 KB for scores (curl, 03/10/2026), ~190 KB
+// per tick instead of ~700 KB, same numbers. Each can come from a different API node;
 // the rules in rowFor_ correct themselves within a tick (see there).
-const ROUTES      = [API + '/stats?ids=all', API + '/overview?ids=all'];
+const ROUTES      = [API + '/stats?ids=all', API + '/overview?ids=all',
+                     API + '/scores?ids=all'];
 // Without this a hung request waits 360 s, the whole execution, and spends
 // the daily trigger quota this script shares with the relink one.
 const TIMEOUT_S   = 20;
@@ -56,17 +66,22 @@ function run_() {
   const now = Date.now();
 
   let matches;
+  const sums = {};
   try {
     const got = fetchAllJson_(ROUTES);
     const stats = got[0];
     const overview = got[1];
+    const scores = got[2];
     if (!Array.isArray(stats) || !stats.length) throw new Error('stats empty');
     if (!Array.isArray(overview)) throw new Error('overview empty');
+    if (!Array.isArray(scores)) throw new Error('scores empty');
     const start = {};
     for (const o of overview) if (o && o.id) start[o.id] = o.start_time;
+    for (const o of scores) if (o && o.id) sums[o.id] = scoreSum_(o.scores);
     // A match without a start_time is left out of this tick rather than
     // written without the date that guards against a lagging node.
-    matches = stats.filter(function (m) { return m && start[m.id]; })
+    // Nor one without a score sum: without it there is no telling live from frozen.
+    matches = stats.filter(function (m) { return m && start[m.id] && sums[m.id] !== undefined; })
       .map(function (m) { return { id: m.id, maps: m.maps, start_time: start[m.id] }; });
     if (!matches.length) throw new Error('stats and overview share no match');
   } catch (e) {
@@ -89,12 +104,24 @@ function run_() {
   const prev = {};
   for (const r of old) prev[String(r[1])] = r;
 
+  const saved = readSaved_(props);
   const rows = [];
+  const moved = {};
   for (const m of matches) {
+    const st = Date.parse(m.start_time) || 0;
+    if (!moved_(saved[m.id], sums[m.id], st)) continue;
     const row = rowFor_(m, prev[String(m && m.id)], now);
-    if (row) rows.push(row);
+    if (row) {
+      rows.push(row);
+      moved[m.id] = [sums[m.id], st];
+    }
   }
-  if (!rows.length) return;
+  if (!rows.length) {
+    // Nothing moved (or everything is frozen): nothing to write, but rows an
+    // earlier push did not land are still owed to the Worker.
+    if (props.getProperty('pending')) push_(props, [], now);
+    return;
+  }
 
   // deleteRows REMOVES rows, so the sheet's total shrinks on every run, and
   // getRange does not grow it by itself. Without this the total reaches the
@@ -103,6 +130,9 @@ function run_() {
   const need = start + rows.length - 1 - sh.getMaxRows();
   if (need > 0) sh.insertRowsAfter(sh.getMaxRows(), need + 100);
   sh.getRange(start, 1, rows.length, width).setValues(rows);
+  // Only once the rows are in the sheet, so a failed write is tried again.
+  for (const id in moved) saved[id] = moved[id];
+  props.setProperty('scores', JSON.stringify(saved));
 
   // Always clean up after writing, and never reach what was just written,
   // even if everything that was there is old.
@@ -185,6 +215,38 @@ function killsSecret() {
 
 function hex_(bytes) {
   return bytes.map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('');
+}
+
+function scoreSum_(sc) {
+  if (!sc || typeof sc !== 'object') return undefined;
+  let n = 0;
+  for (const c of COLORS) {
+    if (typeof sc[c] !== 'number' || !isFinite(sc[c])) return undefined;
+    n += sc[c];
+  }
+  return n;
+}
+
+function readSaved_(props) {
+  try {
+    const v = JSON.parse(props.getProperty('scores') || '{}');
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+/**
+ * Is this match's data newer than its last written row? saved is
+ * [score sum, start_time ms] of that row. A new start_time (new week, relink)
+ * always counts; otherwise only a higher sum does. The saved sum only ever
+ * rises within a week, so equal or lower is the API repeating itself or a
+ * lagging node - never written under the tick's time.
+ */
+function moved_(saved, sum, st) {
+  if (!Array.isArray(saved)) return true;
+  if (st > num_(saved[1])) return true;
+  return sum > num_(saved[0]);
 }
 
 function rowFor_(m, prevRow, now) {
