@@ -879,11 +879,13 @@ let killSheetInFlight = null;
 // A match whose only age is "first seen here" is backdated to the history's
 // newest line for it, so opening during a freeze is amber at once. Only when
 // the history itself is alive: a general freeze and a stopped trigger look
-// the same from here, and without certainty nothing is claimed.
+// the same from here, and without certainty nothing is claimed. A body
+// with fewer kills than the history's newest line is backdated either way.
 const HISTORY_LIVE_MS = 10 * 60 * 1000;
 
 function ageFromHistory(byMatch) {
   if (!(byMatch instanceof Map)) return;
+  ageBehindHistory(byMatch, fightTotals);
   const now = Date.now();
   let alive = false;
   for (const list of byMatch.values()) {
@@ -970,38 +972,44 @@ async function readKillSheet() {
 // Both halves as one series. The sheet covers the cold visit at
 // five-minute resolution, localStorage covers an open session at thirty
 // seconds; sorted together, picking a baseline never has to care which
-// is which.
-function fightSamples(matchId) {
-  const local = readFightLog()[matchId] || [];
-  const shared = (killSheet && killSheet.get(matchId)) || [];
+// is which. Only the match's own week: kills restart at the reset, and a
+// line from last week as a baseline would read as no fight at all.
+function fightSamples(match) {
+  const id = match && match.id;
+  const local = readFightLog()[id] || [];
+  const shared = (killSheet && killSheet.get(id)) || [];
   // Anything older than this is thrown away rather than used as a
   // baseline. If the sheet's trigger ever dies, its newest row keeps
   // ageing, and a rate measured over three days would be a number that
   // looks real and means nothing. Better to show no swords at all.
-  const floor = Date.now() - FIGHT_STALE_MS;
+  const week = Date.parse(match && match.start_time);
+  const floor = Math.max(Date.now() - FIGHT_STALE_MS, Number.isFinite(week) ? week : 0);
   return [...shared, ...local]
     .filter((s) => s && s.at >= floor)
     .sort((a, b) => a.at - b.at);
 }
 
-// Kills and deaths per map since the best baseline we have, normalised to
-// a ten-minute rate so the floor means the same thing whether the
-// baseline is six minutes old or forty.
+// Kills per map since a baseline at least `wantMs` old, normalised to a
+// ten-minute rate so the floor means the same thing whether the baseline
+// is ten minutes old or forty. No such baseline, null: a shorter span can
+// hold no step of the API's kills at all (they move in steps of 15 s to
+// almost 8 min, 03/10/2026) and would read "0" beside a running fight.
 function fightRates(match, wantMs) {
-  const list = fightSamples(match && match.id);
+  const list = fightSamples(match);
   const at = Date.now();
-  // The newest sample that is already old enough, falling back to the
-  // oldest we have when nothing is.
   let base = null;
   for (const s of list) if (at - s.at >= wantMs) base = s;
-  if (!base) base = list[0];
-  const span = base ? at - base.at : 0;
-  if (!base || span < 3 * 60 * 1000) return null;
+  if (!base) return null;
+  const span = at - base.at;
 
+  // Now is the higher of the body and the newest sample, per map: inside
+  // a week kills only rise, so the lower one is the older reading.
   const now = fightTotals(match);
+  const newest = list[list.length - 1];
   const per = new Map();
   for (const type in now) {
-    const d = now[type] - Number(base.n[type] || 0);
+    const top = Math.max(now[type], Number(newest.n[type]) || 0);
+    const d = top - (Number(base.n[type]) || 0);
     per.set(type, (d > 0 ? d : 0) * (600000 / span));
   }
   return { per, span };
@@ -2333,10 +2341,11 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   const tabByType = new Map();
 
   const markHotTab = (src) => {
-    const { hot, rates } = hotMapOf(src, available);
+    const { hot, rates } = hotMapOf(newestBodyOf(src), available);
     hotRates = rates;
     hotType = hot;
     paintCorners();
+    paintMapBadges(match.id);
 
     for (const [type, b] of tabByType) {
       const had = b.querySelector('.wvw-tab-swords');
@@ -2632,10 +2641,19 @@ async function toggleTierMaps(match, regionName, tierNum, triggerEl) {
 const tierMapButtons = new WeakMap();
 let mapBadgesAsked = false;
 
+// The newest body the page holds for the match (keepNewestMatch). The badge
+// and the open map's tabs both judge this one, or they part: the button's
+// own body is up to five minutes older than the map's.
+function newestBodyOf(match) {
+  const kept = match && newestMatches.get(match.id);
+  return kept ? kept.match : match;
+}
+
 function paintMapBadge(btn) {
   const info = tierMapButtons.get(btn);
   if (!info) return;
-  const { match, regionName, tierNum } = info;
+  const { regionName, tierNum } = info;
+  const match = newestBodyOf(info.match);
   const types = MAP_PANEL_ORDER.filter((t) => (match.maps || []).some((m) => m.type === t));
   const { hot } = hotMapOf(match, types);
   const had = btn.querySelector('.tier-map-badge');
@@ -2656,14 +2674,27 @@ function paintMapBadge(btn) {
   btn.appendChild(badge);
 }
 
+// Every tier button on the page, or only those of one match (a server card
+// carries one too).
+function paintMapBadges(matchId) {
+  for (const btn of document.querySelectorAll('.tier-map-btn')) {
+    const info = tierMapButtons.get(btn);
+    if (info && (!matchId || info.match.id === matchId)) paintMapBadge(btn);
+  }
+}
+
 // Once, after the first standings: the badge needs the shared history,
 // which is otherwise read only when a map opens. Cached and with its own
-// fallback, so this is the one extra read of /api/kills.
+// fallback, so this is the one extra read of /api/kills. Then repainted
+// every 30 s from what the page already holds - the rate's window moves
+// and the data ages without a new reading - with no request of its own.
+// Started here, so one timer however many times the table is rebuilt.
 function primeMapBadges() {
   if (mapBadgesAsked) return;
   mapBadgesAsked = true;
   getKillSheet().then(() => {
-    for (const btn of document.querySelectorAll('.tier-map-btn')) paintMapBadge(btn);
+    paintMapBadges();
+    setInterval(() => paintMapBadges(), MAP_REFRESH_MS);
   });
 }
 
