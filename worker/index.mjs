@@ -23,10 +23,13 @@ const MIN_SECRET = 64;
 // The running match and the one before it (the owner, 30/09/2026). Raising it
 // keeps more from then on; what was already deleted does not come back.
 const KEEP_DAYS = 14;
-// What GET /api/kills carries. The page wants the newest reading at least
-// ten minutes old, which with a tick every five is 10-15 minutes back; the
-// rest is room for a late tick.
+// What GET /api/kills carries in full. The page wants the newest reading at
+// least ten minutes old, which with a tick every five is 10-15 minutes back;
+// the rest is room for a late tick. But kills.gs writes a match only when its
+// score rose and the GW2 API froze one for up to ~65 minutes (03/10/2026), so
+// each match also carries its newest older row, up to BASE_MS back.
 const RECENT_MS = 30 * 60e3;
+const BASE_MS = 3 * 3600e3;
 // Past these a source counts as stopped, and the reads answer 503 so the
 // page goes to the sheet rather than show a copy that stopped moving. Kills
 // ticks every 5 minutes, relink every 15.
@@ -134,14 +137,30 @@ async function accept(request, env, source, path) {
 // query over the kills table itself costs ~60, and 100,000 of those a day -
 // the Worker's own limit - would pass it and stop every query, writes
 // included, until midnight UTC.
+// It holds the last RECENT_MS plus, per match, the newest row before that
+// window (at most BASE_MS back, same start as the match's newest row, so the
+// same week), so a frozen match keeps a base. Driven by the list of matches,
+// each lookup bounds `at` as well as the match: a correlated `k.at = (...)`
+// would walk every row of each match. A test checks the plan for it. The
+// fake D1 does not count rows read, so no figure here.
 function rebuildRecent(db, now) {
-  const keys = MATCHES.map((_, i) => '?' + (i + 3)).join(', ');
+  const keys = MATCHES.map((_, i) => '?' + (i + 4)).join(', ');
+  const ids = MATCHES.map((_, i) => '(?' + (i + 4) + ')').join(', ');
+  const cut = now * 1000 - RECENT_MS;
   return db.prepare(
     'INSERT INTO recent (id, at, rows) ' +
+    'WITH ids(m) AS (VALUES ' + ids + '), ' +
+    'base AS (SELECT m, ' +
+      '(SELECT at FROM kills WHERE match = ids.m AND at <= ?2 AND at > ?3 ORDER BY at DESC LIMIT 1) AS bat, ' +
+      '(SELECT start FROM kills WHERE match = ids.m AND at > ?3 ORDER BY at DESC LIMIT 1) AS st FROM ids) ' +
     'SELECT 1, ?1, json_group_array(json_array(at, match, center, red, blue, green)) ' +
-    'FROM (SELECT * FROM kills WHERE match IN (' + keys + ') AND at > ?2 ORDER BY at) WHERE true ' +
+    'FROM (' +
+      'SELECT * FROM kills WHERE match IN (' + keys + ') AND at > ?2 ' +
+      'UNION ALL ' +
+      'SELECT k.* FROM base JOIN kills k ON k.match = base.m AND k.at = base.bat WHERE k.start = base.st ' +
+      'ORDER BY at) WHERE true ' +
     'ON CONFLICT (id) DO UPDATE SET at = excluded.at, rows = excluded.rows'
-  ).bind(now, now * 1000 - RECENT_MS, ...MATCHES).run();
+  ).bind(now, cut, cut - BASE_MS, ...MATCHES).run();
 }
 
 // Reads at most max bytes and gives up past that, so a chunked body with no
