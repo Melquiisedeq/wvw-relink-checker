@@ -17,6 +17,7 @@ function renderStandingsRegion(gridEl, matches) {
 
     const box = document.createElement('div');
     box.className = 'standing-match';
+    box.dataset.matchId = match.id;
 
     const label = document.createElement('div');
     label.className = 'standing-match-title';

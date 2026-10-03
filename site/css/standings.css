@@ -51,6 +51,13 @@
   display:flex;align-items:center;justify-content:space-between;gap:6px;
   font-size:.72rem;color:var(--text);margin-bottom:6px;font-weight:700;opacity:.9;
 }
+/* A tier with old data: the last line of its card, amber like the map
+   corner's .wvw-hud-ago.is-stale but not bold - it sits among the teams,
+   not in a header. One text node, nothing clipped. */
+.tier-age{
+  margin-top:6px;font-size:.68rem;font-weight:400;color:#ffb347;
+  text-align:left;white-space:nowrap;font-variant-numeric:tabular-nums;cursor:help;
+}
 .standing-side{
   display:flex;flex-direction:column;gap:2px;font-size:.8rem;
   /* Small enough to do nothing on a flat background, but it gives each
