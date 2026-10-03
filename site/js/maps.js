@@ -876,6 +876,23 @@ let killSheet = null;
 let killSheetAt = 0;
 let killSheetInFlight = null;
 
+// A match whose only age is "first seen here" is backdated to the history's
+// newest line for it, so opening during a freeze is amber at once. Only when
+// the history itself is alive: a general freeze and a stopped trigger look
+// the same from here, and without certainty nothing is claimed.
+const HISTORY_LIVE_MS = 10 * 60 * 1000;
+
+function ageFromHistory(byMatch) {
+  if (!(byMatch instanceof Map)) return;
+  const now = Date.now();
+  let alive = false;
+  for (const list of byMatch.values()) {
+    const last = list && list[list.length - 1];
+    if (last && now - last.at <= HISTORY_LIVE_MS) { alive = true; break; }
+  }
+  if (alive) ageFirstSightFromHistory(byMatch, HUD_STALE_MS);
+}
+
 async function getKillSheet() {
   if (killSheet && Date.now() - killSheetAt < KILLS_SHEET_TTL_MS) return killSheet;
   if (killSheetInFlight) return killSheetInFlight;
@@ -884,6 +901,7 @@ async function getKillSheet() {
     try {
       killSheet = await readOwnKills().catch(readKillSheet);
       killSheetAt = Date.now();
+      ageFromHistory(killSheet);
     } catch {
       // The local log still answers for anyone who has been here a
       // while; only the cold visit loses out, and it loses quietly.
@@ -996,14 +1014,19 @@ function fightRates(match, wantMs) {
 // swords and the tier button's badge both read it here, so they cannot
 // disagree.
 const HOT_WANT_MS = 10 * 60 * 1000;
-const HOT_FLOOR = 10;      // kills and deaths per ten minutes
+const HOT_FLOOR = 50;      // kills per ten minutes: a real fight, not API noise
 
 function hotMapOf(match, types) {
   // Nothing is marked on a match that is not running. Between the
   // reset and the API publishing the new one, everything else on the
   // popover goes neutral - see ownersOf - and a pair of swords over a
   // blank map would be the one thing still claiming to know something.
-  const rates = matchIsLive(match) ? fightRates(match, HOT_WANT_MS) : null;
+  // Nor on data that has stopped moving: a count and swords built on a
+  // frozen score would read "0 kills" beside a fight that is running.
+  // Stale or never seen, it claims nothing; the tab, the tier badge and
+  // the corner all read this, so all three go quiet together.
+  const stale = Date.now() - matchScoreRoseAt(match.id) > HUD_STALE_MS;
+  const rates = matchIsLive(match) && !stale ? fightRates(match, HOT_WANT_MS) : null;
   let hot = null;
   let bestN = 0;
   // Walked in the given order and taken on a strict win, so a tie keeps
@@ -1036,7 +1059,8 @@ const HUD_STALE_MS = 6 * 60 * 1000;
 
 const HUD_EXPLAIN = {
   fights: 'Player kills on this map in the last few minutes, from snapshots of'
-    + " the game's API. The crossed swords on a tab mark the map with the most."
+    + " the game's API. Orange swords mark the map with the most, when it passes"
+    + ' 50 in 10 minutes. A dash means there is no new data yet to count.'
     + ' The API has no player positions: this says where the fighting is, not'
     + ' how many players are there.',
   when: "Updated: when this match's score last changed in the game's API; this page"
@@ -1108,7 +1132,9 @@ function buildMapCorners(wrap) {
   const smallMins = mk('span');
   const smallLong = mk('span', 'wvw-hud-long', ' min');
   const smallShort = mk('span', 'wvw-hud-short', 'm');
-  small.append('kills \u00b7 ', smallMins, smallLong, smallShort);
+  const smallTail = mk('span');
+  smallTail.append(' \u00b7 ', smallMins, smallLong, smallShort);
+  small.append('kills', smallTail);
   const fightsBtn = mk('button');
   const txt = mk('span', 'wvw-hud-txt');
   txt.append(big, small);
@@ -1135,13 +1161,14 @@ function buildMapCorners(wrap) {
   const put = (node, text) => { if (node.textContent !== text) node.textContent = text; };
   let stale = null;
   const state = {
-    // line: {kills, mins} or null; at: ms the score last rose, 0 if unknown.
+    // line: {kills, mins}, or null when nothing was measured (a dash: never
+    // 0, which would say nobody fought); at: ms the score last rose, 0 if
+    // unknown. The kills show whenever the age does.
     paint(line, at) {
-      left.hidden = !line;
-      if (line) {
-        put(big, String(line.kills));
-        put(smallMins, String(line.mins));
-      }
+      left.hidden = !at;
+      put(big, line ? String(line.kills) : '\u2013');
+      smallTail.hidden = !line;
+      if (line) put(smallMins, String(line.mins));
       right.hidden = !at;
       if (!at) { stale = null; return; }
       const age = Math.max(0, Date.now() - at);
@@ -2236,7 +2263,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   let current = null;
   let plotWrap = null;
   // The corners' state, and what they last read: the fight rates of the
-  // reading that picked the hot tab (null when none is hot).
+  // reading that picked the hot tab (null when nothing was measured).
   let corners = null;
   let hotRates = null;
   let hotType = null; // the tab markHotTab chose, null when none is hot
@@ -2307,7 +2334,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
 
   const markHotTab = (src) => {
     const { hot, rates } = hotMapOf(src, available);
-    hotRates = hot ? rates : null;
+    hotRates = rates;
     hotType = hot;
     paintCorners();
 
@@ -2450,7 +2477,9 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   // for it to be applied to. Resolves from cache on every later open,
   // which is why this used to fire straight back over the fresh answer.
   getKillSheet().then(() => {
-    if (activeTrigger === triggerEl && hotFresh) markHotTab(liveMatch);
+    if (activeTrigger !== triggerEl) return;
+    if (hotFresh) markHotTab(liveMatch);
+    else paintCorners(); // the history may have backdated the score time
   });
   show(available[0]);
 
