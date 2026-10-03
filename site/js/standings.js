@@ -121,6 +121,7 @@ function flashValue(el, delta) {
 // Shows the pulsing live-dot next to the synced time on success; plain
 // text (no dot) for loading/error states.
 function setStandingsStatus(el, synced, text) {
+  clearRetryAlert(el);
   el.textContent = '';
   if (!synced) { el.textContent = text; return; }
   const dot = document.createElement('span');
@@ -142,11 +143,15 @@ function clearSkeleton(gridEl) {
 // the standings, and blanking a column over one request says far less
 // than leaving it up and saying it did not update. The first load is the
 // exception, because what is up then is the skeleton.
-function showRegion(gridEl, statusEl, matches, label, syncedAt) {
+function showRegion(gridEl, statusEl, matches, label, syncedAt, failed) {
   if (matches) renderStandingsRegion(gridEl, matches);
   else clearSkeleton(gridEl);
   const ok = !!matches && matches.length > 0;
-  setStandingsStatus(statusEl, ok, ok ? syncedAt : `Couldn't load ${label} standings.`);
+  if (ok) return setStandingsStatus(statusEl, true, syncedAt);
+  // null is a request that failed, and it will be asked again (below);
+  // [] is an answer with nothing in it, which asking again does not change.
+  if (matches === null && failed) failed.push({ el: statusEl, label: `${label} standings` });
+  else setStandingsStatus(statusEl, false, `Couldn't load ${label} standings.`);
 }
 
 // The table shows running totals: VP moves every 2 h, Activity and K/D are the
@@ -307,9 +312,9 @@ function swapRails(btn) {
 // Every match of both regions in one request - the one index.html
 // preloads, so the first load usually finds it already here. null when it
 // fails, and then loadStandings asks region by region instead.
-async function fetchAllMatches() {
+async function fetchAllMatches(timeoutMs) {
   try {
-    const all = await fetchMatches(`${API_BASE}/wvw/matches?ids=all`);
+    const all = await fetchMatches(`${API_BASE}/wvw/matches?ids=all`, timeoutMs);
     const ok = Array.isArray(all) ? all.filter((m) => m && typeof m.id === 'string') : [];
     return ok.length > 0 ? ok : null;
   } catch {
@@ -317,13 +322,132 @@ async function fetchAllMatches() {
   }
 }
 
+// ---- After a failed load ---------------------------------------------
+// A failed load is asked again twice, soon, each at a random moment inside
+// its window (STANDINGS_RETRY_WINDOWS_MS), then left to the 5-minute cycle.
+// The message says so, with the seconds counting, and a button asks now.
+// A load that works clears the count. Never decided by navigator.onLine or
+// navigator.connection: one is only a hint, the other is missing in Safari
+// and Firefox.
+let standingsEverLoaded = false;   // the long deadline is for the first one only
+let standingsInFlight = false;
+let standingsExtraUsed = 0;        // extra tries spent since the last cycle load
+let standingsFailed = [];          // { el, label } of what the last load left unloaded
+let standingsRetry = null;         // { timer, tick } while an extra try is waiting
+
+function cancelStandingsRetry() {
+  if (!standingsRetry) return;
+  clearTimeout(standingsRetry.timer);
+  clearInterval(standingsRetry.tick);
+  standingsRetry = null;
+}
+
+// The status line with its button. Built once per element and then only its
+// text changes, so a keyboard user's focus survives the countdown. The
+// visible words are aria-hidden and the live region gets a steady sentence:
+// a number changing every second would be read out every second.
+// The "Try again" button, here and in the guild search: the reload arrow
+// (drawn inline like the site's other icons) and the words.
+function buildRetryButton(onClick) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'retry-btn';
+  btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    + 'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    + '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>';
+  btn.appendChild(document.createTextNode('Try again'));
+  btn.addEventListener('click', onClick);
+  return btn;
+}
+
+function retryAlertOf(statusEl) {
+  return statusEl.closest('.standings-card').querySelector('.standings-alert');
+}
+function clearRetryAlert(statusEl) {
+  const box = retryAlertOf(statusEl);
+  if (box) box.textContent = '';
+}
+
+function paintRetryStatus(statusEl, spoken, visible, busy) {
+  const el = retryAlertOf(statusEl);
+  statusEl.textContent = '';
+  let btn = el.querySelector('.retry-btn');
+  if (!btn) {
+    const msg = document.createElement('span');
+    const spin = document.createElement('span');
+    spin.className = 'spinner';
+    const sr = document.createElement('span');
+    sr.className = 'sr-only';
+    const vis = document.createElement('span');
+    vis.className = 'retry-vis';
+    vis.setAttribute('aria-hidden', 'true');
+    msg.append(spin, sr, vis);
+    btn = buildRetryButton(retryStandingsNow);
+    el.append(msg, btn);
+  }
+  const sr = el.querySelector('.sr-only');
+  const vis = el.querySelector('.retry-vis');
+  if (sr.textContent !== spoken) sr.textContent = spoken;
+  if (vis.textContent !== visible) vis.textContent = visible;
+  el.querySelector('.spinner').style.display = busy ? '' : 'none';
+  btn.setAttribute('aria-disabled', busy ? 'true' : 'false');
+}
+
+function planStandingsRetry() {
+  const paint = (spoken, visible) => {
+    for (const f of standingsFailed) paintRetryStatus(f.el, spoken, visible, false);
+  };
+  if (standingsExtraUsed >= STANDINGS_RETRY_WINDOWS_MS.length) {
+    for (const f of standingsFailed) {
+      const text = `Couldn't load ${f.label}. It will try again in a few minutes.`;
+      paintRetryStatus(f.el, text, text, false);
+    }
+    return;
+  }
+  const [lo, hi] = STANDINGS_RETRY_WINDOWS_MS[standingsExtraUsed];
+  const ms = lo + Math.random() * (hi - lo);
+  let left = Math.ceil(ms / 1000);
+  const spoken = "Couldn't load the standings. Trying again shortly.";
+  const show = () => paint(spoken, `Couldn't load standings. Trying again in ${left} s…`);
+  show();
+  standingsRetry = {
+    // A popover open is being read, and a load takes its anchor down; the
+    // try waits for it, without counting.
+    timer: setTimeout(function fire() {
+      if (activeTrigger) standingsRetry.timer = setTimeout(fire, 5000);
+      else retryStandingsNow();
+    }, ms),
+    tick: setInterval(() => { if (left > 1) { left--; show(); } }, 1000),
+  };
+}
+
+// The button, and the timer when it runs out. Nothing while a load is in
+// the air. Pressed while an extra try is waiting, it takes that try's place;
+// pressed after the last one, it is a single try of its own.
+function retryStandingsNow() {
+  if (standingsInFlight) return;
+  loadStandings(standingsRetry ? 'retry' : 'manual');
+}
+
 // Loads every active match (NA + EU) and powers the standings rails.
 // Results are cached, so a later guild check reuses them.
-async function loadStandings() {
+async function loadStandings(origin = 'cycle') {
+  // One load at a time, whoever asks: the 5-minute cycle, an extra try or the
+  // button. A second request now would only race the first.
+  if (standingsInFlight) return;
+  standingsInFlight = true;
+  const failed = [];
+  cancelStandingsRetry();
+  if (origin === 'cycle') standingsExtraUsed = 0;
+  else if (origin === 'retry') standingsExtraUsed++;
+  for (const f of standingsFailed) paintRetryStatus(f.el, 'Trying again.', 'Trying again…', true);
+  // The first load waits longer than a refresh: on a slow line the whole
+  // body takes a while, and a refresh has the old table to fall back on.
+  const timeoutMs = standingsEverLoaded ? REQUEST_TIMEOUT_MS : SLOW_REQUEST_TIMEOUT_MS;
   try {
     const asked = Date.now();
     let idList, naMatches, euMatches;
-    const all = await fetchAllMatches();
+    const all = await fetchAllMatches(timeoutMs);
     if (all) {
       idList = all.map((m) => m.id);
       naMatches = all.filter((m) => m.id.startsWith('1-'));
@@ -364,8 +488,9 @@ async function loadStandings() {
 
     updateRelinkFromMatches(naMatches, euMatches);
     const syncedAt = `Synced ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    showRegion(standingsGridNA, standingsStatusNA, naMatches, 'NA', syncedAt);
-    showRegion(standingsGridEU, standingsStatusEU, euMatches, 'EU', syncedAt);
+    if (answered.length > 0) standingsEverLoaded = true;
+    showRegion(standingsGridNA, standingsStatusNA, naMatches, 'NA', syncedAt, failed);
+    showRegion(standingsGridEU, standingsStatusEU, euMatches, 'EU', syncedAt, failed);
     updateTierAges();
     primeMapBadges();
   } catch {
@@ -375,9 +500,14 @@ async function loadStandings() {
     // that did. Only a skeleton has to go, for the reason in showRegion.
     clearSkeleton(standingsGridNA);
     clearSkeleton(standingsGridEU);
-    standingsStatusNA.textContent = "Couldn't load live standings right now.";
-    standingsStatusEU.textContent = "Couldn't load live standings right now.";
+    failed.push({ el: standingsStatusNA, label: 'live standings' },
+      { el: standingsStatusEU, label: 'live standings' });
+  } finally {
+    standingsInFlight = false;
   }
+  standingsFailed = failed;
+  if (failed.length) planStandingsRetry();
+  else standingsExtraUsed = 0;
 }
 
 // Rebuilding the grid on refresh would leave a popover pointing at a

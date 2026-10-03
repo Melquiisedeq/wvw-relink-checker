@@ -85,3 +85,21 @@ a{color:var(--accent);}
   .gw2-band-brand{flex-direction:column;text-align:center;gap:7px;}
   .gw2-band-words{align-items:center;}
 }
+
+/* "Try again" beside a failed load: a secondary button in the error's own
+   tone (the primary Check stays blue), with the reload arrow. Focus ring
+   comes from the rule in base.css. */
+.retry-btn{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:2px 9px;font-size:.78rem;border-radius:6px;white-space:nowrap;
+  background:rgba(227,101,101,.12);color:#ffb4b4;
+  border:1px solid rgba(227,101,101,.55);box-shadow:none;text-shadow:none;
+}
+.retry-btn:hover{background:rgba(227,101,101,.22);filter:none;}
+.retry-btn:active{transform:none;box-shadow:none;background:rgba(227,101,101,.3);}
+.retry-btn svg{display:block;flex-shrink:0;}
+.retry-btn[aria-disabled="true"]{opacity:.55;cursor:wait;}
+.sr-only{
+  position:absolute;width:1px;height:1px;overflow:hidden;
+  clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;
+}

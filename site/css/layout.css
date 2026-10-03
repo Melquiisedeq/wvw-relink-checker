@@ -36,6 +36,11 @@ html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:1;}
   html[data-rail-first="eu"]:not(.rails-placed) .rail-left{order:1;}
   html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:-1;}
   .wrap{order:0;}
+  /* The columns rise beside the relink bar. With no bar (nothing to show, or
+     the API unreachable) there is nothing to rise beside, and the same pull
+     put their tops under the notice bar, or off the screen. updateRelinkBanner
+     writes that inline display itself. */
+  #relinkBanner[style*="display: none"] + .page .rail{margin-top:0;}
 }
 .title-row{display:flex;align-items:center;gap:12px;margin-bottom:8px;}
 #matchPanelsContainer{display:flex;flex-direction:column;gap:16px;}
