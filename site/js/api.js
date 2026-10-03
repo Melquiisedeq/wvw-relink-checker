@@ -306,27 +306,70 @@ function matchScoreRoseAt(matchId) {
 }
 
 // fetchJson for any wvw/matches URL that returns match bodies, one or a
-// list, same shape back. If any body is behind the kept one, the URL is
-// read twice more at once and the furthest along wins. In parallel, not
-// in turn: reads in a row come back from the same server (24 of 28
-// identical, 02/10/2026).
+// list, same shape back. In parallel, not in turn: reads in a row come back
+// from the same server (24 of 28 identical, 02/10/2026).
 const MATCH_REREADS = 2;
 
-async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS) {
-  const raw = await fetchJson(url, 0, 'no-store', timeoutMs);
-  const list = Array.isArray(raw) ? raw : [raw];
-  const behind = list.some((m) => m && typeof m.id === 'string'
-    && newestMatches.has(m.id) && matchIsBehind(m, newestMatches.get(m.id).match));
-  if (behind) {
-    const again = await Promise.allSettled(
-      Array.from({ length: MATCH_REREADS }, () => fetchJson(url, 0, 'no-store', timeoutMs)));
-    for (const r of again) {
-      if (r.status !== 'fulfilled') continue;
-      for (const m of Array.isArray(r.value) ? r.value : [r.value]) keepNewestMatch(m);
+const isMatchBody = (m) => !!m && typeof m.id === 'string';
+const byId = (a, b) => {
+  const [ra, ta] = a.split('-').map(Number);
+  const [rb, tb] = b.split('-').map(Number);
+  return ra - rb || ta - tb;
+};
+
+const rereadMatches = async (url, timeoutMs) => (await Promise.allSettled(
+  Array.from({ length: MATCH_REREADS }, () => fetchJson(url, 0, 'no-store', timeoutMs))))
+  .flatMap((r) => (r.status !== 'fulfilled' ? [] : Array.isArray(r.value) ? r.value : [r.value]));
+
+// Which ids of a list answer to read again: a body behind the kept one, a
+// body whose week is over. `regions` ('1' NA, '2' EU) says the URL lists
+// whole regions, and then also a tier this page holds that the answer left
+// out, and a gap in the tiers (1-2 and 1-3 without 1-1). Relink nights serve
+// partial lists and tiers from both weeks (03/10/2026). `holes`: the gaps,
+// tiers that certainly exist.
+function matchesToReread(list, regions) {
+  const got = new Set(list.filter(isMatchBody).map((m) => m.id));
+  const need = new Set();
+  const holes = [];
+  for (const m of list) {
+    if (!isMatchBody(m)) continue;
+    const kept = newestMatches.get(m.id);
+    if ((kept && matchIsBehind(m, kept.match)) || !matchIsLive(m)) need.add(m.id);
+  }
+  for (const region of regions) {
+    for (const id of matchDataCache.keys()) {
+      if (id.startsWith(`${region}-`) && !got.has(id)) need.add(id);
+    }
+    const tiers = [...got].filter((id) => id.startsWith(`${region}-`))
+      .map((id) => Number(id.split('-')[1])).filter(Number.isInteger);
+    for (let t = 1; t < Math.max(0, ...tiers); t++) {
+      if (!got.has(`${region}-${t}`)) { need.add(`${region}-${t}`); holes.push(`${region}-${t}`); }
     }
   }
-  const out = list.map(keepNewestMatch);
-  return Array.isArray(raw) ? out : out[0];
+  return { need: [...need].sort(byId), holes };
+}
+
+// A single body behind the kept one: the URL is read twice more at once and
+// the furthest along wins. A list: only the ids matchesToReread names are
+// read again, twice at once, and the answer is the union by id, the newest
+// body of each, in id order; a gap still missing gets the last body seen,
+// if any. Nothing to read again, nothing more is asked.
+async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
+  const raw = await fetchJson(url, 0, 'no-store', timeoutMs);
+  if (!Array.isArray(raw)) {
+    if (isMatchBody(raw) && newestMatches.has(raw.id) && matchIsBehind(raw, newestMatches.get(raw.id).match)) {
+      for (const m of await rereadMatches(url, timeoutMs)) keepNewestMatch(m);
+    }
+    return keepNewestMatch(raw);
+  }
+  const { need, holes } = matchesToReread(raw, regions);
+  if (need.length === 0) return raw.map(keepNewestMatch);
+  const again = await rereadMatches(
+    `${API_BASE}/wvw/matches?ids=${need.map(encodeURIComponent).join(',')}`, timeoutMs);
+  const out = new Map();
+  for (const m of [...raw, ...again]) if (isMatchBody(m)) out.set(m.id, keepNewestMatch(m));
+  for (const id of holes) if (!out.has(id) && newestMatches.has(id)) out.set(id, newestMatches.get(id).match);
+  return [...out.values()].sort((a, b) => byId(a.id, b.id));
 }
 
 // True when `offered` should take the place of `kept` as a team's match:

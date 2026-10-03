@@ -9,9 +9,21 @@ function renderStandingsRegion(gridEl, matches) {
   gridEl.textContent = '';
   if (matches.length === 0) return;
 
-  const sorted = [...matches].sort((a, b) => Number(a.id.split('-')[1]) - Number(b.id.split('-')[1]));
+  const tierOf = (m) => Number((m.waitingId || m.id).split('-')[1]);
+  const tiers = matches.map(tierOf).filter(Number.isInteger);
+  // A gap in the tiers (1-2 and 1-3 without 1-1) is a tier the API left out
+  // of every read and this page never saw: its card stays, waiting.
+  const waiting = [];
+  for (let t = 1; t < Math.max(0, ...tiers); t++) {
+    if (!tiers.includes(t)) waiting.push({ waitingId: `${matches[0].id.split('-')[0]}-${t}` });
+  }
+  const sorted = [...matches, ...waiting].sort((a, b) => tierOf(a) - tierOf(b));
 
   for (const match of sorted) {
+    if (match.waitingId) {
+      gridEl.appendChild(buildWaitingTier(match.waitingId));
+      continue;
+    }
     const [regionCode, tierNum] = match.id.split('-');
     const regionName = REGION_NAMES[regionCode] || `Region ${regionCode}`;
 
@@ -50,6 +62,25 @@ function renderStandingsRegion(gridEl, matches) {
 
     gridEl.appendChild(box);
   }
+}
+
+// The card of a tier with no body at all: its number and a line, no map
+// button (there is no match to draw).
+function buildWaitingTier(matchId) {
+  const box = document.createElement('div');
+  box.className = 'standing-match';
+  box.dataset.matchId = matchId;
+  const label = document.createElement('div');
+  label.className = 'standing-match-title';
+  const tierText = document.createElement('span');
+  tierText.textContent = `Tier ${matchId.split('-')[1]}`;
+  label.appendChild(tierText);
+  box.appendChild(label);
+  const note = document.createElement('p');
+  note.className = 'standings-waiting';
+  note.textContent = 'Waiting on the API';
+  box.appendChild(note);
+  return box;
 }
 
 // Uses DOM APIs and textContent only, no innerHTML with interpolated

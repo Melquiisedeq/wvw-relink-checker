@@ -39,6 +39,19 @@ function forgetSideStats(matchId) {
   for (const color of COLORS) prevSideStats.delete(`${matchId}:${color}`);
 }
 
+// The tier a team of last week's line-up plays in this week, when this page
+// holds that match live: on a relink night the API serves tiers from both
+// weeks, and the team would otherwise stand in two tiers at once.
+function newerTierOfTeam(match, teamId) {
+  const region = match.id.split('-')[0];
+  const start = Date.parse(match.start_time);
+  for (const m of matchDataCache.values()) {
+    if (m.id === match.id || !m.id.startsWith(`${region}-`) || !matchIsLive(m)) continue;
+    if (Date.parse(m.start_time) > start && colorForTeam(m, teamId)) return m.id.split('-')[1];
+  }
+  return null;
+}
+
 // A tier between weeks still has to be usable. Someone opening the site
 // to look up who plays on a server should not be met with a shimmer, and
 // nothing about that question went stale: team names survive a relink -
@@ -62,6 +75,14 @@ function buildStandingsStale(match, yoursByColor) {
     label.className = 'standing-side-name';
     label.textContent = name;
     row.appendChild(label);
+    const tier = newerTierOfTeam(match, teamId);
+    if (tier) {
+      const moved = document.createElement('span');
+      moved.className = 'standing-moved';
+      moved.textContent = `\u2192 Tier ${tier}`;
+      moved.title = `This week: Tier ${tier}`;
+      row.appendChild(moved);
+    }
     // Same rule as everywhere else: the community sheet is NA only.
     if (isNA) row.appendChild(buildServerGuildsButton(name));
     const yours = (yoursByColor && yoursByColor[color]) || [];
@@ -76,7 +97,7 @@ function buildStandingsStale(match, yoursByColor) {
   }
   const note = document.createElement('p');
   note.className = 'standings-waiting';
-  note.textContent = "Last week's line-up - the new matchup isn't published yet";
+  note.textContent = "Last week's line-up \u00b7 waiting on the API";
   wrap.appendChild(note);
   return wrap;
 }
@@ -202,15 +223,16 @@ async function loadStandingsByRegion() {
   const naIds = idList.filter((id) => id.startsWith('1-'));
   const euIds = idList.filter((id) => id.startsWith('2-'));
 
-  const fetchRegion = async (ids) => {
+  const fetchRegion = async (ids, region) => {
     if (ids.length === 0) return [];
-    const data = await fetchMatches(`${API_BASE}/wvw/matches?ids=${ids.map(encodeURIComponent).join(',')}`);
+    const data = await fetchMatches(`${API_BASE}/wvw/matches?ids=${ids.map(encodeURIComponent).join(',')}`,
+      REQUEST_TIMEOUT_MS, [region]);
     return Array.isArray(data) ? data : [];
   };
 
   const [naMatches, euMatches] = await Promise.all([
-    fetchRegion(naIds).catch(() => null),
-    fetchRegion(euIds).catch(() => null),
+    fetchRegion(naIds, '1').catch(() => null),
+    fetchRegion(euIds, '2').catch(() => null),
   ]);
   return [idList, naMatches, euMatches];
 }
@@ -314,7 +336,7 @@ function swapRails(btn) {
 // fails, and then loadStandings asks region by region instead.
 async function fetchAllMatches(timeoutMs) {
   try {
-    const all = await fetchMatches(`${API_BASE}/wvw/matches?ids=all`, timeoutMs);
+    const all = await fetchMatches(`${API_BASE}/wvw/matches?ids=all`, timeoutMs, ['1', '2']);
     const ok = Array.isArray(all) ? all.filter((m) => m && typeof m.id === 'string') : [];
     return ok.length > 0 ? ok : null;
   } catch {
@@ -468,8 +490,10 @@ async function loadStandings(origin = 'cycle') {
     // Forget matches that no longer exist. IDs are stable week to week, so
     // this only bites when a region loses a tier: a leftover "1-4" would
     // keep getMaxTierForRegion answering 4, and the genuine bottom side in
-    // tier 3 would get a relegation arrow instead of a flat bar.
-    const liveIds = new Set(idList);
+    // tier 3 would get a relegation arrow instead of a flat bar. A tier
+    // missing from the list was read again by id (fetchMatches); only one
+    // missing from that read too is forgotten.
+    const liveIds = new Set([...idList, ...answered.filter((m) => m && typeof m.id === 'string').map((m) => m.id)]);
     for (const id of [...matchDataCache.keys()]) {
       if (!liveIds.has(id)) matchDataCache.delete(id);
     }
