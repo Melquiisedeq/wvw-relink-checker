@@ -18,13 +18,19 @@ function renderStandingsRegion(gridEl, matches) {
     if (!tiers.includes(t)) waiting.push({ waitingId: `${matches[0].id.split('-')[0]}-${t}` });
   }
   const sorted = [...matches, ...waiting].sort((a, b) => tierOf(a) - tierOf(b));
+  const regionCode = matches[0].id.split('-')[0];
+  const line = deduceLineup(matches, regionTeamIds(regionCode), Math.max(0, ...tiers));
 
   for (const match of sorted) {
     if (match.waitingId) {
       gridEl.appendChild(buildWaitingTier(match.waitingId));
       continue;
     }
-    const [regionCode, tierNum] = match.id.split('-');
+    if (line && match.id === line.id) {
+      gridEl.appendChild(buildLineupTier(line));
+      continue;
+    }
+    const tierNum = match.id.split('-')[1];
     const regionName = REGION_NAMES[regionCode] || `Region ${regionCode}`;
 
     const box = document.createElement('div');
@@ -80,6 +86,23 @@ function buildWaitingTier(matchId) {
   note.className = 'standings-waiting';
   note.textContent = 'Waiting on the API';
   box.appendChild(note);
+  return box;
+}
+
+// The late tier's deduced line-up: names only, no map button (the ground
+// shown would be last week's) and nothing that reads as a standing.
+function buildLineupTier(line) {
+  forgetSideStats(line.id);
+  const box = document.createElement('div');
+  box.className = 'standing-match';
+  box.dataset.matchId = line.id;
+  const label = document.createElement('div');
+  label.className = 'standing-match-title';
+  const tierText = document.createElement('span');
+  tierText.textContent = `Tier ${line.id.split('-')[1]}`;
+  label.appendChild(tierText);
+  box.appendChild(label);
+  box.appendChild(buildStandingsStale(line));
   return box;
 }
 
