@@ -308,6 +308,8 @@ async function main() {
   const isIdsRead = url => url.startsWith(IDS_URL) && url !== ALL_URL;
   const idsAsked = [];              // every such read, in order, for the steps to count
   let gameReads = 0;                // every read of api.guildwars2.com
+  // Set by the step 'early actions': the script whose request is kept waiting.
+  let holdUrl = null, held = null;
   // Set by the step 'failed load': API reads answered 503 on purpose.
   let failing = null;
   let failingLog = null;            // what the step may log errors for, kept past the end of the 503s (the log is late)
@@ -344,6 +346,7 @@ async function main() {
       if (request.method === 'OPTIONS') return await send('Fetch.fulfillRequest', { requestId, responseCode: 204,
         responseHeaders: [{ name: 'Access-Control-Allow-Origin', value: '*' }, { name: 'Access-Control-Allow-Headers', value: '*' }] });
       if (BLOCKED.test(url)) return await send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' });
+      if (holdUrl && url === holdUrl) { held = requestId; return; }   // released by the step 'early actions'
       if (url.startsWith('https://render.guildwars2.com/')) return await reply(requestId, 200, 'image/png', PNG);
       if (url.startsWith('https://api.guildwars2.com/')) gameReads++;
       if (isIdsRead(url)) idsAsked.push(url);
@@ -510,10 +513,11 @@ async function main() {
   }
 
   // Navigate and wait for the page to go quiet with every tier of both regions up.
-  async function load(name) {
+  async function load(name, during) {
     loaded = false;
     ids.clear();
     await send('Page.navigate', { url: base + '/' });
+    if (during) await during();
     let quiet = 0, tiersUp = false;
     while (true) {
       await sleep(100);
@@ -1177,6 +1181,34 @@ async function main() {
     await ev("__skewClock(-531000); localStorage.removeItem('wvw-fight-v1')");
   }
 
+  // 8a. Scripts run in order and the page is usable before the last one: with
+  // one held, Escape, a resize, the Check button, Ctrl+Enter and a click
+  // must raise nothing, and the page must work once it is let go.
+  async function earlyActions() {
+    for (const script of ['maps.js', 'trebuchet.js', 'boot.js']) {
+      const step = `early actions (${script} held)`;
+      holdUrl = `${base}/js/${script}`;
+      held = null;
+      const ok = await load(step, async () => {
+        for (let i = 0; i < 300 && !held; i++) await sleep(50);
+        if (!held) return void problem(`step '${step}': the request was never held`);
+        await escape();
+        await ev("window.dispatchEvent(new Event('resize')); if (window.visualViewport) window.visualViewport.dispatchEvent(new Event('resize')); true");
+        await ev("document.getElementById('guildInput').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true })); true");
+        await ev("document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', clientX: 50, clientY: 50 })); true");
+        await click(step, "document.getElementById('runBtn')");
+        await sleep(200);   // a throw is reported late
+        const id = held;
+        holdUrl = null; held = null;
+        await send('Fetch.continueRequest', { requestId: id });
+      });
+      holdUrl = null;
+      if (ok && !await ev("!document.getElementById('runBtn').disabled && !document.querySelector('#statusMsg .spinner')")) {
+        problem(`step '${step}': the Check button was left disabled`);
+      }
+    }
+  }
+
   // 8. A failed load and a slow line: the live standings and the guild tables
   // answer 503, the page says it will try again and counts down, and once the
   // API answers again the table paints with no reload. Then the guild search
@@ -1439,6 +1471,9 @@ async function main() {
 
   // 7c. The week's line-up between loads.
   await weekMemory();
+
+  // 8a. A visitor acting before the last scripts have loaded.
+  await earlyActions();
 
   // 8. A failed load, tried again.
   await failedLoad();

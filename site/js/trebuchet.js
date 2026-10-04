@@ -271,7 +271,8 @@ function bloomAt(x, y) {
   }
 }
 
-document.addEventListener('pointerdown', (e) => {
+// Bound in boot.js, once emberField exists.
+function onPointerDown(e) {
   if (e.pointerType === 'touch') return;
   // Check gets no round thrown at it. It is about to launch one of its
   // own at the crest, and two rounds crossing over the same button in
@@ -309,7 +310,7 @@ document.addEventListener('pointerdown', (e) => {
     // event: the round arrives, it goes off, the ground is marked.
     setTimeout(() => bloomAt(mx, my), SHOT_MS);
   }, SWING_MS);
-}, { passive: true });
+}
 
 // Sparks off the Check button the moment a run starts. Immediate, small,
 // and over before the first request comes back - this is the receipt for

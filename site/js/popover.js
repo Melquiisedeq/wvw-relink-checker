@@ -8,6 +8,18 @@
 let activePopover = null;
 let activeTrigger = null;
 let activeBackdrop = null;
+// Used by maps.js, declared here because closePopover runs on Escape and on
+// a resize before maps.js has loaded.
+let mapPollTimer = null;
+// Set while a tier's maps are open: pulls at once if the last pull is a
+// poll interval old. A tab hidden for half an hour otherwise came back
+// showing the map it left, for up to thirty more seconds, with the
+// capture clocks still counting as if it were current.
+let mapCatchUp = null;
+// Separate from the poll on purpose: this one only rewrites the RI
+// clocks, so it can run every second without touching the refresh
+// cadence or asking the API for anything.
+let mapTickTimer = null;
 
 function closePopover() {
   const trigger = activeTrigger;

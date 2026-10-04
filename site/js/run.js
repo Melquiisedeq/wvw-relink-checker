@@ -176,12 +176,8 @@ async function run() {
   }
 }
 
-runBtn.addEventListener('click', run);
-// The button disables itself during a run, but the shortcut bypassed it and
-// could start a second run that wiped the first one's rows mid-flight.
-guildInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && e.ctrlKey && !runBtn.disabled) run();
-});
+// The click and Ctrl+Enter are bound in boot.js, once everything run()
+// calls has loaded.
 
 // Keeps the pasted list across reloads - the same roster gets re-checked
 // every relink. Stays in this browser: nothing is ever sent anywhere.
