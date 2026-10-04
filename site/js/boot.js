@@ -375,6 +375,7 @@ document.addEventListener('pointerdown', onPointerDown, { passive: true });
 // Visits count only on the real domain. The Worker's branch previews serve
 // this same page at *.workers.dev, and GoatCounter records the path, not
 // the host, so a preview visit would be indistinguishable from a real one.
-// count.js loads after this file and keeps a goatcounter object it finds;
-// no_onload is GoatCounter's own switch for "do not count".
+// count.js keeps a goatcounter object it finds when it runs; no_onload is
+// GoatCounter's own switch for "do not count". count.js is async, so this
+// holds when boot.js runs first - the usual case, not a guaranteed one.
 if (location.hostname !== 'wvwrelink.com') window.goatcounter = { no_onload: true };

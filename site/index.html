@@ -184,7 +184,7 @@
      h1 has to precede the rails' h2s. The rails are put back around it
      by `order` in css/layout.css, which is also what flexbox paints by -
      so nothing about the layout depends on this order. -->
-<div class="wrap">
+<main class="wrap">
 
   <div class="title-row">
     <svg width="27" height="32" viewBox="0 0 160 190" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
@@ -255,7 +255,7 @@ One More Guild Name"></textarea>
   </div>
   <div id="matchPanelsContainer"></div>
 
-</div>
+</main>
 
 <aside class="rail rail-left">
   <div class="card standings-card">
@@ -426,8 +426,9 @@ One More Guild Name"></textarea>
 <!-- Page views only: no cookies, no fingerprint, nothing that identifies
      a visitor between one request and the next. count.js is served from
      this repo rather than gc.zgo.at, so script-src needs no host for it. Opt out
-     with localStorage.skipgc = 't'. Counts on wvwrelink.com only: see the
-     end of js/boot.js. -->
+     with localStorage.skipgc = 't'. Told not to count off wvwrelink.com when
+     js/boot.js runs first, which this async script does not guarantee: see
+     the end of js/boot.js. -->
 <script data-goatcounter="https://melquiisedeq.goatcounter.com/count"
         async src="js/count.js"></script>
 
