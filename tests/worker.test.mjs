@@ -160,7 +160,7 @@ test('/api/kills gives the last 30 minutes, one row of D1, as the page reads it'
   const w = setup();
   assert.equal((await w.get('/api/kills')).status, 503, 'nothing pushed yet');
   // Fourteen days in the table, a tick every five minutes.
-  const ins = w.sql.prepare('INSERT INTO kills VALUES (?,?,?,?,?,?,?)');
+  const ins = w.sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,?,?,?,?,?)');
   // One start for all of them, as in one week of a match.
   const start = w.now - 86400e3;
   for (let i = 1; i < 14 * 288; i++) {
@@ -182,7 +182,7 @@ test('/api/kills gives the last 30 minutes, one row of D1, as the page reads it'
 
 test('/api/kills keeps a base for a frozen match, and only a recent one of its week', async () => {
   const w = setup();
-  const ins = w.sql.prepare('INSERT INTO kills VALUES (?,?,?,?,?,?,?)');
+  const ins = w.sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,?,?,?,?,?)');
   const min = 60e3;
   const week = w.now - 86400e3;
   const old = week - 7 * 86400e3;
@@ -229,11 +229,11 @@ test('the rebuild reads kills by its key, never the whole table', async () => {
 
 test('the base is right with 14 days of one match in the table', async () => {
   const w = setup();
-  const ins = w.sql.prepare('INSERT INTO kills VALUES (?,?,?,?,?,?,?)');
+  const ins = w.sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,?,?,?,?,?)');
   const start = w.now - 86400e3;
   for (let i = 1; i <= 14 * 288; i++) ins.run('1-1', w.now - i * 300e3, i, 0, 0, 0, start);
   ins.run('1-2', w.now - 2 * 3600e3, 99, 0, 0, 0, start);
-  assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 0, 0, 0, 0, start]] }), 200);
+  assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 1, 0, 0, 0, start]] }), 200);
   const got = JSON.parse((await w.get('/api/kills')).body).rows;
   const one = got.filter((r) => r[1] === '1-1');
   assert.equal(one.length, 1 + 5 + 1, 'now, five in the window, one base');
@@ -289,7 +289,7 @@ test('the daily cleanup deletes kills older than 14 days and nothing newer', asy
   const now = Date.now();
   for (const d of [0, 1, 13, 14.1, 20]) {
     const at = Math.floor(now - d * 86400e3);
-    sql.prepare('INSERT INTO kills VALUES (?,?,1,1,1,1,?)').run('1-1', at, at - 1000);
+    sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,1,1,1,1,?)').run('1-1', at, at - 1000);
   }
   await worker.scheduled({}, { DB });
   const left = sql.prepare('SELECT at FROM kills').all().map((r) => Math.round((now - r.at) / 86400e3));
