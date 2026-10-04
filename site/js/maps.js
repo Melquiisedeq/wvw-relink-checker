@@ -101,12 +101,7 @@ let plotSerial = 0;
 // data with max-age=1, so the only lag is ours. One match is 82KB, and
 // this runs only while the maps are open and the page is visible.
 const MAP_REFRESH_MS = 30 * 1000;
-let mapPollTimer = null;
-// Set while a tier's maps are open: pulls at once if the last pull is a
-// poll interval old. A tab hidden for half an hour otherwise came back
-// showing the map it left, for up to thirty more seconds, with the
-// capture clocks still counting as if it were current.
-let mapCatchUp = null;
+// mapPollTimer, mapTickTimer and mapCatchUp are declared in popover.js.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && mapCatchUp) mapCatchUp();
 });
@@ -115,10 +110,6 @@ window.addEventListener('focus', () => { if (mapCatchUp) mapCatchUp(); });
 // pulled against - one slot, because only one tier's maps are ever
 // open. toggleTierMaps says what the pairing is for.
 let freshRecall = null;
-// Separate from the poll on purpose: this one only rewrites the RI
-// clocks, so it can run every second without touching the refresh
-// cadence or asking the API for anything.
-let mapTickTimer = null;
 
 function markerIcon(type, owner) {
   const base = MARKER_ICON[type];

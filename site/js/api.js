@@ -201,11 +201,11 @@ async function getGuildInfo(guildId, allowStored = false) {
     guildStoreFlush();
     return result;
   } catch (err) {
-    // Only a definite answer is worth remembering. A timeout or a dropped
-    // connection says nothing about the guild, and caching those meant a
-    // single bad moment kept it failing until the page was reloaded -
+    // Only a definite answer is worth remembering. A timeout, a dropped
+    // connection or a 429 says nothing about the guild, and caching those
+    // meant a single bad moment kept it failing until the page was reloaded -
     // pressing Check again just replayed the cached error.
-    if (err.status >= 400 && err.status < 500) {
+    if (err.status === 404) {
       guildNameCache.set(guildId, { ok: false, error: err.message || 'Guild lookup failed' });
     }
     throw err;
@@ -630,7 +630,8 @@ function colorForTeam(match, teamId) {
 
 // Runs `fn` on an interval while the tab is visible, and catches up
 // immediately when focus returns if enough time has passed. Skips a run
-// if the previous one is still in flight.
+// if the previous one is still in flight. An fn that returns false skipped
+// its work, so the run does not count and the next tick or focus tries again.
 function schedulePeriodicRefresh(fn, intervalMs) {
   let inFlight = false;
   // Seeded with "now" because callers do an initial load right before
@@ -640,15 +641,18 @@ function schedulePeriodicRefresh(fn, intervalMs) {
 
   const run = async () => {
     if (inFlight || document.visibilityState === 'hidden') return;
-    if (Date.now() - lastRun < intervalMs) return;
+    // The slack: a tick that ran a few ms late leaves the next one a few ms
+    // short of the interval, and without it the guard dropped that one.
+    if (Date.now() - lastRun < intervalMs - 1000) return;
     inFlight = true;
     // Stamped before the work, not after. setInterval fires on exact
     // multiples of intervalMs, so stamping at the end pushes the next
     // tick just under the guard above and drops every other one - which
     // silently turned a 3-minute refresh into a 6-minute one.
+    const before = lastRun;
     lastRun = Date.now();
     try {
-      await fn();
+      if (await fn() === false) lastRun = before;
     } catch {
       // fn() is expected to handle its own errors; this is just a safety
       // net so a future mistake can't leave an unhandled rejection.
