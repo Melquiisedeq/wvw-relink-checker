@@ -142,15 +142,16 @@ function run_() {
   for (const id in moved) saved[id] = moved[id];
   props.setProperty('scores', JSON.stringify(saved));
 
+  // push_ never throws, so it will not stop cleanup. It runs before deleteRows
+  // so a failure there won't leave the rows out of the Worker.
+  push_(props, rows, now);
+
   // Always clean up after writing, and never reach what was just written,
   // even if everything that was there is old.
   let cut = 0;
   while (cut < old.length && Number(old[cut][0]) < now - KEEP_MS) cut++;
   cut = Math.min(cut, lastRow);
   if (cut > 0) sh.deleteRows(1, cut);
-
-  // Last, so nothing here can stop the sheet the page reads from being written.
-  push_(props, rows, now);
 }
 
 /**
