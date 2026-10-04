@@ -861,15 +861,17 @@ async function main() {
     substitutes.set(allUrl, { body: Buffer.from(JSON.stringify(all.map(x => (x.id === matchId ? body : x)))), served: 0 });
     await ev('loadStandings()');
     await idle(step);
-    const read = id => ev(`(() => { const box = document.querySelector('#standingsGrid${t[1]} .standing-match[data-match-id="' + ${JSON.stringify(id)} + '"]');
-      if (!box) return null;
+    // Every card of the region in one read, picked by id here: nothing read is built into code.
+    const grid = t[1] === 'NA' ? '#standingsGridNA' : '#standingsGridEU';
+    const cards = await ev(`Object.fromEntries([...document.querySelectorAll('${grid} .standing-match')].map(box => {
       const kd = [...box.querySelectorAll('.standing-side-stats')].map(l => [...l.querySelectorAll('.stat-value')].pop());
-      return { sides: box.querySelectorAll('.standing-side').length,
+      return [box.dataset.matchId, { sides: box.querySelectorAll('.standing-side').length,
         arrows: box.querySelectorAll('.movement-up, .movement-down, .movement-bar').length,
         tied: [...box.querySelectorAll('.movement-tied')].map(e => e.title),
         kd: kd.map(e => e.textContent.trim()), kdLeaders: kd.filter(e => e.classList.contains('stat-leader')).length,
-        kdColoured: kd.filter(e => e.classList.contains('kd-good') || e.classList.contains('kd-bad')).length }; })()`);
-    const a = await read(matchId), b = await read(other.id);
+        kdColoured: kd.filter(e => e.classList.contains('kd-good') || e.classList.contains('kd-bad')).length }];
+    }))`) || {};
+    const a = cards[matchId] || null, b = cards[other.id] || null;
     if (!a || a.sides !== 3) problem(`step '${step}': ${matchId} has no card with three sides`);
     else {
       if (a.arrows) problem(`step '${step}': ${matchId} on 0-0-0 VP still shows ${a.arrows} arrow(s) or bar(s)`);

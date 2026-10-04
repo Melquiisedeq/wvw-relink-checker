@@ -3,7 +3,7 @@
 //   POST /api/entrada/kills    the kills script, after every tick
 //   POST /api/entrada/relink   the teams notice script, after every tick
 //   GET  /api/saude            when each last reported; nothing else
-//   GET  /api/kills            the last 30 minutes of kills, for the map swords
+//   GET  /api/kills            the last 30 minutes of kills plus each match's newest older row (up to 3 h back), for the map swords
 //   GET  /api/relink           relink!A1 as numbers, for the teams notice
 //   daily, on a schedule       kills older than KEEP_DAYS are deleted
 //

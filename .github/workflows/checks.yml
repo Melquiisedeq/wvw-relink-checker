@@ -21,10 +21,13 @@ permissions:
   contents: read
 
 jobs:
+  # Every job has a timeout: GitHub's default is 360 minutes, so a hung Chrome
+  # or test would otherwise hold a runner for six hours.
   # Separate jobs rather than one script, so the name in the annotation and in the
   # failure email already says which kind of thing broke.
   structure:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -34,6 +37,7 @@ jobs:
 
   syntax:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -41,16 +45,23 @@ jobs:
       # says so nowhere except the browser console of whoever opened it.
       # node --check parses a file without running a line of it. The Worker
       # behind /api too: .mjs, so it parses as a module on any Node version.
+      # The Apps Scripts are .gs, which node does not know: each is checked
+      # as a temporary .js copy.
       - name: Parse every script
         run: |
           set -euo pipefail
           for f in site/js/*.js worker/*.mjs; do
             node --check "$f"
           done
-          echo "$(ls site/js/*.js worker/*.mjs | wc -l) scripts parse."
+          for f in apps-script/*/*.gs; do
+            cp "$f" "$RUNNER_TEMP/$(basename "$f" .gs).js"
+            node --check "$RUNNER_TEMP/$(basename "$f" .gs).js"
+          done
+          echo "$(ls site/js/*.js worker/*.mjs apps-script/*/*.gs | wc -l) scripts parse."
 
   rules:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -62,6 +73,7 @@ jobs:
 
   page:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

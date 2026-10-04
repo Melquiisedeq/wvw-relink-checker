@@ -25,10 +25,11 @@ an issue first and say what for.
 everything reads them, and `boot.js` comes last because it starts the page. A
 new file goes into that list at the right position, not at the end by default.
 
-**The Content Security Policy is strict.** It sits at the top of `index.html`
-and names every host the page talks to. Anything fetched from a host that is
-not on that list is blocked by the browser — quietly, with the page looking
-perfectly fine and the feature simply not happening. Adding a host is a
+**The Content Security Policy is strict.** It is a response header in
+`site/_headers`, never a `<meta>`, and names every host the page talks to.
+Anything fetched from a host that is not on that list is blocked by the
+browser — quietly, with the page looking perfectly fine and the feature
+simply not happening. Adding a host is a
 decision, not a side effect: if a change needs one, say so in the pull request
 and say why.
 
