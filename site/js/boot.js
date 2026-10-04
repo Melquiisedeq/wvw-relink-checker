@@ -363,6 +363,15 @@ const emberField = (function () {
   update();
 })();
 
+// Bound here, last, so an early click or key press finds everything it calls.
+runBtn.addEventListener('click', run);
+// The button disables itself during a run, but the shortcut bypassed it and
+// could start a second run that wiped the first one's rows mid-flight.
+guildInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.ctrlKey && !runBtn.disabled) run();
+});
+document.addEventListener('pointerdown', onPointerDown, { passive: true });
+
 // Visits count only on the real domain. The Worker's branch previews serve
 // this same page at *.workers.dev, and GoatCounter records the path, not
 // the host, so a preview visit would be indistinguishable from a real one.
