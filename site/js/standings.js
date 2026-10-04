@@ -587,7 +587,7 @@ async function refreshStandings() {
   // skipped rather than spent closing something in someone's face; the
   // next one lands as soon as they are done. The tier maps do not go
   // stale in the meantime - they refresh themselves, in place.
-  if (activeTrigger) return;
+  if (activeTrigger) return false;
   await loadStandings();
 }
 

@@ -310,6 +310,8 @@ async function main() {
   let gameReads = 0;                // every read of api.guildwars2.com
   // Set by the step 'failed load': API reads answered 503 on purpose.
   let failing = null;
+  let limited = null;               // set by the step 'guild cache': { re, status } answers that status on purpose
+  let limitedReads = 0;
   let failingLog = null;            // what the step may log errors for, kept past the end of the 503s (the log is late)
 
   // The hot-map floor is 50 kills in ten minutes and the recording may sit in a
@@ -351,6 +353,13 @@ async function main() {
       if (swap) {
         swap.served++;
         return await reply(requestId, 200, 'application/json; charset=utf-8', swap.body);
+      }
+      if (limited && limited.re.test(url)) {
+        limitedReads++;
+        return await send('Fetch.fulfillRequest', { requestId, responseCode: limited.status,
+          responseHeaders: [{ name: 'Content-Type', value: 'application/json' }, { name: 'Retry-After', value: '1' },
+            { name: 'Access-Control-Allow-Origin', value: '*' }, { name: 'Cache-Control', value: 'no-store' }],
+          body: Buffer.from('{"error":"on purpose"}').toString('base64') });
       }
       if (failing && failing.test(url)) {
         return await reply(requestId, 503, 'application/json', Buffer.from('{"error":"down"}'));
@@ -1177,6 +1186,57 @@ async function main() {
     await ev("__skewClock(-531000); localStorage.removeItem('wvw-fight-v1')");
   }
 
+  // A guild lookup answered 429 (after its retries) says nothing about the
+  // guild: the next Check asks again. A 404 is a definite answer and is kept.
+  // A refresh that skips (a popover open) returns false and the scheduler
+  // does not count it, so a focus return right after runs it; one that ran
+  // is counted, so the same return does not.
+  async function guildCache() {
+    const step = 'guild cache';
+    stepNow = step;
+    const id = 'ZZZZ-CHECK-PAGE-GUILD';
+    const url = `https://api.guildwars2.com/v2/guild/${id}`;
+    const ask = `getGuildInfo('${id}').then(g => 'ok ' + g.name, e => 'err ' + e.status)`;
+    failingLog = /^https:\/\/api\.guildwars2\.com\/v2\/guild\//;
+    limited = { re: new RegExp('^' + url.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&') + '$'), status: 429 };
+    limitedReads = 0;
+    const first = await ev(ask);
+    if (first !== 'err 429') problem(`step '${step}': the 429 lookup gave "${first}"`);
+    if (await ev(`guildNameCache.has('${id}')`)) problem(`step '${step}': a 429 was kept in guildNameCache`);
+    limited = null;
+    substitutes.set(url, { body: Buffer.from(JSON.stringify({ id, name: 'Check Page Guild', tag: 'CPG', emblem: null })), served: 0 });
+    const second = await ev(ask);
+    if (second !== 'ok Check Page Guild') problem(`step '${step}': the lookup after the 429 gave "${second}", wanted a fresh fetch`);
+    substitutes.clear();
+    await ev(`guildNameCache.delete('${id}')`);
+
+    limited = { re: new RegExp('^' + url.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&') + '$'), status: 404 };
+    limitedReads = 0;
+    await ev(ask); await ev(ask);
+    if (limitedReads !== 1) problem(`step '${step}': a 404 was asked ${limitedReads} time(s) in two lookups, wanted 1 (kept)`);
+    limited = null;
+    await ev(`guildNameCache.delete('${id}')`);
+    await sleep(500);
+    failingLog = null;
+
+    if (await ev('(async () => { activeTrigger = document.body; const r = await refreshStandings(); activeTrigger = null; return r; })()') !== false) {
+      problem(`step '${step}': refreshStandings with a popover open did not return false`);
+    }
+    const sched = await ev(`new Promise(res => {
+      const out = {};
+      for (const [k, ret] of [['skipped', false], ['ran', true]]) {
+        out[k] = 0;
+        schedulePeriodicRefresh(async () => { out[k]++; return ret; }, 2000);
+      }
+      setTimeout(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+        setTimeout(() => res(out), 300);
+      }, 2300);
+    })`);
+    if (sched.skipped !== 2) problem(`step '${step}': a skipped run was counted: it ran ${sched.skipped} time(s) over a tick and a focus return, wanted 2`);
+    if (sched.ran !== 1) problem(`step '${step}': a run that did its work ran ${sched.ran} time(s) over a tick and a focus return, wanted 1`);
+  }
+
   // 8. A failed load and a slow line: the live standings and the guild tables
   // answer 503, the page says it will try again and counts down, and once the
   // API answers again the table paints with no reload. Then the guild search
@@ -1439,6 +1499,9 @@ async function main() {
 
   // 7c. The week's line-up between loads.
   await weekMemory();
+
+  // 7d. A 429 is not kept against a guild; a skipped refresh does not spend its turn.
+  await guildCache();
 
   // 8. A failed load, tried again.
   await failedLoad();
