@@ -29,7 +29,9 @@ revoke all on public.batimento from public, anon, authenticated;
 -- the call to a region; the function trusts its own SB_REGION, and answers 404 if
 -- the two differ.
 create or replace function public.chamar_leitor(regiao text) returns void
-language plpgsql as $$
+language plpgsql
+set search_path = ''
+as $$
 declare
   rid bigint;
 begin
