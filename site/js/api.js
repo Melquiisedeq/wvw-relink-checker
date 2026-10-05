@@ -534,6 +534,8 @@ function matchesToReread(list, regions) {
 // body of each, in id order; a gap still missing gets the last body seen,
 // if any. Nothing to read again, nothing more is asked.
 async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
+  // The first read of a visit asks /api/agora beside the game, not after it.
+  const early = regions.length && !agoraAsked ? startAgora() : null;
   const raw = await fetchJson(url, 0, 'no-store', timeoutMs);
   if (!Array.isArray(raw)) {
     if (isMatchBody(raw) && newestMatches.has(raw.id) && matchIsBehind(raw, newestMatches.get(raw.id).match)) {
@@ -552,8 +554,105 @@ async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
     for (const id of holes) if (!out.has(id) && newestMatches.has(id)) out.set(id, newestMatches.get(id).match);
     list = [...out.values()].sort((a, b) => byId(a.id, b.id));
   }
+  if (regions.length) list = await mergeAgora(list, early);
   for (const region of regions) weekStoreRegion(region, list);
   return list;
+}
+
+// ---- /api/agora: a second read of the matches ------------------------
+// The game's own answer can sit still for minutes while the match moves.
+// /api/agora holds the same match bodies as the game gave them, gzipped and
+// base64, taken by our own scripts. Asked on the visit's first read and
+// whenever no live match has risen here for AGORA_QUIET_MS. Each body goes
+// through keepNewestMatch like any other, so it wins only by being further
+// along. Threat model: anyone able to answer on this origin can hand us a
+// body, so: only ids the game already gave this visit, id and start must
+// match the body's own, the inflated size is capped while it streams, and
+// the body is data, as always. Any failure is silence: the page is then as it
+// was without this read.
+const AGORA_URL = '/api/agora';
+const AGORA_QUIET_MS = 90 * 1000;
+const AGORA_WAIT_MS = 1200;           // how long a read holds the paint; a late answer waits for the next one
+const AGORA_BODY_MAX = 256 * 1024;    // inflated bytes per match
+const AGORA_GZ_MAX = 96 * 1024;       // base64 characters per match
+const AGORA_MATCHES_MAX = 20;
+let agoraAsked = false;
+
+async function agoraInflate(b64) {
+  if (typeof b64 !== 'string' || b64.length > AGORA_GZ_MAX) return null;
+  const bin = atob(b64);
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')).getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > AGORA_BODY_MAX) { await reader.cancel(); return null; }
+    chunks.push(value);
+  }
+  const joined = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) { joined.set(c, at); at += c.length; }
+  return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(joined));
+}
+
+// Resolves, never rejects, to the bodies that passed every check.
+async function agoraRead() {
+  try {
+    const data = await fetchOwnApi(AGORA_URL);
+    const list = data && Array.isArray(data.matches) ? data.matches.slice(0, AGORA_MATCHES_MAX) : [];
+    const out = [];
+    for (const e of list) {
+      try {
+        if (!e || typeof e.id !== 'string' || !WEEK_ID_RE.test(e.id)) continue;
+        const body = await agoraInflate(e.gz);
+        if (!body || body.id !== e.id || typeof body.all_worlds !== 'object' || !body.all_worlds
+          || typeof body.scores !== 'object' || !body.scores || !Array.isArray(body.maps)) continue;
+        if (!Number.isFinite(e.start) || Date.parse(body.start_time) !== e.start) continue;
+        out.push(body);
+      } catch { /* this match has no data */ }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function startAgora() {
+  if (typeof DecompressionStream !== 'function') return null;
+  agoraAsked = true;
+  return agoraRead();
+}
+
+// Offers the bodies of ids this visit already read from the game; returns
+// id -> the body kept.
+function offerAgora(bodies) {
+  const out = new Map();
+  for (const body of bodies) if (newestMatches.has(body.id)) out.set(body.id, keepNewestMatch(body));
+  return out;
+}
+
+// `early`: a read already in the air (the visit's first). Waits only a moment
+// for it: a hung /api must not slow the page, and what comes late is offered
+// all the same, for the next paint.
+async function mergeAgora(list, early) {
+  let reading = early;
+  if (!reading) {
+    const now = Date.now();
+    const moving = [...newestMatches.values()].some((k) => k.rose && matchIsLive(k.match) && now - k.at < AGORA_QUIET_MS);
+    if (!moving) reading = startAgora();
+  }
+  if (!reading) return list;
+  const timedOut = Symbol('late');
+  const got = await Promise.race([reading, sleep(AGORA_WAIT_MS).then(() => timedOut)]);
+  if (got === timedOut) {
+    reading.then(offerAgora);
+    return list;
+  }
+  const kept = offerAgora(got);
+  return list.map((m) => kept.get(m.id) || m);
 }
 
 // True when `offered` should take the place of `kept` as a team's match:
