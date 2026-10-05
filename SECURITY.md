@@ -27,8 +27,8 @@ than hours.
   the reason people come here. A crafted link that shows a relink or a lockout
   that is not real uses the site to mislead someone.
 - **A way to make the page send what somebody typed anywhere** other than the
-  hosts named in the Content Security Policy, at the top of
-  `index.html`.
+  hosts named in the Content Security Policy, which is the response header
+  in `site/_headers`.
 - **A way to get something into what the site serves** that did not come from
   this repository.
 - **A way to get the Worker to write anything** without the secret a script

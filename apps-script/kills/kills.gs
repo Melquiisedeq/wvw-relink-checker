@@ -2,12 +2,13 @@
  * Per-map WvW kills snapshot, for wvwrelink.com.
  *
  * Columns, no header row:
- *   epoch ms | match id | Center | RedHome | BlueHome | GreenHome | start_time
+ *   epoch ms | match id | Center | RedHome | BlueHome | GreenHome | start_time | score
  * The four numbers are kills summed over the three teams: deaths caused by an
  * enemy player. deaths is left out on purpose - it also counts whoever dies to
  * a lord, a guard or a fall, which is a roamer soloing a camp, and that would
  * inflate exactly the empty borderland.
- * The site reads columns 0 to 5; the 7th is for this script only.
+ * The site reads columns 0 to 5; the 7th is for this script only; the 8th is
+ * the match score sum, written by run_ and sent to /api, not read by the page.
  *
  * A match's row is written only when its score has risen since its last
  * written row. The GW2 API serves old answers for stretches (a whole match
@@ -105,8 +106,13 @@ function run_() {
   // One read, used for two things: each matchup's last value and the
   // window's cut. Google's documentation is explicit: alternating reads and
   // writes is what makes it slow.
-  const width = 3 + MAPS.length;
+  const width = 4 + MAPS.length;
   const lastRow = sh.getLastRow();
+  // getRange past the sheet's last column throws, and a sheet made before the
+  // score column has seven: the whole tick would fail.
+  if (sh.getMaxColumns() < width) {
+    sh.insertColumnsAfter(sh.getMaxColumns(), width - sh.getMaxColumns());
+  }
   const old = lastRow > 0 ? sh.getRange(1, 1, lastRow, width).getValues() : [];
 
   const prev = {};
@@ -118,7 +124,7 @@ function run_() {
   for (const m of matches) {
     const st = Date.parse(m.start_time) || 0;
     if (!moved_(saved[m.id], sums[m.id], st)) continue;
-    const row = rowFor_(m, prev[String(m && m.id)], now);
+    const row = rowFor_(m, prev[String(m && m.id)], now, sums[m.id]);
     if (row) {
       rows.push(row);
       moved[m.id] = [sums[m.id], st];
@@ -142,15 +148,16 @@ function run_() {
   for (const id in moved) saved[id] = moved[id];
   props.setProperty('scores', JSON.stringify(saved));
 
+  // push_ never throws, so it will not stop cleanup. It runs before deleteRows
+  // so a failure there won't leave the rows out of the Worker.
+  push_(props, rows, now);
+
   // Always clean up after writing, and never reach what was just written,
   // even if everything that was there is old.
   let cut = 0;
   while (cut < old.length && Number(old[cut][0]) < now - KEEP_MS) cut++;
   cut = Math.min(cut, lastRow);
   if (cut > 0) sh.deleteRows(1, cut);
-
-  // Last, so nothing here can stop the sheet the page reads from being written.
-  push_(props, rows, now);
 }
 
 /**
@@ -275,7 +282,7 @@ function moved_(saved, sum, st) {
   return sum > num_(saved[0]);
 }
 
-function rowFor_(m, prevRow, now) {
+function rowFor_(m, prevRow, now, score) {
   if (!m || typeof m.id !== 'string' || !Array.isArray(m.maps)) return null;
 
   const by = {};
@@ -312,7 +319,7 @@ function rowFor_(m, prevRow, now) {
     if (newWeek || nv < pv * RESET_RATIO) return nv;
     return nv > pv ? nv : pv;
   });
-  return [now, m.id].concat(vals).concat([st]);
+  return [now, m.id].concat(vals).concat([st, score]);
 }
 
 function fetchAllJson_(urls) {

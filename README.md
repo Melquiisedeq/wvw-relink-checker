@@ -83,17 +83,19 @@ back to the spreadsheets if it cannot. Nothing you type goes near it.
 | `wvwrelink.com/api` | This site's own server: the kills history when you open a tier's maps, and whether the new teams are out — read only in the days before a relink. |
 | `docs.google.com` | Three public spreadsheets, read-only: the community guild list when you click a shield icon, and the same two things as above when `/api` does not answer. |
 | `melquiisedeq.goatcounter.com` | One anonymous page view per visit. Nothing else. |
-| `static.cloudflareinsights.com`, `cloudflareinsights.com` | Cloudflare Web Analytics: its script, and one anonymous report per visit with how fast the page loaded. |
+| `static.cloudflareinsights.com`, `cloudflareinsights.com` | Cloudflare Web Analytics: its script, and a report of how fast the page loaded. |
 
-Four things are kept in your browser's own storage. None of them ever
-leave your device; two clear themselves out as they age, and the last is
-a single number that gets overwritten.
+Six things are kept in your browser's own storage. None of them ever
+leave your device; three clear themselves out as they age, and the other
+two are a single value each that gets overwritten.
 
 | Key | What it holds |
 |---|---|
 | `wvw-relink-checker:guilds` | The list you typed, so it is still there next time |
 | `wvw-guilds-v1` | Name, tag and emblem of guilds already looked up, so the maps don't ask twice |
 | `wvw-fight-v1` | Recent kill counts per match — what puts the crossed swords on the busiest map |
+| `wvw-weeks-v1` | The week's team line-up per tier, so a reload on a relink night does not bring back last week's while the API catches up |
+| `wvw-rail-first` | Which region's standings column you put on the left, `na` or `eu` |
 | `wvw-relink-checker:teams-notice` | Which relink's "the new teams are out" notice you dismissed, so it stays dismissed until the next one |
 
 <details>
@@ -106,19 +108,24 @@ cookies, no fingerprinting, no persistent identifier. One request per
 page load records the page address, referrer, title, screen width and
 country — and nothing you type. Its script is served from this repository
 rather than a CDN.
-Only visits to wvwrelink.com are counted; a copy of the page served
-anywhere else sends nothing.
+A copy of the page served anywhere else is told not to count, though it
+can still count if GoatCounter's script happens to run first.
 
 To keep your own browser out of the count, run `localStorage.skipgc = 't'`
 in the developer console on the site.
 
 Cloudflare, which serves the site, also counts visits with its
-[Web Analytics](https://developers.cloudflare.com/web-analytics/about/): no
-cookies, no persistent identifier. One report per page load records the
-page address and referrer, how long the page took to load and draw, the
-browser and its version, and how much memory the page used — and nothing
-you type. Its script comes from Cloudflare. It has no switch of its own to
-opt out; a content blocker stops it.
+[Web Analytics](https://developers.cloudflare.com/web-analytics/about/).
+Cloudflare says it "does not use any client-side state, such as cookies or
+localStorage, to collect usage metrics" and does not "fingerprint"
+individuals ([cloudflare.com/web-analytics](https://www.cloudflare.com/web-analytics/)),
+and that it "does not track individual end users across our customers'
+Internet properties" ([data origin and collection](https://developers.cloudflare.com/web-analytics/data-metrics/data-origin-and-collection/)).
+What it reports is how long the page took to load and draw, grouped by
+page, referrer, country, browser, operating system and device type
+([dimensions](https://developers.cloudflare.com/web-analytics/data-metrics/dimensions/)).
+Its script comes from Cloudflare; a content blocker stops it, and
+Cloudflare documents no opt-out of its own.
 
 </details>
 

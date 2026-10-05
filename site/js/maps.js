@@ -101,12 +101,7 @@ let plotSerial = 0;
 // data with max-age=1, so the only lag is ours. One match is 82KB, and
 // this runs only while the maps are open and the page is visible.
 const MAP_REFRESH_MS = 30 * 1000;
-let mapPollTimer = null;
-// Set while a tier's maps are open: pulls at once if the last pull is a
-// poll interval old. A tab hidden for half an hour otherwise came back
-// showing the map it left, for up to thirty more seconds, with the
-// capture clocks still counting as if it were current.
-let mapCatchUp = null;
+// mapPollTimer, mapTickTimer and mapCatchUp are declared in popover.js.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && mapCatchUp) mapCatchUp();
 });
@@ -115,10 +110,6 @@ window.addEventListener('focus', () => { if (mapCatchUp) mapCatchUp(); });
 // pulled against - one slot, because only one tier's maps are ever
 // open. toggleTierMaps says what the pairing is for.
 let freshRecall = null;
-// Separate from the poll on purpose: this one only rewrites the RI
-// clocks, so it can run every second without touching the refresh
-// cadence or asking the API for anything.
-let mapTickTimer = null;
 
 function markerIcon(type, owner) {
   const base = MARKER_ICON[type];
@@ -840,19 +831,28 @@ function readFightLog() {
   } catch { return {}; }
 }
 
-// Called by whoever happens to be holding fresh match data. Cheap enough
-// to call on every refresh, and it declines samples that arrive too
-// close together so the popover's own thirty-second poll cannot flood it.
-function recordFightSamples(matches) {
+// Called by whoever happens to be holding fresh match data, with `asked`:
+// when the request went out. A body is stamped with that, not with the
+// moment it is written - a slow answer or a sleeping computer would
+// otherwise carry the time of the waking up. Only bodies whose score this
+// page watched rise since `asked` are written: a first sight may come from
+// a server behind the others and would become the window's base. Cheap enough to call on every
+// refresh, and it declines samples that arrive too close together so the
+// popover's own thirty-second poll cannot flood it.
+function recordFightSamples(matches, asked) {
   const log = readFightLog();
-  const at = Date.now();
+  const now = Date.now();
   const seen = new Set();
   for (const match of matches || []) {
     if (!match || typeof match.id !== 'string' || !Array.isArray(match.maps)) continue;
     seen.add(match.id);
-    const kept = (log[match.id] || []).filter((s) => s && at - s.at <= FIGHT_KEEP_MS);
+    // Ageing counts from the real now, not from `asked`.
+    const kept = (log[match.id] || []).filter((s) => s && now - s.at <= FIGHT_KEEP_MS);
+    const newest = newestMatches.get(match.id);
     const last = kept[kept.length - 1];
-    if (!last || at - last.at >= FIGHT_MIN_GAP_MS) kept.push({ at, n: fightTotals(match) });
+    // A negative gap (an answer overtaken by a later one) is refused too.
+    if (newest && newest.rose && newest.at >= asked && now - asked <= FIGHT_KEEP_MS
+      && (!last || asked - last.at >= FIGHT_MIN_GAP_MS)) kept.push({ at: asked, n: fightTotals(match) });
     log[match.id] = kept.slice(-FIGHT_MAX_SAMPLES);
   }
   // Matches this call did not mention are only dropped once they age out,
@@ -860,7 +860,7 @@ function recordFightSamples(matches) {
   // and must not wipe the other eight.
   for (const id of Object.keys(log)) {
     if (seen.has(id)) continue;
-    const kept = log[id].filter((s) => s && at - s.at <= FIGHT_KEEP_MS);
+    const kept = log[id].filter((s) => s && now - s.at <= FIGHT_KEEP_MS);
     if (kept.length) log[id] = kept; else delete log[id];
   }
   try { localStorage.setItem(FIGHT_KEY, JSON.stringify(log)); } catch { /* storage off */ }
@@ -2504,9 +2504,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     // Outlives the popover, so reopening starts from here.
     if (freshRecall) freshRecall.data = fresh;
     hotFresh = true;
-    // Only a body whose score rose is a reading of now; a frozen or
-    // repeated answer is not.
-    if (matchScoreRoseAt(fresh.id) >= asked) recordFightSamples([fresh]);
+    recordFightSamples([fresh], asked);
     markHotTab(liveMatch);
     const now = byType.get(current);
     // Asked of the answer that just arrived, not of the match this
