@@ -1127,13 +1127,7 @@ function fightCount(rates, type) {
 const HUD_STALE_MS = 6 * 60 * 1000;
 
 const HUD_EXPLAIN = {
-  fights: 'Player kills on this map over about 10 minutes, counted up to the last time'
-    + " the game's API updated the kills. Orange swords mark the map with the most, when it"
-    + ' passes 50 in 10 minutes. "Until HH:MM": no new kills since then, as on a quiet map.'
-    + ' With a warning sign, the kills or the map data are behind in the API, so the number is old.'
-    + ' A dash means there is no data old enough yet to count.'
-    + ' The API has no player positions: this says where the fighting is, not'
-    + ' how many players are there.',
+  fights: 'Player kills on this map in the last 10 minutes. Orange swords mark the busiest map, past 50.',
   when: "Updated: when this match's score last changed in the game's API; this page"
     + ' asks every 30 s. The API sometimes repeats an old answer for a while; that does not'
     + ' count. No new data: no change for over 6 minutes, or no answer at all (the API stuck,'
@@ -1158,6 +1152,8 @@ function buildMapCorners(wrap) {
   note.id = `wvw-hud-note-${++plotSerial}`;
   note.hidden = true;
   let openKey = null;
+  let fightsExplain = HUD_EXPLAIN.fights;
+  const hover = window.matchMedia && matchMedia('(hover: hover)').matches;
   const close = () => {
     openKey = null;
     note.hidden = true;
@@ -1172,14 +1168,14 @@ function buildMapCorners(wrap) {
     btn.className = 'wvw-hud-btn';
     btn.setAttribute('aria-expanded', 'false');
     btn.setAttribute('aria-controls', note.id);
-    if (window.matchMedia && matchMedia('(hover: hover)').matches) btn.title = HUD_EXPLAIN[key];
+    if (hover) btn.title = key === 'fights' ? fightsExplain : HUD_EXPLAIN[key];
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const was = openKey === key;
       close();
       if (was) return;
       openKey = key;
-      note.textContent = HUD_EXPLAIN[key];
+      note.textContent = key === 'fights' ? fightsExplain : HUD_EXPLAIN[key];
       note.className = `wvw-hud-note at-${side}`;
       note.hidden = false;
       btn.setAttribute('aria-expanded', 'true');
@@ -1233,8 +1229,9 @@ function buildMapCorners(wrap) {
   wrap.append(left, right, note);
 
   const put = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+  const hhmm = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const putTime = (ms) => {
-    put(smallTime, ms ? new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '');
+    put(smallTime, ms ? hhmm(ms) : '');
     if (ms) smallTime.dateTime = new Date(ms).toISOString(); else smallTime.removeAttribute('datetime');
   };
   // The kills side, from killView for the map on show. No window, a dash and
@@ -1257,6 +1254,20 @@ function buildMapCorners(wrap) {
     put(smallMark, odd ? '\u26a0 ' : '');
     put(smallUntil, old ? 'until ' : '');
     putTime(old ? view.clock : 0);
+    let text;
+    if (!line) {
+      text = 'Not enough kill data yet to count 10 minutes.';
+    } else if (odd) {
+      text = `The game's API is behind since ${hhmm(view.clock)}, so this number is old.`;
+    } else if (old) {
+      text = `No new kills since ${hhmm(view.clock)}, as on a quiet map. The number is the 10 minutes before.`;
+    } else {
+      text = HUD_EXPLAIN.fights;
+    }
+    if (text === fightsExplain) return;
+    fightsExplain = text;
+    if (hover) fightsBtn.title = text;
+    if (openKey === 'fights') note.textContent = text;
   };
   let stale = null;
   const state = {
