@@ -1612,6 +1612,25 @@ async function main() {
   // 6b. The tiers whose data is old.
   await tierMarks();
 
+  // 6c. The result table on a phone: no column cut off, nothing past the screen.
+  const tagLine = await ev(`Math.max(0, ...[...document.querySelectorAll('#resultCard .tag')].map(t => Math.round(t.getBoundingClientRect().height)))`);
+  for (const width of [320, 390]) {
+    const step = `result table, ${width} px`;
+    await send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: true });
+    await idle(step);
+    const fit = await ev(`(() => {
+      const card = document.getElementById('resultCard');
+      const cells = [...card.querySelectorAll('th, td, .server-cell, .server-cell *')];
+      return { scroll: card.scrollWidth - card.clientWidth,
+        past: Math.max(0, ...cells.map(c => Math.round(c.getBoundingClientRect().right - innerWidth))),
+        beyond: Math.max(0, ...cells.map(c => Math.round(c.getBoundingClientRect().right - card.getBoundingClientRect().right))) };
+    })()`);
+    const tags = await ev(`JSON.stringify([...document.querySelectorAll('#resultCard .tag')].map(t => Math.round(t.getBoundingClientRect().height)))`);
+    if (JSON.parse(tags).some(h => h > tagLine)) problem(`step '${step}': a tag is wider than one line (heights ${tags}, one line is ${tagLine}px)`);
+    if (fit.scroll > 0 || fit.past > 0 || fit.beyond > 0) problem(`step '${step}': the table overflows its card by ${fit.scroll}px, ${fit.past}px past the screen, a cell ${fit.beyond}px past the card's edge`);
+    await send('Emulation.clearDeviceMetricsOverride');
+  }
+
   // 6b. The kill history backdating a match this page never saw move.
   await historyAge();
 

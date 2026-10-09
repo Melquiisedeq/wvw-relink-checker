@@ -13,6 +13,26 @@ th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--border);}
 td{color:#f2f6fa;}
 th{color:#8d97a6;font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;}
 tr:last-child td{border-bottom:none;}
+/* Phones: each row is a block - the guild name on its own line, then tag,
+   region and team beneath it, the team wrapping to the next line when it
+   does not fit. The header stays for screen readers, clipped like
+   .sr-only. check-page measures at 320 and 390 px. */
+@media (max-width:520px){
+  #resultCard table,#resultCard tbody{display:block;}
+  #resultCard thead{
+    position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;
+    overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;
+  }
+  #resultCard tr{
+    display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;
+    padding:10px 0;border-bottom:1px solid var(--border);
+  }
+  #resultCard tr:last-child{border-bottom:none;}
+  #resultCard td{padding:0;border:0;}
+  #resultCard td:first-child{flex-basis:100%;}
+  #resultCard td:nth-child(2),#resultCard td:nth-child(3){white-space:nowrap;}
+  #resultCard .tag{white-space:nowrap;}
+}
 .tag{
   display:inline-block;background:var(--accent-soft);color:var(--accent);
   border-radius:6px;padding:2px 8px;font-size:.8rem;font-weight:600;
