@@ -1215,10 +1215,16 @@ async function main() {
     if (!/New map data again/.test(await ev(text('.wvw-hud-live')))) problem(`step '${step}': the return was not spoken`);
     await idle(step);
     substitutes.delete(oneUrl);
+    const touch = () => ev("getComputedStyle(document.querySelector('.info-popover .wvw-plot-wrap')).touchAction");
+    if (await touch() !== 'pan-y') problem(`step '${step}': the whole map has touch-action '${await touch()}', wanted pan-y (a swipe must scroll the page)`);
+    const overscroll = await ev("getComputedStyle(document.querySelector('.info-popover')).overscrollBehaviorY");
+    if (overscroll !== 'contain') problem(`step '${step}': the popover has overscroll-behavior-y '${overscroll}', wanted contain`);
     if (await click(step + ': zoom in', "document.querySelector('.info-popover .wvw-zoom button')")) {
       await until(step, `!(${shown('.wvw-hud-r')})`, 'corners hidden while zoomed');
+      if (await touch() !== 'none') problem(`step '${step}': the zoomed map has touch-action '${await touch()}', wanted none (the drag moves the map)`);
       if (await click(step + ': home', "document.querySelector('.info-popover .wvw-zoom button:last-child')")) {
         await until(step, shown('.wvw-hud-r'), 'corners back after "home"');
+        if (await touch() !== 'pan-y') problem(`step '${step}': after home the map has touch-action '${await touch()}', wanted pan-y`);
       }
     }
     await closePopover(step);
