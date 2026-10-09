@@ -347,7 +347,13 @@ function fakeCaches() {
   return {
     store, puts,
     default: {
-      match: async (k) => (store.has(k) ? store.get(k).clone() : undefined),
+      // As measured on the live Worker: a hit comes back with max-age=14400.
+      match: async (k) => {
+        if (!store.has(k)) return undefined;
+        const hit = store.get(k).clone();
+        hit.headers.set('cache-control', 'public, max-age=14400');
+        return hit;
+      },
       put: async (k, r) => { puts.push(k); store.set(k, r); }
     }
   };
@@ -407,6 +413,7 @@ test('GET /api/latest is cached under one key whatever the query, and a 503 is n
     w.sql.exec('DELETE FROM latest');
     const again = await w.get('/api/latest?x=1', 'GET', ctx);
     assert.equal(again.status, 200);
+    assert.equal(again.headers.get('cache-control'), 'public, max-age=30', 'a hit keeps the route\'s max-age');
     assert.equal(globalThis.caches.puts.length, 1);
   } finally {
     globalThis.caches = real;
@@ -430,9 +437,12 @@ test('GET /api/latest/summary: {} with no rows, then id: start, score, at, by', 
   const real = globalThis.caches;
   globalThis.caches = fakeCaches();
   try {
-    await w.get('/api/latest/summary?x=1', 'GET', { waitUntil() {} });
+    const kept = await w.get('/api/latest/summary?x=1', 'GET', { waitUntil() {} });
     await new Promise((r) => setImmediate(r));
     assert.deepEqual(globalThis.caches.puts, ['https://wvwrelink.com/api/latest/summary']);
+    const hit = await w.get('/api/latest/summary?x=2', 'GET', { waitUntil() {} });
+    assert.equal(hit.headers.get('cache-control'), 'public, max-age=15', 'a hit keeps the route\'s max-age');
+    assert.equal(hit.body, kept.body);
   } finally {
     globalThis.caches = real;
   }
