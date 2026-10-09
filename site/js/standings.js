@@ -216,40 +216,6 @@ function showRegion(gridEl, statusEl, matches, label, syncedAt, failed) {
   else setStandingsStatus(statusEl, false, `Couldn't load ${label} standings.`);
 }
 
-// The table shows running totals: VP moves every 2 h, Activity and K/D are the
-// week's sums, only Skirmish moves, once per 5 min tick. 15 min is three missed
-// ticks, enough to change who leads a close skirmish; sooner is only noise. The
-// map corner keeps its own, shorter HUD_STALE_MS (js/maps.js).
-const TIER_STALE_MS = 15 * 60 * 1000;
-
-// A tier whose match has had the same score for over TIER_STALE_MS ends its
-// card with "\u26a0 No new data for N min"; the other tiers wear nothing. One text node, so it is read and
-// copied once. The page cannot tell a quiet match from a frozen API, so the
-// title says what is known. Run after every paint, which rebuilds the tiers,
-// and by boot.js every minute, which is what moves the number.
-function updateTierAges() {
-  for (const grid of [standingsGridNA, standingsGridEU]) {
-    for (const box of grid.querySelectorAll('.standing-match')) {
-      const rose = matchScoreRoseAt(box.dataset.matchId);
-      const age = Date.now() - rose;
-      let mark = box.querySelector(':scope > .tier-age');
-      if (!rose || age <= TIER_STALE_MS || latestAhead.has(box.dataset.matchId)
-        || !box.querySelector('.standing-side')) {
-        if (mark) mark.remove();
-        continue;
-      }
-      const mins = Math.floor(age / 60000);
-      if (!mark) {
-        mark = document.createElement('div');
-        mark.className = 'tier-age';
-        box.append(mark);
-      }
-      mark.title = `No new data from the game's API for this match for ${mins} min; the API sometimes repeats an old answer.`;
-      mark.textContent = `\u26a0 No new data for ${mins} min`;
-    }
-  }
-}
-
 // The fallback when the one request fails: the id list, then one request
 // per region, the answers kept apart all the way down. null means that
 // region's request failed; [] means it answered and has no matches.
@@ -563,7 +529,6 @@ async function loadStandings(origin = 'cycle') {
     if (answered.length > 0) standingsEverLoaded = true;
     showRegion(standingsGridNA, standingsStatusNA, naMatches, 'NA', syncedAt, failed);
     showRegion(standingsGridEU, standingsStatusEU, euMatches, 'EU', syncedAt, failed);
-    updateTierAges();
     primeMapBadges();
   } catch {
     // The id list itself failed, so there is nothing to say about either
@@ -592,14 +557,12 @@ async function loadStandings(origin = 'cycle') {
 // match /api holds further along than the one on show, which has not risen
 // here for PEEK_BEHIND_MS, loads the board from /api/latest. With a popover
 // open the board cannot load (it would take the popover's anchor down; the
-// maps refresh themselves), so that tier only loses its "No new data" at
-// once - it is not true - and its numbers come when the popover closes.
+// maps refresh themselves), so the numbers come when the popover closes.
 const PEEK_MS = 30 * 1000;
 const PEEK_IDLE_MAX_MS = 120 * 1000;
 const PEEK_SAVE_MS = 60 * 1000;
 const PEEK_ACTIVE_MS = 2 * 60 * 1000;   // input this recent counts as using the page
 const PEEK_BEHIND_MS = 90 * 1000;
-let latestAhead = new Set();   // ids /api held further along at the last peek
 let peekLoadedAt = 0;           // a load the peek asked for: one per PEEK_BEHIND_MS, if /api fails
 let peekTimer = null;
 let peekDelay = PEEK_MS;
@@ -634,9 +597,8 @@ async function peekLatest() {
       && Number.isFinite(e.score) && e.start === Date.parse(k.match.start_time)
       && e.score > colorSum(k.match.scores)) ahead.add(id);
   }
-  latestAhead = ahead;
   if (!ahead.size) return;
-  if (activeTrigger || standingsInFlight || now - peekLoadedAt < PEEK_BEHIND_MS) { updateTierAges(); return; }
+  if (activeTrigger || standingsInFlight || now - peekLoadedAt < PEEK_BEHIND_MS) return;
   peekLoadedAt = now;
   await loadStandings('peek');
 }
