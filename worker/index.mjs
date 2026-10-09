@@ -48,6 +48,9 @@ const MAX_SCORE_PER_MIN = 1000;
 const SCORE_SLACK = 2000;
 const LATEST_KEY = 'https://wvwrelink.com/api/latest';
 const SUMMARY_KEY = 'https://wvwrelink.com/api/latest/summary';
+// The max-age of each read, both in its answer and on a copy served from the cache.
+const LATEST_MAX_AGE = 30;
+const SUMMARY_MAX_AGE = 15;
 // The scripts make 128 hex characters. Anything much shorter was pasted in
 // half, and a weak secret that works is worse than one that fails loudly.
 const MIN_SECRET = 64;
@@ -442,7 +445,7 @@ const READS = {
   // One query, and the answer kept for 30 s by Cloudflare's cache under a fixed
   // key, so a query string cannot make a request of its own: a visitor costs D1
   // nothing while the copy lives.
-  '/api/latest': (env, ctx) => cached(ctx, LATEST_KEY, async () => {
+  '/api/latest': (env, ctx) => cached(ctx, LATEST_KEY, LATEST_MAX_AGE, async () => {
     const { results } = await env.DB.prepare('SELECT id, start, score, at, reader, gz FROM latest').all();
     // Two hours without an update: a tier that no longer exists.
     const live = results.filter((r) => nowS() - r.at <= LATEST_KEEP_S);
@@ -451,26 +454,33 @@ const READS = {
     return json(JSON.stringify({
       at: newest,
       matches: live.map((r) => ({ id: r.id, start: r.start, score: r.score, at: r.at, by: r.reader, gz: r.gz }))
-    }), 30);
+    }), LATEST_MAX_AGE);
   }),
 
   // Always 200, {} when empty: the readers need it to begin.
-  '/api/latest/summary': (env, ctx) => cached(ctx, SUMMARY_KEY, async () => {
+  '/api/latest/summary': (env, ctx) => cached(ctx, SUMMARY_KEY, SUMMARY_MAX_AGE, async () => {
     const { results } = await env.DB.prepare('SELECT id, start, score, at, reader FROM latest').all();
     const out = {};
     for (const r of results) {
       if (nowS() - r.at <= LATEST_KEEP_S) out[r.id] = { start: r.start, score: r.score, at: r.at, by: r.reader };
     }
-    return json(JSON.stringify(out), 15);
+    return json(JSON.stringify(out), SUMMARY_MAX_AGE);
   })
 };
 
 // Only a 200 is kept. No Cache API outside Cloudflare (Node, the tests).
-async function cached(ctx, key, make) {
+async function cached(ctx, key, maxAge, make) {
   const cache = typeof caches !== 'undefined' ? caches.default : null;
   if (cache) {
     const hit = await cache.match(key);
-    if (hit) return hit;
+    if (hit) {
+      // A hit comes back with max-age=14400, measured 09/10/2026 with curl on
+      // cf-cache-status HIT. That is probably the zone's Browser Cache TTL; the
+      // docs do not say so. The route's own max-age is put back here.
+      const out = new Response(hit.body, { status: hit.status, statusText: hit.statusText, headers: hit.headers });
+      out.headers.set('cache-control', 'public, max-age=' + maxAge);
+      return out;
+    }
   }
   const res = await make();
   if (cache && res.status === 200) {
