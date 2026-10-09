@@ -44,8 +44,8 @@ const ROUTES      = [API + '?ids=all', API + '?ids=all'];
 // Without this a hung request waits 360 s, the whole execution, and spends
 // the daily trigger quota this script shares with the relink one.
 const TIMEOUT_S   = 20;
-const ENTRADA     = 'https://wvwrelink.com';
-const ENTRADA_PATH = '/api/entrada/kills';
+const INGEST     = 'https://wvwrelink.com';
+const INGEST_PATH = '/api/ingest/kills';
 // Rows not yet accepted are sent again with the next tick, so a failed push
 // costs nothing if the one after it lands. Past this age they are dropped:
 // the Worker refuses rows much older than the message anyway.
@@ -166,7 +166,7 @@ function run_() {
  * watching for it is outside this script - the Worker's health route.
  */
 function push_(props, rows, now) {
-  const secret = props.getProperty('entrada');
+  const secret = props.getProperty('ingest');
   if (!secret) return;
   let pending = [];
   try {
@@ -183,9 +183,9 @@ function push_(props, rows, now) {
     const t = Math.floor(Date.now() / 1000);
     const body = JSON.stringify({ rows: pending });
     const sig = hex_(Utilities.computeHmacSha256Signature(
-      Utilities.newBlob(t + '\n' + ENTRADA_PATH + '\n' + body).getBytes(),
+      Utilities.newBlob(t + '\n' + INGEST_PATH + '\n' + body).getBytes(),
       Utilities.newBlob(secret).getBytes()));
-    const res = UrlFetchApp.fetch(ENTRADA + ENTRADA_PATH, {
+    const res = UrlFetchApp.fetch(INGEST + INGEST_PATH, {
       method: 'post',
       contentType: 'application/json',
       payload: body,
@@ -205,14 +205,14 @@ function push_(props, rows, now) {
 
 /**
  * Run once by hand. Creates the secret the kills messages are signed with and
- * logs it this once, to be pasted into the Worker's ENTRADA_KILLS secret and
- * nowhere else. To change it: delete the "entrada" script property, run this
+ * logs it this once, to be pasted into the Worker's INGEST_KILLS secret and
+ * nowhere else. To change it: delete the "ingest" script property, run this
  * again, paste the new one.
  */
 function killsSecret() {
   const props = PropertiesService.getScriptProperties();
-  if (props.getProperty('entrada')) {
-    Logger.log('A secret already exists. Delete the "entrada" script property first to replace it.');
+  if (props.getProperty('ingest')) {
+    Logger.log('A secret already exists. Delete the "ingest" script property first to replace it.');
     return;
   }
   // getUuid is java.util.UUID.randomUUID, a cryptographically strong
@@ -223,8 +223,8 @@ function killsSecret() {
       Utilities.getUuid() + Utilities.getUuid() + Date.now()));
   }
   const secret = hex_(bytes);
-  props.setProperty('entrada', secret);
-  Logger.log('Paste this into the Worker secret ENTRADA_KILLS, and nowhere else:');
+  props.setProperty('ingest', secret);
+  Logger.log('Paste this into the Worker secret INGEST_KILLS, and nowhere else:');
   Logger.log(secret);
 }
 

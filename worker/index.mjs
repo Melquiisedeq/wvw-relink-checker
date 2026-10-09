@@ -1,14 +1,14 @@
 // wvwrelink.com/api. What it accepts, and what is worth reporting: SECURITY.md.
 //
-//   POST /api/entrada/kills    the kills script, after every tick
-//   POST /api/entrada/relink   the teams notice script, after every tick
-//   POST /api/entrada/agora-supa-us, agora-supa-eu, agora-vercel-eu, agora-vercel-us
+//   POST /api/ingest/kills    the kills script, after every tick
+//   POST /api/ingest/relink   the teams notice script, after every tick
+//   POST /api/ingest/latest-supa-us, latest-supa-eu, latest-vercel-eu, latest-vercel-us
 //                              the outside readers of the game API, the newest match bodies
-//   GET  /api/saude            when each last reported; nothing else
+//   GET  /api/health            when each last reported; nothing else
 //   GET  /api/kills            the last 30 minutes of kills plus each match's newest older row (up to 3 h back), for the map swords
 //   GET  /api/relink           relink!A1 as numbers, for the teams notice
-//   GET  /api/agora            each match's newest body, as the readers pushed it
-//   GET  /api/agora/resumo     the same without the bodies: id, start, score, at, by
+//   GET  /api/latest            each match's newest body, as the readers pushed it
+//   GET  /api/latest/summary     the same without the bodies: id, start, score, at, by
 //   daily, on a schedule       kills older than KEEP_DAYS are deleted
 //
 // A message is signed by its script with a secret of its own:
@@ -18,12 +18,12 @@
 // against the other, and each source has its own secret so one leaking does
 // not open the other.
 //
-// The agora entrance never opens a match body (the free plan gives 10 ms of CPU
+// The latest entrance never opens a match body (the free plan gives 10 ms of CPU
 // a request and unpacking 484 KB costs ~17): it decides by the signed summary
 // that comes before the bodies and by the match's score, never by a reader's clock.
 
 const MAX_BYTES = 64 * 1024;      // kills sends at most 30 min of rows, ~4 KB
-const MAX_BYTES_AGORA = 256 * 1024; // up to 18 gzipped match bodies
+const MAX_BYTES_LATEST = 256 * 1024; // up to 18 gzipped match bodies
 const MAX_SKEW_S = 300;
 // One match body is ~28 KB, ~4.5 KB gzipped (9 matches, 04/10/2026). The Worker
 // never opens a slice, so these bound what a page may be handed to unpack: a
@@ -31,23 +31,23 @@ const MAX_SKEW_S = 300;
 const MAX_SLICE = 16 * 1024;
 const MAX_RAW = 256 * 1024;
 const SOURCES = {
-  kills: 'ENTRADA_KILLS', relink: 'ENTRADA_RELINK',
-  'agora-supa-us': 'ENTRADA_AGORA_SUPA_US', 'agora-supa-eu': 'ENTRADA_AGORA_SUPA_EU',
-  'agora-vercel-eu': 'ENTRADA_AGORA_VERCEL_EU', 'agora-vercel-us': 'ENTRADA_AGORA_VERCEL_US'
+  kills: 'INGEST_KILLS', relink: 'INGEST_RELINK',
+  'latest-supa-us': 'INGEST_LATEST_SUPA_US', 'latest-supa-eu': 'INGEST_LATEST_SUPA_EU',
+  'latest-vercel-eu': 'INGEST_LATEST_VERCEL_EU', 'latest-vercel-us': 'INGEST_LATEST_VERCEL_US'
 };
 // When a region's weekly match starts, UTC (day 0 = Sunday), checked against the
 // live API on 04/10/2026: 2-x 2026-10-02T18:00Z, 1-x 2026-10-03T02:00Z.
 const RESET = { 1: { day: 6, hour: 2 }, 2: { day: 5, hour: 18 } };
-// Past this a match has had no update and its tier is gone; /api/agora drops it.
-const AGORA_KEEP_S = 2 * 3600;
-// The newest body older than this and /api/agora answers 503.
-const STALE_AGORA_S = 10 * 60;
+// Past this a match has had no update and its tier is gone; /api/latest drops it.
+const LATEST_KEEP_S = 2 * 3600;
+// The newest body older than this and /api/latest answers 503.
+const STALE_LATEST_S = 10 * 60;
 // A match's score cannot rise faster than this a minute (PPT tops out far below),
 // with room on top. A message past it is a damaged read or a stolen secret.
 const MAX_SCORE_PER_MIN = 1000;
 const SCORE_SLACK = 2000;
-const AGORA_KEY = 'https://wvwrelink.com/api/agora';
-const RESUMO_KEY = 'https://wvwrelink.com/api/agora/resumo';
+const LATEST_KEY = 'https://wvwrelink.com/api/latest';
+const SUMMARY_KEY = 'https://wvwrelink.com/api/latest/summary';
 // The scripts make 128 hex characters. Anything much shorter was pasted in
 // half, and a weak secret that works is worse than one that fails loudly.
 const MIN_SECRET = 64;
@@ -74,7 +74,7 @@ for (const r of [1, 2]) for (let t = 1; t <= 9; t++) MATCHES.push(r + '-' + t);
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    const m = /^\/api\/entrada\/([a-z]+(?:-[a-z]+)*)$/.exec(url.pathname);
+    const m = /^\/api\/ingest\/([a-z]+(?:-[a-z]+)*)$/.exec(url.pathname);
     if (m) {
       if (request.method !== 'POST') return text(405, 'method');
       return accept(request, env, m[1], url.pathname);
@@ -113,7 +113,7 @@ async function accept(request, env, source, path) {
   if (!/^\d{10}$/.test(t) || !/^[0-9a-f]{64}$/.test(sig)) return refuse(401, source, 'no signature');
   const now = Math.floor(Date.now() / 1000);
   if (Math.abs(now - Number(t)) > MAX_SKEW_S) return refuse(401, source, 'time skew ' + (now - Number(t)));
-  const max = source.startsWith('agora-') ? MAX_BYTES_AGORA : MAX_BYTES;
+  const max = source.startsWith('latest-') ? MAX_BYTES_LATEST : MAX_BYTES;
   if (Number(request.headers.get('content-length') || 0) > max) return refuse(413, source, 'declared size');
   const body = await readCapped(request, max);
   if (!body) return refuse(413, source, 'size');
@@ -130,7 +130,7 @@ async function accept(request, env, source, path) {
     return refuse(401, source, 'bad signature');
   }
 
-  if (source.startsWith('agora-')) return acceptAgora(env, source, body, Number(t), now);
+  if (source.startsWith('latest-')) return acceptLatest(env, source, body, Number(t), now);
 
   // Signed from here on, so a failure below is our bug or Google's, not an
   // attack - but it is still never written.
@@ -170,9 +170,9 @@ async function claimTime(db, source, t, now) {
   return !!claim.meta && claim.meta.changes === 1;
 }
 
-// The agora entrance: <summary JSON, one line> "\n" <gzip body of each match,
+// The latest entrance: <summary JSON, one line> "\n" <gzip body of each match,
 // in the summary's order>. Only the summary and the slices' hashes are read.
-async function acceptAgora(env, source, body, t, now) {
+async function acceptLatest(env, source, body, t, now) {
   const nl = body.indexOf(10);
   if (nl < 0) return refuse(400, source, 'no summary line');
   let summary;
@@ -200,11 +200,11 @@ async function acceptAgora(env, source, body, t, now) {
   const lost = [];
   for (const m of ms) {
     const r = await env.DB.prepare(
-      'INSERT INTO agora (id, start, score, at, leitor, gz, sha, raw) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) ' +
+      'INSERT INTO latest (id, start, score, at, reader, gz, sha, raw) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) ' +
       'ON CONFLICT (id) DO UPDATE SET start = excluded.start, score = excluded.score, at = excluded.at, ' +
-      'leitor = excluded.leitor, gz = excluded.gz, sha = excluded.sha, raw = excluded.raw ' +
-      'WHERE excluded.start > agora.start OR (excluded.start = agora.start AND excluded.score > agora.score ' +
-      'AND excluded.score <= agora.score + ' + MAX_SCORE_PER_MIN + ' * ((?9 - agora.at) / 60.0) + ' + SCORE_SLACK + ')'
+      'reader = excluded.reader, gz = excluded.gz, sha = excluded.sha, raw = excluded.raw ' +
+      'WHERE excluded.start > latest.start OR (excluded.start = latest.start AND excluded.score > latest.score ' +
+      'AND excluded.score <= latest.score + ' + MAX_SCORE_PER_MIN + ' * ((?9 - latest.at) / 60.0) + ' + SCORE_SLACK + ')'
     ).bind(m.id, m.start, m.score, now, source, toBase64(m.slice), m.sha256, m.raw, now).run();
     (r.meta && r.meta.changes === 1 ? applied : lost).push(m);
   }
@@ -236,7 +236,7 @@ async function acceptAgora(env, source, body, t, now) {
 // plain older or equal reading is the ordinary way to lose. One read, only
 // when something lost, and only for the log.
 async function logJumps(db, source, lost, now) {
-  const { results } = await db.prepare('SELECT id, start, score, at FROM agora').all();
+  const { results } = await db.prepare('SELECT id, start, score, at FROM latest').all();
   for (const m of lost) {
     const o = results.find((r) => r.id === m.id);
     if (o && o.start === m.start && m.score > o.score + MAX_SCORE_PER_MIN * ((now - o.at) / 60) + SCORE_SLACK) {
@@ -415,10 +415,10 @@ function relinkStatement(db, d, t) {
   ).bind(d.beat, none ? null : d.window, none ? null : d.published, d.fails);
 }
 
-// Each read is one row of D1 (saude: two), whatever anyone asks, and takes
+// Each read is one row of D1 (health: two), whatever anyone asks, and takes
 // nothing from the request - no parameter reaches a query.
 const READS = {
-  '/api/saude': async (env) => {
+  '/api/health': async (env) => {
     const { results } = await env.DB.prepare('SELECT name, received FROM source').all();
     const out = {};
     for (const r of results) out[r.name] = r.received;
@@ -442,24 +442,24 @@ const READS = {
   // One query, and the answer kept for 30 s by Cloudflare's cache under a fixed
   // key, so a query string cannot make a request of its own: a visitor costs D1
   // nothing while the copy lives.
-  '/api/agora': (env, ctx) => cached(ctx, AGORA_KEY, async () => {
-    const { results } = await env.DB.prepare('SELECT id, start, score, at, leitor, gz FROM agora').all();
+  '/api/latest': (env, ctx) => cached(ctx, LATEST_KEY, async () => {
+    const { results } = await env.DB.prepare('SELECT id, start, score, at, reader, gz FROM latest').all();
     // Two hours without an update: a tier that no longer exists.
-    const live = results.filter((r) => nowS() - r.at <= AGORA_KEEP_S);
+    const live = results.filter((r) => nowS() - r.at <= LATEST_KEEP_S);
     const newest = Math.max(0, ...live.map((r) => r.at));
-    if (!live.length || nowS() - newest > STALE_AGORA_S) return text(503, 'stale');
+    if (!live.length || nowS() - newest > STALE_LATEST_S) return text(503, 'stale');
     return json(JSON.stringify({
       at: newest,
-      matches: live.map((r) => ({ id: r.id, start: r.start, score: r.score, at: r.at, by: r.leitor, gz: r.gz }))
+      matches: live.map((r) => ({ id: r.id, start: r.start, score: r.score, at: r.at, by: r.reader, gz: r.gz }))
     }), 30);
   }),
 
   // Always 200, {} when empty: the readers need it to begin.
-  '/api/agora/resumo': (env, ctx) => cached(ctx, RESUMO_KEY, async () => {
-    const { results } = await env.DB.prepare('SELECT id, start, score, at, leitor FROM agora').all();
+  '/api/latest/summary': (env, ctx) => cached(ctx, SUMMARY_KEY, async () => {
+    const { results } = await env.DB.prepare('SELECT id, start, score, at, reader FROM latest').all();
     const out = {};
     for (const r of results) {
-      if (nowS() - r.at <= AGORA_KEEP_S) out[r.id] = { start: r.start, score: r.score, at: r.at, by: r.leitor };
+      if (nowS() - r.at <= LATEST_KEEP_S) out[r.id] = { start: r.start, score: r.score, at: r.at, by: r.reader };
     }
     return json(JSON.stringify(out), 15);
   })

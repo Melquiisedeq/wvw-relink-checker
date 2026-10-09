@@ -16,7 +16,7 @@ const MATCHES = ['1-1', '1-2', '1-3', '1-4', '1-5', '2-1', '2-2', '2-3', '2-4'];
 // before it, as the replay guard requires of real ones.
 function setup(opts = {}) {
   const { sql, ran, DB } = fakeD1(opts);
-  const env = { DB, ENTRADA_KILLS: KILLS_KEY, ENTRADA_RELINK: RELINK_KEY, ...opts.env };
+  const env = { DB, INGEST_KILLS: KILLS_KEY, INGEST_RELINK: RELINK_KEY, ...opts.env };
   let clock = Date.parse('2026-09-30T12:00:00Z');
   let lastSigned = 0;
   const call = async (req) => {
@@ -43,7 +43,7 @@ function setup(opts = {}) {
       return { 'x-wvw-time': String(t), 'x-wvw-sig': sig };
     },
     async post(source, obj, o = {}) {
-      const path = '/api/entrada/' + source;
+      const path = '/api/ingest/' + source;
       const body = typeof obj === 'string' ? obj : JSON.stringify(obj);
       const key = o.key || (source === 'relink' ? RELINK_KEY : KILLS_KEY);
       const headers = o.headers || w.signed(path, body, { key, ...o });
@@ -78,7 +78,7 @@ test('the entrance refuses what is not a signed, fresh, well-formed message', as
     ['signed with the other source\'s secret', () => w.post('kills', good, { key: RELINK_KEY }), 401],
     // The right key and body, signed for the kills path: only the path in the
     // signature can refuse it.
-    ['signed for the other path', () => w.post('relink', w.relink(), { sigPath: '/api/entrada/kills' }), 401],
+    ['signed for the other path', () => w.post('relink', w.relink(), { sigPath: '/api/ingest/kills' }), 401],
     ['six minutes in the future', () => w.post('kills', good, { t: Math.floor(w.now / 1000) + 360 }), 401],
     ['six minutes old', () => w.post('kills', good, { t: Math.floor(w.now / 1000) - 360 }), 401],
     ['over 64 KB', () => w.post('kills', JSON.stringify({ rows: [], pad: 'x'.repeat(65 * 1024) })), 413],
@@ -111,7 +111,7 @@ test('a chunked body with no length is cut off, not held', async () => {
   const big = new ReadableStream({
     start(c) { for (let i = 0; i < 80; i++) c.enqueue(new Uint8Array(65536)); c.close(); }
   });
-  const req = new Request('https://wvwrelink.com/api/entrada/kills', {
+  const req = new Request('https://wvwrelink.com/api/ingest/kills', {
     method: 'POST', body: big, duplex: 'half',
     headers: { 'x-wvw-time': String(Math.floor(w.now / 1000)), 'x-wvw-sig': 'a'.repeat(64) }
   });
@@ -125,21 +125,21 @@ test('a chunked body with no length is cut off, not held', async () => {
 });
 
 test('a missing or short secret closes the source rather than weakening it', async () => {
-  const none = setup({ env: { ENTRADA_KILLS: undefined } });
+  const none = setup({ env: { INGEST_KILLS: undefined } });
   assert.equal(await none.post('kills', { rows: none.rows(none.now) }), 404);
-  const half = setup({ env: { ENTRADA_KILLS: 'k'.repeat(63) } });
+  const half = setup({ env: { INGEST_KILLS: 'k'.repeat(63) } });
   assert.equal(await half.post('kills', { rows: half.rows(half.now) }, { key: 'k'.repeat(63) }), 404);
 });
 
 test('only the three entrance paths and three reads exist', async () => {
   const w = setup();
-  assert.equal((await w.get('/api/entrada/kills')).status, 405);
+  assert.equal((await w.get('/api/ingest/kills')).status, 405);
   assert.equal((await w.get('/api/kills', 'POST')).status, 405);
   // An unknown source is refused before its signature is even read.
-  for (const p of ['/api/entrada/admin', '/api/entrada/constructor']) {
+  for (const p of ['/api/ingest/admin', '/api/ingest/constructor']) {
     assert.equal((await w.get(p, 'POST')).status, 404, p);
   }
-  for (const p of ['/api/constructor', '/api/__proto__', '/api/kills/', '/api/', '/api/saude/x']) {
+  for (const p of ['/api/constructor', '/api/__proto__', '/api/kills/', '/api/', '/api/health/x']) {
     assert.equal((await w.get(p)).status, 404, p);
   }
 });
@@ -276,10 +276,10 @@ test('/api/relink gives A1 as two integers, and 503 when it cannot', async () =>
   assert.equal((await w.get('/api/relink')).status, 503, 'no beat in 46 minutes');
 });
 
-test('/api/saude says when each source last reported', async () => {
+test('/api/health says when each source last reported', async () => {
   const w = setup();
   await w.post('kills', { rows: w.rows(w.now) });
-  const body = JSON.parse((await w.get('/api/saude')).body);
+  const body = JSON.parse((await w.get('/api/health')).body);
   assert.equal(body.kills, Math.floor(w.now / 1000));
   assert.equal(body.relink, 0);
 });

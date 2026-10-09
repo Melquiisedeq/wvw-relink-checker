@@ -314,9 +314,9 @@ async function main() {
   let failing = null;
   let limited = null;               // set by the step 'guild cache': { re, status } answers that status on purpose
   let limitedReads = 0;
-  // /api/agora, the page's second read of the matches: 'down' answers 503 (the
-  // walk's default), 'serve' answers `agoraBody`, 'hang' never answers.
-  let agoraMode = 'down', agoraBody = null, agoraReads = 0;
+  // /api/latest, the page's second read of the matches: 'down' answers 503 (the
+  // walk's default), 'serve' answers `latestBody`, 'hang' never answers.
+  let latestMode = 'down', latestBody = null, latestReads = 0;
   let failingLog = null;            // what the step may log errors for, kept past the end of the 503s (the log is late)
 
   // The hot-map floor is 50 kills in ten minutes and the recording may sit in a
@@ -344,10 +344,10 @@ async function main() {
     const isApi = url.startsWith(base + '/api/');
     const own = isApi ? OWN_API.get(url.slice(base.length)) : null;
     try {
-      if (isApi && url.slice(base.length) === '/api/agora' && request.method !== 'OPTIONS') {
-        agoraReads++;
-        if (agoraMode === 'hang') return;   // the page's own deadline ends it
-        if (agoraMode === 'serve' && !apiDown) return await reply(requestId, 200, 'application/json', agoraBody);
+      if (isApi && url.slice(base.length) === '/api/latest' && request.method !== 'OPTIONS') {
+        latestReads++;
+        if (latestMode === 'hang') return;   // the page's own deadline ends it
+        if (latestMode === 'serve' && !apiDown) return await reply(requestId, 200, 'application/json', latestBody);
         return await reply(requestId, 503, 'application/json', Buffer.from('{"error":"down"}'));
       }
       if (isApi && !own) {
@@ -438,7 +438,7 @@ async function main() {
         break;
       case 'Log.entryAdded': {
         const e = p.entry;
-        const refused = (apiDown && /\/api\//.test(e.url || '')) || /\/api\/agora$/.test(e.url || '') || (failingLog && failingLog.test(e.url || ''));   // the 503 we sent on purpose
+        const refused = (apiDown && /\/api\//.test(e.url || '')) || /\/api\/latest$/.test(e.url || '') || (failingLog && failingLog.test(e.url || ''));   // the 503 we sent on purpose
         if (e.level === 'error' && !refused && !BLOCKED.test(e.url || '') && !BLOCKED.test(e.text)) {
           problem(`log error (${e.source}): ${e.text}${e.url ? ' ' + e.url : ''}`);
         }
@@ -1338,11 +1338,11 @@ async function main() {
     failingLog = null;
   }
 
-  // /api/agora: gzip + base64 bodies of the live matches. One is made newer
+  // /api/latest: gzip + base64 bodies of the live matches. One is made newer
   // (score up), one is offered under another match's id, one under an id the
   // game never gave; only the first may reach the page.
-  async function agoraSecondRead() {
-    const step = 'agora';
+  async function latestSecondRead() {
+    const step = 'latest';
     const allHit = recorded.get(ALL_URL);
     if (!allHit) return void problem(`step '${step}': ${ALL_URL} not recorded`);
     const all = JSON.parse(bodyOf(allHit).toString('utf8'));
@@ -1361,32 +1361,32 @@ async function main() {
     const scoreOf = id => ev(`(() => { const m = matchDataCache.get('${id}'); return m ? colorSum(m.scores) : -1; })()`);
     const known = ev("typeof matchDataCache.has === 'function' && matchDataCache.has('1-9')");
 
-    agoraMode = 'serve'; agoraBody = Buffer.from(body); agoraReads = 0;
+    latestMode = 'serve'; latestBody = Buffer.from(body); latestReads = 0;
     if (await load(step + ': newer')) {
-      if (!agoraReads) problem(`step '${step}': the page never asked /api/agora`);
+      if (!latestReads) problem(`step '${step}': the page never asked /api/latest`);
       if (await scoreOf(a.id) !== sum(a) + 5000) problem(`step '${step}': the newer body of ${a.id} did not reach the page (${await scoreOf(a.id)}, wanted ${sum(a) + 5000})`);
       if (await scoreOf(b.id) !== sum(b)) problem(`step '${step}': a body under the wrong id changed ${b.id}`);
       if (await known) problem(`step '${step}': an id the game never gave was kept`);
     }
     // Garbage in every field the page checks: nothing may change, nothing may be said.
-    agoraBody = Buffer.from(JSON.stringify({ at: 0, matches: [
+    latestBody = Buffer.from(JSON.stringify({ at: 0, matches: [
       { id: a.id, start: Date.parse(a.start_time), gz: 'not base64 !' },
       { id: a.id, start: Date.parse(a.start_time), gz: gzipSync(Buffer.from('{not json')).toString('base64') },
       { id: a.id, start: Date.parse(a.start_time) + 1, gz: entry(a.id, bump(a, 5000)).gz },
       { id: a.id, start: Date.parse(a.start_time), gz: gzipSync(Buffer.alloc(300 * 1024, 32)).toString('base64') },
     ] }));
-    if (await load(step + ': garbage') && await scoreOf(a.id) !== sum(a)) problem(`step '${step}': a bad /api/agora entry changed ${a.id}`);
+    if (await load(step + ': garbage') && await scoreOf(a.id) !== sum(a)) problem(`step '${step}': a bad /api/latest entry changed ${a.id}`);
 
-    agoraMode = 'down'; agoraReads = 0;
+    latestMode = 'down'; latestReads = 0;
     const t0 = Date.now();
     const downOk = await load(step + ': 503');
     const baseMs = Date.now() - t0;
-    if (downOk && !agoraReads) problem(`step '${step}': the page never asked /api/agora`);
-    if (downOk && await scoreOf(a.id) !== sum(a)) problem(`step '${step}': the numbers moved with /api/agora down`);
+    if (downOk && !latestReads) problem(`step '${step}': the page never asked /api/latest`);
+    if (downOk && await scoreOf(a.id) !== sum(a)) problem(`step '${step}': the numbers moved with /api/latest down`);
 
     // Hung: tiers must be up about as fast as with the 503. Timed to the tiers,
     // not to quiet: the page's own deadline closes the request later.
-    agoraMode = 'hang'; agoraReads = 0;
+    latestMode = 'hang'; latestReads = 0;
     loaded = false; ids.clear(); stepNow = step + ': hang';
     const h0 = Date.now();
     await send('Page.navigate', { url: base + '/' });
@@ -1398,11 +1398,11 @@ async function main() {
       up = !!w && g.NA >= w.NA && g.EU >= w.EU && w.NA > 0 && w.EU > 0;
     }
     const hangMs = Date.now() - h0;
-    if (!up) problem(`step '${step}': tiers never appeared with /api/agora hung`);
-    else if (!agoraReads) problem(`step '${step}': the page never asked /api/agora (hung)`);
-    else if (hangMs > baseMs + 2500) problem(`step '${step}': a hung /api/agora slowed the tiers to ${hangMs} ms (503: ${baseMs} ms)`);
+    if (!up) problem(`step '${step}': tiers never appeared with /api/latest hung`);
+    else if (!latestReads) problem(`step '${step}': the page never asked /api/latest (hung)`);
+    else if (hangMs > baseMs + 2500) problem(`step '${step}': a hung /api/latest slowed the tiers to ${hangMs} ms (503: ${baseMs} ms)`);
     await idle(step + ': hang');
-    agoraMode = 'down';
+    latestMode = 'down';
   }
 
   // The tiers in the standings: one whose match has answered the same score for
@@ -1619,8 +1619,8 @@ async function main() {
   // 8. A failed load, tried again.
   await failedLoad();
 
-  // 8b. /api/agora: a newer body wins, a bad one is ignored, a 503 or a hang costs nothing.
-  await agoraSecondRead();
+  // 8b. /api/latest: a newer body wins, a bad one is ignored, a 503 or a hang costs nothing.
+  await latestSecondRead();
 
   // 5. A second load, /api/* answering 503: the page falls back to the sheets.
   apiDown = true;

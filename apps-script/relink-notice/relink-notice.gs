@@ -148,8 +148,8 @@ function relinkSetup() {
 /**
  * Run once by hand. Creates the secret the messages to wvwrelink.com/api are
  * signed with and logs it this once, to be pasted into the Worker's
- * ENTRADA_RELINK secret and nowhere else. Until it exists nothing is sent.
- * To change it: delete the "entrada" script property, run this again, paste.
+ * INGEST_RELINK secret and nowhere else. Until it exists nothing is sent.
+ * To change it: delete the "ingest" script property, run this again, paste.
  */
 function relinkSecret() {
   RelinkNotice_.secret();
@@ -237,8 +237,8 @@ var RelinkNotice_ = (function () {
   // Per request, against the 360 s default; see getAll().
   var TIMEOUT_SECONDS = 20;
 
-  var ENTRADA = 'https://wvwrelink.com';
-  var ENTRADA_PATH = '/api/entrada/relink';
+  var INGEST = 'https://wvwrelink.com';
+  var INGEST_PATH = '/api/ingest/relink';
 
 
   function num(v) {
@@ -710,7 +710,7 @@ var RelinkNotice_ = (function () {
   function push() {
     try {
       var props = PropertiesService.getScriptProperties();
-      var secret = props.getProperty('entrada');
+      var secret = props.getProperty('ingest');
       if (!secret) return;
       var v = stateTab().getRange('A1:A2').getDisplayValues();
       var found = STATE_RE.exec(String(v[0][0]));
@@ -722,9 +722,9 @@ var RelinkNotice_ = (function () {
       });
       var t = Math.floor(Date.now() / 1000);
       var sig = hex(Utilities.computeHmacSha256Signature(
-        Utilities.newBlob(t + '\n' + ENTRADA_PATH + '\n' + body).getBytes(),
+        Utilities.newBlob(t + '\n' + INGEST_PATH + '\n' + body).getBytes(),
         Utilities.newBlob(secret).getBytes()));
-      var res = UrlFetchApp.fetch(ENTRADA + ENTRADA_PATH, {
+      var res = UrlFetchApp.fetch(INGEST + INGEST_PATH, {
         method: 'post',
         contentType: 'application/json',
         payload: body,
@@ -742,8 +742,8 @@ var RelinkNotice_ = (function () {
 
   function secret() {
     var props = PropertiesService.getScriptProperties();
-    if (props.getProperty('entrada')) {
-      Logger.log('A secret already exists. Delete the "entrada" script property '
+    if (props.getProperty('ingest')) {
+      Logger.log('A secret already exists. Delete the "ingest" script property '
         + 'first to replace it.');
       return;
     }
@@ -755,8 +755,8 @@ var RelinkNotice_ = (function () {
         Utilities.getUuid() + Utilities.getUuid() + Date.now()));
     }
     var value = hex(bytes);
-    props.setProperty('entrada', value);
-    Logger.log('Paste this into the Worker secret ENTRADA_RELINK, and nowhere else:');
+    props.setProperty('ingest', value);
+    Logger.log('Paste this into the Worker secret INGEST_RELINK, and nowhere else:');
     Logger.log(value);
   }
 

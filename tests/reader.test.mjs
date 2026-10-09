@@ -7,9 +7,9 @@ import { createHmac } from 'node:crypto';
 import worker from '../worker/index.mjs';
 import { fakeD1 } from './fake-d1.mjs';
 import {
-  REGIONS, regionFor, checkMatch, checkRead, checkResumo, pickNewer, buildBody, sign, sameSecret
-} from '../supabase/leitor.mjs';
-import { handle } from '../supabase/leitor.mjs';
+  REGIONS, regionFor, checkMatch, checkRead, checkSummaryBody, pickNewer, buildBody, sign, sameSecret
+} from '../supabase/reader.mjs';
+import { handle } from '../supabase/reader.mjs';
 
 // 2026-10-03 is a Saturday: the NA week began 02:00Z, 10 hours before this clock.
 const NOW = Date.parse('2026-10-03T12:00:00Z');
@@ -71,29 +71,29 @@ test('a damaged or strange match is left out, the others go on', () => {
 test('only what is newer than the Worker holds is sent', () => {
   const ms = ['1-1', '1-2', '1-3', '1-4'].map((id, i) => checkMatch(apiMatch(id, { scores: [1000 + i, 0, 0] }), NOW));
   const week = Date.parse(NA_START);
-  const resumo = checkResumo({
+  const summary = checkSummaryBody({
     '1-1': { start: week, score: 1000, extra: 1 },  // same week, same score: nothing new
     '1-2': { start: week, score: 5000 },            // Worker ahead
     '1-3': { start: week + 7 * 86400e3, score: 1 }, // Worker on a later week: never goes back
     '1-4': { start: week - 7 * 86400e3, score: 9e6 } // a new week beats any old score
   });
-  assert.deepEqual(pickNewer(ms, resumo).map((m) => m.id), ['1-4']);
+  assert.deepEqual(pickNewer(ms, summary).map((m) => m.id), ['1-4']);
   assert.deepEqual(pickNewer(ms, {}).map((m) => m.id), ['1-1', '1-2', '1-3', '1-4']);
   assert.equal(pickNewer([checkMatch(apiMatch('1-1', { scores: [1001, 0, 0] }), NOW)], { '1-1': { start: week, score: 1000 } }).length, 1);
   for (const bad of [null, [], { 'x': { start: 1, score: 1 } }, { '1-1': { start: 'a', score: 1 } }, { '1-1': null }]) {
-    assert.equal(checkResumo(bad), null);
+    assert.equal(checkSummaryBody(bad), null);
   }
 });
 
 // The Worker's door with the reader's secrets, clock held at NOW.
 function door() {
   const { sql, DB } = fakeD1();
-  const env = { DB, ENTRADA_AGORA_SUPA_US: SECRET['us-east-1'], ENTRADA_AGORA_SUPA_EU: SECRET['eu-central-1'] };
+  const env = { DB, INGEST_LATEST_SUPA_US: SECRET['us-east-1'], INGEST_LATEST_SUPA_EU: SECRET['eu-central-1'] };
   return {
     sql,
     async push(region, body, t = Math.floor(NOW / 1000)) {
       const { source } = REGIONS[region];
-      const path = '/api/entrada/' + source;
+      const path = '/api/ingest/' + source;
       const sig = await sign(SECRET[region], String(t), path, body);
       const real = Date.now;
       Date.now = () => NOW;
@@ -117,8 +117,8 @@ test('what the reader builds is accepted by the Worker, each region at its own d
   const r = await w.push('us-east-1', built.body);
   assert.equal(r.status, 200, r.text);
   assert.deepEqual(JSON.parse(r.text).applied, ['1-1', '1-2', '2-1']);
-  const row = w.sql.prepare("SELECT leitor, score, raw FROM agora WHERE id = '1-1'").get();
-  assert.equal(row.leitor, 'agora-supa-us');
+  const row = w.sql.prepare("SELECT reader, score, raw FROM latest WHERE id = '1-1'").get();
+  assert.equal(row.reader, 'latest-supa-us');
   assert.equal(row.score, 6000);
   assert.equal(row.raw, new TextEncoder().encode(read.matches[0].text).length);
   // Same read again: its own score is no longer newer, so nothing is built.
@@ -134,7 +134,7 @@ test('a signature made with the other region\'s secret is refused', async () => 
   const w = door();
   const built = await buildBody(checkRead([apiMatch('1-1')], NOW).matches);
   const t = Math.floor(NOW / 1000);
-  const path = '/api/entrada/' + REGIONS['us-east-1'].source;
+  const path = '/api/ingest/' + REGIONS['us-east-1'].source;
   assert.equal(await sign(SECRET['us-east-1'], String(t), path, built.body),
     createHmac('sha256', SECRET['us-east-1']).update(t + '\n' + path + '\n').update(built.body).digest('hex'));
   const real = Date.now;
@@ -144,7 +144,7 @@ test('a signature made with the other region\'s secret is refused', async () => 
     const { DB } = fakeD1();
     const r = await worker.fetch(new Request('https://wvwrelink.com' + path, {
       method: 'POST', body: built.body, headers: { 'x-wvw-time': String(t), 'x-wvw-sig': sig }
-    }), { DB, ENTRADA_AGORA_SUPA_US: SECRET['us-east-1'] }, {});
+    }), { DB, INGEST_LATEST_SUPA_US: SECRET['us-east-1'] }, {});
     assert.equal(r.status, 401);
   } finally {
     Date.now = real;
@@ -175,7 +175,7 @@ function loadHandler(env) {
 
 test('the function answers 404, empty, before it reads anything, unless the call is right', async () => {
   const LOCK = 'k'.repeat(128);
-  const handler = loadHandler({ LEITOR_CHAVE: LOCK, ENTRADA_AGORA_SUPA_US: SECRET['us-east-1'], ENTRADA_AGORA_SUPA_EU: SECRET['eu-central-1'] });
+  const handler = loadHandler({ READER_KEY: LOCK, INGEST_LATEST_SUPA_US: SECRET['us-east-1'], INGEST_LATEST_SUPA_EU: SECRET['eu-central-1'] });
   const realFetch = globalThis.fetch;
   const realNow = Date.now;
   const urls = [];
@@ -184,23 +184,23 @@ test('the function answers 404, empty, before it reads anything, unless the call
   globalThis.fetch = async (url, init = {}) => {
     urls.push(String(url));
     if (String(url).startsWith('https://api.guildwars2.com/')) return new Response(JSON.stringify([apiMatch('1-1'), apiMatch('2-1')]));
-    if (String(url) === 'https://wvwrelink.com/api/agora/resumo') {
+    if (String(url) === 'https://wvwrelink.com/api/latest/summary') {
       return new Response(JSON.stringify({ '1-1': { start: Date.parse(NA_START), score: 6000, at: 1, by: 'x' } }));
     }
     pushed = { url: String(url), headers: init.headers, body: init.body };
     return new Response('{"applied":["2-1"]}');
   };
-  const call = (headers, method = 'POST') => handler(new Request('https://x.supabase.co/functions/v1/leitor', { method, headers }));
+  const call = (headers, method = 'POST') => handler(new Request('https://x.supabase.co/functions/v1/reader', { method, headers }));
   try {
     for (const [what, headers, method] of [
       ['no key', { 'x-region': 'us-east-1' }],
-      ['wrong key', { 'x-wvw-chave': 'z'.repeat(128), 'x-region': 'us-east-1' }],
+      ['wrong key', { 'x-wvw-key': 'z'.repeat(128), 'x-region': 'us-east-1' }],
       ['key in the wrong place', { 'x-region': 'us-east-1', authorization: 'Bearer ' + LOCK }],
-      ['GET', { 'x-wvw-chave': LOCK, 'x-region': 'us-east-1' }, 'GET'],
-      ['unknown region', { 'x-wvw-chave': LOCK, 'x-region': 'ap-southeast-1' }],
-      ['no region', { 'x-wvw-chave': LOCK }],
-      ['called for the US, ran in the EU', { 'x-wvw-chave': LOCK, 'x-region': 'us-east-1' }],
-      ['inherited name as region', { 'x-wvw-chave': LOCK, 'x-region': 'constructor' }]
+      ['GET', { 'x-wvw-key': LOCK, 'x-region': 'us-east-1' }, 'GET'],
+      ['unknown region', { 'x-wvw-key': LOCK, 'x-region': 'ap-southeast-1' }],
+      ['no region', { 'x-wvw-key': LOCK }],
+      ['called for the US, ran in the EU', { 'x-wvw-key': LOCK, 'x-region': 'us-east-1' }],
+      ['inherited name as region', { 'x-wvw-key': LOCK, 'x-region': 'constructor' }]
     ]) {
       const r = await call(headers, method);
       assert.equal(r.status, 404, what);
@@ -208,10 +208,10 @@ test('the function answers 404, empty, before it reads anything, unless the call
     }
     assert.deepEqual(urls, []);
 
-    const r = await call({ 'x-wvw-chave': LOCK, 'x-region': 'eu-central-1' });
+    const r = await call({ 'x-wvw-key': LOCK, 'x-region': 'eu-central-1' });
     assert.equal(r.status, 200);
-    assert.deepEqual(urls, ['https://api.guildwars2.com/v2/wvw/matches?ids=all', 'https://wvwrelink.com/api/agora/resumo',
-      'https://wvwrelink.com/api/entrada/agora-supa-eu']);
+    assert.deepEqual(urls, ['https://api.guildwars2.com/v2/wvw/matches?ids=all', 'https://wvwrelink.com/api/latest/summary',
+      'https://wvwrelink.com/api/ingest/latest-supa-eu']);
     // Only 2-1 is newer than the Worker's copy, and the Worker takes it.
     const w = door();
     const t = Number(pushed.headers['x-wvw-time']);
@@ -226,7 +226,7 @@ test('the function answers 404, empty, before it reads anything, unless the call
 
 test('the function fails with a generic answer when the game API is wrong', async () => {
   const LOCK = 'k'.repeat(128);
-  const handler = loadHandler({ SB_REGION: 'us-east-1', LEITOR_CHAVE: LOCK, ENTRADA_AGORA_SUPA_US: SECRET['us-east-1'] });
+  const handler = loadHandler({ SB_REGION: 'us-east-1', READER_KEY: LOCK, INGEST_LATEST_SUPA_US: SECRET['us-east-1'] });
   const realFetch = globalThis.fetch;
   const seen = [];
   globalThis.fetch = async (url) => { seen.push(String(url)); return new Response('<html>nope</html>'); };
@@ -234,7 +234,7 @@ test('the function fails with a generic answer when the game API is wrong', asyn
   const lines = [];
   console.log = (s) => lines.push(String(s));
   try {
-    const r = await handler(new Request('https://x.supabase.co/', { method: 'POST', headers: { 'x-wvw-chave': LOCK, 'x-region': 'us-east-1' } }));
+    const r = await handler(new Request('https://x.supabase.co/', { method: 'POST', headers: { 'x-wvw-key': LOCK, 'x-region': 'us-east-1' } }));
     assert.equal(r.status, 500);
     assert.equal(await r.text(), '{"ok":false}\n');
     assert.deepEqual(seen, ['https://api.guildwars2.com/v2/wvw/matches?ids=all']);
