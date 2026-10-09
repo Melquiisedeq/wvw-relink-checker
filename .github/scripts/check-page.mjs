@@ -350,6 +350,18 @@ async function main() {
         if (latestMode === 'serve' && !apiDown) return await reply(requestId, 200, 'application/json', latestBody);
         return await reply(requestId, 503, 'application/json', Buffer.from('{"error":"down"}'));
       }
+      // The summary the page peeks at: what /api/latest serves, without the
+      // bodies; {} when it serves nothing, as the Worker answers when empty.
+      if (isApi && url.slice(base.length) === '/api/latest/summary' && request.method !== 'OPTIONS') {
+        if (apiDown) return await reply(requestId, 503, 'application/json', Buffer.from('{"error":"down"}'));
+        const out = {};
+        if (latestMode === 'serve' && latestBody) {
+          for (const m of JSON.parse(latestBody.toString('utf8')).matches || []) {
+            if (m && typeof m.id === 'string') out[m.id] = { start: m.start, score: m.score, at: m.at, by: m.by };
+          }
+        }
+        return await reply(requestId, 200, 'application/json', Buffer.from(JSON.stringify(out)));
+      }
       if (isApi && !own) {
         problem(`unknown /api route, not fetched: ${url}`);
         return await send('Fetch.failRequest', { requestId, errorReason: 'Failed' });

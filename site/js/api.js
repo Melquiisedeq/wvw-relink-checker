@@ -579,6 +579,7 @@ async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
 // the body is data, as always. Any failure is silence: the page is then as it
 // was without this read.
 const LATEST_URL = '/api/latest';
+const LATEST_SUMMARY_URL = '/api/latest/summary';
 const LATEST_QUIET_MS = 90 * 1000;
 const LATEST_GAP_MS = 30 * 1000;
 const LATEST_WAIT_MS = 1200;           // how long a read holds the paint; a late answer waits for the next one

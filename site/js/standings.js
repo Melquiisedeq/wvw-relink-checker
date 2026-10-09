@@ -233,7 +233,8 @@ function updateTierAges() {
       const rose = matchScoreRoseAt(box.dataset.matchId);
       const age = Date.now() - rose;
       let mark = box.querySelector(':scope > .tier-age');
-      if (!rose || age <= TIER_STALE_MS || !box.querySelector('.standing-side')) {
+      if (!rose || age <= TIER_STALE_MS || latestAhead.has(box.dataset.matchId)
+        || !box.querySelector('.standing-side')) {
         if (mark) mark.remove();
         continue;
       }
@@ -576,6 +577,40 @@ async function loadStandings(origin = 'cycle') {
   standingsFailed = failed;
   if (failed.length) planStandingsRetry();
   else standingsExtraUsed = 0;
+}
+
+// Between the five-minute refreshes, the readers' summary (~1 KB, kept 15 s
+// by Cloudflare) is read every PEEK_MS while the tab is visible, when it comes
+// back, and when a popover closes. A live match /api holds further along than
+// the one on show, which has not risen here for PEEK_BEHIND_MS, loads the
+// board now. With a popover open the board cannot load (it would take the
+// popover's anchor down; the maps refresh themselves), so that tier only
+// loses its "No new data" at once - it is not true - and its numbers come
+// when the popover closes.
+const PEEK_MS = 30 * 1000;
+const PEEK_BEHIND_MS = 90 * 1000;
+let latestAhead = new Set();   // ids /api held further along at the last peek
+let peekLoadedAt = 0;           // a load the peek asked for: one per PEEK_BEHIND_MS, if /api fails
+
+async function peekLatest() {
+  if (standingsInFlight || document.visibilityState === 'hidden') return;
+  let sum;
+  try { sum = await fetchOwnApi(LATEST_SUMMARY_URL); } catch { return; }
+  if (!sum || typeof sum !== 'object') return;
+  const now = Date.now();
+  const ahead = new Set();
+  for (const [id, k] of newestMatches) {
+    const e = Object.hasOwn(sum, id) ? sum[id] : null;
+    if (e && matchIsLive(k.match) && now - k.at >= PEEK_BEHIND_MS
+      && Number.isFinite(e.score) && e.start === Date.parse(k.match.start_time)
+      && e.score > colorSum(k.match.scores)) ahead.add(id);
+  }
+  latestAhead = ahead;
+  if (!ahead.size) return;
+  if (activeTrigger || standingsInFlight || now - peekLoadedAt < PEEK_BEHIND_MS) { updateTierAges(); return; }
+  peekLoadedAt = now;
+  latestAskedAt = 0;   // the load reads what the summary showed, whoever asked last
+  await loadStandings('peek');
 }
 
 // Rebuilding the grid on refresh would leave a popover pointing at a

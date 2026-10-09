@@ -17,6 +17,8 @@ refreshStandings();
 fetchTimers();
 setInterval(updateRelinkBanner, 60000); // ticks the countdown display only
 setInterval(updateTierAges, 60000); // the minutes on a tier with old data
+setInterval(peekLatest, PEEK_MS); // /api ahead of the board: load it now
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') peekLatest(); });
 schedulePeriodicRefresh(refreshStandings, STANDINGS_REFRESH_MS);
 schedulePeriodicRefresh(fetchTimers, TIMERS_REFRESH_MS);
 
