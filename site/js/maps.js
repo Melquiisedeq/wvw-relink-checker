@@ -1032,6 +1032,7 @@ function sumKills(n) {
 //   frozen   the score itself still past HUD_STALE_MS (the corner's amber)
 //   hot      the map with the orange swords, or null
 const HOT_WANT_MS = 10 * 60 * 1000;
+const HOT_NOW_MS = 60 * 1000;  // a kept body this fresh paints the swords without waiting for the read
 const HOT_FLOOR = 50;      // kills per ten minutes: a real fight, not API noise
 
 function killView(match, types, now = Date.now()) {
@@ -2376,11 +2377,14 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   let hotView = null;
   let hotType = null; // the tab markHotTab chose, null when none is hot
   // Until this popover's own first read ends, the score time is the
-  // standings' read (up to five minutes old) and could flash amber.
+  // standings' read (up to five minutes old) and could flash amber: an age
+  // that is not stale yet shows at once, a stale one waits for the read.
   let firstReadDone = false;
   const paintCorners = () => {
     if (!corners) return;
-    corners.paint(hotView, current, firstReadDone ? matchScoreRoseAt(match.id) : 0);
+    const rose = matchScoreRoseAt(match.id);
+    const known = firstReadDone || (rose > 0 && Date.now() - rose <= HUD_STALE_MS);
+    corners.paint(hotView, current, known ? rose : 0);
     // Orange swords only on the busiest map; elsewhere they are neutral.
     const l = plotWrap && plotWrap.querySelector('.wvw-hud-l');
     if (l) l.classList.toggle('is-cold', current !== hotType);
@@ -2580,6 +2584,13 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   // already set above, so nothing is blank; the swords arrive about a
   // third of a second in. A fetch that never lands keeps the stale
   // reading, which still beats no swords.
+  // Unless the body this page keeps rose within HOT_NOW_MS: that one is as
+  // fresh as the read, so the swords and the kills go up at once.
+  const keptNow = newestMatches.get(match.id);
+  if (keptNow && Date.now() - keptNow.at <= HOT_NOW_MS) {
+    liveMatch = keptNow.match;
+    markHotTab(liveMatch);
+  }
   setTimeout(() => {
     if (activeTrigger === triggerEl && !hotFresh) markHotTab(liveMatch);
   }, 2500);
