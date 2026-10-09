@@ -534,14 +534,20 @@ function matchesToReread(list, regions) {
 // body of each, in id order; a gap still missing gets the last body seen,
 // if any. Nothing to read again, nothing more is asked.
 async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
-  // The first read of a visit asks /api/latest beside the game, not after it.
-  const early = regions.length && !latestAsked ? startLatest() : null;
+  // The first read of a visit, and a single match gone quiet (the maps
+  // popover's poll), ask /api/latest beside the game, not after it.
+  const one = new URL(url).searchParams.get('id');
+  const early = regions.length ? (latestAsked ? null : startLatest())
+    : (one && latestWanted([one]) ? startLatest() : null);
   const raw = await fetchJson(url, 0, 'no-store', timeoutMs);
   if (!Array.isArray(raw)) {
     if (isMatchBody(raw) && newestMatches.has(raw.id) && matchIsBehind(raw, newestMatches.get(raw.id).match)) {
       for (const m of await rereadMatches(url, timeoutMs)) keepNewestMatch(m);
     }
-    return keepNewestMatch(raw);
+    const kept = keepNewestMatch(raw);
+    if (!early) return kept;
+    if (!isMatchBody(kept)) { early.then(offerLatest); return kept; }
+    return (await mergeLatest([kept], early))[0];
   }
   const { need, holes } = matchesToReread(raw, regions);
   let list;
@@ -563,7 +569,9 @@ async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
 // The game's own answer can sit still for minutes while the match moves.
 // /api/latest holds the same match bodies as the game gave them, gzipped and
 // base64, taken by our own scripts. Asked on the visit's first read and
-// whenever no live match has risen here for LATEST_QUIET_MS. Each body goes
+// whenever any live match read has not risen here for LATEST_QUIET_MS, at most
+// once per LATEST_GAP_MS. Asking only when all nine stood still meant asking
+// once a visit: one of nine almost always rose (09/10/2026). Each body goes
 // through keepNewestMatch like any other, so it wins only by being further
 // along. Threat model: anyone able to answer on this origin can hand us a
 // body, so: only ids the game already gave this visit, id and start must
@@ -571,12 +579,15 @@ async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
 // the body is data, as always. Any failure is silence: the page is then as it
 // was without this read.
 const LATEST_URL = '/api/latest';
+const LATEST_SUMMARY_URL = '/api/latest/summary';
 const LATEST_QUIET_MS = 90 * 1000;
+const LATEST_GAP_MS = 30 * 1000;
 const LATEST_WAIT_MS = 1200;           // how long a read holds the paint; a late answer waits for the next one
 const LATEST_BODY_MAX = 256 * 1024;    // inflated bytes per match
 const LATEST_GZ_MAX = 96 * 1024;       // base64 characters per match
 const LATEST_MATCHES_MAX = 20;
 let latestAsked = false;
+let latestAskedAt = 0;
 
 async function latestInflate(b64) {
   if (typeof b64 !== 'string' || b64.length > LATEST_GZ_MAX) return null;
@@ -623,7 +634,19 @@ async function latestRead() {
 function startLatest() {
   if (typeof DecompressionStream !== 'function') return null;
   latestAsked = true;
+  latestAskedAt = Date.now();
   return latestRead();
+}
+
+// True when one of `ids` is a live match this page has not seen rise for
+// LATEST_QUIET_MS, and the last ask is LATEST_GAP_MS old.
+function latestWanted(ids) {
+  const now = Date.now();
+  if (now - latestAskedAt < LATEST_GAP_MS) return false;
+  return ids.some((id) => {
+    const k = newestMatches.get(id);
+    return !!k && matchIsLive(k.match) && now - k.at >= LATEST_QUIET_MS;
+  });
 }
 
 // Offers the bodies of ids this visit already read from the game; returns
@@ -634,16 +657,12 @@ function offerLatest(bodies) {
   return out;
 }
 
-// `early`: a read already in the air (the visit's first). Waits only a moment
+// `early`: a read already in the air. Waits only a moment
 // for it: a hung /api must not slow the page, and what comes late is offered
 // all the same, for the next paint.
 async function mergeLatest(list, early) {
   let reading = early;
-  if (!reading) {
-    const now = Date.now();
-    const moving = [...newestMatches.values()].some((k) => k.rose && matchIsLive(k.match) && now - k.at < LATEST_QUIET_MS);
-    if (!moving) reading = startLatest();
-  }
+  if (!reading && latestWanted(list.map((m) => m.id))) reading = startLatest();
   if (!reading) return list;
   const timedOut = Symbol('late');
   const got = await Promise.race([reading, sleep(LATEST_WAIT_MS).then(() => timedOut)]);

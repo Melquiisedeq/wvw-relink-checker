@@ -350,6 +350,18 @@ async function main() {
         if (latestMode === 'serve' && !apiDown) return await reply(requestId, 200, 'application/json', latestBody);
         return await reply(requestId, 503, 'application/json', Buffer.from('{"error":"down"}'));
       }
+      // The summary the page peeks at: what /api/latest serves, without the
+      // bodies; {} when it serves nothing, as the Worker answers when empty.
+      if (isApi && url.slice(base.length) === '/api/latest/summary' && request.method !== 'OPTIONS') {
+        if (apiDown) return await reply(requestId, 503, 'application/json', Buffer.from('{"error":"down"}'));
+        const out = {};
+        if (latestMode === 'serve' && latestBody) {
+          for (const m of JSON.parse(latestBody.toString('utf8')).matches || []) {
+            if (m && typeof m.id === 'string') out[m.id] = { start: m.start, score: m.score, at: m.at, by: m.by };
+          }
+        }
+        return await reply(requestId, 200, 'application/json', Buffer.from(JSON.stringify(out)));
+      }
       if (isApi && !own) {
         problem(`unknown /api route, not fetched: ${url}`);
         return await send('Fetch.failRequest', { requestId, errorReason: 'Failed' });
@@ -460,9 +472,22 @@ async function main() {
   await send('Page.addScriptToEvaluateOnNewDocument', { source: clockShim(RECORD ? Date.now() : recordedAt) });
   // ---- Driving the page ---------------------------------------------------
 
-  // Evaluate in the page; a throw there is an error here.
+  // Evaluate in the page; a throw there is an error here. An evaluation that
+  // lands while the page is being replaced (a load the step just started) is
+  // asked again on the new document: Chrome answers it "navigated or closed"
+  // or with no context, which says nothing about the page. CI lost whole runs
+  // to it (PRs #75 and #76, 09/10/2026).
   async function ev(expression) {
-    const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+    let r;
+    for (let tries = 0; ; tries++) {
+      try {
+        r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+        break;
+      } catch (e) {
+        if (tries >= 40 || !/navigated or closed|context was destroyed|Cannot find context/.test(e.message)) throw e;
+        await sleep(50);
+      }
+    }
     if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
     return r.result.value;
   }
