@@ -472,9 +472,22 @@ async function main() {
   await send('Page.addScriptToEvaluateOnNewDocument', { source: clockShim(RECORD ? Date.now() : recordedAt) });
   // ---- Driving the page ---------------------------------------------------
 
-  // Evaluate in the page; a throw there is an error here.
+  // Evaluate in the page; a throw there is an error here. An evaluation that
+  // lands while the page is being replaced (a load the step just started) is
+  // asked again on the new document: Chrome answers it "navigated or closed"
+  // or with no context, which says nothing about the page. CI lost whole runs
+  // to it (PRs #75 and #76, 09/10/2026).
   async function ev(expression) {
-    const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+    let r;
+    for (let tries = 0; ; tries++) {
+      try {
+        r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+        break;
+      } catch (e) {
+        if (tries >= 40 || !/navigated or closed|context was destroyed|Cannot find context/.test(e.message)) throw e;
+        await sleep(50);
+      }
+    }
     if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
     return r.result.value;
   }
