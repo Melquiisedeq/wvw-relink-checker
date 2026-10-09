@@ -10,7 +10,7 @@
 let deployTimer = null;
 
 async function run() {
-  const names = parseGuildNames(guildInput.value);
+  const { names, cut } = parseGuildNames(guildInput.value);
   // Cleared up front rather than at each message: every line that goes
   // through statusMsg after this one is progress or success, and any of
   // them would otherwise inherit the last failure's colour.
@@ -162,7 +162,8 @@ async function run() {
       copyRow.style.display = 'none';
     }
 
-    statusMsg.textContent = `Done, checked ${names.length} guild(s).`;
+    statusMsg.textContent = `Done, checked ${names.length} guild(s).` +
+      (cut ? ` Only the first ${MAX_ENTRIES} guilds were checked.` : '');
   } catch (err) {
     // Not a path, a net: every call above that can fail is already
     // guarded. Without this the run would just stop with the spinner's

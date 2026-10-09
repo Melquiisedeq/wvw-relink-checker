@@ -83,7 +83,7 @@ const SHEET_URL = (tab) =>
 const SHEET_HUMAN_URL =
   `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit?usp=sharing`;
 
-const MAX_ENTRIES = 60;        // hard cap so a pasted wall of text can't hammer a public API
+const MAX_ENTRIES = 20;        // hard cap so a pasted wall of text can't hammer a public API
 const MAX_NAME_LENGTH = 64;    // real guild names and GUIDs are well under this
 const REQUEST_TIMEOUT_MS = 10000;
 // A slow line can take 40 s to bring the standings (the whole ids=all body)

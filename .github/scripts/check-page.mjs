@@ -1277,6 +1277,32 @@ async function main() {
     if (sched.ran !== 1) problem(`step '${step}': a run that did its work ran ${sched.ran} time(s) over a tick and a focus return, wanted 1`);
   }
 
+  // A pasted list of more than MAX_ENTRIES distinct names asks for the first
+  // MAX_ENTRIES only, and says so; exactly MAX_ENTRIES says nothing. Every
+  // search answers 404 on purpose, so only the asking is counted.
+  async function guildLimit() {
+    const step = 'guild limit';
+    stepNow = step;
+    const max = await ev('MAX_ENTRIES');
+    failingLog = /^https:\/\/api\.guildwars2\.com\/v2\/guild\//;
+    limited = { re: /^https:\/\/api\.guildwars2\.com\/v2\/guild\/search\?/, status: 404 };
+    for (const count of [max + 1, max]) {
+      limitedReads = 0;
+      const names = Array.from({ length: count }, (_, i) => `Check Page Limit ${i + 1}`);
+      await ev(`document.getElementById('guildInput').value = ${JSON.stringify(names.join('\n'))}`);
+      if (!(await click(`${step} (${count})`, "document.getElementById('runBtn')"))) break;
+      await until(step, "/^Done/.test(document.getElementById('statusMsg').textContent) && !document.getElementById('runBtn').disabled", `the "Done" status for ${count} names`);
+      const said = await ev("document.getElementById('statusMsg').textContent");
+      const warned = said.includes(`Only the first ${max} guilds were checked.`);
+      if (limitedReads !== max) problem(`step '${step}': ${count} names asked ${limitedReads} search(es), wanted ${max}`);
+      if (warned !== (count > max)) problem(`step '${step}': ${count} names gave status "${said}", the warning ${count > max ? 'was due' : 'was not due'}`);
+    }
+    limited = null;
+    await sleep(500);
+    failingLog = null;
+    await ev("document.getElementById('guildInput').value = ''");
+  }
+
   // 8a. Scripts run in order and the page is usable before the last one: with
   // one held, Escape, a resize, the Check button, Ctrl+Enter and a click
   // must raise nothing, and the page must work once it is let go.
@@ -1637,6 +1663,7 @@ async function main() {
 
   // 7d. A 429 is not kept against a guild; a skipped refresh does not spend its turn.
   await guildCache();
+  await guildLimit();
 
   // 8a. A visitor acting before the last scripts have loaded.
   await earlyActions();
