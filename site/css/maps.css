@@ -202,8 +202,14 @@
   border-radius:10px;overflow:hidden;
   background:radial-gradient(circle at 50% 42%, #18202a, #0c0f14 78%);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.06), inset 0 -1px 0 rgba(0,0,0,.5);
-  cursor:grab;touch-action:none;
+  cursor:grab;
+  /* Whole map in view: nothing to drag, so a vertical swipe scrolls what holds
+     the map - the popover, on a phone (touch-action:none here swallowed it). */
+  touch-action:pan-y;
 }
+/* Zoomed (class set from the viewBox in js/maps.js): the drag moves the map, so
+   the browser must not also scroll or it cancels the pointer stream. */
+.wvw-plot-wrap.is-zoomed{touch-action:none;}
 .wvw-plot-wrap.is-panning{cursor:grabbing;}
 .wvw-plot-wrap{container:plot / inline-size;}
 /* While a map has no owners yet. Ground, sectors and positions are all
@@ -396,6 +402,7 @@
   box-shadow:inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.45);
   font-size:.76rem;text-shadow:0 1px 2px rgba(0,0,0,.6);
   overflow-y:auto;max-height:62vh;
+  overscroll-behavior:contain; /* without it a swipe at the end scrolls the page behind */
 }
 @media (max-width:760px){ .wvw-detail{flex:1 1 auto;max-height:none;} }
 .wvw-detail-empty{color:#8d97a6;margin:0;}
