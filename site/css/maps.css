@@ -404,7 +404,10 @@
   overflow-y:auto;max-height:62vh;
   overscroll-behavior:contain; /* without it a swipe at the end scrolls the page behind */
 }
-@media (max-width:760px){ .wvw-detail{flex:1 1 auto;max-height:none;} }
+/* Stacked under the map, the panel is no scroller of its own: the popover is the
+   one that scrolls. A scroller with nothing to scroll and contain above kept a
+   swipe on the panel from reaching the popover (seen on a phone, 09/10/2026). */
+@media (max-width:760px){ .wvw-detail{flex:1 1 auto;max-height:none;overflow-y:visible;} }
 .wvw-detail-empty{color:#8d97a6;margin:0;}
 .wvw-detail-name{
   font-size:.95rem;font-weight:700;color:#f2f6fa;
