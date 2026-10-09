@@ -45,7 +45,7 @@ function closePopover() {
   mapTickTimer = null;
   mapCatchUp = null;
   // A refresh skipped while it was open, or /api ahead meanwhile: now.
-  if (trigger) setTimeout(peekLatest, 0);
+  if (trigger) peekSoon();
 }
 
 // Every icon opened its popover with the same twelve lines of bookkeeping,

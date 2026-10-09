@@ -511,7 +511,10 @@ async function loadStandings(origin = 'cycle') {
   try {
     const asked = Date.now();
     let idList, naMatches, euMatches;
-    const all = await fetchAllMatches(timeoutMs);
+    // A load the peek asked for reads /api, which it saw ahead, and not the
+    // game's ~97 KB again; with nothing from /api it leaves the board be.
+    const all = origin === 'peek' ? await latestBoard() : await fetchAllMatches(timeoutMs);
+    if (!all && origin === 'peek') return;
     if (all) {
       idList = all.map((m) => m.id);
       naMatches = all.filter((m) => m.id.startsWith('1-'));
@@ -579,21 +582,47 @@ async function loadStandings(origin = 'cycle') {
   else standingsExtraUsed = 0;
 }
 
-// Between the five-minute refreshes, the readers' summary (~1 KB, kept 15 s
-// by Cloudflare) is read every PEEK_MS while the tab is visible, when it comes
-// back, and when a popover closes. A live match /api holds further along than
-// the one on show, which has not risen here for PEEK_BEHIND_MS, loads the
-// board now. With a popover open the board cannot load (it would take the
-// popover's anchor down; the maps refresh themselves), so that tier only
-// loses its "No new data" at once - it is not true - and its numbers come
-// when the popover closes.
+// Between the five-minute refreshes, the readers' summary (~0.2 KB on the
+// wire, kept 15 s by Cloudflare) is read while the tab is visible: every
+// PEEK_MS while the visitor is using the page, doubling to PEEK_IDLE_MAX_MS
+// while not (the readers move every 2 min, so "it moved" would never let it
+// slow down); never under PEEK_SAVE_MS with
+// Save-Data on. Hidden, it stops; it runs at once when the tab comes back,
+// when a popover closes and on the first input after an idle stretch. A live
+// match /api holds further along than the one on show, which has not risen
+// here for PEEK_BEHIND_MS, loads the board from /api/latest. With a popover
+// open the board cannot load (it would take the popover's anchor down; the
+// maps refresh themselves), so that tier only loses its "No new data" at
+// once - it is not true - and its numbers come when the popover closes.
 const PEEK_MS = 30 * 1000;
+const PEEK_IDLE_MAX_MS = 120 * 1000;
+const PEEK_SAVE_MS = 60 * 1000;
+const PEEK_ACTIVE_MS = 2 * 60 * 1000;   // input this recent counts as using the page
 const PEEK_BEHIND_MS = 90 * 1000;
 let latestAhead = new Set();   // ids /api held further along at the last peek
 let peekLoadedAt = 0;           // a load the peek asked for: one per PEEK_BEHIND_MS, if /api fails
+let peekTimer = null;
+let peekDelay = PEEK_MS;
+let peekAt = 0;                 // when the last peek ran
+let inputAt = Date.now();
+
+const peekFloor = () => (navigator.connection?.saveData === true ? PEEK_SAVE_MS : PEEK_MS);
+
+// The board as /api holds it: each body on show, or the further-along one
+// /api/latest gave for it. Null when /api gave nothing.
+async function latestBoard() {
+  const shown = [...matchDataCache.values()];
+  const reading = shown.length ? startLatest() : null;
+  const bodies = reading ? await reading : [];
+  if (!bodies.length) return null;
+  offerLatest(bodies);
+  return shown.map((m) => (newestMatches.has(m.id) ? newestMatches.get(m.id).match : m))
+    .sort((a, b) => byId(a.id, b.id));
+}
 
 async function peekLatest() {
-  if (standingsInFlight || document.visibilityState === 'hidden') return;
+  if (standingsInFlight || document.visibilityState === 'hidden' || standingsFailed.length) return;
+  peekAt = Date.now();
   let sum;
   try { sum = await fetchOwnApi(LATEST_SUMMARY_URL); } catch { return; }
   if (!sum || typeof sum !== 'object') return;
@@ -609,8 +638,42 @@ async function peekLatest() {
   if (!ahead.size) return;
   if (activeTrigger || standingsInFlight || now - peekLoadedAt < PEEK_BEHIND_MS) { updateTierAges(); return; }
   peekLoadedAt = now;
-  latestAskedAt = 0;   // the load reads what the summary showed, whoever asked last
   await loadStandings('peek');
+}
+
+async function runPeek() {
+  peekTimer = null;
+  if (document.visibilityState === 'hidden') return;
+  await peekLatest();
+  const floor = peekFloor();
+  const using = Date.now() - inputAt < PEEK_ACTIVE_MS || !!activeTrigger;
+  peekDelay = using ? floor : Math.min(Math.max(peekDelay * 2, floor), PEEK_IDLE_MAX_MS);
+  if (document.visibilityState !== 'hidden') peekTimer = setTimeout(runPeek, peekDelay);
+}
+
+// Now, unless a peek ran less than the floor ago: then when the floor is up.
+function peekSoon() {
+  if (document.visibilityState === 'hidden') return;
+  clearTimeout(peekTimer);
+  peekTimer = setTimeout(runPeek, Math.max(0, peekFloor() - (Date.now() - peekAt)));
+}
+
+function startPeeking() {
+  peekAt = Date.now();   // the first load just read /api/latest
+  peekTimer = setTimeout(runPeek, PEEK_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { clearTimeout(peekTimer); peekTimer = null; return; }
+    peekDelay = peekFloor();
+    peekSoon();
+  });
+  const onInput = () => {
+    const idle = peekDelay > peekFloor();
+    inputAt = Date.now();
+    if (idle) { peekDelay = peekFloor(); peekSoon(); }
+  };
+  for (const type of ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll']) {
+    window.addEventListener(type, onInput, { passive: true, capture: true });
+  }
 }
 
 // Rebuilding the grid on refresh would leave a popover pointing at a
