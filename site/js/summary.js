@@ -5,6 +5,8 @@
 // block, including the 199-character chat line wrapping.
 // ---------------------------------------------------------------------
 
+// { names, cut }: the first MAX_ENTRIES distinct names in pasted order, and
+// whether any more were left out.
 function parseGuildNames(rawText) {
   const seen = new Set();
   const names = [];
@@ -18,7 +20,7 @@ function parseGuildNames(rawText) {
     names.push(trimmed);
   }
 
-  return names.slice(0, MAX_ENTRIES);
+  return { names: names.slice(0, MAX_ENTRIES), cut: names.length > MAX_ENTRIES };
 }
 
 // "[TAG] " for each entry that has one, space-separated. Used for the

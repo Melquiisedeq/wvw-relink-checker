@@ -45,7 +45,7 @@ the answer.
 
 > [!NOTE]
 > Guild names must match **exactly** — the API only does exact search, not
-> partial or tag matches. A guild ID works too. Up to 60 per run. The
+> partial or tag matches. A guild ID works too. Up to 20 per run. The
 > alliance list behind the shield icon is NA only.
 
 ## ⚙️ How it works
@@ -152,7 +152,8 @@ does it.
   IDs drift from that table.
 - The NA alliance list is community-maintained — not by ArenaNet, not by
   this project — and may be incomplete or out of date.
-- The score for the 2-hour block being played lands about 15 minutes late.
+- The score for the 2-hour block being played lands half an hour to an hour
+  late, depending on the match.
   Until it does, the trend popover says so rather than inventing a number.
 
 ## 📁 Project layout
