@@ -1,5 +1,5 @@
-// The agora entrance and its reads (worker/index.mjs) against a real SQLite:
-// what the readers may push, which body is kept, and what GET /api/agora gives.
+// The latest entrance and its reads (worker/index.mjs) against a real SQLite:
+// what the readers may push, which body is kept, and what GET /api/latest gives.
 // Run: node --test "tests/*.test.mjs"
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,13 +9,13 @@ import worker from '../worker/index.mjs';
 import { fakeD1 } from './fake-d1.mjs';
 
 const SOURCES = {
-  'agora-supa-us': 'ENTRADA_AGORA_SUPA_US', 'agora-supa-eu': 'ENTRADA_AGORA_SUPA_EU',
-  'agora-vercel-eu': 'ENTRADA_AGORA_VERCEL_EU', 'agora-vercel-us': 'ENTRADA_AGORA_VERCEL_US'
+  'latest-supa-us': 'INGEST_LATEST_SUPA_US', 'latest-supa-eu': 'INGEST_LATEST_SUPA_EU',
+  'latest-vercel-eu': 'INGEST_LATEST_VERCEL_EU', 'latest-vercel-us': 'INGEST_LATEST_VERCEL_US'
 };
-const KEYS = { kills: 'k'.repeat(128), 'agora-supa-us': 'a'.repeat(128), 'agora-supa-eu': 'b'.repeat(128),
-  'agora-vercel-eu': 'c'.repeat(128), 'agora-vercel-us': 'd'.repeat(128) };
-const US = 'agora-supa-us';
-const EU = 'agora-supa-eu';
+const KEYS = { kills: 'k'.repeat(128), 'latest-supa-us': 'a'.repeat(128), 'latest-supa-eu': 'b'.repeat(128),
+  'latest-vercel-eu': 'c'.repeat(128), 'latest-vercel-us': 'd'.repeat(128) };
+const US = 'latest-supa-us';
+const EU = 'latest-supa-eu';
 const MIN = 60e3;
 // 2026-10-03 is a Saturday: the NA week began 02:00Z, 10 hours before this clock.
 const NOW = Date.parse('2026-10-03T12:00:00Z');
@@ -42,7 +42,7 @@ function body(ms, summaryOver = {}) {
 
 function setup(opts = {}) {
   const { sql, ran, DB } = fakeD1();
-  const env = { DB, ENTRADA_KILLS: KEYS.kills, ...Object.fromEntries(Object.entries(SOURCES).map(([s, e]) => [e, KEYS[s]])), ...opts.env };
+  const env = { DB, INGEST_KILLS: KEYS.kills, ...Object.fromEntries(Object.entries(SOURCES).map(([s, e]) => [e, KEYS[s]])), ...opts.env };
   let clock = NOW;
   let last = 0;
   const call = async (req, ctx) => {
@@ -60,7 +60,7 @@ function setup(opts = {}) {
     advance(ms) { clock += ms; },
     async post(source, buf, o = {}) {
       if (!Buffer.isBuffer(buf)) buf = Buffer.from(JSON.stringify(buf));
-      const path = '/api/entrada/' + source;
+      const path = '/api/ingest/' + source;
       let t = o.t;
       if (t === undefined) t = last = Math.max(Math.floor(clock / 1000), last + 1);
       const sig = createHmac('sha256', o.key || KEYS[source] || 'z'.repeat(128))
@@ -75,7 +75,7 @@ function setup(opts = {}) {
       return { status: r.status, body: await r.text(), headers: r.headers };
     },
     count: (t) => w.sql.prepare('SELECT count(*) n FROM ' + t).get().n,
-    row: (id) => w.sql.prepare('SELECT * FROM agora WHERE id = ?').get(id)
+    row: (id) => w.sql.prepare('SELECT * FROM latest WHERE id = ?').get(id)
   };
   return w;
 }
@@ -94,7 +94,7 @@ test('each reader has its own door and its own replay clock', async () => {
     assert.equal(await w.post(s, body([match('1-1')]), { t: t - 1 }), 200, s);
   }
   assert.equal(w.count('source'), 6);
-  assert.deepEqual({ ...w.sql.prepare("SELECT t FROM source WHERE name = 'agora-supa-eu'").get() }, { t: t - 1 });
+  assert.deepEqual({ ...w.sql.prepare("SELECT t FROM source WHERE name = 'latest-supa-eu'").get() }, { t: t - 1 });
 });
 
 test('the entrance refuses what is not a signed, fresh, small message', async (t) => {
@@ -104,7 +104,7 @@ test('the entrance refuses what is not a signed, fresh, small message', async (t
   const cases = [
     ['no signature headers', () => w.post(US, good, { headers: {} }), 401],
     ['signed with another reader\'s secret', () => w.post(US, good, { key: KEYS[EU] }), 401],
-    ['signed for another reader\'s path', () => w.post(US, good, { sigPath: '/api/entrada/' + EU }), 401],
+    ['signed for another reader\'s path', () => w.post(US, good, { sigPath: '/api/ingest/' + EU }), 401],
     ['six minutes in the future', () => w.post(US, good, { t: t0 + 360 }), 401],
     ['six minutes old', () => w.post(US, good, { t: t0 - 360 }), 401],
     ['over 256 KB, declared', () => w.post(US, good, { extra: { 'content-length': String(257 * 1024) } }), 413],
@@ -112,24 +112,24 @@ test('the entrance refuses what is not a signed, fresh, small message', async (t
       const big = new ReadableStream({
         start(c) { for (let i = 0; i < 5; i++) c.enqueue(new Uint8Array(65536)); c.close(); }
       });
-      const req = new Request('https://wvwrelink.com/api/entrada/' + US, {
+      const req = new Request('https://wvwrelink.com/api/ingest/' + US, {
         method: 'POST', body: big, duplex: 'half',
         headers: { 'x-wvw-time': String(t0), 'x-wvw-sig': 'a'.repeat(64) }
       });
       return (await w.call(req)).status;
     }, 413],
-    ['a reader with no secret', async () => (await setup({ env: { ENTRADA_AGORA_SUPA_US: undefined } }).post(US, good)), 404],
+    ['a reader with no secret', async () => (await setup({ env: { INGEST_LATEST_SUPA_US: undefined } }).post(US, good)), 404],
     ['a reader with a 63 character secret', async () => {
       const k = 'a'.repeat(63);
-      return setup({ env: { ENTRADA_AGORA_SUPA_US: k } }).post(US, good, { key: k });
+      return setup({ env: { INGEST_LATEST_SUPA_US: k } }).post(US, good, { key: k });
     }, 404],
-    ['a reader that does not exist', () => w.post('agora-nope', good), 404],
-    ['GET on the entrance', async () => (await w.get('/api/entrada/' + US)).status, 405]
+    ['a reader that does not exist', () => w.post('latest-nope', good), 404],
+    ['GET on the entrance', async () => (await w.get('/api/ingest/' + US)).status, 405]
   ];
   for (const [name, send, want] of cases) {
     await t.test(name, async () => assert.equal(await send(), want));
   }
-  assert.equal(w.count('agora'), 0);
+  assert.equal(w.count('latest'), 0);
   assert.equal(w.sql.prepare("SELECT t FROM source WHERE name = ?").get(US).t, 0, 'no claim either');
 });
 
@@ -177,7 +177,7 @@ test('a bad summary refuses the whole message, and not even the claim is written
   for (const [name, make, want = 422] of cases) {
     await t.test(name, async () => assert.equal(await w.post(US, make()), want));
   }
-  assert.equal(w.count('agora'), 0);
+  assert.equal(w.count('latest'), 0);
   assert.equal(w.count('kills'), 0);
   assert.equal(w.sql.prepare('SELECT t FROM source WHERE name = ?').get(US).t, 0);
 });
@@ -188,7 +188,7 @@ test('what is kept is the gzip as sent, as base64, with its reader', async () =>
   assert.equal(await w.post(US, body([m])), 200);
   const r = w.row('1-1');
   assert.equal(r.gz, m.gz.toString('base64'));
-  assert.equal(r.leitor, US);
+  assert.equal(r.reader, US);
   assert.equal(r.score, 6000);
   assert.equal(r.at, Math.floor(w.now / 1000));
   assert.equal(r.sha, m.entry.sha256);
@@ -238,11 +238,11 @@ test('two readers: the higher score first, the lower after, keeps the higher', a
   const w = setup();
   assert.deepEqual((await push(w, US, '1-1', [3000, 3000, 3000])).applied, ['1-1']);
   assert.deepEqual((await push(w, EU, '1-1', [2000, 3000, 3000])).applied, []);
-  assert.equal(w.row('1-1').leitor, US);
+  assert.equal(w.row('1-1').reader, US);
   assert.equal(w.row('1-1').score, 9000);
   w.advance(MIN);
   assert.deepEqual((await push(w, EU, '1-1', [4000, 3000, 3000])).applied, ['1-1']);
-  assert.equal(w.row('1-1').leitor, EU);
+  assert.equal(w.row('1-1').reader, EU);
 });
 
 test('a new week after a high score of the old one is applied: the score starts over', async () => {
@@ -353,12 +353,12 @@ function fakeCaches() {
   };
 }
 
-test('GET /api/agora: 503 with no rows, 503 past 10 minutes, 200 at 9, nothing older than 2 h', async () => {
+test('GET /api/latest: 503 with no rows, 503 past 10 minutes, 200 at 9, nothing older than 2 h', async () => {
   const w = setup();
-  assert.equal((await w.get('/api/agora')).status, 503);
+  assert.equal((await w.get('/api/latest')).status, 503);
   await push(w, US, '1-1', [1, 1, 1]);
   w.advance(9 * MIN);
-  const r = await w.get('/api/agora');
+  const r = await w.get('/api/latest');
   assert.equal(r.status, 200);
   const j = JSON.parse(r.body);
   assert.equal(j.at, Math.floor((w.now - 9 * MIN) / 1000));
@@ -369,43 +369,43 @@ test('GET /api/agora: 503 with no rows, 503 past 10 minutes, 200 at 9, nothing o
   assert.equal(r.headers.get('content-type'), 'application/json');
   assert.ok(![...r.headers.keys()].some((k) => k.startsWith('access-control-')));
   w.advance(2 * MIN);
-  assert.equal((await w.get('/api/agora')).status, 503, '11 minutes');
+  assert.equal((await w.get('/api/latest')).status, 503, '11 minutes');
 
   // A match 3 hours old does not appear beside a fresh one.
   const w2 = setup();
   await push(w2, US, '1-1', [1, 1, 1]);
   w2.advance(3 * 3600e3);
   await push(w2, US, '1-2', [1, 1, 1]);
-  const ids = JSON.parse((await w2.get('/api/agora')).body).matches.map((m) => m.id);
+  const ids = JSON.parse((await w2.get('/api/latest')).body).matches.map((m) => m.id);
   assert.deepEqual(ids, ['1-2']);
 });
 
-test('GET /api/agora gives back the gzip that was sent', async () => {
+test('GET /api/latest gives back the gzip that was sent', async () => {
   const w = setup();
   const m = match('2-3');
   await w.post(EU, body([m]));
-  const j = JSON.parse((await w.get('/api/agora')).body);
+  const j = JSON.parse((await w.get('/api/latest')).body);
   assert.equal(j.matches[0].gz, m.gz.toString('base64'));
   assert.equal(j.matches[0].id, '2-3');
 });
 
-test('GET /api/agora is cached under one key whatever the query, and a 503 is not', async () => {
+test('GET /api/latest is cached under one key whatever the query, and a 503 is not', async () => {
   const w = setup();
   const real = globalThis.caches;
   globalThis.caches = fakeCaches();
   try {
     const waited = [];
     const ctx = { waitUntil: (p) => waited.push(p) };
-    assert.equal((await w.get('/api/agora', 'GET', ctx)).status, 503);
+    assert.equal((await w.get('/api/latest', 'GET', ctx)).status, 503);
     await Promise.all(waited);
     assert.equal(globalThis.caches.puts.length, 0, 'a 503 is not kept');
     await push(w, US, '1-1', [1, 1, 1]);
-    assert.equal((await w.get('/api/agora?x=' + Math.random(), 'GET', ctx)).status, 200);
+    assert.equal((await w.get('/api/latest?x=' + Math.random(), 'GET', ctx)).status, 200);
     await Promise.all(waited);
-    assert.deepEqual(globalThis.caches.puts, ['https://wvwrelink.com/api/agora']);
+    assert.deepEqual(globalThis.caches.puts, ['https://wvwrelink.com/api/latest']);
     // The copy answers: the table is emptied and the answer stands.
-    w.sql.exec('DELETE FROM agora');
-    const again = await w.get('/api/agora?x=1', 'GET', ctx);
+    w.sql.exec('DELETE FROM latest');
+    const again = await w.get('/api/latest?x=1', 'GET', ctx);
     assert.equal(again.status, 200);
     assert.equal(globalThis.caches.puts.length, 1);
   } finally {
@@ -413,26 +413,26 @@ test('GET /api/agora is cached under one key whatever the query, and a 503 is no
   }
 });
 
-test('GET /api/agora/resumo: {} with no rows, then id: start, score, at, by', async () => {
+test('GET /api/latest/summary: {} with no rows, then id: start, score, at, by', async () => {
   const w = setup();
-  const r0 = await w.get('/api/agora/resumo');
+  const r0 = await w.get('/api/latest/summary');
   assert.equal(r0.status, 200);
   assert.equal(r0.body, '{}');
   await push(w, US, '1-1', [1, 2, 3]);
-  const r = await w.get('/api/agora/resumo');
+  const r = await w.get('/api/latest/summary');
   assert.equal(r.headers.get('cache-control'), 'public, max-age=15');
   assert.deepEqual(JSON.parse(r.body), { '1-1': { start: NA_START, score: 6, at: Math.floor(w.now / 1000), by: US } });
   w.advance(11 * MIN);
-  assert.equal((await w.get('/api/agora/resumo')).status, 200, 'the summary never says 503');
+  assert.equal((await w.get('/api/latest/summary')).status, 200, 'the summary never says 503');
   w.advance(3 * 3600e3);
-  assert.equal((await w.get('/api/agora/resumo')).body, '{}');
+  assert.equal((await w.get('/api/latest/summary')).body, '{}');
 
   const real = globalThis.caches;
   globalThis.caches = fakeCaches();
   try {
-    await w.get('/api/agora/resumo?x=1', 'GET', { waitUntil() {} });
+    await w.get('/api/latest/summary?x=1', 'GET', { waitUntil() {} });
     await new Promise((r) => setImmediate(r));
-    assert.deepEqual(globalThis.caches.puts, ['https://wvwrelink.com/api/agora/resumo']);
+    assert.deepEqual(globalThis.caches.puts, ['https://wvwrelink.com/api/latest/summary']);
   } finally {
     globalThis.caches = real;
   }
@@ -440,6 +440,6 @@ test('GET /api/agora/resumo: {} with no rows, then id: start, score, at, by', as
 
 test('the reads take GET only', async () => {
   const w = setup();
-  assert.equal((await w.get('/api/agora', 'POST')).status, 405);
-  assert.equal((await w.get('/api/agora/resumo', 'POST')).status, 405);
+  assert.equal((await w.get('/api/latest', 'POST')).status, 405);
+  assert.equal((await w.get('/api/latest/summary', 'POST')).status, 405);
 });

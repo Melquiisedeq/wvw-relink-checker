@@ -174,7 +174,7 @@ apps-script/   the two Google Apps Script projects behind the spreadsheets:
                the teams notice and the kills history. They run in Google;
                these are the copies they are pasted from.
 worker/        wvwrelink.com/api: takes each script's signed results into
-               the database, says when each last reported (/api/saude), and
+               the database, says when each last reported (/api/health), and
                serves the page its two reads (/api/kills, /api/relink)
 tests/         the Worker's rules, run by node --test with nothing installed
 .github/       the checks, and the workflows that run them

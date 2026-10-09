@@ -3,14 +3,14 @@
 
 The two Apps Scripts push after every tick, and a push that stops is silent:
 the sheets carry on, the page falls back to them, and the history in D1 just
-thins out. /api/saude says when each source last reported, which is the one
+thins out. /api/health says when each source last reported, which is the one
 thing to ask from outside.
 
 Then the two reads the page tries first, in the shape it reads them - a read
 that fails costs the page nothing, since it falls back to the sheets, which is
 exactly why nobody would notice it failing.
 
-The Supabase readers (supabase/leitor.mjs) deliver to /api every 2 minutes from
+The Supabase readers (supabase/reader.mjs) deliver to /api every 2 minutes from
 both sides: both must have delivered lately, the summary of the matches must be
 fresh and made of known sources, and it must not run ahead of the game's own
 API - which only a stolen signing secret can do.
@@ -32,7 +32,7 @@ import urllib.request
 
 API = 'https://wvwrelink.com/api/'
 GAME_MATCHES = 'https://api.guildwars2.com/v2/wvw/matches?ids=all'
-WORKERS_DEV = 'https://wvwrelink-api.wvwgw2.workers.dev/api/saude'
+WORKERS_DEV = 'https://wvwrelink-api.wvwgw2.workers.dev/api/health'
 ATTEMPTS = 3
 PAUSE_SECONDS = 5
 TIMEOUT_SECONDS = 30
@@ -47,10 +47,10 @@ KILLS_WORKER_STALE = 20 * 60
 MATCH_RE = re.compile(r'^[12]-[1-9]$')
 # The readers deliver only when something is newer, so a frozen game API (~65
 # min seen) silences them with no fault of ours: same 90 minutes as kills.
-# agora-vercel-* do not exist yet (0 is normal), so they are not required.
-AGORA_REQUIRED = ('agora-supa-us', 'agora-supa-eu')
-AGORA_SOURCES = AGORA_REQUIRED + ('agora-vercel-eu', 'agora-vercel-us')
-AGORA_STALE = 90 * 60
+# latest-vercel-* do not exist yet (0 is normal), so they are not required.
+LATEST_REQUIRED = ('latest-supa-us', 'latest-supa-eu')
+LATEST_SOURCES = LATEST_REQUIRED + ('latest-vercel-eu', 'latest-vercel-us')
+LATEST_STALE = 90 * 60
 # The summary may lead a stale read of the game's API by at most 600 points a
 # minute for the 70 minutes the API has been seen to lag; past it, a score the
 # game never had, which only a stolen signing secret could send.
@@ -96,46 +96,46 @@ kills_age = [None]
 
 
 def check_feeds(problems, notes):
-    data, why = get_json(API + 'saude')
+    data, why = get_json(API + 'health')
     if why:
-        problems.append('/api/saude: %s. The Worker or its database is down.' % why)
+        problems.append('/api/health: %s. The Worker or its database is down.' % why)
         return
     now = int(time.time())
-    check_agora_feeds(data, now, problems, notes)
+    check_latest_feeds(data, now, problems, notes)
     kills_at = data.get('kills')
     if is_int(kills_at) and kills_at:
         kills_age[0] = now - kills_at
     for source, limit in sorted(STALE.items()):
         at = data.get(source)
         if not is_int(at) or at == 0:
-            problems.append('/api/saude has never heard from %s.' % source)
+            problems.append('/api/health has never heard from %s.' % source)
             continue
         age = now - at
         if age > limit:
             problems.append(
                 '%s last reported %d minutes ago (limit %d). Its Apps Script '
-                'stopped pushing: the trigger, the entrada property, or the '
-                'Worker secret ENTRADA_%s - .claude/docs/api.md.'
+                'stopped pushing: the trigger, the ingest property, or the '
+                'Worker secret INGEST_%s - .claude/docs/api.md.'
                 % (source, age // 60, limit // 60, source.upper()))
         else:
             notes.append('%-34s %d min ago' % (source + ' last reported', age // 60))
 
 
-def check_agora_feeds(data, now, problems, notes):
-    for source in AGORA_REQUIRED:
+def check_latest_feeds(data, now, problems, notes):
+    for source in LATEST_REQUIRED:
         at = data.get(source)
         if not is_int(at) or at == 0:
-            problems.append('/api/saude has never heard from %s. Check the '
+            problems.append('/api/health has never heard from %s. Check the '
                             'Supabase reader and its secret.' % source)
-        elif now - at > AGORA_STALE:
+        elif now - at > LATEST_STALE:
             problems.append(
                 '%s last delivered %d minutes ago (limit %d). Check the '
                 'Supabase reader; a frozen game API passes on its own.'
-                % (source, (now - at) // 60, AGORA_STALE // 60))
+                % (source, (now - at) // 60, LATEST_STALE // 60))
         else:
             notes.append('%-34s %d min ago' % (source + ' last delivered', (now - at) // 60))
-    notes.append('agora-vercel-*: not required yet (%s)' % ', '.join(
-        '%s=%s' % (k, data.get(k)) for k in AGORA_SOURCES[2:]))
+    notes.append('latest-vercel-*: not required yet (%s)' % ', '.join(
+        '%s=%s' % (k, data.get(k)) for k in LATEST_SOURCES[2:]))
 
 
 def game_scores():
@@ -154,35 +154,35 @@ def game_scores():
     return out
 
 
-def check_agora(problems, notes):
-    data, why = get_json(API + 'agora/resumo')
+def check_latest(problems, notes):
+    data, why = get_json(API + 'latest/summary')
     if why:
-        problems.append('/api/agora/resumo: %s. The Supabase readers are not '
+        problems.append('/api/latest/summary: %s. The Supabase readers are not '
                         'reaching the summary.' % why)
         return
     if not isinstance(data, dict) or not data:
-        problems.append('/api/agora/resumo answered without matches.')
+        problems.append('/api/latest/summary answered without matches.')
         return
     now = int(time.time())
     bad = [k for k, v in data.items() if not (
         MATCH_RE.match(k) and isinstance(v, dict) and is_int(v.get('start'))
         and is_int(v.get('score')) and is_int(v.get('at'))
-        and v.get('by') in AGORA_SOURCES)]
+        and v.get('by') in LATEST_SOURCES)]
     if bad:
-        problems.append('/api/agora/resumo: %d of %d matches are not {start, '
-                        'score, at, by} from a known agora-* source, e.g. %s'
+        problems.append('/api/latest/summary: %d of %d matches are not {start, '
+                        'score, at, by} from a known latest-* source, e.g. %s'
                         % (len(bad), len(data), json.dumps({bad[0]: data[bad[0]]})[:120]))
         return
     counts = {}
     for v in data.values():
         counts[v['by']] = counts.get(v['by'], 0) + 1
-    notes.append('resumo: %d matches, %s' % (len(data), ', '.join(
+    notes.append('summary: %d matches, %s' % (len(data), ', '.join(
         '%s %d' % kv for kv in sorted(counts.items()))))
     age = now - max(v['at'] for v in data.values())
-    if age > AGORA_STALE:
-        problems.append('/api/agora/resumo: newest match is %d minutes old '
+    if age > LATEST_STALE:
+        problems.append('/api/latest/summary: newest match is %d minutes old '
                         '(limit %d). Check the Supabase readers.'
-                        % (age // 60, AGORA_STALE // 60))
+                        % (age // 60, LATEST_STALE // 60))
     game = game_scores()
     if game is None:
         notes.append('game API unreadable: the secret-theft alarm did not run')
@@ -193,7 +193,7 @@ def check_agora(problems, notes):
     if ahead:
         problems.append(
             'the summary is ahead of the game by more than the API can lag: '
-            'a signing secret may be stolen (%s). Rotate the ENTRADA_AGORA_* '
+            'a signing secret may be stolen (%s). Rotate the INGEST_LATEST_* '
             'secrets.' % ', '.join(ahead))
     else:
         notes.append('%-34s %d matches compared' % ('summary vs game API', sum(
@@ -237,10 +237,10 @@ def check_reads(problems, notes):
 
 def check_doors(problems, notes):
     for label, url, method, body, want in (
-            ('GET on the entrance', API + 'entrada/kills', 'GET', None, 405),
-            ('unsigned POST', API + 'entrada/kills', 'POST', b'{}', 401),
-            ('unsigned POST agora-supa-us', API + 'entrada/agora-supa-us', 'POST', b'{}', 401),
-            ('unsigned POST agora-supa-eu', API + 'entrada/agora-supa-eu', 'POST', b'{}', 401),
+            ('GET on the entrance', API + 'ingest/kills', 'GET', None, 405),
+            ('unsigned POST', API + 'ingest/kills', 'POST', b'{}', 401),
+            ('unsigned POST latest-supa-us', API + 'ingest/latest-supa-us', 'POST', b'{}', 401),
+            ('unsigned POST latest-supa-eu', API + 'ingest/latest-supa-eu', 'POST', b'{}', 401),
             ('workers.dev address', WORKERS_DEV, 'GET', None, 404)):
         status, _ = request(url, method, body)
         if status != want:
@@ -254,7 +254,7 @@ def main():
     problems, notes = [], []
     check_feeds(problems, notes)
     check_reads(problems, notes)
-    check_agora(problems, notes)
+    check_latest(problems, notes)
     check_doors(problems, notes)
     for n in notes:
         print(n)

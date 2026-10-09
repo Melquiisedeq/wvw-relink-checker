@@ -1,39 +1,39 @@
 // @ts-nocheck
 // Supabase Edge Function (Deno), one of the outside readers of the game API.
-// Paste the whole file into the dashboard editor as index.ts of the function leitor:
-// one file, no imports. Under Node (tests/leitor.test.mjs) it is imported as it is;
+// Paste the whole file into the dashboard editor as index.ts of the function reader:
+// one file, no imports. Under Node (tests/reader.test.mjs) it is imported as it is;
 // only the last lines touch Deno.
-// The scheduler (agendador.sql) calls it with x-region us-east-1 or eu-central-1;
+// The scheduler (scheduler.sql) calls it with x-region us-east-1 or eu-central-1;
 // that header only routes the call to a region. What picks the secret that signs,
 // and the door it pushes to, is SB_REGION, where the function really runs: a call
 // the platform ran elsewhere is answered 404 and reads nothing.
 //
 // Flow: the call's secret first, before anything is read; read the game API;
-// check the whole body; ask /api/agora/resumo what the Worker already has; push
-// only the newer matches, gzipped and signed (worker/index.mjs, acceptAgora).
+// check the whole body; ask /api/latest/summary what the Worker already has; push
+// only the newer matches, gzipped and signed (worker/index.mjs, acceptLatest).
 //
 // Function secrets (Dashboard > Edge Functions > Secrets), never in the repository:
-//   LEITOR_CHAVE            what the scheduler sends in x-wvw-chave (128 hex)
-//   ENTRADA_AGORA_SUPA_US   the signing secret of agora-supa-us (128 hex)
-//   ENTRADA_AGORA_SUPA_EU   the signing secret of agora-supa-eu (128 hex)
+//   READER_KEY            what the scheduler sends in x-wvw-key (128 hex)
+//   INGEST_LATEST_SUPA_US   the signing secret of latest-supa-us (128 hex)
+//   INGEST_LATEST_SUPA_EU   the signing secret of latest-supa-eu (128 hex)
 // Deploy with Verify JWT off: the key above is the lock, the publishable key is public.
 // Nothing here logs a header, the environment or a body; only counts.
 
 // ---- The rules, with nothing of Deno in them. Contract: worker/index.mjs
-// (acceptAgora, checkSummary). The Worker's limits are repeated on purpose: a match
+// (acceptLatest, checkSummary). The Worker's limits are repeated on purpose: a match
 // it would refuse must not leave the reader, because it refuses the whole message
 // for one bad entry.
 
 export const API_URL = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
-export const RESUMO_URL = 'https://wvwrelink.com/api/agora/resumo';
-export const ENTRADA_URL = 'https://wvwrelink.com/api/entrada/';
+export const SUMMARY_URL = 'https://wvwrelink.com/api/latest/summary';
+export const INGEST_URL = 'https://wvwrelink.com/api/ingest/';
 
 // The region the function really runs in (SB_REGION, set by the platform) picks the
 // reader's own door and its own secret (a function secret). The caller's x-region
 // only routes the call there.
 export const REGIONS = Object.freeze({
-  'us-east-1': { source: 'agora-supa-us', secret: 'ENTRADA_AGORA_SUPA_US' },
-  'eu-central-1': { source: 'agora-supa-eu', secret: 'ENTRADA_AGORA_SUPA_EU' }
+  'us-east-1': { source: 'latest-supa-us', secret: 'INGEST_LATEST_SUPA_US' },
+  'eu-central-1': { source: 'latest-supa-eu', secret: 'INGEST_LATEST_SUPA_EU' }
 });
 
 // The entry for where the function runs, or null: an unknown SB_REGION, or a call
@@ -128,8 +128,8 @@ export function checkRead(data, nowMs) {
   return { matches, dropped };
 }
 
-// What /api/agora/resumo holds, checked as strangers' data too. Null if it is not that shape.
-export function checkResumo(r) {
+// What /api/latest/summary holds, checked as strangers' data too. Null if it is not that shape.
+export function checkSummaryBody(r) {
   if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
   const out = {};
   for (const [id, v] of Object.entries(r)) {
@@ -141,10 +141,10 @@ export function checkResumo(r) {
 
 // Only what is newer than the Worker's copy: a newer week, or the same week and
 // a higher score. Nothing for a match it has never seen is held back.
-export function pickNewer(matches, resumo) {
+export function pickNewer(matches, summary) {
   return matches.filter((m) => {
-    if (!Object.hasOwn(resumo, m.id)) return true;
-    const have = resumo[m.id];
+    if (!Object.hasOwn(summary, m.id)) return true;
+    const have = summary[m.id];
     return m.start > have.start || (m.start === have.start && m.score > have.score);
   });
 }
@@ -210,9 +210,9 @@ const generic = (status) => new Response(JSON.stringify({ ok: false }) + '\n', {
 });
 
 export async function handle(req, env) {
-  const lock = env('LEITOR_CHAVE') || '';
+  const lock = env('READER_KEY') || '';
   if (req.method !== 'POST' || lock.length < MIN_SECRET) return NOT_FOUND();
-  if (!await sameSecret(req.headers.get('x-wvw-chave') || '', lock)) return NOT_FOUND();
+  if (!await sameSecret(req.headers.get('x-wvw-key') || '', lock)) return NOT_FOUND();
   const region = env('SB_REGION') || '';
   const found = regionFor(region, req.headers.get('x-region'));
   if (!found) return NOT_FOUND();
@@ -229,20 +229,20 @@ export async function handle(req, env) {
     const read = checkRead(JSON.parse(text), now);
     if (typeof read === 'string') return generic(502);
 
-    const res = await fetch(RESUMO_URL, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(SUMMARY_URL, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return generic(502);
-    const resumo = checkResumo(JSON.parse(await readCapped(res, 64 * 1024) ?? 'null'));
-    if (!resumo) return generic(502);
+    const summary = checkSummaryBody(JSON.parse(await readCapped(res, 64 * 1024) ?? 'null'));
+    if (!summary) return generic(502);
 
-    const built = await buildBody(pickNewer(read.matches, resumo));
+    const built = await buildBody(pickNewer(read.matches, summary));
     if (!built) {
       console.log(JSON.stringify({ region, sent: 0, dropped: read.dropped }));
       return generic(200);
     }
     const t = String(Math.floor(Date.now() / 1000));
-    const path = new URL(ENTRADA_URL + source).pathname;
+    const path = new URL(INGEST_URL + source).pathname;
     const sig = await sign(secret, t, path, built.body);
-    const push = await fetch(ENTRADA_URL + source, {
+    const push = await fetch(INGEST_URL + source, {
       method: 'POST', body: built.body, signal: AbortSignal.timeout(8000),
       headers: { 'x-wvw-time': t, 'x-wvw-sig': sig, 'content-type': 'application/octet-stream' }
     });
