@@ -2391,10 +2391,30 @@ async function main() {
     const step = 'phone board';
     for (const width of [320, 360]) {
       const name = `${step}, ${width} px`;
-      // Not a mobile viewport: that one widens to fit anything past its edge,
-      // and this step measures the board at this width, not the page's.
-      await send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: false });
-      await until(name, `innerWidth === ${width}`, 'the new width');
+      await send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: true });
+      if (!(await until(name, `innerWidth === ${width}`, 'the new width'))) {
+        // What a phone this wide would see instead: a page wider than the
+        // screen makes a mobile browser widen the layout to fit it.
+        problem(`step '${name}': ` + await ev(`(() => {
+          // The innermost elements in the flow that end past the screen.
+          const past = [...document.querySelectorAll('body *')].filter(e => {
+            const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
+            return r.width && r.right > ${width} + 0.5 && cs.position !== 'fixed' && cs.display !== 'none'
+              && ![...e.children].some(c => c.getBoundingClientRect().right > ${width} + 0.5);
+          }).slice(0, 6).map(e => { const r = e.getBoundingClientRect();
+            return e.tagName + '.' + String(e.className?.baseVal ?? e.className).split(' ').slice(0, 2).join('.') + ' ' + Math.round(r.left) + '-' + Math.round(r.right) + (e.children.length ? '' : ' "' + e.textContent.trim().slice(0, 24) + '"'); });
+          // The match panels' grid and, in each column, its widest child.
+          const grid = [...document.querySelectorAll('.team-cols')].map(g => getComputedStyle(g).gridTemplateColumns).join(',');
+          const cols = [...document.querySelectorAll('.team-col')].slice(0, 3).map(c => {
+            const kids = [...c.querySelectorAll('*')].map(k => ({ k, w: k.getBoundingClientRect().width, s: k.scrollWidth }))
+              .sort((a, b) => b.s - a.s).slice(0, 2);
+            return kids.map(({ k, w, s }) => k.tagName + '.' + String(k.className?.baseVal ?? k.className).split(' ')[0] + ' w' + Math.round(w) + ' s' + s + ' ws:' + getComputedStyle(k).whiteSpace).join(' / ');
+          });
+          return 'innerWidth ' + innerWidth + ', page ' + document.documentElement.scrollWidth + ' px wide; past ' + ${width} + ': ' + (past.join(' | ') || 'none')
+            + '; team-cols grid ' + grid + '; widest in columns: ' + cols.join(' || ') + '; fonts: ' + getComputedStyle(document.body).fontFamily;
+        })()`));
+        continue;
+      }
       await steady(name, "document.querySelector('.tier-map-btn')");
       if (!(await press(name + ': open', "document.querySelector('.tier-map-btn')"))) continue;
       if (!(await until(name, "!!document.querySelector('.info-popover .wvw-board-row[data-focus-color]') && !!document.querySelector('.info-popover .wvw-zoom button')", 'the board and the zoom buttons'))) continue;
