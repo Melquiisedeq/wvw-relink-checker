@@ -164,6 +164,9 @@ async function run() {
 
     statusMsg.textContent = `Done, checked ${names.length} guild(s).` +
       (cut ? ` Only the first ${MAX_ENTRIES} guilds were checked.` : '');
+
+    // The first guild of the list that landed on a team: that team's card.
+    if (successEntries.length > 0) showGuildFound(successEntries[0].teamId, successEntries[0].name);
   } catch (err) {
     // Not a path, a net: every call above that can fail is already
     // guarded. Without this the run would just stop with the spinner's

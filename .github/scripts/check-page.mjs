@@ -517,6 +517,10 @@ async function main() {
   // map button, or missed the swap back, about one walk in four (10/10/2026).
   async function click(name, el) {
     stepNow = name;
+    // After a guild search the page scrolls to the found team and blinks its
+    // card for a moment: wait until it has stopped, never clicking a moving page.
+    // The scroll starts with the blink and is over well before it ends.
+    await until(name, "!document.querySelector('.guild-found-flash, .guild-found-strip.is-leaving')", 'the page to stop moving');
     const t0 = Date.now();
     let r;
     while (true) {
@@ -1624,11 +1628,31 @@ async function main() {
   // 1. Guild search: one name per region, typed as a visitor does.
   await ev("document.getElementById('guildInput').focus()");
   await send('Input.insertText', { text: guilds.join('\n') });
+  // Watches what the search does to the standings, so the step below does
+  // not depend on catching the blink in a poll.
+  await ev(`window.__found = { flash: false, strip: null, gone: false };
+    new MutationObserver(() => {
+      const f = window.__found;
+      if (document.querySelector('.guild-found-flash')) f.flash = true;
+      const s = document.querySelector('.guild-found-strip');
+      if (s) { f.strip = s.textContent; f.gone = false; }
+      else if (f.strip) f.gone = true;
+    }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] })`);
   if (await click('search', "document.getElementById('runBtn')")) {
     await until('search', "/^Done/.test(document.getElementById('statusMsg').textContent)", 'the "Done" status');
     await until('search', "document.querySelectorAll('#resultBody tr').length > 0 && !!document.querySelector('#matchPanelsContainer > *')", 'result rows and match panels');
     await until('search', "!document.getElementById('runBtn').disabled", 'the Check button enabled again');
     await idle('search');
+
+    // 1b. The team the first guild landed on: its card blinks, the page brings
+    // it into view, a strip names the guild, and the strip leaves by itself.
+    const step = 'guild found';
+    await until(step, "window.__found.flash && !!window.__found.strip", 'the found team\'s card blinking and the strip appearing');
+    const named = await ev("(() => { const tr = [...document.querySelectorAll('#resultBody tr')].find(r => r.querySelector('.server-cell')); return tr ? tr.cells[0].textContent : null; })()");
+    const said = await ev('window.__found.strip');
+    if (named === null || said.toLowerCase() !== `${named} \u00b7 from your search`.toLowerCase()) problem(`step '${step}': the strip reads "${said}", wanted "${named} \u00b7 from your search"`);
+    await until(step, `(() => { const s = document.querySelector('.guild-found-strip'); if (!s) return true;
+      const b = s.previousElementSibling.getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; })()`, 'the found team\'s card in view');
   }
 
   // 2 and 3. Every icon button, maps and popovers.
@@ -1658,6 +1682,9 @@ async function main() {
     if (fit.scroll > 0 || fit.past > 0 || fit.beyond > 0) problem(`step '${step}': the table overflows its card by ${fit.scroll}px, ${fit.past}px past the screen, a cell ${fit.beyond}px past the card's edge`);
     await send('Emulation.clearDeviceMetricsOverride');
   }
+
+  // 1b, last part: the strip of the guild search leaves by itself.
+  await until('guild found', "window.__found.gone && !document.querySelector('.guild-found-flash, .guild-found-strip')", 'the strip leaving by itself');
 
   // 6b. The kill history backdating a match this page never saw move.
   await historyAge();
