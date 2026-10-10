@@ -1006,8 +1006,13 @@ const KILLS_QUIET_MS = 5.5 * 60 * 1000;
 const KILLS_LATE_KILLS = 15;
 // A step that lands after more than this of still kills is the source
 // catching up: when it happened is unknown, so it lights no swords until the
-// next step (replay of 03/10/2026 12:41-14:13: 52 -> 0 swords on stopped kills).
+// next step (replay of 03/10/2026 12:41-14:13: 52 -> 0 swords on stopped kills)...
 const KILLS_CATCHUP_MS = 10 * 60 * 1000;
+// ...unless the stall was short and the jump is big even spread over all of
+// it: up to this, the swords light when the kills over the longer of the
+// window and the stall still reach HOT_FLOOR per 10 min (the owner, 10/10:
+// 155 kills on one map after 15 min of no readings). That replay's stall was 92 min.
+const KILLS_CATCHUP_MAX_MS = 20 * 60 * 1000;
 
 function sumKills(n) {
   let t = 0;
@@ -1025,19 +1030,26 @@ function sumKills(n) {
 //   silence  ms since the clock
 //   prevRun  ms the total before the newest stood still; Infinity, unknown
 //   rates    { per: type -> kills per 10 min, span }, over the window that
-//            ends at the clock; null without a reading 10 min before it (a
-//            dash, never 0: a shorter span can hold no step of the kills)
+//            ends at the clock; its base is the reading nearest to 10 min
+//            before the clock, never under 8 nor over 15 min back (the
+//            history has a line every 5 min). Without one, the newest reading
+//            at least 10 min back, over 15 min (`long`, with `gap`: the two
+//            readings the game's API sent nothing between); null without
+//            even that (a dash)
+//   noWindow 'reset' when the dash is the week's first minutes, else 'data'
 //   pace     the match's kills per minute in that window; 0 without one
 //   strange  silent past KILLS_QUIET_MS plus KILLS_LATE_KILLS at that pace
 //   frozen   the score itself still past HUD_STALE_MS (the corner's amber)
 //   hot      the map with the orange swords, or null
 const HOT_WANT_MS = 10 * 60 * 1000;
+const WINDOW_MIN_MS = 8 * 60 * 1000;
+const WINDOW_MAX_MS = 15 * 60 * 1000;
 const HOT_NOW_MS = 60 * 1000;  // a kept body this fresh paints the swords without waiting for the read
 const HOT_FLOOR = 50;      // kills per ten minutes: a real fight, not API noise
 
 function killView(match, types, now = Date.now()) {
   const view = { clock: 0, atLeast: false, silence: 0, prevRun: Infinity, rates: null, pace: 0,
-    strange: false, frozen: false, hot: null };
+    strange: false, frozen: false, hot: null, noWindow: 'data', long: false, gap: null };
   // Nothing is claimed on a match that is not running: between the reset
   // and the API publishing the new one, the rest of the popover is neutral.
   if (!match || !matchIsLive(match)) return view;
@@ -1070,9 +1082,23 @@ function killView(match, types, now = Date.now()) {
   }
 
   let base = null;
-  for (const s of list) if (s.at <= view.clock - HOT_WANT_MS) base = s;
-  if (base) {
+  for (const s of list) {
+    const back = view.clock - s.at;
+    if (back < WINDOW_MIN_MS || back > WINDOW_MAX_MS) continue;
+    if (!base || Math.abs(back - HOT_WANT_MS) < Math.abs(view.clock - base.at - HOT_WANT_MS)) base = s;
+  }
+  if (!base) {
+    for (const s of list) if (s.at <= view.clock - HOT_WANT_MS) base = s;
+  }
+  if (!base) {
+    const start = Date.parse(match.start_time);
+    // Right after the reset or a relink there is nothing earlier to count from.
+    if (Number.isFinite(start) && view.clock - start < WINDOW_MAX_MS + HOT_WANT_MS) view.noWindow = 'reset';
+  } else {
     const span = view.clock - base.at;
+    view.long = span > WINDOW_MAX_MS;
+    const next = list.find((s) => s.at > base.at);
+    view.gap = { from: base.at, to: next ? Math.min(next.at, view.clock) : view.clock };
     const per = new Map();
     let moved = 0;
     for (const type in body) {
@@ -1083,23 +1109,24 @@ function killView(match, types, now = Date.now()) {
       moved += d;
       per.set(type, d * (600000 / span));
     }
-    if (moved) {
-      view.rates = { per, span };
-      view.pace = moved / (span / 60000);
-    }
+    view.rates = { per, span };
+    view.pace = moved / (span / 60000);
   }
   if (view.pace > 0) {
     view.strange = view.silence > KILLS_QUIET_MS + (KILLS_LATE_KILLS / view.pace) * 60000;
   }
 
-  if (view.rates && !view.strange && !view.frozen && view.silence <= HOT_WANT_MS
-    && view.prevRun <= KILLS_CATCHUP_MS) {
+  const catching = view.prevRun > KILLS_CATCHUP_MS;
+  if (view.rates && !view.long && !view.strange && !view.frozen && view.silence <= HOT_WANT_MS
+    && (!catching || view.prevRun <= KILLS_CATCHUP_MAX_MS)) {
+    // After a stall the kills are spread over all of it, the window or the stall, whichever is longer.
+    const spread = catching ? view.rates.span / Math.max(view.rates.span, view.prevRun) : 1;
     const pick = types || MAP_PANEL_ORDER.filter((t) => (match.maps || []).some((m) => m.type === t));
     let bestN = 0;
     // Taken on a strict win, so a tie keeps whichever map comes first rather
     // than swapping the swords on every refresh.
     for (const type of pick) {
-      const n = view.rates.per.get(type) || 0;
+      const n = (view.rates.per.get(type) || 0) * spread;
       if (n > bestN) { bestN = n; view.hot = type; }
     }
     if (bestN < HOT_FLOOR) view.hot = null;
@@ -1129,19 +1156,24 @@ const HUD_STALE_MS = 6 * 60 * 1000;
 
 const HUD_EXPLAIN = {
   fights: 'Player kills on this map in the last 10 minutes. Orange swords mark the busiest map, past 50.',
-  when: "Updated: when this match's score last changed in the game's API; this page"
-    + ' asks every 30 s. The API sometimes repeats an old answer for a while; that does not'
-    + ' count. No new data: no change for over 6 minutes, or no answer at all (the API stuck,'
-    + ' your internet, or a sleeping computer), so what you see may be old.'
-    + " The game's API itself runs about 40 s behind the game.",
 };
+const HUD_RESET_TIP = 'Counting starts about 10 minutes after the reset: there is nothing earlier this week to compare with.';
+const HUD_NO_WINDOW_TIP = 'Not enough kill data to count 10 minutes.';
+
+// "20 s", "41 min", "2 h 5 min": how long ago, for the balloons.
+function ageWords(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+}
 
 // The two corners over the map: kills on the left, on the right the age
 // of the match's data (matchScoreRoseAt). Text on a shadow, no box, so
 // the map shows through; they go while the map is zoomed, as the score bar's smear would
 // cover what the visitor came to look at. Built once per map; paint()
 // rewrites them in place, so the status region keeps its identity.
-function buildMapCorners(wrap) {
+function buildMapCorners(wrap, matchId) {
   const svg = wrap.querySelector('.wvw-plot');
   const mk = (tag, cls, text) => {
     const e = document.createElement(tag);
@@ -1153,7 +1185,7 @@ function buildMapCorners(wrap) {
   note.id = `wvw-hud-note-${++plotSerial}`;
   note.hidden = true;
   let openKey = null;
-  let fightsExplain = HUD_EXPLAIN.fights;
+  const tips = { fights: HUD_EXPLAIN.fights, when: '' };
   const hover = window.matchMedia && matchMedia('(hover: hover)').matches;
   const close = () => {
     openKey = null;
@@ -1169,14 +1201,14 @@ function buildMapCorners(wrap) {
     btn.className = 'wvw-hud-btn';
     btn.setAttribute('aria-expanded', 'false');
     btn.setAttribute('aria-controls', note.id);
-    if (hover) btn.title = key === 'fights' ? fightsExplain : HUD_EXPLAIN[key];
+    if (hover) btn.title = tips[key];
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const was = openKey === key;
       close();
       if (was) return;
       openKey = key;
-      note.textContent = key === 'fights' ? fightsExplain : HUD_EXPLAIN[key];
+      note.textContent = tips[key];
       note.className = `wvw-hud-note at-${side}`;
       note.hidden = false;
       btn.setAttribute('aria-expanded', 'true');
@@ -1195,30 +1227,35 @@ function buildMapCorners(wrap) {
   swords.alt = '';
   swords.width = 18;
   swords.height = 18;
+  // Line one: the number and "kills" with its window. Line two, only when the
+  // number is old: where its data ends.
   const big = mk('span', 'wvw-hud-big');
   const small = mk('span', 'wvw-hud-small');
+  const smallSep = mk('span');
   const smallMins = mk('span');
   const smallLong = mk('span', 'wvw-hud-long');
   const smallShort = mk('span', 'wvw-hud-short');
-  const smallMark = mk('span');
-  const smallUntil = mk('span');
-  const smallTime = mk('time');
   const smallTail = mk('span');
-  smallTail.append(' \u00b7 ', smallMark, smallMins, smallLong, smallShort, smallUntil, smallTime);
+  smallTail.append(smallSep, smallMins, smallLong, smallShort);
   small.append('kills', smallTail);
+  const line1 = mk('span', 'wvw-hud-line');
+  line1.append(big, small);
+  const lead = mk('span');
+  const smallTime = mk('time', 'wvw-hud-when');
+  const smallMark = mk('span');
+  const line2 = mk('span', 'wvw-hud-small wvw-hud-small2');
+  line2.append(lead, smallTime, smallMark);
   const fightsBtn = mk('button');
   const txt = mk('span', 'wvw-hud-txt');
-  txt.append(big, small);
+  txt.append(line1, line2);
   fightsBtn.append(swords, txt);
   const left = corner('l', 'fights', fightsBtn);
 
   const ago = mk('time', 'wvw-hud-ago');
   const mark = mk('span', 'wvw-hud-mark');
-  const word = mk('span', 'wvw-hud-word');
-  const val = mk('span');
-  const unitLong = mk('span', 'wvw-hud-long');
-  const unitShort = mk('span', 'wvw-hud-short');
-  ago.append(mark, word, val, unitLong, unitShort);
+  const word = mk('span', 'wvw-hud-word', 'data from ');
+  const val = mk('span', 'wvw-hud-when');
+  ago.append(mark, word, val);
   const whenBtn = mk('button');
   whenBtn.appendChild(ago);
   // Spoken only when the state turns, not every second.
@@ -1231,44 +1268,64 @@ function buildMapCorners(wrap) {
 
   const put = (node, text) => { if (node.textContent !== text) node.textContent = text; };
   const hhmm = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const putTime = (ms) => {
-    put(smallTime, ms ? hhmm(ms) : '');
-    if (ms) smallTime.dateTime = new Date(ms).toISOString(); else smallTime.removeAttribute('datetime');
+  const setTip = (key, btn, text) => {
+    if (text === tips[key]) return;
+    tips[key] = text;
+    if (hover) btn.title = text;
+    if (openKey === key) note.textContent = text;
   };
   // The kills side, from killView for the map on show. No window, a dash and
-  // only "kills": never 0, which would say nobody fought. One line, three looks:
-  // current ("80 kills \u00b7 10 min"); old for a normal reason, the quiet of a
-  // slow map ("\u00b7 until HH:MM", the kills' own clock); old for an abnormal one,
-  // the API behind or the map frozen ("\u00b7 \u26a0 until HH:MM", the number dimmed:
-  // the sign and the word are the signal, not the colour).
+  // only "kills": never 0 from a window nobody measured. Three looks:
+  // current, one line ("80 kills · 11 min"); old for a normal reason, the
+  // quiet of a slow map, and old for an abnormal one, the API behind or the
+  // map frozen, two lines ("80 kills in 10 min" over "no new kills since
+  // HH:MM" or "data up to HH:MM ⚠", the number dimmed: the sign and the words
+  // are the signal, not the colour).
   const paintKills = (view, type, isStale) => {
     const rates = view && view.rates;
     const line = rates && type ? fightCount(rates, type) : null;
-    put(big, line ? String(line.kills) : '\u2013');
-    smallTail.hidden = !line;
     const odd = !!line && !!view.clock && (isStale || !!view.strange);
     const old = !!line && !!view.clock && (odd || view.silence > KILLS_QUIET_MS);
+    // A window over 15 min takes two lines too: the API sent nothing for a while.
+    const two = old || (!!line && view.long);
+    put(big, line ? String(line.kills) : '–');
+    smallTail.hidden = !line;
     left.classList.toggle('is-dim', odd);
-    put(smallMins, line && !old ? String(line.mins) : '');
-    put(smallLong, line && !old ? ' min' : '');
-    put(smallShort, line && !old ? 'm' : '');
-    put(smallMark, odd ? '\u26a0 ' : '');
-    put(smallUntil, old ? 'until ' : '');
-    putTime(old ? view.clock : 0);
+    left.classList.toggle('is-two', two);
+    line2.hidden = !two;
+    put(smallSep, line ? (two ? ' in ' : ' · ') : '');
+    put(smallMins, line ? String(line.mins) : '');
+    put(smallLong, line ? ' min' : '');
+    put(smallShort, line ? 'm' : '');
+    put(lead, two ? (old && !odd ? 'no new kills since ' : 'data up to ') : '');
+    put(smallMark, odd ? '\u00a0\u26a0' : '');
+    if (two) {
+      put(smallTime, hhmm(view.clock));
+      smallTime.dateTime = new Date(view.clock).toISOString();
+    } else {
+      put(smallTime, '');
+      smallTime.removeAttribute('datetime');
+    }
     let text;
     if (!line) {
-      text = 'Not enough kill data yet to count 10 minutes.';
-    } else if (odd) {
-      text = `The game's API is behind since ${hhmm(view.clock)}, so this number is old.`;
-    } else if (old) {
-      text = `No new kills since ${hhmm(view.clock)}, as on a quiet map. The number is the 10 minutes before.`;
+      text = view && view.noWindow === 'reset' ? HUD_RESET_TIP : HUD_NO_WINDOW_TIP;
     } else {
-      text = HUD_EXPLAIN.fights;
+      const t = hhmm(view.clock);
+      // A step that came after the API sent nothing, and lit no swords, says why.
+      const tail = Number.isFinite(view.prevRun) && view.prevRun > KILLS_CATCHUP_MS && !view.hot
+        ? ` The last jump came after the game's API sent nothing for ${Math.round(view.prevRun / 60000)} min, so when those kills happened is unknown; it lights no swords.` : '';
+      if (view.long) {
+        text = `${line.kills} kills in the ${line.mins} min up to ${t}. The window is longer than 10 minutes because the game's API stopped sending data between ${hhmm(view.gap.from)} and ${hhmm(view.gap.to)}.`
+          + (odd ? ` The game's API has been behind since ${t}, so this is not now.` : old ? ` No new kills since ${t}, as on a quiet map.` : '') + tail;
+      } else if (odd) {
+        text = `${line.kills} kills in the ${line.mins} min up to ${t}. The game's API has been behind since ${t}, so this is not now.${tail}`;
+      } else if (old) {
+        text = `No new kills since ${t}, as on a quiet map. ${line.kills} kills in the ${line.mins} min up to then.${tail}`;
+      } else {
+        text = `Player kills on this map in the last ${line.mins} minutes. Orange swords mark the busiest map, past 50.${tail}`;
+      }
     }
-    if (text === fightsExplain) return;
-    fightsExplain = text;
-    if (hover) fightsBtn.title = text;
-    if (openKey === 'fights') note.textContent = text;
+    setTip('fights', fightsBtn, text);
   };
   let stale = null;
   const state = {
@@ -1285,23 +1342,15 @@ function buildMapCorners(wrap) {
       ago.classList.toggle('is-stale', isStale);
       ago.dateTime = new Date(at).toISOString();
       const mins = Math.floor(age / 60000);
-      // Past the limit the word and the sign are the signal, never the
-      // colour alone; narrow drops the word and keeps the sign.
-      put(mark, isStale ? '\u26a0 ' : '');
-      put(word, isStale ? 'No new data \u00b7 ' : 'Updated ');
-      if (isStale) {
-        put(val, String(mins));
-        put(unitLong, ' min');
-        put(unitShort, ' min');
-      } else if (mins < 1) {
-        put(val, `${Math.floor(age / 1000)}s`);
-        put(unitLong, ' ago');
-        put(unitShort, ' ago');
-      } else {
-        put(val, String(mins));
-        put(unitLong, ' min ago');
-        put(unitShort, 'm ago');
-      }
+      // Past the limit the sign is the signal, never the colour alone.
+      put(mark, isStale ? '⚠ ' : '');
+      put(val, hhmm(at));
+      const answered = matchAnsweredAt.get(matchId);
+      setTip('when', whenBtn, `${answered ? `Checked ${ageWords(Date.now() - answered)} ago` : 'Not checked yet'}:`
+        + " this page asks the game's API every 30 s."
+        + ` Data from ${hhmm(at)}: when this match's score last changed there${isStale ? `, ${ageWords(age)} ago` : ''}.`
+        + ' The API sometimes repeats an old answer for a while; that does not count.'
+        + " The game's API itself runs about 40 s behind the game.");
       if (stale !== null && stale !== isStale) {
         put(live, isStale ? `No new map data for ${mins} min` : 'New map data again');
       }
@@ -3249,7 +3298,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
       // everything in it pans and zooms with the terrain.
       const sb = buildScoreBar(byType.get(type), matchIsLive(match));
       if (sb) plotWrap.appendChild(sb);
-      corners = buildMapCorners(plotWrap);
+      corners = buildMapCorners(plotWrap, match.id);
       paintCorners();
       stage.appendChild(plotWrap);
     } else {

@@ -45,8 +45,9 @@ const RECORD = argv.includes('--record');
 // A guard against a hang, not a speed bar. In a cloud container on 10/10/2026
 // the walk took 129-181 s without the 'map pane' step and 213-282 s with it
 // (the step alone 53 s: the board has to be seen standing still), and a
-// shared CI machine can be slower. Recording waits on the real hosts.
-const DEADLINE_MS = RECORD ? 420000 : 360000;
+// shared CI machine can be slower; the 'corners by the data clock' step adds
+// about 50 s (300-325 s in total, 10/10/2026). Recording waits on the real hosts.
+const DEADLINE_MS = RECORD ? 480000 : 420000;
 const ci = argv.indexOf('--chrome');
 
 const problems = [];
@@ -1271,8 +1272,8 @@ async function main() {
     const q = sel => `document.querySelector('.info-popover .wvw-plot-wrap ${sel}')`;
     const shown = sel => `(() => { const e = ${q(sel)}; return !!e && !!e.offsetParent; })()`;
     const text = sel => `(${q(sel)}?.textContent || '')`;
-    if (!(await until(step, shown('.wvw-hud-r'), '"Updated" corner'))) return;
-    if (!/^Updated /.test(await ev(text('.wvw-hud-ago')))) problem(`step '${step}': the corner does not start with "Updated"`);
+    if (!(await until(step, shown('.wvw-hud-r'), '"data from" corner'))) return;
+    if (!/^data from \d/.test(await ev(text('.wvw-hud-ago')))) problem(`step '${step}': the corner does not start with "data from"`);
     await idle(step);
     if (await ev('window.__amber') || (await ev(text('.wvw-hud-live')))) problem(`step '${step}': the corner went amber, or spoke, on opening`);
     if (await ev(`!!${q('.wvw-hud-ago.is-stale')}`)) problem(`step '${step}': the corner is amber after the opening read`);
@@ -1294,7 +1295,7 @@ async function main() {
       if (!(hot ? /^\d+$/.test(big) : /^(\d+|\u2013)$/.test(big))) problem(`step '${step}': the neutral corner reads "${big}"`);
       // A number always carries the minutes it was counted over: a count with no window is a dash.
       const small = await ev(`${q('.wvw-hud-small')}.innerText`);
-      if (/^\d+$/.test(big) && !/^kills · (\d+ min|until \S+|\u26a0 until \S+)$/.test(small)) problem(`step '${step}': the corner reads "${big}" with "${small}", a count with no window`);
+      if (/^\d+$/.test(big) && !/^kills (· \d+ min|in \d+ min)$/.test(small)) problem(`step '${step}': the corner reads "${big}" with "${small}", a count with no window`);
     }
     // A frozen API: the recorded body answered again on every pull for 400 s
     // more. Each answer arrives; none is new data.
@@ -1306,25 +1307,26 @@ async function main() {
       await idle(step + ': same body');
     }
     if (same.served < 4) problem(`step '${step}': the map asked ${same.served} time(s) over 400 s, wanted 4`);
-    await until(step, `${q('.wvw-hud-ago.is-stale')} && /^\u26a0 No new data /.test(${text('.wvw-hud-ago')})`, 'amber "No new data" after 6 min of the same body');
+    await until(step, `${q('.wvw-hud-ago.is-stale')} && /^\u26a0 data from \\d/.test(${text('.wvw-hud-ago')})`, 'amber "data from" after 6 min of the same body');
     if (!/No new map data for/.test(await ev(text('.wvw-hud-live')))) problem(`step '${step}': the gap was not spoken`);
     // Stale data claims no fight: no swords on a tab, and the kills corner is neutral -
     // either a dash with only "kills" (no window), or the last count dimmed with
-    // "\u26a0 until HH:MM", the time the kills last moved (never a bare 0 from no window).
+    // two lines, "N kills in M min" over "data up to HH:MM \u26a0" (never a bare 0 from no window).
     if (await ev(`!!document.querySelector('.info-popover .wvw-tab.is-hot')`)) problem(`step '${step}': swords still show on a tab on stale data`);
     const frozen = await ev(`(() => {
       return { shown: ${shown('.wvw-hud-l')}, cold: !!${q('.wvw-hud-l.is-cold')}, dim: !!${q('.wvw-hud-l.is-dim')},
         big: ${text('.wvw-hud-big')}, small: ${q('.wvw-hud-small')}.innerText,
-        when: ${q('.wvw-hud-small time')}?.dateTime || '' };
+        line2: ${q('.wvw-hud-small2')}?.hidden === false ? ${q('.wvw-hud-small2')}.textContent : '',
+        when: ${q('.wvw-hud-small2 time')}?.dateTime || '' };
     })()`);
     const dash = frozen.big === '\u2013' && frozen.small === 'kills' && !frozen.dim;
-    const dimmed = /^\d+$/.test(frozen.big) && /^kills · \u26a0 until \S/.test(frozen.small) && frozen.dim && Number.isFinite(Date.parse(frozen.when));
-    if (!frozen.shown || !frozen.cold || !(dash || dimmed)) problem(`step '${step}': on stale data the kills corner reads ${JSON.stringify(frozen)}, wanted a neutral dash or the last count dimmed "\u26a0 until HH:MM"`);
-    // The score one point up: new data, the corner back to "Updated".
+    const dimmed = /^\d+$/.test(frozen.big) && /^kills in \d+ min$/.test(frozen.small) && /^data up to \S+( \S+)?\s\u26a0$/.test(frozen.line2) && frozen.dim && Number.isFinite(Date.parse(frozen.when));
+    if (!frozen.shown || !frozen.cold || !(dash || dimmed)) problem(`step '${step}': on stale data the kills corner reads ${JSON.stringify(frozen)}, wanted a neutral dash or the last count dimmed over "data up to HH:MM \u26a0"`);
+    // The score one point up: new data, the corner back to a plain "data from".
     const bumped = { ...one, scores: { ...one.scores, red: (Number(one.scores?.red) || 0) + 1 } };
     substitutes.set(oneUrl, { body: Buffer.from(JSON.stringify(bumped)), served: 0 });
     await ev("__skewClock(31000); window.dispatchEvent(new Event('focus'))");
-    await until(step, `${q('.wvw-hud-ago')} && !${q('.wvw-hud-ago.is-stale')} && /^Updated /.test(${text('.wvw-hud-ago')})`, '"Updated" back on a higher score');
+    await until(step, `${q('.wvw-hud-ago')} && !${q('.wvw-hud-ago.is-stale')} && /^data from \\d/.test(${text('.wvw-hud-ago')})`, '"data from" unmarked again on a higher score');
     if (!/New map data again/.test(await ev(text('.wvw-hud-live')))) problem(`step '${step}': the return was not spoken`);
     await idle(step);
     substitutes.delete(oneUrl);
@@ -1645,14 +1647,14 @@ async function main() {
     await reset(7 * 60000, 60000);
     if (await ev(kept) < 6 * 60000) problem(`step '${step}': the match was not backdated by a live history (${await ev(kept)} ms)`);
     if (await open(step + ': open')) {
-      if (!(await ev(`!!${q('.wvw-hud-ago.is-stale')} && /^⚠ No new data /.test(${text('.wvw-hud-ago')})`))) problem(`step '${step}': the corner did not open amber`);
+      if (!(await ev(`!!${q('.wvw-hud-ago.is-stale')} && /^⚠ data from /.test(${text('.wvw-hud-ago')})`))) problem(`step '${step}': the corner did not open amber`);
       if ((await ev(text('.wvw-hud-big'))) !== '–') problem(`step '${step}': the kills corner is not a dash on opening`);
-      // The score up, on the kept body: back to "Updated".
+      // The score up, on the kept body: back to a plain "data from".
       const bumped = await ev(`(() => { const m = JSON.parse(JSON.stringify(newestMatches.get('${matchId}').match));
         m.scores.red = (Number(m.scores.red) || 0) + 1; return JSON.stringify(m); })()`);
       substitutes.set(`https://api.guildwars2.com/v2/wvw/matches?id=${matchId}`, { body: Buffer.from(bumped), served: 0 });
       await ev("__skewClock(31000); window.dispatchEvent(new Event('focus'))");
-      await until(step, `${q('.wvw-hud-ago')} && !${q('.wvw-hud-ago.is-stale')} && /^Updated /.test(${text('.wvw-hud-ago')})`, '"Updated" back on a higher score');
+      await until(step, `${q('.wvw-hud-ago')} && !${q('.wvw-hud-ago.is-stale')} && /^data from \\d/.test(${text('.wvw-hud-ago')})`, '"data from" unmarked again on a higher score');
       substitutes.delete(`https://api.guildwars2.com/v2/wvw/matches?id=${matchId}`);
       await closePopover(step);
     }
@@ -1660,10 +1662,165 @@ async function main() {
     await reset(30 * 60000, 30 * 60000);
     if (await ev(kept) > 60000) problem(`step '${step}': a history with every line old moved the match's time`);
     if (await open(step + ': all old')) {
-      if (await ev(`!!${q('.wvw-hud-ago.is-stale')}`) || !/^Updated /.test(await ev(text('.wvw-hud-ago')))) problem(`step '${step}': a history with every line old turned the corner amber`);
+      if (await ev(`!!${q('.wvw-hud-ago.is-stale')}`) || !/^data from /.test(await ev(text('.wvw-hud-ago')))) problem(`step '${step}': a history with every line old turned the corner amber`);
       await closePopover(step);
     }
     substitutes.delete(killsUrl);
+  }
+
+  // The map's two corners by the data's clock: the kills window is the reading
+  // nearest to 10 min before the kills' own clock, 8 to 15 min back or a dash;
+  // old kills take two lines ("data up to" when the API is behind, "no new
+  // kills since" on a quiet map); a jump after the kills stood still lights no
+  // swords and says so; the right corner says "data from HH:MM" in the
+  // viewer's time zone. The history and the score time are planted in the
+  // page, and the kept body is served back for the match so nothing replaces them.
+  async function cornersByClock() {
+    const step = 'corners by the data clock';
+    const label = await ev("document.querySelector('.tier-map-btn')?.getAttribute('aria-label') || ''");
+    const t = /\b(NA|EU) Tier (\d+)/.exec(label);
+    if (!t) return void problem(`step '${step}': no tier map button to read a match from`);
+    const matchId = `${t[1] === 'NA' ? 1 : 2}-${t[2]}`;
+    const matchUrl = `https://api.guildwars2.com/v2/wvw/matches?id=${matchId}`;
+    const q = sel => `document.querySelector('.info-popover .wvw-plot-wrap ${sel}')`;
+    const text = sel => `(${q(sel)}?.textContent || '')`;
+    const shown = sel => `(() => { const e = ${q(sel)}; return !!e && !!e.offsetParent && !e.hidden; })()`;
+    // Times are in ms before now. `top`: when the kills reached their newest
+    // total (+`add` on Center), `base`: how far before that the other reading
+    // is, `still`: a reading between the two with the older total (the kills
+    // stood still), `rose`: how long ago the score last rose, `startAgo`: the week's start.
+    const scenarios = {
+      nine: { top: 20e3, base: 9 * 60e3, add: 70, rose: 0 },
+      twenty: { top: 20e3, base: 20 * 60e3, add: 200, rose: 0 },
+      gap: { top: 20e3, base: 65 * 60e3, add: 700, rose: 0 },
+      gapLate: { top: 40 * 60e3, base: 65 * 60e3, add: 700, rose: 40 * 60e3 },
+      gapQuiet: { top: 8 * 60e3, base: 65 * 60e3, add: 30, rose: 0 },
+      late: { top: 40 * 60e3, base: 10 * 60e3, add: 70, rose: 40 * 60e3 },
+      quiet: { top: 8 * 60e3, base: 10 * 60e3, add: 30, rose: 0 },
+      jumpOn: { top: 20e3, base: 15 * 60e3, add: 155, rose: 0, still: 5 * 60e3 },
+      jumpLong: { top: 20e3, base: 25 * 60e3, add: 155, rose: 0, still: 5 * 60e3 },
+      jumpSmall: { top: 20e3, base: 12 * 60e3, add: 30, rose: 0, still: 5 * 60e3 },
+      reset: { none: true, startAgo: 12 * 60e3 },
+      nodata: { none: true },
+    };
+    const plant = async (name) => {
+      await ev("localStorage.removeItem('wvw-fight-v1')");
+      const body = await ev(`(() => {
+        const sc = ${JSON.stringify(scenarios[name])};
+        const now = Date.now();
+        const k = newestMatches.get('${matchId}');
+        const T = fightTotals(k.match);
+        const row = (age, bonus) => ({ at: now - age, n: Object.fromEntries(KILLS_MAP_ORDER.map(ty => [ty, (T[ty] || 0) + (ty === 'Center' ? bonus : 0)])) });
+        const list = [];
+        if (!sc.none) {
+          list.push(row(sc.top + sc.base, 0));
+          if (sc.still) list.push(row(sc.top + sc.still, 0));
+          list.push(row(sc.top, sc.add));
+        }
+        killSheet = new Map([['${matchId}', list]]);
+        killSheetAt = now;
+        k.rose = true;
+        k.at = now - (sc.rose || 0);
+        k.match.start_time = new Date(now - (sc.startAgo || 4 * 86400e3)).toISOString();
+        return JSON.stringify(k.match);
+      })()`);
+      substitutes.set(matchUrl, { body: Buffer.from(body), served: 0 });
+    };
+    const open = async (name) => {
+      if (!(await click(name + ': open', "document.querySelector('.tier-map-btn')"))) return false;
+      if (!(await until(name, `!!document.querySelector("${POPOVERS['tier-map-btn']}")`, 'drawn objectives'))) return false;
+      await idle(name);
+      await click(name + ': Center tab', "document.querySelector('.info-popover .wvw-tab[data-type=\"Center\"]')");
+      return await until(name, `${shown('.wvw-hud-l')} && ${shown('.wvw-hud-r')}`, 'both corners');
+    };
+    const corner = () => ev(`(() => ({
+      big: ${text('.wvw-hud-big')}, small: ${q('.wvw-hud-small')}.innerText,
+      two: !!${q('.wvw-hud-small2')} && !${q('.wvw-hud-small2')}.hidden, line2: ${q('.wvw-hud-small2')}?.hidden === false ? ${text('.wvw-hud-small2')} : '',
+      dim: !!${q('.wvw-hud-l.is-dim')}, cold: !!${q('.wvw-hud-l.is-cold')},
+      swords: !!document.querySelector('.info-popover .wvw-tab.is-hot'), right: ${text('.wvw-hud-ago')},
+      when: ${q('.wvw-hud-ago')}?.dateTime || '' }))()`);
+    // The balloon of a corner, opened by a tap and closed again.
+    const balloon = async (name, side) => {
+      const btn = `document.querySelector('.info-popover .wvw-hud-${side} .wvw-hud-btn')`;
+      if (!(await click(name + `: ${side} balloon`, btn))) return '';
+      const said = await ev("document.querySelector('.info-popover .wvw-hud-note')?.textContent || ''");
+      await click(name + `: ${side} balloon closed`, btn);
+      return said;
+    };
+
+    await send('Emulation.setTimezoneOverride', { timezoneId: 'America/Sao_Paulo' });
+    for (const name of ['nine', 'twenty', 'gap', 'gapLate', 'gapQuiet', 'late', 'quiet', 'jumpOn', 'jumpLong', 'jumpSmall', 'reset', 'nodata']) {
+      await plant(name);
+      const label = `${step}: ${name}`;
+      if (!(await open(label))) { await closePopover(label); continue; }
+      const c = await corner();
+      const bad = what => problem(`step '${label}': ${what}, the corner reads ${JSON.stringify(c)}`);
+      if (name === 'nine') {
+        // A reading 9 min back is a window: the minutes are the real ones, one line.
+        if (!/^\d+$/.test(c.big) || c.small !== 'kills · 9 min' || c.two || c.cold || !c.swords) bad('a base 9 min back should count, on one line, with swords');
+        // The right corner: the viewer's own time zone, and the balloon starts with the last check.
+        const want = await ev(`new Date('${c.when}').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })`);
+        if (c.right !== `data from ${want}`) bad(`the right corner should read "data from ${want}"`);
+        if (await ev(`new Date('${c.when}').getUTCHours() === new Date('${c.when}').getHours()`)) bad('the time is not in the viewer\'s zone (the same hour as UTC)');
+        const tip = await balloon(label, 'r');
+        if (!/^Checked \d+ (s|min) ago: this page asks the game's API every 30 s\. Data from /.test(tip) || !tip.includes(`Data from ${want}:`)) problem(`step '${label}': the right balloon reads "${tip}"`);
+      }
+      // No reading 8 to 15 min back: the newest one at least 10 min back, the real span in two lines, no swords.
+      if (['twenty', 'gap', 'gapLate', 'gapQuiet'].includes(name)) {
+        const mins = name === 'twenty' ? 20 : 65;
+        const late = name === 'gapLate';
+        const lead = name === 'gapQuiet' ? 'no new kills since' : 'data up to';
+        if (!/^\d+$/.test(c.big) || c.small !== `kills in ${mins} min` || !c.two || c.dim !== late
+          || !new RegExp(`^${lead} \\S+( \\S+)?${late ? '\\s\\u26a0' : ''}$`).test(c.line2)) bad(`a base ${mins} min back should take two lines, "kills in ${mins} min" over "${lead} HH:MM${late ? ' ⚠' : ''}"`);
+        if (c.swords) bad('a window over 15 min should light no swords');
+        const tip = await balloon(label, 'l');
+        if (!/ The window is longer than 10 minutes because the game's API stopped sending data between \S+( \S+)? and \S+( \S+)?\./.test(tip)) problem(`step '${label}': the long window's balloon reads "${tip}"`);
+      }
+      if (name === 'late') {
+        if (!/^\d+$/.test(c.big) || c.small !== 'kills in 10 min' || !c.two || !c.dim || !/^data up to \S+( \S+)?\s⚠$/.test(c.line2)) bad('stalled data should take two lines, "kills in 10 min" over "data up to HH:MM ⚠", dimmed');
+        if (!/^⚠ data from /.test(c.right)) bad('the right corner should carry the warning sign past 6 min');
+        if (c.swords) bad('a stalled match should light no swords');
+      }
+      if (name === 'quiet') {
+        if (!/^\d+$/.test(c.big) || c.small !== 'kills in 10 min' || !c.two || c.dim || !/^no new kills since \S+( \S+)?$/.test(c.line2)) bad('a quiet map should take two lines, "kills in 10 min" over "no new kills since HH:MM", not dimmed');
+        if (/^⚠/.test(c.right)) bad('a quiet map with a fresh score should not warn on the right');
+      }
+      // A jump after a stall: the swords light when the stall was at most 20 min and the kills spread over it
+      // still make 50 per 10 min; otherwise not, and the balloon says why.
+      if (name === 'jumpOn' && (!c.swords || c.cold || !/^\d+$/.test(c.big))) bad('155 kills after a 15 min stall should light the swords');
+      if (name === 'jumpLong' || name === 'jumpSmall') {
+        if (c.swords) bad(name === 'jumpLong' ? 'a jump after a 25 min stall should light no swords' : '30 kills after 12 min should light no swords');
+        const tip = await balloon(label, 'l');
+        const mins = name === 'jumpLong' ? 25 : 12;
+        if (!tip.endsWith(` The last jump came after the game's API sent nothing for ${mins} min, so when those kills happened is unknown; it lights no swords.`)) problem(`step '${label}': the balloon does not say why there are no swords: "${tip}"`);
+      }
+      if (name === 'reset' || name === 'nodata') {
+        if (c.big !== '–' || c.small !== 'kills') bad('no reading should give a dash');
+        const tip = await balloon(label, 'l');
+        const want = name === 'reset' ? /^Counting starts about 10 minutes after the reset: /.test(tip) : tip === 'Not enough kill data to count 10 minutes.';
+        if (!want) problem(`step '${label}': the dash balloon reads "${tip}"`);
+      }
+      // The same states on a phone: nothing past the corners' room either side of the score bar.
+      if (['late', 'quiet', 'nine', 'gap'].includes(name)) {
+        for (const width of [390, 320]) {
+          await send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: true });
+          await idle(`${label}, ${width} px`);
+          const room = await ev(`(() => {
+            const r = s => { const e = document.querySelector('.info-popover .wvw-plot-wrap ' + s); return e && e.offsetParent ? e.getBoundingClientRect() : null; };
+            const l = r('.wvw-hud-l .wvw-hud-btn'), rt = r('.wvw-hud-r .wvw-hud-btn'), bar = r('.wvw-scorebar');
+            return { left: l && bar ? Math.round(l.right - bar.left) : null, right: rt && bar ? Math.round(bar.right - rt.left) : null,
+              page: document.documentElement.scrollWidth - innerWidth };
+          })()`);
+          if (room.left === null || room.right === null) problem(`step '${label}, ${width} px': a corner or the score bar is missing`);
+          else if (room.left > 0 || room.right > 0 || room.page > 0) problem(`step '${label}, ${width} px': a corner reaches ${room.left}px / ${room.right}px into the score bar, the page spills ${room.page}px`);
+        }
+        await send('Emulation.clearDeviceMetricsOverride');
+      }
+      await closePopover(label);
+    }
+    await send('Emulation.setTimezoneOverride', { timezoneId: '' }).catch(() => {});
+    substitutes.delete(matchUrl);
+    await ev("localStorage.removeItem('wvw-fight-v1'); killSheetAt = 0");
   }
 
   // The rules behind "What happened", straight on missedMatchOffered with
@@ -2653,6 +2810,9 @@ async function main() {
 
   // 6b. The kill history backdating a match this page never saw move.
   await historyAge();
+
+  // 6c. The corners by the data's clock.
+  await cornersByClock();
 
   // 6d. The maps' summary of a gap: what changed hands and the kills. In this
   // load, whose maps have all been opened: a new load would ask for guild

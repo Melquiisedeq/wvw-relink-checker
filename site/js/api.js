@@ -239,6 +239,9 @@ function findLink(guildId, maps) {
 // answer says nothing about the data's age; the score sum of a live match
 // rises every 20-40 s and jumps at each 5-min tick (measured 02-03/10/2026).
 const newestMatches = new Map();
+// When this page last got an answer for each match, any body, a frozen repeat
+// included (newestMatches keeps only when the score rose): the map's "checked".
+const matchAnsweredAt = new Map();
 
 const colorSum = (obj) => COLORS.reduce((n, c) => n + (Number(obj && obj[c]) || 0), 0);
 const matchActivity = (m) => colorSum(m.kills) + colorSum(m.deaths);
@@ -263,6 +266,7 @@ function matchIsBehind(fresh, kept) {
 // not a match passes through untouched.
 function keepNewestMatch(match) {
   if (!match || typeof match.id !== 'string') return match;
+  matchAnsweredAt.set(match.id, Date.now());
   const kept = newestMatches.get(match.id);
   // Every offer, a frozen repeat included, with the body it would replace:
   // the maps' "What happened" summary (js/maps.js, loaded after this file).
