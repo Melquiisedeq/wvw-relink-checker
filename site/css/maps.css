@@ -517,9 +517,13 @@
 }
 .wvw-hud-btn:active{transform:none;box-shadow:none;}
 .wvw-hud-btn img{display:block;flex:none;filter:drop-shadow(0 1px 1px #000);}
-.wvw-hud-txt{display:flex;align-items:baseline;gap:5px;white-space:nowrap;}
+.wvw-hud-txt{display:flex;flex-direction:column;white-space:nowrap;}
+.wvw-hud-line{display:flex;align-items:baseline;gap:5px;}
 .wvw-hud-big{font-size:.86rem;font-weight:800;color:#ffb070;font-variant-numeric:tabular-nums;}
-.wvw-hud-small{font-size:.66rem;color:#c3ccd6;}
+.wvw-hud-small{font-size:.66rem;color:#c3ccd6;font-variant-numeric:tabular-nums;}
+.wvw-hud-small2{font-size:.62rem;line-height:1.15;}
+.wvw-hud-small2[hidden]{display:none;}
+.wvw-hud-when{white-space:nowrap;}
 .wvw-hud-ago{font-size:.68rem;color:#dbe3ec;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .wvw-hud-ago.is-stale{color:#ffb347;font-weight:700;}
 .wvw-hud-l.is-cold img{filter:grayscale(1) brightness(1.1) drop-shadow(0 1px 1px #000);opacity:.75;}
@@ -527,6 +531,7 @@
 /* A count old for an abnormal reason is dimmed; the warning sign and "until"
    say so, not the grey alone. */
 .wvw-hud-l.is-dim .wvw-hud-big{color:#8d97a2;}
+.wvw-hud-l.is-dim .wvw-hud-small2{color:#ffb347;}
 .wvw-hud-short{display:none;}
 /* Clipped, not hidden, so a screen reader still gets the turn. */
 .wvw-hud-live{
@@ -543,14 +548,20 @@
 .wvw-hud-note.at-r{right:8px;border-left:0;border-right:2px solid #57b6d6;}
 .wvw-plot-wrap.is-zoomed .wvw-hud,
 .wvw-plot-wrap.is-zoomed .wvw-hud-note{display:none;}
-/* Narrow map: the words go, the numbers and the mark stay (the mark is
-   the signal that is not colour: dot or warning sign). */
+/* Narrow map: "min" shortens to "m", the number stacks over its words, and
+   each corner stays inside the 29% either side of the score bar (42% wide):
+   the longer texts wrap. */
 @container plot (max-width:480px){
-  .wvw-hud-word,.wvw-hud-long{display:none;}
+  .wvw-hud-long{display:none;}
   .wvw-hud-short{display:inline;}
-  .wvw-hud-txt{flex-direction:column;align-items:flex-start;gap:0;}
+  .wvw-hud-line{flex-direction:column;align-items:flex-start;gap:0;}
+  .wvw-hud-btn{max-width:calc(29cqw - 4px);}
+  .wvw-hud-l.is-two .wvw-hud-txt{white-space:normal;}
+  .wvw-hud-ago{display:flex;flex-wrap:wrap;justify-content:flex-end;column-gap:.3em;
+    white-space:normal;line-height:1.15;font-size:.62rem;}
   .wvw-hud-big{font-size:.8rem;line-height:1.1;}
   .wvw-hud-small{font-size:.6rem;}
+  .wvw-hud-small2{font-size:.56rem;}
   .wvw-hud{padding:4px;}
   .wvw-hud-btn{padding:2px 5px;gap:4px;}
 }
