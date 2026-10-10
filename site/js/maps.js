@@ -2535,7 +2535,42 @@ function missedRingUntil(matchId, objId) {
   return ring && ring.until > Date.now() && ring.ids.has(objId) ? ring.until : 0;
 }
 
-function missedMakeNote(before, after, since, back, kind) {
+// When the kills between two bodies were made, from the data and not from this
+// page's clock: the start is when the history (the shared rows and this
+// browser's log) first showed the total of the body before; the end, when it
+// first showed the total of the body after, or `back` for a body the history
+// has not seen. The body before happened between the reading just under its
+// total and the one that reached it: the start is sure when that total is
+// exact, the two readings are close, or the page's own time is close. Without
+// a reading under it (the oldest there is) or with a wide gap and an old body,
+// the start is only an upper bound: sure is false and the text says "since
+// before". Never later than the page's own `since`.
+// The history's rows bound when a total first showed: within this of the
+// page's own reading, or this close to the row before it, the start is fixed.
+const MISSED_BOUND_MS = 3 * 60 * 1000;
+
+function missedPeriod(before, after, since, back) {
+  const need = missedKillTotal(before);
+  const got = missedKillTotal(after);
+  const list = fightSamples(after);
+  const total = (s) => sumKills(s.n);
+  const i = list.findIndex((s) => total(s) >= need);
+  let start = since;
+  let sure = false;
+  if (i >= 0) {
+    start = Math.min(since, list[i].at);
+    sure = i > 0 && (total(list[i]) === need || list[i].at - list[i - 1].at <= MISSED_BOUND_MS
+      || list[i].at >= since - MISSED_BOUND_MS);
+  }
+  let end = back;
+  if (got > need) {
+    const j = list.findIndex((s) => total(s) === got && s.at > start);
+    if (j >= 0) end = Math.min(back, list[j].at);
+  }
+  return { start, end, sure };
+}
+
+function missedMakeNote(before, after, since, back, kind, endAt = back) {
   const changes = missedOwnerChanges(before, after).slice(0, MISSED_CHANGES_MAX);
   const name = (c) => {
     const id = COLORS.includes(c) ? matchTeamId(after, c) : null;
@@ -2544,9 +2579,33 @@ function missedMakeNote(before, after, since, back, kind) {
   for (const c of changes) { c.toName = name(c.to); c.fromName = name(c.from); }
   // The whole match, before against after: the number a reader can check.
   const kills = Math.max(0, missedKillTotal(after) - missedKillTotal(before));
-  missedNotes.set(after.id, { kind, since, back, until: back + MISSED_SHOW_MS, changes, kills,
+  // The same difference map by map, the maps that moved, in the tabs' order.
+  const was = new Map(missedMaps(before).map((m) => [m && m.type, colorSum(m && m.kills)]));
+  const order = Object.keys(MAP_TAB_NAME);
+  const perMap = missedMaps(after)
+    .map((m) => ({ type: m && m.type, n: Math.max(0, colorSum(m && m.kills) - (was.get(m && m.type) || 0)) }))
+    .filter((m) => m.n > 0 && typeof m.type === 'string')
+    .sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
+  const period = missedPeriod(before, after, since, endAt);
+  missedNotes.set(after.id, { kind, since: period.start, end: period.end, sure: period.sure, back,
+    before, rawSince: since, after,
+    until: back + MISSED_SHOW_MS, changes, kills, perMap,
     seenTabs: new Set(), open: false, wideOpen: true, more: false });
-  missedRingFor(after.id, changes);
+  if (endAt === back) missedRingFor(after.id, changes);
+}
+
+// A newer body while the summary is up (the first answer after a gap may come
+// from the server group that is behind): the same body before, against this
+// one, so the kills and the period follow the newest data. What the reader
+// opened or folded stays, and so does the time it goes away.
+function missedRefreshNote(match, now) {
+  const note = missedNoteFor(match.id);
+  if (!note || !note.before || !missedBodyChanged(note.after, match)) return false;
+  const old = note;
+  missedMakeNote(old.before, match, old.rawSince, old.back, old.kind, now);
+  const fresh = missedNotes.get(match.id);
+  Object.assign(fresh, { until: old.until, seenTabs: old.seenTabs, open: old.open, wideOpen: old.wideOpen, more: old.more });
+  return true;
 }
 
 // Called by keepNewestMatch with every body offered and the one kept before it.
@@ -2570,6 +2629,7 @@ function missedMatchOffered(match, kept) {
     missedMakeNote(kept.match, match, kept.at, now, 'pause');
     return;
   }
+  if (missedRefreshNote(match, now)) return;
   // Any other update: the ring alone, on what changed hands under your eyes.
   missedRingFor(match.id, missedOwnerChanges(kept.match, match));
 }
@@ -2713,7 +2773,7 @@ function paintMissed(view) {
   const narrow = window.matchMedia(MISSED_NARROW).matches;
   // Folded on a phone until asked; open beside the map until hidden.
   const open = narrow ? note.open : note.wideOpen;
-  const key = JSON.stringify([view.type, note.since, note.back, narrow, open, note.more]);
+  const key = JSON.stringify([view.type, note.since, note.end, note.sure, narrow, open, note.more]);
   if (box && box.dataset.key === key) return;
   if (!box) {
     box = missedEl('section', 'wvw-missed');
@@ -2725,16 +2785,15 @@ function paintMissed(view) {
   box.classList.toggle('is-open', open);
 
   const away = note.kind === 'return';
-  const span = missedSpan(note.since, note.back);
-  const mins = Math.max(1, Math.round((note.back - note.since) / 60000));
+  const span = note.sure ? missedSpan(note.since, note.end) : `since before ${missedHhmm(note.since)}`;
   const changes = note.changes;
 
   const head = missedEl('button', 'wvw-missed-head');
   head.type = 'button';
   head.setAttribute('aria-expanded', open ? 'true' : 'false');
   head.title = (away
-    ? `What changed while this tab was in the background, ${span}.`
-    : `The game's API repeated an old answer from ${span}; this is what changed meanwhile.`)
+    ? `What changed in the match while this tab was in the background, ${span}.`
+    : `The game's API repeated an old answer; this is what changed in the match, ${span}.`)
     + ' Shown for 10 minutes after the data came back.';
   const title = missedEl('span', 'wvw-group wvw-missed-title');
   title.append(`${away ? 'What you missed' : 'What happened'} · `, missedEl('span', 'wvw-missed-time', span));
@@ -2780,7 +2839,15 @@ function paintMissed(view) {
     // The site's own sign for kills: the orange swords, the number in amber.
     kills = missedEl('p', 'wvw-missed-kills');
     kills.appendChild(missedImg('assets/icons/Event_Swords.webp', 16));
-    kills.append(missedEl('b', 'wvw-missed-killn', String(note.kills)), ` kills in those ${mins} min`);
+    // Per map, all teams: the whole match, not the map that is open.
+    const text = missedEl('span', 'wvw-missed-killtext', "All teams' kills, per map: ");
+    note.perMap.forEach((m, i) => {
+      if (i) text.append(' \u00b7 ');
+      const one = missedEl('span', 'wvw-missed-map', `${MAP_TAB_NAME[m.type] || m.type} `);
+      one.appendChild(missedEl('b', 'wvw-missed-killn', String(m.n)));
+      text.appendChild(one);
+    });
+    kills.appendChild(text);
   }
   const body = missedEl('div', 'wvw-missed-body');
   // On a phone the chips come first: they are what a tap opened it for.

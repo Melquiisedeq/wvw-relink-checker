@@ -704,8 +704,9 @@
 .wvw-missed-sub{margin:2px 0 7px;color:#8d97a6;font-size:.68rem;line-height:1.35;}
 @media (max-width:480px){ .wvw-missed-sub{margin:7px 0 0;} }
 /* Kills in the site's own sign: the orange swords, the number in amber. */
-.wvw-missed-kills{display:flex;align-items:center;gap:5px;margin:7px 0 0;color:#c3ccd6;font-size:.72rem;}
+.wvw-missed-kills{display:flex;align-items:flex-start;gap:5px;margin:7px 0 0;color:#c3ccd6;font-size:.72rem;}
 .wvw-missed-kills img{display:block;flex:none;filter:drop-shadow(0 1px 1px #000);}
+.wvw-missed-killtext{min-width:0;line-height:1.4;}
 .wvw-missed-killn{color:#ffb070;font-weight:800;font-size:.8rem;font-variant-numeric:tabular-nums;}
 .wvw-missed-killhint{text-transform:none;letter-spacing:0;font-weight:600;color:#c9d2dd;white-space:nowrap;}
 /* One chip per objective that changed hands: its icon in the new owner's
