@@ -2122,10 +2122,11 @@ async function main() {
         return { title: b.querySelector('.wvw-missed-title').textContent, open: b.classList.contains('is-open'),
           top: b === b.parentElement.firstElementChild && b.parentElement.classList.contains('wvw-side'),
           chips: [...b.querySelectorAll('.wvw-chip[data-obj]')].map(c => c.dataset.obj + ' ' + c.dataset.map),
-          kills: [...b.querySelectorAll('.wvw-missed-kills .wvw-missed-map')].map(e => e.textContent),
+          kills: [...b.querySelectorAll('.wvw-missed-row')].map(r => r.querySelector('.wvw-missed-mapname').textContent + ' ' + (r.querySelector('.wvw-missed-kills')?.textContent || '')),
           rings: [...document.querySelectorAll('.info-popover .wvw-marker')].filter(g => g.querySelector('.wvw-ring')).map(g => g.dataset.obj),
           dots: [...document.querySelectorAll('.info-popover .wvw-tab')].filter(t => t.querySelector('.wvw-tab-dot')).map(t => t.dataset.type) }; })()`);
-      const want = { chips: [`${a.id} ${here}`, `${b.id} ${other}`], kills: ['Center', 'RedHome', 'BlueHome', 'GreenHome'].filter(ty => KILLS[ty]).map(ty => `${NAMES[ty]} ${KILLS[ty][1]}`), rings: [a.id], dots: [] };
+      const TABS = ['Center', 'RedHome', 'BlueHome', 'GreenHome'];
+      const want = { chips: [[a.id, here], [b.id, other]].sort((x, y) => TABS.indexOf(x[1]) - TABS.indexOf(y[1])).map(([id, ty]) => `${id} ${ty}`), kills: TABS.filter(ty => KILLS[ty]).map(ty => `${NAMES[ty]} ${KILLS[ty][1]} kills`), rings: [a.id], dots: [] };
       if (!/^What happened · \S/.test(seen.title) || !seen.open || !seen.top) problem(`step '${step}': the block reads "${seen.title}", open ${seen.open}, at the top of the column ${seen.top}`);
       // Over the tabs, and the board standing still beside it.
       const boardWith = `(() => { const p = document.querySelector('.info-popover');
