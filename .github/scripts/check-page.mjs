@@ -261,7 +261,8 @@ function report() {
 try {
   await main();
 } catch (e) {
-  problem('check-page: ' + (e && e.stack ? e.stack.split('\n')[0] : e));
+  // Which step it stopped in: a protocol error says nothing of where.
+  problem(`check-page: ${e && e.stack ? e.stack.split('\n')[0] : e}, in step '${stepNow}'`);
   report();
 }
 
