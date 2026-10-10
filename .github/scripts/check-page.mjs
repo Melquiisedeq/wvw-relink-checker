@@ -1870,7 +1870,7 @@ async function main() {
       if (!st.focused || !st.veil) problem(`step '${name}': ${what}: the map is not darkened (is-focused ${st.focused}, veil ${st.veil})`);
     };
     const cleared = (name, st, what) => {
-      if (st.marks.some(m => m.lit) || st.focused || st.veil || st.rows.length || st.cols.length || st.team || st.label !== 'Objectives held') {
+      if (st.marks.some(m => m.lit) || st.focused || st.veil || st.rows.length || st.cols.length || st.team || !/^(Objectives held|Held)$/.test(st.label)) {
         problem(`step '${name}': ${what} left ${JSON.stringify({ lit: st.marks.filter(m => m.lit).length, focused: st.focused, rows: st.rows, cols: st.cols, team: st.team, label: st.label })}`);
       }
       return ev(`!!${pop}`).then(open => { if (!open) problem(`step '${name}': ${what} closed the popover`); });
@@ -2271,6 +2271,52 @@ async function main() {
   // 6. The corners over a map, while the page's kept bodies are the recorded ones.
   await mapCorners();
 
+  // The map board and the phone: the team names get room back,
+  // the map's tabs and zoom buttons are 34 px targets, the map's popover has
+  // no shrink button and the alliances popover keeps its own. At 320 and 360 px.
+  async function phoneBoard() {
+    const step = 'phone board';
+    for (const width of [320, 360]) {
+      const name = `${step}, ${width} px`;
+      // Not a mobile viewport: that one widens to fit anything past its edge,
+      // and this step measures the board at this width, not the page's.
+      await send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: false });
+      await until(name, `innerWidth === ${width}`, 'the new width');
+      await steady(name, "document.querySelector('.tier-map-btn')");
+      if (!(await press(name + ': open', "document.querySelector('.tier-map-btn')"))) continue;
+      if (!(await until(name, "!!document.querySelector('.info-popover .wvw-board-row[data-focus-color]') && !!document.querySelector('.info-popover .wvw-zoom button')", 'the board and the zoom buttons'))) continue;
+      await idle(name);
+      await steady(name, "document.querySelector('.info-popover .wvw-board')");
+      const m = await ev(`(() => {
+        const pop = document.querySelector('.info-popover');
+        const names = [...pop.querySelectorAll('.wvw-board-row[data-focus-color] .wvw-board-team')];
+        const small = sel => [...pop.querySelectorAll(sel)].map(e => { const b = e.getBoundingClientRect(); return Math.round(Math.min(b.width, b.height)); });
+        return { names: names.length, room: Math.min(...names.map(n => n.clientWidth)),
+          head: pop.querySelector('.wvw-board-head .wvw-board-team').textContent,
+          tabs: small('.wvw-tab'), zoom: small('.wvw-zoom button'), shrink: !!pop.querySelector('.info-popover-expand'), close: !!pop.querySelector('.info-popover-close') };
+      })()`);
+      // Names still end in an ellipsis when long; what counts is the room they
+      // get: 16 px at 320 and 53 px at 360 before the board gave it back.
+      const floor = width === 320 ? 30 : 65;
+      if (!(m.room >= floor)) problem(`step '${name}': the team names get ${m.room}px of room, wanted ${floor} or more`);
+      if (m.head !== 'Held') problem(`step '${name}': the board header reads "${m.head}", wanted "Held"`);
+      if (!m.tabs.length || !m.zoom.length || m.tabs.some(h => h < 34) || m.zoom.some(h => h < 34)) problem(`step '${name}': tabs ${JSON.stringify(m.tabs)} and zoom ${JSON.stringify(m.zoom)} should all be 34 px or more`);
+      if (m.shrink || !m.close) problem(`step '${name}': the map popover has ${m.shrink ? 'a shrink button' : 'no close button'}`);
+      await closePopover(name);
+    }
+    await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
+    await until(step, 'innerWidth === 1280', 'the wide width back');
+    await steady(step, "document.querySelector('.server-guilds-btn')");
+    if (await ev("!!document.querySelector('.server-guilds-btn')")) {
+      if (await press(step + ': alliances open', "document.querySelector('.server-guilds-btn')")) {
+        await until(step, "!!document.querySelector('.info-popover .info-popover-body')", 'the alliances popover');
+        if (!(await ev("!!document.querySelector('.info-popover .info-popover-expand')"))) problem(`step '${step}': the alliances popover lost its expand button`);
+        await closePopover(step);
+      }
+    } else problem(`step '${step}': no alliances button to look at`);
+    await send('Emulation.clearDeviceMetricsOverride');
+  }
+
   // 6b. The tiers whose data is old.
   await tierMarks();
 
@@ -2307,6 +2353,7 @@ async function main() {
 
   // 6e. The board picks a team or a type, and the map lights it.
   await mapFocus();
+  await phoneBoard();
 
   // 6f. Board, Captures and Objective: three tabs over one pane that keeps its size.
   await mapPane();
