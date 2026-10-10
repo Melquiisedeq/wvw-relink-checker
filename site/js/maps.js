@@ -2008,16 +2008,6 @@ function focusWords(pick) {
   return `${types.charAt(0).toUpperCase()}${types.slice(1)} only`;
 }
 
-// The board's header label without a pick: on a phone the name column is
-// a few letters wide, so it says "Held". The query matches maps.css.
-const BOARD_PHONE = window.matchMedia('(max-width:480px)');
-const heldWords = () => (BOARD_PHONE.matches ? 'Held' : 'Objectives held');
-BOARD_PHONE.addEventListener('change', () => {
-  for (const l of document.querySelectorAll('.wvw-board-head .wvw-board-team')) {
-    if (!l.querySelector('.wvw-focus-pill')) l.textContent = heldWords();
-  }
-});
-
 // The board's half of a pick: the chosen row, cell or column marked, and
 // the label "Objectives held" turned into the button that clears it.
 // Called after every paintMapBoard, which rebuilds the board.
@@ -2042,7 +2032,7 @@ function paintBoardFocus(board, pick, clear) {
   head.classList.toggle('has-pick', !!pick);
   const pill = label.querySelector('.wvw-focus-pill');
   if (!pick) {
-    if (pill || label.textContent !== heldWords()) label.textContent = heldWords();
+    if (pill || label.textContent !== 'Objectives held') label.textContent = 'Objectives held';
     return;
   }
   const words = focusWords(pick);
@@ -2102,7 +2092,7 @@ function paintMapBoard(board, match, isLive) {
   head.className = 'wvw-board-row wvw-board-head';
   const headLabel = document.createElement('span');
   headLabel.className = 'wvw-board-team';
-  headLabel.textContent = heldWords();
+  headLabel.textContent = 'Objectives held';
   head.appendChild(headLabel);
   const headCells = document.createElement('span');
   headCells.className = 'wvw-board-counts';
@@ -2882,6 +2872,18 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
 
   const actions = document.createElement('div');
   actions.className = 'info-popover-header-actions';
+  const expandBtn = document.createElement('button');
+  expandBtn.type = 'button';
+  expandBtn.className = 'info-popover-expand';
+  expandBtn.innerHTML = EXPAND_ICON_COLLAPSE;
+  expandBtn.setAttribute('aria-label', 'Shrink back to normal size');
+  expandBtn.title = expandBtn.getAttribute('aria-label');
+  expandBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setPopoverExpanded(popover, triggerEl,
+      !popover.classList.contains('info-popover--expanded'));
+  });
+  actions.appendChild(expandBtn);
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'info-popover-close';

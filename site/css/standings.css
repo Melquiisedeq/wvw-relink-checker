@@ -60,10 +60,6 @@
   display:flex;align-items:center;justify-content:space-between;gap:6px;
   font-size:.72rem;color:var(--text);margin-bottom:6px;font-weight:700;opacity:.9;
 }
-/* "Tier N" as the maps popover's section label (.wvw-group). */
-.standing-match-title > span:first-child{
-  font-size:.62rem;font-weight:800;color:#a3adbb;text-transform:uppercase;letter-spacing:.09em;
-}
 .standing-side{
   display:flex;flex-direction:column;gap:2px;font-size:.8rem;
   /* Small enough to do nothing on a flat background, but it gives each
