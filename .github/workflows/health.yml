@@ -31,6 +31,17 @@ jobs:
       - name: Every route the page reads, and the shape it reads
         run: python3 .github/scripts/check-api.py
 
+  # check-api.py asks whether each route answers; this asks whether every key
+  # and type the page reads is still there (gw2-contract.json) and whether the
+  # live answer still has the shape of the recording the page check runs on.
+  # Its own job, so the email says "contract" and the fix is to re-record.
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The keys and types the page reads, against the live API and the recording
+        run: python3 .github/scripts/check-contract.py
+
   # Moved here from its own workflow. The API has no endpoint that resolves a
   # 5-digit WvW Team ID to a name, so js/config.js carries a hand-maintained
   # TEAM_NAMES table. When ArenaNet adds a team, the page quietly renders
