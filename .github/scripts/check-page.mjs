@@ -1064,6 +1064,70 @@ async function main() {
     await idle(step + ': restore');
   }
 
+  // A Check before the teams notice and another after it, the table written
+  // in between: the second must read the new table, not the kept one. The
+  // notice is raised the way the page raises it (a relink state for this
+  // window, the lockout gone, the assignment ahead), and then taken down.
+  async function noticeFreshTable() {
+    const step = 'fresh table after the notice';
+    if (guilds.length < 2) return void problem(`step '${step}': the two guild names are not recorded`);
+    const tables = {};
+    for (const r of ['na', 'eu']) {
+      const hit = recorded.get(`https://api.guildwars2.com/v2/wvw/guilds/${r}`);
+      if (!hit) return void problem(`step '${step}': wvw/guilds/${r} not recorded`);
+      tables[r] = { url: `https://api.guildwars2.com/v2/wvw/guilds/${r}`, body: JSON.parse(bodyOf(hit).toString('utf8')) };
+    }
+    const where = [];
+    for (const name of guilds.slice(0, 2)) {
+      const hit = recorded.get(`https://api.guildwars2.com/v2/guild/search?name=${encodeURIComponent(name)}`);
+      const gid = hit && JSON.parse(bodyOf(hit).toString('utf8'))[0];
+      const r = ['na', 'eu'].find(x => gid && Object.hasOwn(tables[x].body, gid));
+      if (!r) return void problem(`step '${step}': ${name} is in neither recorded guild table`);
+      where.push({ gid, r });
+    }
+    const was = tables[where[0].r].body[where[0].gid];
+    const next = tables[where[1].r].body[where[1].gid];
+    const nameOf = t => ev(`getTeamName(${JSON.stringify(t)})`);
+    const [wasName, nextName] = [await nameOf(was), await nameOf(next)];
+    if (wasName === nextName) return void problem(`step '${step}': the two guilds' teams share the name "${wasName}"`);
+    const moved = JSON.parse(JSON.stringify(tables[where[0].r].body));
+    moved[where[0].gid] = next;
+    const rows = "JSON.stringify([...document.querySelectorAll('#resultBody tr')].map(tr => tr.querySelector('.server-cell')?.textContent ?? null))";
+    const check = async (name) => {
+      await ev("document.getElementById('guildInput').value = " + JSON.stringify(guilds[0]));
+      if (!(await click(name, "document.getElementById('runBtn')"))) return null;
+      await until(name, "/^Done/.test(document.getElementById('statusMsg').textContent)", 'the "Done" status');
+      await until(name, "!document.getElementById('runBtn').disabled", 'the Check button enabled again');
+      await idle(name);
+      return JSON.parse(await ev(rows));
+    };
+    const reads = { body: Buffer.from(JSON.stringify(tables[where[0].r].body)), served: 0 };
+    substitutes.set(tables[where[0].r].url, reads);
+    await ev('wvwMapCache = null');
+    const first = await check(step + ': first Check');
+    if (first && !String(first[0]).includes(wasName)) problem(`step '${step}': the first Check reads "${first[0]}", wanted "${wasName}"`);
+
+    // The table is rewritten, then the notice goes up.
+    substitutes.set(tables[where[0].r].url, { body: Buffer.from(JSON.stringify(moved)), served: 0 });
+    const saved = await ev('JSON.stringify({ l: lockoutTime, a: assignNA, s: relinkState, t: relinkStateAt })');
+    await ev(`(() => {
+      const win = 1900000000;
+      lockoutTime = Date.now() - 60000; assignNA = win * 1000;
+      relinkState = { window: win, published: 1 }; relinkStateAt = Date.now();
+      localStorage.removeItem('wvw-relink-checker:teams-notice');
+      updateRelinkBanner();
+    })()`);
+    await until(step, "document.getElementById('teamsNotice').dataset.window === '1900000000'", 'the teams notice');
+    const second = await check(step + ': second Check');
+    if (second && !String(second[0]).includes(nextName)) problem(`step '${step}': after the notice the Check reads "${second[0]}", wanted the new team "${nextName}" (still "${wasName}" is the kept table)`);
+
+    substitutes.clear();
+    await ev(`(() => { const o = JSON.parse(${JSON.stringify(saved)});
+      lockoutTime = o.l; assignNA = o.a; relinkState = o.s; relinkStateAt = o.t;
+      wvwMapCache = null; hideTeamsNotice(); updateRelinkBanner(); loadStandings(); })()`);
+    await idle(step + ': restore');
+  }
+
   // The week's line-up kept between loads (wvw-weeks-v1). A load sees 1-2 and
   // 1-3 on a new week with each other's teams; the next load, same profile, is
   // served last week's 1-2 and 1-3 everywhere: their cards show the new line-up
@@ -1762,6 +1826,47 @@ async function main() {
     for (const f of failed) problem(`step '${step}': ${f}`);
   }
 
+  // The skirmish trend when the clock is a block ahead of the body. Built
+  // from a kept match: 63 whole blocks of 1,000 and a 64th of 400, the clock
+  // 30 min into block 65. Body time before the end of block 64 (the API
+  // froze mid-block): 400 is not "Last block", the average ignores it and the
+  // text says the data stopped. Body time after it: 400 is a finished block,
+  // as before. Everything it touched is put back.
+  async function skirmishStalled() {
+    const step = 'skirmish trend stalled';
+    stepNow = step;
+    const failed = await ev(`(() => {
+      const out = [];
+      const id = [...newestMatches.keys()][0];
+      if (!id) return ['no match kept'];
+      const kept = newestMatches.get(id);
+      const keptAt = kept.at;
+      const H = 3600000;
+      const start = Date.now() - (128 * H + 0.5 * H);
+      const lastEnd = start + 128 * H;
+      const sk = (n) => ({ scores: { red: n, blue: n, green: n } });
+      const match = { id, start_time: new Date(start).toISOString(), end_time: new Date(start + 168 * H).toISOString(),
+        skirmishes: [...Array(63).fill(1000), 400].map(sk) };
+      const render = (at) => {
+        kept.at = at;
+        const el = document.createElement('div');
+        renderSkirmishTrendPopoverContent(el, 'X', match, 'red');
+        return el.textContent;
+      };
+      try {
+        const stalled = render(lastEnd - 40 * 60000);
+        if (/Last block\s*400/.test(stalled) || !/Last block\s*1,000/.test(stalled)) out.push('a block cut off midway shows as "Last block": ' + stalled.slice(0, 160));
+        if (!/63 of 84 finished/.test(stalled)) out.push('the finished count is not 63: ' + stalled.slice(0, 160));
+        if (!/stopped partway through block 64/.test(stalled) || /ArenaNet hasn't published/.test(stalled)) out.push('the text does not say the data stopped: ' + stalled.slice(0, 200));
+        const current = render(lastEnd + 5 * 60000);
+        if (!/Last block\s*400/.test(current) || !/64 of 84 finished/.test(current)) out.push('a body past the end of block 64 does not show it finished: ' + current.slice(0, 160));
+        if (/stopped partway/.test(current)) out.push('a body past the end of block 64 says the data stopped');
+      } finally { kept.at = keptAt; }
+      return out;
+    })()`);
+    for (const f of failed) problem(`step '${step}': ${f}`);
+  }
+
   // The maps' "What happened": a match answered with the same body for over
   // 6 min while the page kept asking, then a body with two objectives taken
   // (one on the open map, one on another) and a known number of kills more.
@@ -2035,9 +2140,122 @@ async function main() {
         if (JSON.stringify(st.rows) !== JSON.stringify([color]) || st.team !== color || st.label !== `${word} only✕`) problem(`step '${name}': after the repaint rows ${JSON.stringify(st.rows)}, bar "${st.team}", label "${st.label}"`);
         await idle(name);
       }
+
+      await chooseRules(name, width, matchId);
       await closePopover(name);
     }
     await cleanup();
+  }
+
+  // What the board's pick does when the map in view holds none of it, applied
+  // at the click only: one case per rule, counted from the body the page holds,
+  // the way the page counts. (1) the view holds some: stays. (2) one other map
+  // holds some: goes there. (3) several do: goes to the one with most (a tie:
+  // tab order), the note names the rest and its button goes there. (4) no map
+  // holds any: nothing darkens and the note says so.
+  async function chooseRules(name, width, matchId) {
+    const nm = `${name}, where the pick lands`;
+    const pop = "document.querySelector('.info-popover')";
+    const SEL = {
+      row: c => `.info-popover .wvw-board-row[data-focus-color="${c}"] .wvw-board-team`,
+      cell: (c, t) => `.info-popover .wvw-board-row[data-focus-color="${c}"] [data-focus-type="${t}"]`,
+      col: t => `.info-popover .wvw-board-head [data-focus-type="${t}"]` };
+    const specs = [];
+    for (const c of ['red', 'blue', 'green']) specs.push({ color: c, type: null, sel: SEL.row(c) });
+    for (const t of ['Camp', 'Tower', 'Keep', 'Castle']) specs.push({ color: null, type: t, sel: SEL.col(t) });
+    for (const c of ['red', 'blue', 'green']) for (const t of ['Camp', 'Tower', 'Keep', 'Castle']) specs.push({ color: c, type: t, sel: SEL.cell(c, t) });
+    const cat = JSON.parse(await ev("JSON.stringify([...objectiveCatalogue.values()].map(m => [m.id, m.map_id, m.type]))"));
+    const bodyNow = async () => JSON.parse(await ev(`JSON.stringify(newestMatches.get('${matchId}').match)`));
+    const tabs = async () => JSON.parse(await ev(`JSON.stringify([...${pop}.querySelectorAll('.wvw-tab')].map(b => [b.dataset.type, b.textContent]))`));
+    const tally = (body, spec, order) => Object.fromEntries(order.map(type => {
+      const m = body.maps.find(x => x.type === type);
+      const held = new Map((m.objectives || []).map(o => [o.id, o.owner]));
+      return [type, cat.filter(([id, map, t]) => map === m.id && t !== 'Spawn'
+        && (!spec.color || String(held.get(id) || 'neutral').toLowerCase() === spec.color) && (!spec.type || t === spec.type)).length];
+    }));
+    const active = () => ev(`${pop}.querySelector('.wvw-tab.is-active')?.dataset.type || ''`);
+    const view = () => ev(`(() => { const p = ${pop}; const n = p.querySelector('.wvw-focus-note');
+      return { tab: p.querySelector('.wvw-tab.is-active')?.dataset.type || '', note: n ? n.textContent : '', lit: p.querySelectorAll('.wvw-marker.is-lit').length,
+        veil: !!p.querySelector('.wvw-focus-veil'), pill: !!p.querySelector('.wvw-focus-pill'),
+        said: p.querySelector(':scope > .sr-only[role="status"]')?.textContent || '' }; })()`);
+    const goTab = async type => {
+      if ((await active()) !== type) await press(nm, `${pop}.querySelector('.wvw-tab[data-type="${type}"]')`);
+      await until(nm, `${pop}.querySelector('.wvw-tab.is-active')?.dataset.type === '${type}' && !!${pop}.querySelector('.wvw-marker')`, `the ${type} tab drawn`);
+      await idle(nm);
+    };
+    const letGo = async () => { if (await ev(`!!${pop}.querySelector('.wvw-focus-pill')`)) await press(nm, `${pop}.querySelector('.wvw-focus-pill')`); };
+    const pick = async (start, spec) => {
+      await letGo();
+      await goTab(start);
+      await press(nm, `document.querySelector('${spec.sel}')`);
+      await until(nm, `!!${pop}.querySelector('.wvw-focus-pill')`, 'the pick made');
+      // A map not drawn yet shows "Loading"; the pick waits for its markers.
+      await until(nm, `!!${pop}.querySelector('.wvw-marker')`, 'the map after the pick');
+      await sleep(200);
+      return view();
+    };
+    const label = (spec, start, to) => `${spec.color || 'any'}/${spec.type || 'any'} from ${start}${to ? ' to ' + to : ''}`;
+    const order = (await tabs()).map(t => t[0]);
+    const short = Object.fromEntries(await tabs());
+    const body = await bodyNow();
+    const found = { 1: null, 2: null, 3: null };
+    for (const start of order) for (const spec of specs) {
+      const n = tally(body, spec, order);
+      const have = order.filter(t => n[t] > 0);
+      if (!found[1] && n[start] > 0 && have.length > 1) found[1] = { start, spec, n };
+      if (!found[2] && !n[start] && have.length === 1) found[2] = { start, spec, n };
+      if (!found[3] && !n[start] && have.length > 1) found[3] = { start, spec, n };
+    }
+    for (const r of [1, 2, 3]) if (!found[r]) problem(`step '${nm}': the recorded body has no case for rule ${r} (${width} px)`);
+
+    if (found[1]) {
+      const { start, spec } = found[1];
+      const v = await pick(start, spec);
+      if (v.tab !== start || !v.lit || !v.veil || v.note) problem(`step '${nm}': rule 1 ${label(spec, start)}: ${JSON.stringify(v)}, wanted to stay with some lit and no note`);
+    }
+    if (found[2]) {
+      const { start, spec, n } = found[2];
+      const to = order.find(t => n[t] > 0);
+      const v = await pick(start, spec);
+      if (v.tab !== to || !v.lit || !v.veil || v.note) problem(`step '${nm}': rule 2 ${label(spec, start, to)}: ${JSON.stringify(v)}, wanted the ${to} tab, some lit, no note`);
+      if (!v.said) problem(`step '${nm}': rule 2: the switch was not said in the status line`);
+    }
+    if (found[3]) {
+      const { start, spec, n } = found[3];
+      const have = order.filter(t => n[t] > 0);
+      const to = have.reduce((b, t) => (n[t] > n[b] ? t : b), have[0]);
+      const rest = have.filter(t => t !== to);
+      const v = await pick(start, spec);
+      const wantNote = 'also ' + rest.map(t => `${n[t]} on ${short[t]}`).join(', ');
+      if (v.tab !== to || !v.lit || !v.veil || v.note !== wantNote) problem(`step '${nm}': rule 3 ${label(spec, start, to)} ${JSON.stringify(n)}: ${JSON.stringify(v)}, wanted the ${to} tab, some lit, note "${wantNote}"`);
+      if (!v.said) problem(`step '${nm}': rule 3: the switch was not said in the status line`);
+      if (await ev(`!!${pop}.querySelector('.wvw-focus-note button')`)) {
+        await press(nm, `${pop}.querySelector('.wvw-focus-note button')`);
+        await until(nm, `${pop}.querySelector('.wvw-tab.is-active')?.dataset.type === '${rest[0]}'`, `the note's button going to ${rest[0]}`);
+        await until(nm, `!!${pop}.querySelector('.wvw-marker')`, 'the map after the note');
+        await sleep(200);
+        const w = await view();
+        if (!w.lit || !w.pill) problem(`step '${nm}': rule 3: after the note's button, ${JSON.stringify(w)}, wanted some lit and the pick kept`);
+      } else problem(`step '${nm}': rule 3: the note has no button`);
+    }
+
+    // Rule 4: every castle is Blue's, so Red's castles are nowhere.
+    await letGo();
+    const none = JSON.parse(JSON.stringify(body));
+    for (const m of none.maps) for (const o of m.objectives) if (o.type === 'Castle') o.owner = 'Blue';
+    none.scores.red += 5;
+    const spec = { color: 'red', type: 'Castle', sel: SEL.cell('red', 'Castle') };
+    if (Object.values(tally(none, spec, order)).some(x => x)) return void problem(`step '${nm}': the made-up body still has Red castles`);
+    await closePopover(nm);
+    substitutes.set(`https://api.guildwars2.com/v2/wvw/matches?id=${matchId}`, { body: Buffer.from(JSON.stringify(none)), served: 0 });
+    if (!(await press(nm + ': open', "document.querySelector('.tier-map-btn')"))) return;
+    if (!(await until(nm, `!!document.querySelector("${POPOVERS['tier-map-btn']}") && !!${pop}.querySelector('.wvw-board-row[data-focus-color]')`, 'the map reopened'))) return;
+    await until(nm, `newestMatches.get('${matchId}').match.scores.red >= ${none.scores.red}`, 'the made-up body taken');
+    await sleep(400);
+    const start = order[order.length - 1];
+    const v = await pick(start, spec);
+    if (v.tab !== start || v.veil || v.lit || !v.pill || v.note !== 'None on any map right now') problem(`step '${nm}': rule 4 ${label(spec, start)}: ${JSON.stringify(v)}, wanted to stay, nothing darkened, note "None on any map right now"`);
+    if (await ev(`${pop}.querySelector('.wvw-plot').classList.contains('is-focused')`)) problem(`step '${nm}': rule 4: the map is darkened`);
   }
 
   // The column beside the map: three tabs, Board, Captures and Objective, over
@@ -2349,10 +2567,30 @@ async function main() {
     const step = 'phone board';
     for (const width of [320, 360]) {
       const name = `${step}, ${width} px`;
-      // Not a mobile viewport: that one widens to fit anything past its edge,
-      // and this step measures the board at this width, not the page's.
-      await send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: false });
-      await until(name, `innerWidth === ${width}`, 'the new width');
+      await send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: true });
+      if (!(await until(name, `innerWidth === ${width}`, 'the new width'))) {
+        // What a phone this wide would see instead: a page wider than the
+        // screen makes a mobile browser widen the layout to fit it.
+        problem(`step '${name}': ` + await ev(`(() => {
+          // The innermost elements in the flow that end past the screen.
+          const past = [...document.querySelectorAll('body *')].filter(e => {
+            const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
+            return r.width && r.right > ${width} + 0.5 && cs.position !== 'fixed' && cs.display !== 'none'
+              && ![...e.children].some(c => c.getBoundingClientRect().right > ${width} + 0.5);
+          }).slice(0, 6).map(e => { const r = e.getBoundingClientRect();
+            return e.tagName + '.' + String(e.className?.baseVal ?? e.className).split(' ').slice(0, 2).join('.') + ' ' + Math.round(r.left) + '-' + Math.round(r.right) + (e.children.length ? '' : ' "' + e.textContent.trim().slice(0, 24) + '"'); });
+          // The match panels' grid and, in each column, its widest child.
+          const grid = [...document.querySelectorAll('.team-cols')].map(g => getComputedStyle(g).gridTemplateColumns).join(',');
+          const cols = [...document.querySelectorAll('.team-col')].slice(0, 3).map(c => {
+            const kids = [...c.querySelectorAll('*')].map(k => ({ k, w: k.getBoundingClientRect().width, s: k.scrollWidth }))
+              .sort((a, b) => b.s - a.s).slice(0, 2);
+            return kids.map(({ k, w, s }) => k.tagName + '.' + String(k.className?.baseVal ?? k.className).split(' ')[0] + ' w' + Math.round(w) + ' s' + s + ' ws:' + getComputedStyle(k).whiteSpace).join(' / ');
+          });
+          return 'innerWidth ' + innerWidth + ', page ' + document.documentElement.scrollWidth + ' px wide; past ' + ${width} + ': ' + (past.join(' | ') || 'none')
+            + '; team-cols grid ' + grid + '; widest in columns: ' + cols.join(' || ') + '; fonts: ' + getComputedStyle(document.body).fontFamily;
+        })()`));
+        continue;
+      }
       await steady(name, "document.querySelector('.tier-map-btn')");
       if (!(await press(name + ': open', "document.querySelector('.tier-map-btn')"))) continue;
       if (!(await until(name, "!!document.querySelector('.info-popover .wvw-board-row[data-focus-color]') && !!document.querySelector('.info-popover .wvw-zoom button')", 'the board and the zoom buttons'))) continue;
@@ -2422,6 +2660,9 @@ async function main() {
   await whatHappened();
   await whatHappenedRules();
 
+  // 6d2. The skirmish trend with the body frozen partway through a block.
+  await skirmishStalled();
+
   // 6e. The board picks a team or a type, and the map lights it.
   await mapFocus();
   await phoneBoard();
@@ -2437,6 +2678,7 @@ async function main() {
 
   // 7b. Last week's tier and this week's, and a team the API does not hold yet.
   await mixedWeeks();
+  await noticeFreshTable();
 
   // 7c. The week's line-up between loads.
   await weekMemory();

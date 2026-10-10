@@ -201,7 +201,15 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
   // whether its score has been published are different questions.
   const live = progress && progress.index >= total && progress.fraction > 0;
   const scored = live && progress.index === total;
-  const cut = scored ? total - 1 : total;
+  // The clock can be a block ahead of the body: the API freezes a match for
+  // half an hour or more, and its last entry is then a block cut off midway.
+  // That entry counts as finished only if the body's own time (when this
+  // page saw the score rise) is past its end. Time unknown (0) trusts it.
+  const lastEnd = Date.parse(match.start_time) + total * 2 * 3600000;
+  const dataAt = matchScoreRoseAt(match.id);
+  const stalled = !!progress && total >= 1 && progress.index > total
+    && dataAt > 0 && dataAt <= lastEnd;
+  const cut = scored || stalled ? total - 1 : total;
   for (const side of sides) side.done = side.series.slice(0, cut);
 
   const mine = sides.find((x) => x.color === color);
@@ -377,7 +385,9 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
       // running because we can compute it; saying so beats an empty
       // space that reads as "nothing is happening" - and naming whose
       // delay it is stops the gap reading as a fault in this page.
-      body.textContent = "ArenaNet hasn't published this block yet";
+      body.textContent = stalled
+        ? `The game's data stopped partway through block ${total}`
+        : "ArenaNet hasn't published this block yet";
     } else if (progress.fraction >= LIVE_PROJECT_AFTER) {
       // Two segments, not three. What the projection is read against is
       // the Average card above - repeating it here bought nothing and
