@@ -505,32 +505,59 @@ async function main() {
   }
 
   // A visitor's click: scroll the element in, wait until it is the thing under
-  // its own centre (so a covering overlay fails the step), then press and
-  // release the mouse there over the protocol. Not el.click(): that would
-  // fire the handler even where a visitor could not reach the button.
+  // its own centre (so a covering overlay fails the step) and stands at the
+  // same place two frames apart, then press and release the mouse there over
+  // the protocol, with no finite animation running on it or around it, once
+  // the page has seen the pointer over it. Not el.click(): that would fire
+  // the handler even where a visitor could not reach the button. The frames,
+  // the animations and the pointer: right after a width change the page still
+  // moves things on its next frames, and the swap slides its button away; a
+  // press made from the first measure landed on a team column instead of the
+  // map button, or missed the swap back, about one walk in four (10/10/2026).
   async function click(name, el) {
     stepNow = name;
     const t0 = Date.now();
     let r;
     while (true) {
-      r = await ev(`(() => {
+      r = await ev(`(async () => {
+        const look = () => {
+          const el = ${el};
+          if (!el) return { gone: true };
+          el.scrollIntoView({ block: 'center', inline: 'center' });
+          const b = el.getBoundingClientRect();
+          if (!b.width || !b.height) return { hidden: true };
+          const x = b.left + b.width / 2, y = b.top + b.height / 2, top = document.elementFromPoint(x, y);
+          return { x, y, hit: !!top && (top === el || el.contains(top)), over: top ? top.tagName + '.' + top.className : 'nothing' };
+        };
+        const a = look();
+        if (!a.hit) return a;
+        // A finite animation on the target or around it (the NA/EU swap slides
+        // the columns for 650 ms) moves it under a press made from a measure.
         const el = ${el};
-        if (!el) return { gone: true };
-        el.scrollIntoView({ block: 'center', inline: 'center' });
-        const b = el.getBoundingClientRect();
-        if (!b.width || !b.height) return { hidden: true };
-        const x = b.left + b.width / 2, y = b.top + b.height / 2, top = document.elementFromPoint(x, y);
-        return { x, y, hit: !!top && (top === el || el.contains(top)), over: top ? top.tagName + '.' + top.className : 'nothing' };
+        if (document.getAnimations().some(n => n.playState === 'running' && n.effect?.target?.contains?.(el)
+          && n.effect.getComputedTiming().endTime !== Infinity)) return { ...a, hit: false, moved: true };
+        await new Promise(ok => requestAnimationFrame(() => requestAnimationFrame(ok)));
+        const b = look();
+        return b.hit && Math.abs(b.x - a.x) < 1 && Math.abs(b.y - a.y) < 1 ? b : { ...b, hit: false, moved: true };
       })()`);
-      if (r.hit) break;
+      if (r.hit) {
+        // The pointer goes there first, and the page must see it over the
+        // target: whatever moved since the measure shows here, not as a
+        // press on something else.
+        await ev(`(() => { window.__checkPageOver = null; if (!window.__checkPageMoves) { window.__checkPageMoves = true;
+          document.addEventListener('pointermove', e => { window.__checkPageOver = e.target; }, true); } return true; })()`);
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: r.x + 1, y: r.y });
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: r.x, y: r.y });
+        if (await ev(`(() => { const el = ${el}; return !!el && !!window.__checkPageOver && el.contains(window.__checkPageOver); })()`)) break;
+        r = { ...r, hit: false, moved: true };
+      }
       if (r.gone || r.hidden || Date.now() - t0 > 3000) {
-        problem(`step '${name}': ${r.gone ? 'target missing' : r.hidden ? 'target has no size' : 'target covered by ' + r.over}`);
+        problem(`step '${name}': ${r.gone ? 'target missing' : r.hidden ? 'target has no size' : r.moved ? 'target still moving' : 'target covered by ' + r.over}`);
         return false;
       }
       await sleep(50);
     }
     const at = { x: r.x, y: r.y, button: 'left', clickCount: 1 };
-    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: r.x, y: r.y });
     await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...at });
     await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at });
     return true;
