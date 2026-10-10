@@ -53,10 +53,12 @@ end;
 $$;
 revoke all on function public.call_reader(text) from public, anon, authenticated;
 
--- 4. Every 2 minutes, both sides; and a daily cleanup of the beat.
-select cron.schedule('reader-us', '*/2 * * * *', $$select public.call_reader('us-east-1')$$);
-select cron.schedule('reader-eu', '*/2 * * * *', $$select public.call_reader('eu-central-1')$$);
+-- 4. Every minute, both sides; and a daily cleanup of the beat.
+select cron.schedule('reader-us', '* * * * *', $$select public.call_reader('us-east-1')$$);
+select cron.schedule('reader-eu', '* * * * *', $$select public.call_reader('eu-central-1')$$);
 select cron.schedule('heartbeat-cleanup', '17 3 * * *',
   $$delete from public.heartbeat where at < now() - interval '7 days'$$);
 
 -- To stop:  select cron.unschedule('reader-us'); select cron.unschedule('reader-eu');
+-- To change the pace of a schedule that exists: run its cron.schedule again with the
+-- same name; pg_cron updates the job in place. Check with: select jobname, schedule from cron.job;

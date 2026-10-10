@@ -429,3 +429,26 @@ h1{filter:drop-shadow(0 1px 0 rgba(0,0,0,.9)) drop-shadow(0 0 16px rgba(127,214,
   0%{opacity:1;transform:translate3d(0,0,0) scale(1);}
   100%{opacity:0;transform:translate3d(var(--sx),var(--sy),0) scale(.3);}
 }
+
+/* After a guild search: the found team's card blinks three times in its own
+   colour, and a strip with the guild's name hangs from its lower edge. */
+.standing-side.guild-found-flash{--side-edge:var(--side-rail);}
+.standing-side.guild-found-flash::after{animation:guild-found-flash .83s ease-in-out 3;}
+@keyframes guild-found-flash{
+  0%,100%{box-shadow:inset 0 1px 0 rgba(255,255,255,.09), inset 0 -1px 0 rgba(0,0,0,.3);}
+  50%{box-shadow:inset 0 0 26px var(--side-glow), inset 0 0 0 1px var(--side-glow);}
+}
+.guild-found-strip{
+  margin:0 10px;padding:3px 10px 4px;border-radius:0 0 8px 8px;
+  background:#1a2028;
+  background:linear-gradient(180deg, color-mix(in srgb, var(--side-rail) 30%, #0f1216), #12171d);
+  border:1px solid var(--side-edge);border-top:0;
+  display:flex;font-size:.7rem;line-height:1.3;white-space:nowrap;overflow:hidden;
+  animation:guild-found-in 280ms ease-out both;transform-origin:top;
+}
+.guild-found-strip.is-settled{animation:none;}
+.guild-found-strip.is-leaving{animation:guild-found-out 280ms ease-in both;}
+.guild-found-name{color:#f2f6fa;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;}
+.guild-found-note{color:#8d97a6;flex:none;white-space:pre;}
+@keyframes guild-found-in{from{max-height:0;padding-top:0;padding-bottom:0;opacity:0;}to{max-height:30px;opacity:1;}}
+@keyframes guild-found-out{from{max-height:30px;opacity:1;}to{max-height:0;padding-top:0;padding-bottom:0;opacity:0;}}
