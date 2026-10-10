@@ -98,6 +98,49 @@
 .wvw-board-cell.is-none{opacity:.24;}
 .wvw-board-cell img{display:block;flex-shrink:0;}
 
+/* The board picks what the map lights (paintBoardFocus): a row is the
+   team, a cell the team and that type, a column header the type. Picked,
+   the row takes its colour and a bar down its side - strong enough that a
+   stray tap reads as a choice, not a glitch. */
+.wvw-board [role="button"],
+.wvw-board-row[data-focus-color]{cursor:pointer;}
+.wvw-board-row[data-focus-color]:hover{background:rgba(255,255,255,.035);}
+.wvw-board [role="button"]:focus{outline:none;}
+.wvw-board [role="button"]:focus-visible{outline:2px solid var(--accent-bright);outline-offset:1px;border-radius:3px;}
+.wvw-board-row.own-red.is-picked{background:rgba(225,92,92,.18);box-shadow:inset 3px 0 0 var(--red);}
+.wvw-board-row.own-blue.is-picked{background:rgba(91,143,240,.18);box-shadow:inset 3px 0 0 var(--blue);}
+.wvw-board-row.own-green.is-picked{background:rgba(76,175,125,.18);box-shadow:inset 3px 0 0 var(--green);}
+.wvw-board-row.is-picked .wvw-board-team{padding-left:6px;}
+.wvw-board-head .wvw-board-counts > .is-picked{
+  background:rgba(127,214,242,.18);box-shadow:inset 0 -3px 0 var(--accent);color:var(--accent);border-radius:3px 3px 0 0;
+}
+.wvw-board-row.own-red .wvw-board-cell.is-picked{background:rgba(225,92,92,.18);box-shadow:inset 3px 0 0 var(--red);border-radius:3px;}
+.wvw-board-row.own-blue .wvw-board-cell.is-picked{background:rgba(91,143,240,.18);box-shadow:inset 3px 0 0 var(--blue);border-radius:3px;}
+.wvw-board-row.own-green .wvw-board-cell.is-picked{background:rgba(76,175,125,.18);box-shadow:inset 3px 0 0 var(--green);border-radius:3px;}
+/* The pick, in the place of "Objectives held", and the way to let it go. */
+.wvw-board-head.has-pick .wvw-board-team{text-overflow:clip;padding-right:4px;}
+/* Narrow, the name column is a few letters wide: the pick takes a line of
+   its own over the column names, which keep to the right as in the rows. */
+@media (max-width:620px){
+  .wvw-board-head.has-pick{flex-wrap:wrap;row-gap:5px;}
+  .wvw-board-head.has-pick .wvw-board-team{flex:1 0 100%;}
+  .wvw-board-head.has-pick .wvw-board-counts{margin-left:auto;}
+}
+.wvw-focus-pill{
+  display:inline-flex;align-items:center;gap:5px;height:18px;max-width:100%;padding:0 5px 0 7px;margin:-2px 0;
+  border-radius:999px;border:1px solid rgba(127,214,242,.5);background:rgba(127,214,242,.14);
+  color:var(--text);font-family:inherit;font-size:.66rem;font-weight:700;letter-spacing:0;text-transform:none;
+  white-space:nowrap;cursor:pointer;box-shadow:none;text-shadow:none;
+}
+.wvw-focus-pill:hover{background:rgba(127,214,242,.24);}
+.wvw-focus-pill:active{transform:none;}
+.wvw-focus-dot{width:7px;height:7px;border-radius:50%;flex:none;}
+.wvw-focus-dot.own-red{background:var(--red);}
+.wvw-focus-dot.own-blue{background:var(--blue);}
+.wvw-focus-dot.own-green{background:var(--green);}
+.wvw-focus-words{min-width:0;overflow:hidden;text-overflow:ellipsis;}
+.wvw-focus-x{color:var(--accent);font-size:.8rem;padding-left:2px;flex:none;}
+
 .wvw-board-ppt{
   flex:0 0 40px;text-align:right;
   font-weight:800;font-size:.92rem;font-variant-numeric:tabular-nums;
@@ -170,6 +213,14 @@
 .wvw-scorebar-seg.own-red{background:#e53325;}
 .wvw-scorebar-seg.own-blue{background:#279bba;}
 .wvw-scorebar-seg.own-green{background:#4e9416;}
+/* A team picked on the board (paintFocus): its segment glows, the others darken. */
+.wvw-plot-wrap[data-focus-team] .wvw-scorebar-seg{filter:brightness(.5) saturate(.7);transition:filter .2s ease;}
+.wvw-plot-wrap[data-focus-team="red"] .wvw-scorebar-seg.own-red,
+.wvw-plot-wrap[data-focus-team="blue"] .wvw-scorebar-seg.own-blue,
+.wvw-plot-wrap[data-focus-team="green"] .wvw-scorebar-seg.own-green{
+  filter:brightness(1.35) saturate(1.25);
+  box-shadow:0 0 7px 1px rgba(255,255,255,.35);
+}
 
 .wvw-stage{display:flex;gap:12px;align-items:stretch;}
 @media (max-width:760px){ .wvw-stage{flex-direction:column;} }
@@ -313,6 +364,25 @@
          drop-shadow(0 0 7px #00d5ff)
          drop-shadow(0 0 13px #00c4ff);
 }
+
+/* The focus (buildMapStage, paintFocus). The lit marker grows a quarter,
+   glowing in its owner's colour; its group carries its place on the map in
+   a transform attribute that a CSS transform would replace, so its parts
+   grow instead, round the marker's centre. The rest keeps its colours a
+   step darker: the markers by a filter, the ground by .wvw-focus-veil. */
+.wvw-plot.is-focused .wvw-marker.is-lit > *{transform:scale(1.25);}
+.wvw-plot.is-focused .wvw-marker:not(.is-lit){filter:brightness(.55);}
+.wvw-marker.own-red.is-lit:not(.is-selected) .pip{filter:drop-shadow(0 0 5px #ff8080) drop-shadow(0 0 2px #ff8080);}
+.wvw-marker.own-blue.is-lit:not(.is-selected) .pip{filter:drop-shadow(0 0 5px #8cb8ff) drop-shadow(0 0 2px #8cb8ff);}
+.wvw-marker.own-green.is-lit:not(.is-selected) .pip{filter:drop-shadow(0 0 5px #5fe89e) drop-shadow(0 0 2px #5fe89e);}
+.wvw-marker.own-neutral.is-lit:not(.is-selected) .pip{filter:drop-shadow(0 0 5px #fff);}
+.wvw-focus{pointer-events:none;}
+.wvw-focus-veil{fill:#000;fill-opacity:.45;}
+.wvw-focus-outline polygon{fill:none;stroke-linejoin:round;stroke-opacity:.95;}
+.wvw-focus-outline .own-red{stroke:#ff9a9a;}
+.wvw-focus-outline .own-blue{stroke:#a9c8ff;}
+.wvw-focus-outline .own-green{stroke:#7df0b2;}
+.wvw-focus-outline .own-neutral{stroke:#e7ebf0;}
 
 /* Upgrade tier: one silver shield per tier over the marker, none at tier 0
    - plain has to mean something. Silver at every tier, the way the game

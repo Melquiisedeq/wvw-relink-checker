@@ -1,7 +1,8 @@
 // Loads the page in a real Chrome, with the API and the sheets answered from a
 // recording, walks it as a visitor would (guild search, every map, every icon
 // button and popover, the NA/EU swap, a map answered with the same body for
-// minutes, what changed hands over such a gap summed up beside the map, a frozen match answer that must not be painted, a load whose API reads fail and are tried again, then a second load with /api/* down), and
+// minutes, what changed hands over such a gap summed up beside the map, the
+// board picking what the map lights, a frozen match answer that must not be painted, a load whose API reads fail and are tried again, then a second load with /api/* down), and
 // fails on anything the browser objects to: an exception, a console error, a
 // Content Security Policy violation, a step whose element never appears.
 //
@@ -1631,10 +1632,20 @@ async function main() {
       for (const k of Object.keys(want)) {
         if (JSON.stringify(seen[k]) !== JSON.stringify(want[k])) problem(`step '${step}': ${k} ${JSON.stringify(seen[k])}, wanted ${JSON.stringify(want[k])}`);
       }
+      // Pointed at, a chip of this map lights its objective alone; left, nothing.
+      const lit = "[...document.querySelectorAll('.info-popover .wvw-marker.is-lit')].map(g => g.dataset.obj).join()";
+      const at = await ev(`(() => { const e = document.querySelector('.info-popover .wvw-chip[data-obj="${a.id}"]');
+        e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
+      if (await until(step + ': chip pointed at', `${lit} === '${a.id}'`, `${a.id} alone lit while its chip is pointed at`)) {
+        await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
+        await until(step + ': chip left', `${lit} === ''`, 'nothing lit once the chip is left');
+      }
       if (await click(step + ': chip', `document.querySelector('.info-popover .wvw-chip[data-obj="${b.id}"]')`)) {
         await until(step, `!!document.querySelector('.info-popover .wvw-tab[data-type="${other}"].is-active')
           && !!document.querySelector('.info-popover .wvw-marker.is-selected[data-obj="${b.id}"]')
           && !document.querySelector('.info-popover .wvw-tab-dot')`, "the other map's tab open, its objective selected, no dot left");
+        await until(step + ': chip tapped', `${lit} === '${b.id}'`, `${b.id} lit a moment after its chip is pressed`);
       }
       // A phone: folded, the kills in its title; a tap opens it to the chips.
       await send('Emulation.setDeviceMetricsOverride', { width: 360, height: 800, deviceScaleFactor: 1, mobile: true });
@@ -1657,6 +1668,168 @@ async function main() {
     await later(31000, step + ': score only');
     await sleep(1500);   // the popover's one-second repaint
     if (await ev(`!!${block} || missedNotes.has('${matchId}')`)) problem(`step '${step}': a body with only the score up raised the block`);
+    await cleanup();
+  }
+
+  // The board picks what the map lights: a team's row, a type's column (the
+  // Darken focus: the picked markers marked is-lit, the rest darkened), the
+  // label "<Colour> only ✕" in place of "Objectives held", the row picked and
+  // the team's segment of the bar glowing. Enter on the board picks too; Esc
+  // and the ✕ let go, the popover staying open. A 30 s repaint that moves an
+  // owner keeps the pick on every frame. At 1280 and 360 px.
+  async function mapFocus() {
+    const step = 'map focus';
+    const label = await ev("document.querySelector('.tier-map-btn')?.getAttribute('aria-label') || ''");
+    const t = /\b(NA|EU) Tier (\d+)/.exec(label);
+    if (!t) return void problem(`step '${step}': no tier map button to read a match from`);
+    const matchId = `${t[1] === 'NA' ? 1 : 2}-${t[2]}`;
+    const oneUrl = `https://api.guildwars2.com/v2/wvw/matches?id=${matchId}`;
+    // The score last rose now: earlier steps moved the clock back past it.
+    const before = JSON.parse(await ev(`(() => { const k = newestMatches.get('${matchId}'); k.at = Date.now();
+      return JSON.stringify(k.match); })()`));
+    const serve = body => substitutes.set(oneUrl, { body: Buffer.from(JSON.stringify(body)), served: 0 });
+    serve(before);
+    let skew = 0;
+    const cleanup = async () => {
+      substitutes.delete(oneUrl);
+      await send('Emulation.clearDeviceMetricsOverride');
+      await closePopover(step);
+      await ev(`__skewClock(${-skew}); localStorage.removeItem('wvw-fight-v1')`);
+    };
+    const WORD = { red: 'Red', blue: 'Blue', green: 'Green' };
+    const pop = "document.querySelector('.info-popover')";
+    // Everything the focus shows, read at once.
+    const state = () => ev(`(() => {
+      const pop = ${pop};
+      const own = g => ([...g.classList].find(c => c.startsWith('own-')) || '').slice(4);
+      const wrap = pop.querySelector('.wvw-plot-wrap');
+      const head = pop.querySelector('.wvw-board-head');
+      return {
+        focused: pop.querySelector('.wvw-plot').classList.contains('is-focused'),
+        veil: !!pop.querySelector('.wvw-focus-veil'),
+        marks: [...pop.querySelectorAll('.wvw-marker')].map(g => ({ id: g.dataset.obj, own: own(g),
+          type: objectiveCatalogue.get(g.dataset.obj)?.type || '', lit: g.classList.contains('is-lit') })),
+        label: head.querySelector('.wvw-board-team').textContent,
+        rows: [...pop.querySelectorAll('.wvw-board-row.is-picked')].map(r => r.dataset.focusColor || 'head'),
+        pressed: [...pop.querySelectorAll('.wvw-board [aria-pressed="true"]')].map(e => (e.closest('[data-focus-color]')?.dataset.focusColor || '') + '/' + (e.dataset.focusType || '')),
+        cols: [...head.querySelectorAll('.is-picked')].map(e => e.dataset.focusType),
+        team: wrap.dataset.focusTeam || '',
+        bar: Object.fromEntries([...wrap.querySelectorAll('.wvw-scorebar-seg')].map(s => [own(s), getComputedStyle(s).filter])) };
+    })()`);
+    // Lit exactly where want(marker) holds, the rest not, and at least one lit.
+    const litCheck = (name, st, want, what) => {
+      const wrong = st.marks.filter(m => m.lit !== want(m));
+      if (wrong.length || !st.marks.some(m => m.lit)) problem(`step '${name}': ${what}: ${wrong.length ? wrong.length + ' marker(s) lit wrong, e.g. ' + JSON.stringify(wrong[0]) : 'nothing lit'}`);
+      if (!st.focused || !st.veil) problem(`step '${name}': ${what}: the map is not darkened (is-focused ${st.focused}, veil ${st.veil})`);
+    };
+    const cleared = (name, st, what) => {
+      if (st.marks.some(m => m.lit) || st.focused || st.veil || st.rows.length || st.cols.length || st.team || st.label !== 'Objectives held') {
+        problem(`step '${name}': ${what} left ${JSON.stringify({ lit: st.marks.filter(m => m.lit).length, focused: st.focused, rows: st.rows, cols: st.cols, team: st.team, label: st.label })}`);
+      }
+      return ev(`!!${pop}`).then(open => { if (!open) problem(`step '${name}': ${what} closed the popover`); });
+    };
+    // The target still and where it was a moment ago: a width just changed, or a row moved.
+    const steady = async (name, el) => {
+      let last = '';
+      for (let i = 0; i < 40; i++) {
+        const now = await ev(`(() => { const e = ${el}; if (!e) return ''; const b = e.getBoundingClientRect(); return [b.x, b.y, b.width, b.height].join(); })()`);
+        if (now && now === last) return;
+        last = now;
+        await ev('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))');
+      }
+    };
+    const press = async (name, el) => { await steady(name, el); return click(name, el); };
+
+    for (const width of [1280, 360]) {
+      const name = `${step}, ${width} px`;
+      await send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: width < 600 });
+      await until(name, `innerWidth === ${width}`, 'the new width');
+      await steady(name, "document.querySelector('.tier-map-btn')");
+      if (!(await press(name + ': open', "document.querySelector('.tier-map-btn')"))) continue;
+      if (!(await until(name, `!!document.querySelector("${POPOVERS['tier-map-btn']}") && !!document.querySelector('.info-popover .wvw-board-row[data-focus-color]')`, 'drawn objectives and the board'))) continue;
+      await idle(name);
+      const row = "document.querySelector('.info-popover .wvw-board-row[data-focus-color]')";
+      const color = await ev(`${row}.dataset.focusColor`);
+      const word = WORD[color];
+
+      // A team's row.
+      if (await press(name + ': row', `${row}.querySelector('.wvw-board-team')`)) {
+        await until(name, `${pop}.querySelector('.wvw-plot').classList.contains('is-focused')`, 'the map focused on a team');
+        // The bar eases over .2 s; a side scoring nothing on this map has no segment.
+        const seg = `${pop}.querySelector('.wvw-scorebar-seg.own-${color}')`;
+        await until(name, `!${seg} || /brightness\\(1\\.35\\)/.test(getComputedStyle(${seg}).filter)`, `the ${color} segment of the bar lit`);
+        await sleep(300);
+        const st = await state();
+        litCheck(name, st, m => m.own === color, `${word} picked`);
+        if (st.label !== `${word} only✕`) problem(`step '${name}': the label reads "${st.label}", wanted "${word} only✕"`);
+        if (JSON.stringify(st.rows) !== JSON.stringify([color]) || JSON.stringify(st.pressed) !== JSON.stringify([`${color}/`])) problem(`step '${name}': picked rows ${JSON.stringify(st.rows)}, pressed ${JSON.stringify(st.pressed)}, wanted the ${color} row`);
+        if (st.team !== color) problem(`step '${name}': the map's bar follows "${st.team}", wanted ${color}`);
+        for (const [c, f] of Object.entries(st.bar)) {
+          if (!(c === color ? /brightness\(1\.35\)/ : /brightness\(0\.5\)/).test(f)) problem(`step '${name}': the bar's ${c} segment has filter "${f}"`);
+        }
+        if (!(color in st.bar)) problem(`step '${name}': the bar has no ${color} segment to light`);
+      }
+
+      // A column: towers, whoever holds them.
+      if (await press(name + ': tower column', `${pop}.querySelector('.wvw-board-head [data-focus-type="Tower"]')`)) {
+        await until(name, `${pop}.querySelector('.wvw-board-head [data-focus-type="Tower"]').classList.contains('is-picked')`, 'the Tower column picked');
+        const st = await state();
+        litCheck(name, st, m => m.type === 'Tower', 'Tower picked');
+        if (st.label !== 'Towers only✕' || st.rows.length || st.team) problem(`step '${name}': on Tower the label reads "${st.label}", rows ${JSON.stringify(st.rows)}, bar "${st.team}"`);
+      }
+
+      // Esc lets go and leaves the popover open.
+      await escape();
+      await until(name, `!${pop}.querySelector('.wvw-plot').classList.contains('is-focused')`, 'the focus gone on Esc');
+      await cleared(name, await state(), 'Esc');
+
+      // Enter on the team's name picks it; the ✕ lets go.
+      await ev(`${row}.querySelector('.wvw-board-team').focus()`);
+      for (const type of ['keyDown', 'keyUp']) {
+        await send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, ...(type === 'keyDown' ? { text: '\r' } : {}) });
+      }
+      if (await until(name, `${row}.classList.contains('is-picked')`, 'the row picked by Enter')) {
+        if (await press(name + ': ✕', `${pop}.querySelector('.wvw-focus-pill')`)) {
+          await until(name, `!${pop}.querySelector('.wvw-focus-pill')`, 'the pill gone on its ✕');
+          await cleared(name, await state(), 'the ✕');
+        }
+      }
+
+      // Picked again, then a repaint that hands one of the team's objectives
+      // to the next side: every frame keeps the pick, and the lost one goes dark.
+      if (width === 1280 && await press(name + ': row again', `${row}.querySelector('.wvw-board-team')`)) {
+        await until(name, `${row}.classList.contains('is-picked')`, 'the row picked again');
+        const drawn = (await state()).marks.filter(m => m.lit && ['Camp', 'Tower', 'Keep'].includes(m.type)).map(m => m.id);
+        const kept = JSON.parse(await ev(`JSON.stringify(newestMatches.get('${matchId}').match)`));
+        const flip = kept.maps.flatMap(m => m.objectives).filter(o => drawn.includes(o.id) && /^\d+-\d+$/.test(o.id))
+          .sort((a, b) => !!a.claimed_by - !!b.claimed_by)[0];
+        if (!flip) { problem(`step '${name}': no camp, tower or keep of ${color} to hand over`); continue; }
+        const next = { red: 'Blue', blue: 'Green', green: 'Red' }[color];
+        for (const m of kept.maps) for (const o of m.objectives) if (o.id === flip.id) o.owner = next;
+        kept.scores.red += 1;
+        serve(kept);
+        await ev(`window.__focusFrames = []; window.__focusWatch = true;
+          (function look() {
+            if (!window.__focusWatch) return;
+            const p = document.querySelector('.info-popover');
+            __focusFrames.push(!!p && p.querySelector('.wvw-plot').classList.contains('is-focused')
+              && !!p.querySelector('.wvw-focus-pill') && !!p.querySelector('.wvw-board-row.is-picked'));
+            requestAnimationFrame(look);
+          })()`);
+        skew += 31000;
+        await ev("__skewClock(31000); window.dispatchEvent(new Event('focus'))");
+        await until(name, `!!${pop}.querySelector('.wvw-marker.own-${next.toLowerCase()}[data-obj="${flip.id}"]')`, 'the handed-over objective repainted');
+        await ev('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))');
+        const frames = await ev('window.__focusWatch = false; window.__focusFrames');
+        if (!frames.length || frames.some(f => !f)) problem(`step '${name}': the pick was missing on ${frames.filter(f => !f).length} of ${frames.length} frames around the repaint`);
+        const st = await state();
+        litCheck(name, st, m => m.own === color, `${word} picked, after the repaint`);
+        if (st.marks.find(m => m.id === flip.id)?.lit) problem(`step '${name}': ${flip.id}, handed to ${next}, is still lit`);
+        if (JSON.stringify(st.rows) !== JSON.stringify([color]) || st.team !== color || st.label !== `${word} only✕`) problem(`step '${name}': after the repaint rows ${JSON.stringify(st.rows)}, bar "${st.team}", label "${st.label}"`);
+        await idle(name);
+      }
+      await closePopover(name);
+    }
     await cleanup();
   }
 
@@ -1745,6 +1918,9 @@ async function main() {
   // load, whose maps have all been opened: a new load would ask for guild
   // tactics in an order the recording does not hold.
   await whatHappened();
+
+  // 6e. The board picks a team or a type, and the map lights it.
+  await mapFocus();
 
   // 7. A frozen answer: some API servers serve a match body from the past.
   await frozenMatch();

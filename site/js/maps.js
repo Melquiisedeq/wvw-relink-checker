@@ -1563,7 +1563,7 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
     unders.appendChild(svgEl('polygon', { points }));
     const edge = svgEl('polygon', { class: `own-${owner}`, points });
     overs.appendChild(edge);
-    tinted.push({ id: sec.id, fill: poly, edge });
+    tinted.push({ id: sec.id, fill: poly, edge, points });
   }
   land.appendChild(fills);
   land.appendChild(unders);
@@ -1598,7 +1598,8 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
     const tierInfo = objectiveTier(p.meta, p.ob);
     const tier = tierInfo ? tierInfo.tier : 0;
     const selected = g.classList.contains('is-selected') ? ' is-selected' : '';
-    g.setAttribute('class', `wvw-marker own-${owner} tier-${tier}${selected}`);
+    const lit = g.classList.contains('is-lit') ? ' is-lit' : '';
+    g.setAttribute('class', `wvw-marker own-${owner} tier-${tier}${selected}${lit}`);
     while (g.firstChild) g.removeChild(g.firstChild);
 
     // The icon's own disc, and nothing past it. It used to reach half a
@@ -1664,6 +1665,47 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
   }
   svg.appendChild(markers);
   wrap.appendChild(svg);
+
+  // ---- the focus ----------------------------------------------------
+  // What a spec (focusMatches) picks stays as drawn, its marker a quarter
+  // bigger, its sector ringed in the owner's colour; the rest goes a step
+  // darker and keeps its colours. The ground is darkened by a black veil
+  // with the lit sectors cut out (even-odd): the same pixels a
+  // brightness(.55) filter gives, without drawing the terrain twice - a
+  // second <image> asks the server for the picture again. The markers are
+  // darkened by that filter (css/maps.css, .is-focused). Each sector holds
+  // exactly one objective (wvw-static.js), so the marker names its sector.
+  // The layer is rebuilt only when what it shows moved, so the 30 s
+  // repaint, which calls this again, leaves the screen as it was.
+  let focus = null;
+  let focusKey = '';
+  const paintFocus = (spec) => {
+    focus = spec || null;
+    svg.classList.toggle('is-focused', !!focus);
+    const litSectors = new Set();
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      const on = !!focus && focusMatches(focus, p.meta.id, String(p.ob.owner || 'neutral').toLowerCase(), p.ob.type);
+      nodes[i].classList.toggle('is-lit', on);
+      if (on && p.meta.sector_id) litSectors.add(p.meta.sector_id);
+    }
+    const lit = tinted.filter((t) => litSectors.has(t.id));
+    const key = focus ? JSON.stringify(lit.map((t) => `${t.id} ${t.edge.getAttribute('class')}`)) : '';
+    if (key === focusKey) return;
+    focusKey = key;
+    const old = svg.querySelector(':scope > .wvw-focus');
+    if (old) old.remove();
+    if (!focus) return;
+    const layer = svgEl('g', { class: 'wvw-focus' });
+    // Three times the frame each way: past any letterboxing of the viewBox.
+    const outer = `M${minX - fullW} ${minY - fullH}h${fullW * 3}v${fullH * 3}h${-fullW * 3}z`;
+    const holes = lit.map((t) => `M${t.points.replace(/ /g, 'L')}z`).join('');
+    layer.appendChild(svgEl('path', { class: 'wvw-focus-veil', d: outer + holes, 'fill-rule': 'evenodd' }));
+    const outline = svgEl('g', { class: 'wvw-focus-outline', 'stroke-width': edgeW * 0.44 * 2.4 });
+    for (const t of lit) outline.appendChild(svgEl('polygon', { class: t.edge.getAttribute('class'), points: t.points }));
+    layer.appendChild(outline);
+    svg.insertBefore(layer, markers);
+  };
 
   // ---- zoom and pan -------------------------------------------------
   // The viewBox is the camera. Markers are pinned to the ground but
@@ -1846,6 +1888,7 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
       t.edge.setAttribute('class', `own-${owner}`);
     }
     apply();   // repainted markers lost their zoom scale
+    paintFocus(focus);   // owners moved: who is lit may have too, in the same frame
   };
 
   // The ring on markers that changed hands without being repainted, and a
@@ -1862,6 +1905,7 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
     const i = pts.findIndex((p) => p.meta.id === id);
     if (i >= 0) nodes[i].dispatchEvent(new MouseEvent('click'));
   };
+  wrap.paintFocus = paintFocus;
 
   return wrap;
 }
@@ -1930,6 +1974,94 @@ function mapTally(mapData, isLive) {
   return tallyMaps(mapData ? [mapData] : [], isLive);
 }
 
+// ---- the focus: a team, a type, or a few objectives lit on the map ----
+// A spec is { ids: [objective ids] } or { color, type }, either of the two
+// may be null. The board picks { color, type } (paintBoardFocus); a chip
+// of the "What happened" block lights { ids } while pointed at.
+const FOCUS_TAP_MS = 2500;   // a tapped chip's objective stays lit this long
+const FOCUS_COLOR_WORD = Object.freeze({ red: 'Red', blue: 'Blue', green: 'Green' });
+const FOCUS_TYPE_PLURAL = Object.freeze({ Camp: 'camps', Tower: 'towers', Keep: 'keeps', Castle: 'castles' });
+
+// Set while a tier's maps are open: lets go of the board's pick and says
+// whether there was one. Esc does that first and closes the popover only
+// on the next press - so it runs before popover.js's listener, in capture.
+let mapFocusEscape = null;
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !mapFocusEscape || !mapFocusEscape()) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+}, true);
+
+// owner is lower case ('blue'), type the API's ('Tower').
+function focusMatches(spec, id, owner, type) {
+  if (!spec) return false;
+  if (spec.ids) return spec.ids.includes(id);
+  return (!spec.color || owner === spec.color) && (!spec.type || type === spec.type);
+}
+
+// "Blue only", "Blue towers", "Towers only".
+function focusWords(pick) {
+  const color = pick.color ? FOCUS_COLOR_WORD[pick.color] || '' : '';
+  const types = pick.type ? FOCUS_TYPE_PLURAL[pick.type] || '' : '';
+  if (color && types) return `${color} ${types}`;
+  if (color) return `${color} only`;
+  return `${types.charAt(0).toUpperCase()}${types.slice(1)} only`;
+}
+
+// The board's half of a pick: the chosen row, cell or column marked, and
+// the label "Objectives held" turned into the button that clears it.
+// Called after every paintMapBoard, which rebuilds the board.
+function paintBoardFocus(board, pick, clear) {
+  const on = (el, yes) => {
+    el.classList.toggle('is-picked', yes);
+    if (el.getAttribute('role') === 'button') el.setAttribute('aria-pressed', yes ? 'true' : 'false');
+  };
+  for (const el of board.querySelectorAll('[data-focus-color], [data-focus-type]')) {
+    const color = el.dataset.focusColor || null;
+    const type = el.dataset.focusType || null;
+    on(el, !!pick && pick.color === color && pick.type === type);
+  }
+  // The row's name says the row is picked, for a screen reader too.
+  for (const row of board.querySelectorAll('.wvw-board-row[data-focus-color]')) {
+    const name = row.querySelector('.wvw-board-team');
+    if (name) on(name, row.classList.contains('is-picked'));
+  }
+  const head = board.querySelector('.wvw-board-head');
+  const label = head && head.querySelector('.wvw-board-team');
+  if (!label) return;
+  head.classList.toggle('has-pick', !!pick);
+  const pill = label.querySelector('.wvw-focus-pill');
+  if (!pick) {
+    if (pill || label.textContent !== 'Objectives held') label.textContent = 'Objectives held';
+    return;
+  }
+  const words = focusWords(pick);
+  if (pill && pill.dataset.words === words) return;
+  label.textContent = '';
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'wvw-focus-pill';
+  b.dataset.words = words;
+  if (pick.color) {
+    const dot = document.createElement('span');
+    dot.className = `wvw-focus-dot own-${pick.color}`;
+    dot.setAttribute('aria-hidden', 'true');
+    b.appendChild(dot);
+  }
+  const text = document.createElement('span');
+  text.className = 'wvw-focus-words';
+  text.textContent = words;
+  const x = document.createElement('span');
+  x.className = 'wvw-focus-x';
+  x.setAttribute('aria-hidden', 'true');
+  x.textContent = '\u2715';
+  b.append(text, x);
+  b.setAttribute('aria-label', `Showing ${words}. Show everything again`);
+  b.title = `Showing ${words} \u2014 click to show everything`;
+  b.addEventListener('click', (e) => { e.stopPropagation(); clear(); });
+  label.appendChild(b);
+}
+
 // One row per side, the leader on top, totalled over the whole match -
 // what the game's own Contested Areas panel shows, and what leaves this
 // and the bar over the map answering different questions: the bar is
@@ -1968,6 +2100,11 @@ function paintMapBoard(board, match, isLive) {
   for (const type of types) {
     const h = document.createElement('span');
     h.textContent = type;
+    // A column picks that type on the map, whoever holds it.
+    h.dataset.focusType = type;
+    h.setAttribute('role', 'button');
+    h.tabIndex = 0;
+    h.title = `Show only the ${FOCUS_TYPE_PLURAL[type] || type} on the map`;
     headCells.appendChild(h);
   }
   head.appendChild(headCells);
@@ -1985,12 +2122,16 @@ function paintMapBoard(board, match, isLive) {
   for (const r of rows) {
     const line = document.createElement('div');
     line.className = `wvw-board-row own-${r.color}`;
+    // Anywhere on the row picks the team; a cell, the team and that type.
+    line.dataset.focusColor = r.color;
 
     const name = document.createElement('span');
     name.className = 'wvw-board-team';
     const teamId = matchTeamId(match, r.color);
     name.textContent = teamId ? getTeamName(teamId) : r.color;
     name.title = name.textContent;
+    name.setAttribute('role', 'button');
+    name.tabIndex = 0;
     line.appendChild(name);
 
     const counts = document.createElement('span');
@@ -2020,6 +2161,11 @@ function paintMapBoard(board, match, isLive) {
       n_.textContent = String(n);
       cell.appendChild(n_);
       cell.title = `${n} ${type}${n === 1 ? '' : 's'}`;
+      cell.dataset.focusColor = r.color;
+      cell.dataset.focusType = type;
+      cell.setAttribute('role', 'button');
+      cell.tabIndex = 0;
+      cell.setAttribute('aria-label', `${name.textContent}: ${cell.title}`);
       counts.appendChild(cell);
     }
     line.appendChild(counts);
@@ -2497,7 +2643,7 @@ function missedRingMark(r, until) {
   return g;
 }
 
-function missedChip(c, here, goTo) {
+function missedChip(c, here, goTo, spot) {
   const map = MAP_TAB_NAME[c.map] || c.map;
   const b = missedEl('button', `wvw-chip own-${c.to}${here ? '' : ' is-other'}`);
   b.type = 'button';
@@ -2515,6 +2661,13 @@ function missedChip(c, here, goTo) {
   b.title = words;
   b.setAttribute('aria-label', words);
   b.addEventListener('click', (e) => { e.stopPropagation(); goTo(c.map, c.id); });
+  // Pointed at or focused, its objective is lit on the map (on its own tab).
+  const on = () => spot({ ids: [c.id] }, { map: c.map, el: b });
+  const off = () => spot(null, { el: b });
+  b.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') on(); });
+  b.addEventListener('pointerleave', off);
+  b.addEventListener('focus', on);
+  b.addEventListener('blur', off);
   return b;
 }
 
@@ -2535,7 +2688,7 @@ function missedPaintTabDots(note, tabs, type) {
 }
 
 // The block itself, at the top of the right-hand column. view: { matchId,
-// side, tabs, type, goTo, repaint }. Rebuilt only when what it shows moved.
+// side, tabs, type, goTo, spot, repaint }. Rebuilt only when what it shows moved.
 function paintMissed(view) {
   const note = missedNoteFor(view.matchId);
   missedPaintTabDots(note, view.tabs, view.type);
@@ -2603,7 +2756,7 @@ function paintMissed(view) {
   const sorted = [...changes.filter((c) => c.map === view.type), ...changes.filter((c) => c.map !== view.type)];
   const row = missedEl('div', 'wvw-chips');
   const room = note.more ? sorted.length : narrow ? MISSED_CHIPS_NARROW : MISSED_CHIPS_WIDE;
-  for (const c of sorted.slice(0, room)) row.appendChild(missedChip(c, c.map === view.type, view.goTo));
+  for (const c of sorted.slice(0, room)) row.appendChild(missedChip(c, c.map === view.type, view.goTo, view.spot));
   const hidden = sorted.length - Math.min(sorted.length, room);
   if (hidden > 0) {
     const more = missedEl('button', 'wvw-chip wvw-chip-more', `+${hidden}`);
@@ -2718,6 +2871,85 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
 
   let current = null;
   let plotWrap = null;
+
+  // ---- the focus (focusMatches): the board's pick, and a spotlight that
+  // stands in for it a moment (a chip pointed at). The pick outlives a tab
+  // change; a spotlight belongs to the map it was lit on.
+  let focusPick = null;
+  let focusSpot = null;     // { spec, el }: el, when given, holds it
+  let focusTimer = 0;
+  const paintFocus = () => {
+    if (activeTrigger !== triggerEl) return;
+    // A chip rebuilt under the pointer never says it was left.
+    if (focusSpot && focusSpot.el && !focusSpot.el.isConnected) focusSpot = null;
+    if (plotWrap) {
+      plotWrap.paintFocus(focusSpot ? focusSpot.spec : focusPick);
+      // The bar over the map follows the picked team (css/maps.css).
+      if (focusPick && focusPick.color) plotWrap.dataset.focusTeam = focusPick.color;
+      else delete plotWrap.dataset.focusTeam;
+    }
+    paintBoardFocus(board, focusPick, () => pickFocus(null));
+  };
+  const pickFocus = (spec) => {
+    clearTimeout(focusTimer);
+    focusPick = spec;
+    focusSpot = null;
+    paintFocus();
+  };
+  // spotlight({ ids } or { color, type }, { map, el, ms }): lit only on
+  // that map's tab, for as long as el is pointed at, or for ms. A null
+  // spec puts the pick back - only el's own spotlight, when el is given.
+  const spotlight = (spec, opts = {}) => {
+    if (!spec && opts.el && (!focusSpot || focusSpot.el !== opts.el)) return;
+    if (spec && opts.map && opts.map !== current) return;
+    clearTimeout(focusTimer);
+    focusSpot = spec ? { spec, el: opts.el || null } : null;
+    if (spec && opts.ms) focusTimer = setTimeout(() => { focusSpot = null; paintFocus(); }, opts.ms);
+    paintFocus();
+  };
+  // What the board picks: a row is the team, a cell the team and the type,
+  // a column header the type. The same one again lets go.
+  const pickFromBoard = (target) => {
+    const el = target.closest('[data-focus-color], [data-focus-type]');
+    if (!el || !board.contains(el)) return false;
+    const spec = { color: el.dataset.focusColor || null, type: el.dataset.focusType || null };
+    const same = !!focusPick && focusPick.color === spec.color && focusPick.type === spec.type;
+    pickFocus(same ? null : spec);
+    return true;
+  };
+  board.addEventListener('click', (e) => { if (pickFromBoard(e.target)) e.stopPropagation(); });
+  board.addEventListener('keydown', (e) => {
+    if ((e.key !== 'Enter' && e.key !== ' ') || e.target.getAttribute('role') !== 'button') return;
+    e.preventDefault();
+    pickFromBoard(e.target);
+  });
+  // A tap anywhere else in the popover lets go - not one on the board or a
+  // marker, and not the end of a drag across the map.
+  let downAt = null;
+  popover.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY]; }, true);
+  popover.addEventListener('click', (e) => {
+    if (!focusPick || e.target.closest('.wvw-board, .wvw-marker, .wvw-zoom, .wvw-hud, .wvw-hud-note, .wvw-missed, .wvw-tabs')) return;
+    if (downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6) return;
+    pickFocus(null);
+  });
+  mapFocusEscape = () => {
+    if (activeTrigger !== triggerEl || !focusPick) return false;
+    pickFocus(null);
+    return true;
+  };
+  // paintMapBoard rebuilds the board; a key held on it is put back.
+  const boardSpot = (el) => (el.classList.contains('wvw-focus-pill') ? 'pill'
+    : `${(el.closest('[data-focus-color]') || el).dataset.focusColor || ''}|${el.dataset.focusType || ''}`
+      + `|${el.classList.contains('wvw-board-team')}`);
+  const paintBoard = (m, live) => {
+    const had = board.contains(document.activeElement) ? boardSpot(document.activeElement) : null;
+    paintMapBoard(board, m, live);
+    paintFocus();
+    if (!had) return;
+    const back = [...board.querySelectorAll('[role="button"], .wvw-focus-pill')].find((el) => boardSpot(el) === had);
+    if (back) back.focus({ preventScroll: true });
+  };
+
   // The corners' state, and what they last read: killView's answer that
   // picked the hot tab (null before the first).
   let corners = null;
@@ -2738,6 +2970,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   };
 
   const draw = (type, sectors) => {
+    focusSpot = null;
     paintMapBoard(board, match, matchIsLive(match));
     stage.textContent = '';
     plotWrap = sectors && sectors.length
@@ -2764,6 +2997,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     stage.appendChild(side);
     emptyDetail();
     paintNote();
+    paintFocus();
   };
 
   const show = (type) => {
@@ -2796,13 +3030,18 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   missedOpen = { matchId: match.id, trigger: triggerEl };
   const goTo = (type, id) => {
     show(type);
-    const pick = () => { if (activeTrigger === triggerEl && current === type && plotWrap) plotWrap.selectObjective(id); };
+    const pick = () => {
+      if (activeTrigger !== triggerEl || current !== type || !plotWrap) return;
+      plotWrap.selectObjective(id);
+      spotlight({ ids: [id] }, { ms: FOCUS_TAP_MS });
+    };
     if (sectorsByType.get(type)) pick(); else pendingSectors.get(type).then(pick);
   };
   const paintNote = () => {
     if (activeTrigger !== triggerEl) return;
-    paintMissed({ matchId: match.id, side, tabs: tabByType, type: current, goTo, repaint: paintNote });
+    paintMissed({ matchId: match.id, side, tabs: tabByType, type: current, goTo, spot: spotlight, repaint: paintNote });
     if (plotWrap) plotWrap.ringChanged();
+    if (focusSpot && focusSpot.el && !focusSpot.el.isConnected) paintFocus();
   };
 
   let hotMarked = false;
@@ -2877,7 +3116,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     // popover opened with: a tier turns over while the maps are open,
     // and it has also been seen turning back.
     const live = matchIsLive(fresh);
-    paintMapBoard(board, fresh, live);
+    paintBoard(fresh, live);
     if (plotWrap && plotWrap.applyLive && now) plotWrap.applyLive(now, live);
     // The panel was born from a click and then stood still: the marker
     // beside it could change hands, tier or guild while the text went
