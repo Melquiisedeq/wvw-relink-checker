@@ -87,9 +87,12 @@ const fetchJsonCached = (url) => fetchJson(url, 0, 'default');
 // Guild-to-team assignment only changes at the monthly relink, so this is
 // far less volatile than the cache it sits behind. Harmless
 // over-fetching, kept simple by reusing the same timer interval instead
-// of tracking that date.
+// of tracking that date. A table kept from before the teams notice went up
+// (teamsNoticeUpAt, js/relink.js) is the old month's, whatever its age.
 async function getWvwMaps() {
-  if (wvwMapCache && Date.now() - wvwMapCachedAt < TIMERS_REFRESH_MS) return wvwMapCache;
+  if (wvwMapCache && wvwMapCachedAt >= teamsNoticeUpAt
+    && Date.now() - wvwMapCachedAt < TIMERS_REFRESH_MS) return wvwMapCache;
+  const askedAt = Date.now();
 
   const [na, eu] = await Promise.all([
     fetchJson(`${API_BASE}/wvw/guilds/na`, 0, 'no-store', SLOW_REQUEST_TIMEOUT_MS),
@@ -101,7 +104,7 @@ async function getWvwMaps() {
   }
 
   wvwMapCache = { na, eu };
-  wvwMapCachedAt = Date.now();
+  wvwMapCachedAt = askedAt;   // when it was asked: a notice raised mid-flight outdates it
   return wvwMapCache;
 }
 

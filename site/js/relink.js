@@ -333,6 +333,9 @@ function buildRebuildBanner(naLeft, euLeft) {
 const RELINK_STATE_RE = /^"?(\d{1,12}):(\d{1,12})"?$/;
 
 let relinkState = null;        // { window, published }
+// When the notice last went up on this page. The guild-to-team table kept
+// from before that is the old month's (getWvwMaps).
+let teamsNoticeUpAt = 0;
 let relinkStateAt = 0;
 let relinkStateInFlight = null;
 let relinkStateFailedAt = 0;
@@ -569,6 +572,7 @@ function updateTeamsNotice(rebuilding) {
       return;
     }
     if (teamsNotice.dataset.window === String(windowId)) return;
+    teamsNoticeUpAt = Date.now();
     buildTeamsNotice(windowId);
   });
 }
