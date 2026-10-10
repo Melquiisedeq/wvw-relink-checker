@@ -74,8 +74,8 @@
 
 /* The header the game has, doing double duty as column labels. */
 .wvw-board-head{
-  font-size:.6rem;font-weight:700;letter-spacing:.07em;
-  text-transform:uppercase;color:#7e8899;padding-bottom:4px;
+  font-size:.64rem;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;color:#9aa4b2;padding-bottom:4px;
 }
 .wvw-board-head .wvw-board-counts{text-align:center;}
 .wvw-board-head .wvw-board-team{font-weight:700;}
@@ -163,6 +163,16 @@
   .wvw-board-cell img{width:18px;height:18px;}
   .wvw-board-cell b{width:1.4em;min-width:0;}
   .wvw-board-ppt{font-size:.84rem;}
+}
+/* A phone gives the team name back: 16px icons, tighter columns, and the
+   header says "Held" (paintBoardFocus). Cells are 16 + 2 + the number box. */
+@media (max-width:480px){
+  .wvw-board{--board-cell:calc(18px + 1.176rem);}
+  .wvw-board-counts{column-gap:2px;}
+  .wvw-board-cell{gap:2px;}
+  .wvw-board-cell img{width:16px;height:16px;}
+  /* Narrower cells: "TOWER" and "KEEP" would touch at the header's spacing. */
+  .wvw-board-head .wvw-board-counts{letter-spacing:0;}
 }
 
 /* A bar across the top of the map, drawn after the game's: three
@@ -469,6 +479,11 @@
 .wvw-zoom button{
   width:26px;height:26px;padding:0;font-size:1rem;line-height:1;
   border-radius:6px;
+}
+/* Touch targets on a phone. */
+@media (max-width:480px){
+  .wvw-tab{min-height:34px;}
+  .wvw-zoom button{width:34px;height:34px;}
 }
 
 /* The two top corners of the map, either side of the score bar: kills on
