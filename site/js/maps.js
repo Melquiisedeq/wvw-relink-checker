@@ -1244,7 +1244,7 @@ function buildMapCorners(wrap, matchId) {
   const smallTime = mk('time', 'wvw-hud-when');
   const smallMark = mk('span');
   const line2 = mk('span', 'wvw-hud-small wvw-hud-small2');
-  line2.append(lead, smallTime, smallMark);
+  line2.append(smallMark, lead, smallTime);
   const fightsBtn = mk('button');
   const txt = mk('span', 'wvw-hud-txt');
   txt.append(line1, line2);
@@ -1298,7 +1298,7 @@ function buildMapCorners(wrap, matchId) {
     put(smallLong, line ? ' min' : '');
     put(smallShort, line ? 'm' : '');
     put(lead, two ? (old && !odd ? 'no new kills since ' : 'data up to ') : '');
-    put(smallMark, odd ? '\u00a0\u26a0' : '');
+    put(smallMark, odd ? '\u26a0\u00a0' : '');
     if (two) {
       put(smallTime, hhmm(view.clock));
       smallTime.dateTime = new Date(view.clock).toISOString();
