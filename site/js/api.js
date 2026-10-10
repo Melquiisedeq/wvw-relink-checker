@@ -261,6 +261,9 @@ function matchIsBehind(fresh, kept) {
 function keepNewestMatch(match) {
   if (!match || typeof match.id !== 'string') return match;
   const kept = newestMatches.get(match.id);
+  // Every offer, a frozen repeat included, with the body it would replace:
+  // the maps' "What happened" summary (js/maps.js, loaded after this file).
+  if (typeof missedMatchOffered === 'function') missedMatchOffered(match, kept);
   if (kept && matchIsBehind(match, kept.match)) return kept.match;
   // First sight, a new week, or a higher score: the data moved. The same
   // body again keeps the old time.

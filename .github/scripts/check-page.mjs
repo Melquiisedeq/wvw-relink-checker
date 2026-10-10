@@ -1,7 +1,7 @@
 // Loads the page in a real Chrome, with the API and the sheets answered from a
 // recording, walks it as a visitor would (guild search, every map, every icon
 // button and popover, the NA/EU swap, a map answered with the same body for
-// minutes, a frozen match answer that must not be painted, a load whose API reads fail and are tried again, then a second load with /api/* down), and
+// minutes, what changed hands over such a gap summed up beside the map, a frozen match answer that must not be painted, a load whose API reads fail and are tried again, then a second load with /api/* down), and
 // fails on anything the browser objects to: an exception, a console error, a
 // Content Security Policy violation, a step whose element never appears.
 //
@@ -1553,6 +1553,113 @@ async function main() {
     substitutes.delete(killsUrl);
   }
 
+  // The maps' "What happened": a match answered with the same body for over
+  // 6 min while the page kept asking, then a body with two objectives taken
+  // (one on the open map, one on another) and a known number of kills more.
+  // The block shows both chips, the open map's first, and exactly those
+  // kills; the taken marker rings, the other map's tab carries a dot, and its
+  // chip opens that tab with the objective selected. On a phone the block
+  // starts folded and opens on a tap. Ten minutes on it is gone, and a body
+  // with only the score up after another long gap raises none.
+  async function whatHappened() {
+    const step = 'what happened';
+    const label = await ev("document.querySelector('.tier-map-btn')?.getAttribute('aria-label') || ''");
+    const t = /\b(NA|EU) Tier (\d+)/.exec(label);
+    if (!t) return void problem(`step '${step}': no tier map button to read a match from`);
+    const matchId = `${t[1] === 'NA' ? 1 : 2}-${t[2]}`;
+    const oneUrl = `https://api.guildwars2.com/v2/wvw/matches?id=${matchId}`;
+    // The score last rose now: earlier steps moved the clock back past it.
+    const before = JSON.parse(await ev(`(() => { const k = newestMatches.get('${matchId}'); k.at = Date.now();
+      return JSON.stringify(k.match); })()`));
+    const serve = body => { const s = { body: Buffer.from(JSON.stringify(body)), served: 0 }; substitutes.set(oneUrl, s); return s; };
+    const same = serve(before);
+    let skew = 0;
+    const later = async (ms, name) => {
+      skew += ms;
+      await ev(`__skewClock(${ms}); window.dispatchEvent(new Event('focus'))`);
+      await idle(name);
+    };
+    const block = "document.querySelector('.info-popover .wvw-missed:not(.is-leaving)')";
+    const cleanup = async () => {
+      substitutes.delete(oneUrl);
+      await send('Emulation.clearDeviceMetricsOverride');
+      await closePopover(step);
+      await ev(`__skewClock(${-skew}); localStorage.removeItem('wvw-fight-v1')`);
+    };
+
+    if (!(await click(step + ': open', "document.querySelector('.tier-map-btn')"))) return cleanup();
+    if (!(await until(step, `!!document.querySelector("${POPOVERS['tier-map-btn']}")`, 'drawn objectives'))) return cleanup();
+    await idle(step);
+    for (let i = 0; i < 4; i++) await later(100000, step + ': same body');
+    if (same.served < 4) problem(`step '${step}': the map asked ${same.served} time(s) over 400 s, wanted 4`);
+    if (await ev(`!!${block}`)) problem(`step '${step}': the block showed while the body stood still`);
+
+    // One objective taken here, one on another map, and kills on both.
+    const here = await ev("document.querySelector('.info-popover .wvw-tab.is-active')?.dataset.type || ''");
+    const other = (before.maps || []).map(m => m.type).find(type => type !== here);
+    const OWNERS = ['Red', 'Blue', 'Green'];
+    const takeable = m => (m?.objectives || []).filter(o => ['Camp', 'Tower', 'Keep'].includes(o.type)
+      && OWNERS.includes(o.owner) && /^\d+-\d+$/.test(o.id));
+    const drawn = await ev(`[...document.querySelectorAll('.info-popover .wvw-marker')].map(g => g.dataset.obj)`);
+    const a = takeable(before.maps.find(m => m.type === here)).find(o => drawn.includes(o.id));
+    const b = takeable(before.maps.find(m => m.type === other))[0];
+    if (!a || !b) { problem(`step '${step}': no camp, tower or keep held on ${here} and ${other} to take`); return cleanup(); }
+    const after = JSON.parse(JSON.stringify(before));
+    const KILLS = { [here]: ['red', 37], [other]: ['blue', 15] };
+    const taken = new Date(Date.parse(before.start_time) + 60000).toISOString().replace('.000Z', 'Z');
+    for (const m of after.maps) {
+      for (const o of m.objectives) {
+        if (o.id === a.id || o.id === b.id) { o.owner = OWNERS[(OWNERS.indexOf(o.owner) + 1) % 3]; o.last_flipped = taken; }
+      }
+      const k = KILLS[m.type];
+      if (k) { m.kills[k[0]] += k[1]; after.kills[k[0]] += k[1]; }
+    }
+    after.scores.red += 1;
+    const killsMore = 37 + 15;
+    serve(after);
+    await later(31000, step + ': after');
+    if (await until(step, `!!${block}`, 'the block after the gap')) {
+      const seen = await ev(`(() => { const b = ${block};
+        return { title: b.querySelector('.wvw-missed-title').textContent, open: b.classList.contains('is-open'),
+          top: b === b.parentElement.firstElementChild && b.parentElement.classList.contains('wvw-side'),
+          chips: [...b.querySelectorAll('.wvw-chip[data-obj]')].map(c => c.dataset.obj + ' ' + c.dataset.map),
+          kills: b.querySelector('.wvw-missed-kills .wvw-missed-killn')?.textContent || '',
+          rings: [...document.querySelectorAll('.info-popover .wvw-marker')].filter(g => g.querySelector('.wvw-ring')).map(g => g.dataset.obj),
+          dots: [...document.querySelectorAll('.info-popover .wvw-tab')].filter(t => t.querySelector('.wvw-tab-dot')).map(t => t.dataset.type) }; })()`);
+      const want = { chips: [`${a.id} ${here}`, `${b.id} ${other}`], kills: String(killsMore), rings: [a.id], dots: [other] };
+      if (!/^What happened · \S/.test(seen.title) || !seen.open || !seen.top) problem(`step '${step}': the block reads "${seen.title}", open ${seen.open}, at the top of the column ${seen.top}`);
+      for (const k of Object.keys(want)) {
+        if (JSON.stringify(seen[k]) !== JSON.stringify(want[k])) problem(`step '${step}': ${k} ${JSON.stringify(seen[k])}, wanted ${JSON.stringify(want[k])}`);
+      }
+      if (await click(step + ': chip', `document.querySelector('.info-popover .wvw-chip[data-obj="${b.id}"]')`)) {
+        await until(step, `!!document.querySelector('.info-popover .wvw-tab[data-type="${other}"].is-active')
+          && !!document.querySelector('.info-popover .wvw-marker.is-selected[data-obj="${b.id}"]')
+          && !document.querySelector('.info-popover .wvw-tab-dot')`, "the other map's tab open, its objective selected, no dot left");
+      }
+      // A phone: folded, the kills in its title; a tap opens it to the chips.
+      await send('Emulation.setDeviceMetricsOverride', { width: 360, height: 800, deviceScaleFactor: 1, mobile: true });
+      if (await until(step + ', 360 px', `!!${block} && !${block}.classList.contains('is-open') && !${block}.querySelector('.wvw-chip')`, 'the block folded')) {
+        const folded = await ev(`${block}.textContent`);
+        if (!folded.includes(`${killsMore} kills`)) problem(`step '${step}, 360 px': folded it reads "${folded}", without the ${killsMore} kills`);
+        if (await click(step + ', 360 px: open', `${block}.querySelector('.wvw-missed-head')`)) {
+          await until(step + ', 360 px', `${block}.classList.contains('is-open') && ${block}.querySelectorAll('.wvw-chip[data-obj]').length === 2`, 'the block open with its two chips');
+        }
+      }
+      await send('Emulation.clearDeviceMetricsOverride');
+    }
+
+    // Ten minutes on the same body: gone. Then the score alone up: nothing.
+    for (let i = 0; i < 7; i++) await later(100000, step + ': ten minutes on');
+    await until(step, `!${block}`, 'the block gone ten minutes after the data came back');
+    const scoreOnly = JSON.parse(JSON.stringify(after));
+    scoreOnly.scores.red += 1;
+    serve(scoreOnly);
+    await later(31000, step + ': score only');
+    await sleep(1500);   // the popover's one-second repaint
+    if (await ev(`!!${block} || missedNotes.has('${matchId}')`)) problem(`step '${step}': a body with only the score up raised the block`);
+    await cleanup();
+  }
+
   // The walk, the same for the recording and for the replay: whatever it asks
   // of the hosts, the recording has. Recording picks the guild names first.
   recordedAt = RECORD ? Date.now() : recordedAt;
@@ -1633,6 +1740,11 @@ async function main() {
 
   // 6b. The kill history backdating a match this page never saw move.
   await historyAge();
+
+  // 6d. The maps' summary of a gap: what changed hands and the kills. In this
+  // load, whose maps have all been opened: a new load would ask for guild
+  // tactics in an order the recording does not hold.
+  await whatHappened();
 
   // 7. A frozen answer: some API servers serve a match body from the past.
   await frozenMatch();
