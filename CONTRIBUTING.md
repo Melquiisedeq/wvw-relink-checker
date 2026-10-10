@@ -6,13 +6,15 @@ people opening the code.
 
 ## The shape of it
 
-Plain static files. **No build step, no dependencies, no package manager,
-nothing pulled from a CDN.** That is not something waiting to be fixed, it is
+Plain static files. **The site has no build step, no dependencies, no package
+manager, nothing pulled from a CDN.** That is not something waiting to be fixed, it is
 the point — the page works because there is nothing between the browser and
 the files, and it will still work in five years for the same reason. The one
 script from elsewhere is Cloudflare's visit counter, and the page does not
 need it to work. `worker/`, the only code that runs on a server, follows the
-same rule: one file, no dependencies, nothing to install.
+same rule: one file, no dependencies, nothing to install. The browser tests in
+`.github/e2e/` are the one place with a dependency, Playwright Test, and
+nothing in `site/` or `worker/` may import from there.
 
 So a pull request that adds a library, a bundler or a framework will not be
 merged, however good the library is. If something really does need one, open
@@ -72,6 +74,18 @@ recording replays itself at the end, and is kept only if that passes:
 
     node .github/scripts/check-page.mjs --record
 
+The newer browser tests use Playwright Test, pinned in
+`.github/e2e/package-lock.json` (Node 20 or later; no browser is downloaded):
+
+    cd .github/e2e && npm ci --ignore-scripts && npx playwright test
+
+They drive your installed Google Chrome, or the executable `CHROME` names
+(`CHROME=/usr/bin/chromium npx playwright test`); CI uses its own Google Chrome. They serve `site/` with its real headers (`SITE_DIR` serves
+another folder), answer the page from the same recording, start its clock at
+the recording's instant, and fail a test on an exception, a console error, a
+Content Security Policy violation or a URL that was not recorded. A skipped test
+fails the run; on CI a test that passes only on its retry is a warning.
+
 The page runs your JavaScript in that Chrome, so run a stranger's pull request
 in CI, not on your own machine.
 
@@ -85,6 +99,9 @@ already in the code.
 
 One concern each. A fix and a redesign on the same branch means neither can be
 taken without the other, and the small one ends up waiting on the big one.
+
+A change in what the page does brings its test in the same pull request: a
+rule in `tests/`, or a browser test in `.github/e2e/`.
 
 If a change is visible on the page, say what it looks like — a screenshot
 saves a round trip.

@@ -33,3 +33,8 @@ _teste
 # than folders, a pattern ending in '/' does not match them.
 CLAUDE.md
 .claude
+
+# The browser tests' dependency (.github/e2e), installed by npm ci from the
+# lockfile, and what a run leaves behind: traces and the JSON report.
+node_modules
+.github/e2e/test-results

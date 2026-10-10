@@ -1,7 +1,9 @@
-# This project has no dependencies to update: no package.json, no lockfile,
-# nothing pulled from a CDN. The one thing it does pin is the GitHub Action it
-# runs, by commit SHA - and a pinned SHA never updates itself. This is what
-# tells us a newer version exists, as a pull request to read before taking it.
+# The site has no dependencies to update: nothing pulled from a CDN, no
+# package.json in site/ or worker/. Two things are pinned and never update
+# themselves: the GitHub Actions the workflows run, by commit SHA, and
+# Playwright Test, the browser tests' one dependency, by exact version in
+# .github/e2e/package-lock.json. This is what tells us a newer version of
+# either exists, as a pull request to read before taking it.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -9,4 +11,10 @@ updates:
     schedule:
       # Monthly, not weekly. One action does not produce enough news to be
       # worth a weekly notification that gets ignored.
+      interval: monthly
+
+  - package-ecosystem: npm
+    directory: /.github/e2e
+    schedule:
+      # Monthly too: Playwright ships about once a month.
       interval: monthly

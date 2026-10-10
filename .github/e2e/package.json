@@ -1,0 +1,11 @@
+{
+  "name": "wvw-relink-checker-e2e",
+  "private": true,
+  "description": "Browser tests for the page in site/. The site itself has no dependencies; this folder is the only one.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0"
+  }
+}
