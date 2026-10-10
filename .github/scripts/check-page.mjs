@@ -2290,7 +2290,15 @@ async function main() {
               && ![...e.children].some(c => c.getBoundingClientRect().right > ${width} + 0.5);
           }).slice(0, 6).map(e => { const r = e.getBoundingClientRect();
             return e.tagName + '.' + String(e.className?.baseVal ?? e.className).split(' ').slice(0, 2).join('.') + ' ' + Math.round(r.left) + '-' + Math.round(r.right) + (e.children.length ? '' : ' "' + e.textContent.trim().slice(0, 24) + '"'); });
-          return 'innerWidth ' + innerWidth + ', page ' + document.documentElement.scrollWidth + ' px wide; past ' + ${width} + ': ' + (past.join(' | ') || 'none');
+          // The match panels' grid and, in each column, its widest child.
+          const grid = [...document.querySelectorAll('.team-cols')].map(g => getComputedStyle(g).gridTemplateColumns).join(',');
+          const cols = [...document.querySelectorAll('.team-col')].slice(0, 3).map(c => {
+            const kids = [...c.querySelectorAll('*')].map(k => ({ k, w: k.getBoundingClientRect().width, s: k.scrollWidth }))
+              .sort((a, b) => b.s - a.s).slice(0, 2);
+            return kids.map(({ k, w, s }) => k.tagName + '.' + String(k.className?.baseVal ?? k.className).split(' ')[0] + ' w' + Math.round(w) + ' s' + s + ' ws:' + getComputedStyle(k).whiteSpace).join(' / ');
+          });
+          return 'innerWidth ' + innerWidth + ', page ' + document.documentElement.scrollWidth + ' px wide; past ' + ${width} + ': ' + (past.join(' | ') || 'none')
+            + '; team-cols grid ' + grid + '; widest in columns: ' + cols.join(' || ') + '; fonts: ' + getComputedStyle(document.body).fontFamily;
         })()`));
         continue;
       }
