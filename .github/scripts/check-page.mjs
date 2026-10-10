@@ -1692,6 +1692,47 @@ async function main() {
     for (const f of failed) problem(`step '${step}': ${f}`);
   }
 
+  // The skirmish trend when the clock is a block ahead of the body. Built
+  // from a kept match: 63 whole blocks of 1,000 and a 64th of 400, the clock
+  // 30 min into block 65. Body time before the end of block 64 (the API
+  // froze mid-block): 400 is not "Last block", the average ignores it and the
+  // text says the data stopped. Body time after it: 400 is a finished block,
+  // as before. Everything it touched is put back.
+  async function skirmishStalled() {
+    const step = 'skirmish trend stalled';
+    stepNow = step;
+    const failed = await ev(`(() => {
+      const out = [];
+      const id = [...newestMatches.keys()][0];
+      if (!id) return ['no match kept'];
+      const kept = newestMatches.get(id);
+      const keptAt = kept.at;
+      const H = 3600000;
+      const start = Date.now() - (128 * H + 0.5 * H);
+      const lastEnd = start + 128 * H;
+      const sk = (n) => ({ scores: { red: n, blue: n, green: n } });
+      const match = { id, start_time: new Date(start).toISOString(), end_time: new Date(start + 168 * H).toISOString(),
+        skirmishes: [...Array(63).fill(1000), 400].map(sk) };
+      const render = (at) => {
+        kept.at = at;
+        const el = document.createElement('div');
+        renderSkirmishTrendPopoverContent(el, 'X', match, 'red');
+        return el.textContent;
+      };
+      try {
+        const stalled = render(lastEnd - 40 * 60000);
+        if (/Last block\s*400/.test(stalled) || !/Last block\s*1,000/.test(stalled)) out.push('a block cut off midway shows as "Last block": ' + stalled.slice(0, 160));
+        if (!/63 of 84 finished/.test(stalled)) out.push('the finished count is not 63: ' + stalled.slice(0, 160));
+        if (!/stopped partway through block 64/.test(stalled) || /ArenaNet hasn't published/.test(stalled)) out.push('the text does not say the data stopped: ' + stalled.slice(0, 200));
+        const current = render(lastEnd + 5 * 60000);
+        if (!/Last block\s*400/.test(current) || !/64 of 84 finished/.test(current)) out.push('a body past the end of block 64 does not show it finished: ' + current.slice(0, 160));
+        if (/stopped partway/.test(current)) out.push('a body past the end of block 64 says the data stopped');
+      } finally { kept.at = keptAt; }
+      return out;
+    })()`);
+    for (const f of failed) problem(`step '${step}': ${f}`);
+  }
+
   // The maps' "What happened": a match answered with the same body for over
   // 6 min while the page kept asking, then a body with two objectives taken
   // (one on the open map, one on another) and a known number of kills more.
@@ -2483,6 +2524,9 @@ async function main() {
   // tactics in an order the recording does not hold.
   await whatHappened();
   await whatHappenedRules();
+
+  // 6d2. The skirmish trend with the body frozen partway through a block.
+  await skirmishStalled();
 
   // 6e. The board picks a team or a type, and the map lights it.
   await mapFocus();
