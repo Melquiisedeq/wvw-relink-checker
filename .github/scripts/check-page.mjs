@@ -2283,12 +2283,14 @@ async function main() {
         // What a phone this wide would see instead: a page wider than the
         // screen makes a mobile browser widen the layout to fit it.
         problem(`step '${name}': ` + await ev(`(() => {
-          let wide = null;
-          for (const e of document.querySelectorAll('body *')) {
-            const r = e.getBoundingClientRect();
-            if (r.width && (!wide || r.right > wide.r)) wide = { r: Math.round(r.right), what: e.tagName + '.' + String(e.className?.baseVal ?? e.className).split(' ')[0] };
-          }
-          return 'innerWidth ' + innerWidth + ', page ' + document.documentElement.scrollWidth + ' px wide, rightmost edge ' + (wide ? wide.r + ' px at ' + wide.what : 'none') + ', popover open: ' + !!document.querySelector('.info-popover');
+          // The innermost elements in the flow that end past the screen.
+          const past = [...document.querySelectorAll('body *')].filter(e => {
+            const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
+            return r.width && r.right > ${width} + 0.5 && cs.position !== 'fixed' && cs.display !== 'none'
+              && ![...e.children].some(c => c.getBoundingClientRect().right > ${width} + 0.5);
+          }).slice(0, 6).map(e => { const r = e.getBoundingClientRect();
+            return e.tagName + '.' + String(e.className?.baseVal ?? e.className).split(' ').slice(0, 2).join('.') + ' ' + Math.round(r.left) + '-' + Math.round(r.right) + (e.children.length ? '' : ' "' + e.textContent.trim().slice(0, 24) + '"'); });
+          return 'innerWidth ' + innerWidth + ', page ' + document.documentElement.scrollWidth + ' px wide; past ' + ${width} + ': ' + (past.join(' | ') || 'none');
         })()`));
         continue;
       }
