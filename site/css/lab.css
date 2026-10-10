@@ -1,0 +1,133 @@
+/* LAB - never merged. The toggle panel; copy to site/css/lab.css on the lab branch. */
+/* ---- the panel ---------------------------------------------------- */
+.lab-panel{
+  position:fixed;right:12px;bottom:12px;z-index:80;
+  display:flex;flex-direction:column;align-items:flex-end;gap:6px;
+  font-size:.78rem;color:var(--text);
+}
+.lab-toggle{
+  padding:4px 12px;border-radius:999px;border:1px solid rgba(127,214,242,.35);
+  background:rgba(15,18,22,.88);color:var(--accent);font:inherit;font-weight:700;
+  letter-spacing:.06em;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.45);
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+}
+.lab-toggle:hover{color:var(--accent-bright);border-color:rgba(127,214,242,.6);}
+.lab-body{
+  width:min(270px, calc(100vw - 24px));max-height:calc(100vh - 70px);overflow-y:auto;
+  padding:10px 12px;border-radius:10px;border:1px solid var(--border);
+  background:rgba(23,27,33,.97);box-shadow:0 10px 30px rgba(0,0,0,.55);
+  display:flex;flex-direction:column;gap:5px;
+}
+.lab-body[hidden]{display:none;}
+.lab-head{margin-bottom:2px;color:var(--accent);}
+.lab-head strong{text-transform:uppercase;letter-spacing:.06em;font-size:.74rem;}
+.lab-check{display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;margin-top:4px;}
+.lab-check input,.lab-radios input{accent-color:var(--accent);margin:0;}
+.lab-sub{padding-left:20px;display:flex;flex-direction:column;gap:4px;}
+.lab-sub-row{flex-direction:row;align-items:center;flex-wrap:wrap;gap:4px 10px;}
+.lab-radios{border:0;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:2px 8px;}
+.lab-radios label{display:inline-flex;align-items:center;gap:3px;cursor:pointer;}
+.lab-sr-legend{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+.lab-btn{
+  align-self:flex-start;margin:2px 0;padding:3px 10px;border-radius:6px;
+  border:1px solid rgba(127,214,242,.3);background:var(--accent-soft);color:var(--accent);
+  font:inherit;font-size:.74rem;cursor:pointer;
+}
+.lab-btn:hover{color:var(--accent-bright);background:rgba(127,214,242,.24);}
+.lab-status{margin:4px 0 0;color:var(--muted);font-size:.7rem;min-height:1em;}
+.lab-muted{color:var(--muted);}
+.lab-cyan{color:var(--accent);}
+.lab-section{
+  margin-top:8px;padding-top:6px;border-top:1px solid var(--border);
+  font-size:.62rem;font-weight:800;color:#a3adbb;text-transform:uppercase;letter-spacing:.09em;
+}
+.lab-check-small{font-weight:500;font-size:.74rem;margin-top:2px;}
+/* "sim": the simulated summaries, said once and small. */
+.lab-simtag{
+  display:inline-block;margin-left:4px;padding:0 4px;border-radius:3px;
+  background:rgba(154,164,178,.16);color:#7e8899;font-size:.56rem;font-weight:700;
+  letter-spacing:.06em;text-transform:lowercase;vertical-align:1px;
+}
+
+.lab-hint{color:var(--muted);font-size:.68rem;line-height:1.35;margin:1px 0 2px;}
+.lab-warn{color:#ffb347;font-weight:700;}
+
+/* ---- lab 16-0: the map's corners -------------------------------------- */
+/* The site's own corners give way to the lab's while an alternative is on. */
+.lab-kills-on > .wvw-hud-l,
+.lab-when-on > .wvw-hud-r{display:none;}
+.lab-sim-on .wvw-tab-swords{display:none;}
+.lab-hud{position:absolute;top:0;z-index:3;padding:6px;pointer-events:none;}
+.lab-hud[hidden]{display:none;}
+.lab-hud > *{pointer-events:auto;}
+.lab-hud-l{left:0;}
+.lab-hud-r{right:0;}
+.lab-hud-btn{
+  display:flex;align-items:center;gap:6px;
+  padding:3px 9px;border:0;border-radius:8px;box-shadow:none;
+  background:rgba(8,11,15,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  color:#dbe3ec;font:inherit;text-align:left;cursor:help;
+  text-shadow:0 1px 2px #000,0 0 6px rgba(0,0,0,.8);transition:none;
+}
+.lab-hud-btn:active{transform:none;box-shadow:none;}
+.lab-hud-btn img{display:block;flex:none;filter:drop-shadow(0 1px 1px #000);}
+.lab-hud-txt{display:flex;flex-direction:column;white-space:nowrap;}
+.lab-hud-line{display:flex;align-items:baseline;gap:5px;}
+.lab-hud-big{font-size:.86rem;font-weight:800;color:#ffb070;font-variant-numeric:tabular-nums;}
+.lab-hud-small,.lab-hud-small2,.lab-hud-time{font-size:.66rem;color:#c3ccd6;font-variant-numeric:tabular-nums;}
+.lab-hud-small2{font-size:.62rem;line-height:1.15;}
+.lab-hud-time.lab-warn,.lab-hud-small2.lab-warn{color:#ffb347;}
+.lab-hud-l.is-cold img{filter:grayscale(1) brightness(1.1) drop-shadow(0 1px 1px #000);opacity:.75;}
+.lab-hud-l.is-cold .lab-hud-big{color:#dbe3ec;}
+.lab-hud-l.is-dim .lab-hud-big{color:#8d97a2;}
+.lab-hud-l.is-dim .lab-hud-small{color:#9aa4b0;}
+.lab-clock{flex:none;fill:none;stroke:#ffb347;stroke-width:1.6;stroke-linecap:round;filter:drop-shadow(0 1px 1px #000);}
+.lab-hud-ago{display:flex;align-items:center;gap:0;font-size:.68rem;color:#dbe3ec;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.lab-hud-ago .lab-sep{color:#8d97a2;}
+.lab-hud-dot{margin-right:6px;opacity:1;}
+.lab-hud-note{
+  position:absolute;top:44px;z-index:4;max-width:min(78%,300px);margin:0;
+  padding:7px 9px;background:rgba(8,11,16,.94);border-left:2px solid #ff973f;
+  color:#c9d2dd;font-size:.68rem;line-height:1.4;cursor:pointer;
+}
+.lab-hud-note[hidden]{display:none;}
+.lab-hud-note.at-l{left:8px;}
+.lab-hud-note.at-r{right:8px;border-left:0;border-right:2px solid #57b6d6;}
+.wvw-plot-wrap.is-zoomed .lab-hud,
+.wvw-plot-wrap.is-zoomed .lab-hud-note{display:none;}
+@container plot (max-width:480px){
+  .lab-hud{padding:4px;}
+  .lab-hud-btn{padding:2px 5px;gap:4px;}
+  .lab-hud-big{font-size:.8rem;line-height:1.1;}
+  .lab-hud-small,.lab-hud-time{font-size:.6rem;}
+  .lab-hud-small2{font-size:.56rem;}
+  /* Each corner keeps to its half of the map; the words wrap, the number stays. */
+  .lab-hud-btn{max-width:calc(50cqw - 10px);}
+  .lab-hud-txt{white-space:normal;}
+  .lab-hud-line{flex-wrap:wrap;gap:0 4px;}
+  .lab-hud-line > span{white-space:nowrap;}
+  /* A on a phone: "checked …" over "data from …", the dot dropped. */
+  .lab-hud-ago{flex-direction:column;align-items:flex-end;font-size:.6rem;}
+  .lab-hud-ago .lab-sep{display:none;}
+}
+
+/* ---- lab 16-0: the standings' line ------------------------------------- */
+.lab-std-dot{
+  width:9px;height:9px;padding:0;margin:0;border-radius:50%;flex:none;cursor:pointer;
+  border:0;background:var(--accent);opacity:.7;box-shadow:none;
+  animation:pip-pulse 2.4s ease-in-out infinite;
+}
+/* Behind: a hollow amber square, still - shape and motion change, not only colour. */
+.lab-std-dot.is-behind{
+  background:transparent;border:2px solid #ffb347;border-radius:2px;opacity:1;animation:none;
+}
+.lab-std-tip{
+  position:absolute;top:calc(100% + 4px);right:0;z-index:20;width:max-content;max-width:220px;
+  padding:6px 8px;border-radius:6px;background:rgba(8,11,16,.96);border-right:2px solid #57b6d6;
+  color:#c9d2dd;font-size:.68rem;line-height:1.4;white-space:normal;text-align:left;
+}
+.lab-std-tip[hidden]{display:none;}
+/* The parts wrap as wholes ("Data from 14:47" / "· checked 15:10"), right-aligned. */
+.standings-status.lab-std-on{flex-wrap:wrap;justify-content:flex-end;column-gap:0;text-align:right;}
+.lab-std-on > span:not(.lab-std-tip){white-space:nowrap;}
+.lab-std-on > .live-dot,.lab-std-on > .lab-std-dot{margin-right:6px;}

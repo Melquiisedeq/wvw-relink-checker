@@ -3159,6 +3159,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     // Orange swords only on the busiest map; elsewhere they are neutral.
     const l = plotWrap && plotWrap.querySelector('.wvw-hud-l');
     if (l) l.classList.toggle('is-cold', current !== hotType);
+    if (typeof labCornersPainted === 'function') labCornersPainted(plotWrap, match, current, known ? rose : 0); // LAB (never merged)
   };
 
   const draw = (type, sectors) => {

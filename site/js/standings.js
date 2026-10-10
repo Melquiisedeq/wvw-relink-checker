@@ -257,6 +257,7 @@ function setStandingsStatus(el, synced, text) {
   dot.title = 'Checks for new standings every 30 seconds while this tab is open';
   el.appendChild(dot);
   el.appendChild(document.createTextNode(text));
+  if (typeof labStatusPainted === 'function') labStatusPainted(el, synced, text); // LAB (never merged)
 }
 
 // The shimmering placeholder only stands in for an answer that has not

@@ -268,6 +268,7 @@ function keepNewestMatch(match) {
   if (typeof missedMatchOffered === 'function') {
     try { missedMatchOffered(match, kept); } catch { /* the summary only */ }
   }
+  if (typeof labMatchOffered === 'function') labMatchOffered(match); // LAB (never merged)
   if (kept && matchIsBehind(match, kept.match)) return kept.match;
   // First sight, a new week, or a higher score: the data moved. The same
   // body again keeps the old time.
