@@ -225,18 +225,87 @@
 .wvw-stage{display:flex;gap:12px;align-items:stretch;}
 @media (max-width:760px){ .wvw-stage{flex-direction:column;} }
 
-/* Scoreboard over detail panel, one column beside the map. The scoreboard
-   is the rigid one of the two, so it sets the width. */
+/* One column beside the map: "What happened", the tabs, their pane. The
+   scoreboard is the rigid one, so it sets the width. */
 .wvw-side{
   display:flex;flex-direction:column;gap:10px;
   flex:0 0 378px;min-width:0;
 }
-/* Stacked narrow, the column dissolves into the stage so the scoreboard can
-   sit between the tabs and the map: tabs, board, map, detail. The stage's
-   12px gap then spaces all three blocks. */
+/* Stacked narrow, the column dissolves into the stage so the map stays on
+   top in every tab: map, "What happened", tabs, pane. The stage's 12px gap
+   spaces them. */
 @media (max-width:760px){
   .wvw-side{display:contents;}
-  .wvw-board{order:-1;}
+  .wvw-subtabs{order:2;}
+  .wvw-pane{order:3;}
+}
+
+/* The tabs over the pane: the map tabs' look, smaller. */
+.wvw-subtabs{display:flex;gap:5px;}
+.wvw-subtab{
+  display:inline-flex;align-items:center;
+  padding:3px 9px;font-family:inherit;font-size:.64rem;font-weight:700;cursor:pointer;
+  color:#8d97a6;background:linear-gradient(180deg,#2b323d,#1b212a);
+  border:none;border-radius:0;
+  clip-path:polygon(3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%, 0 3px);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.14), inset 0 -1px 0 rgba(0,0,0,.45);
+  text-shadow:none;
+}
+.wvw-subtab:hover{color:#dbe3ec;}
+.wvw-subtab:active{transform:none;}
+.wvw-subtab.is-active{color:#06222c;background:linear-gradient(180deg,#a3e2f6,#57b6d6);}
+.wvw-subtab:disabled{opacity:.4;cursor:default;}
+.wvw-subtab:disabled:hover{color:#8d97a6;}
+/* One box shown at a time, hugging what it holds up to --pane-h (set from
+   the map in js/maps.js), then scrolling; under it, nothing. Beside the map
+   no spacer: the map gives the popover its height and every box ends above
+   the map's bottom. Stacked, the pane itself is --pane-h tall, so the map
+   above it stays put when the tab changes. */
+.wvw-pane{display:flex;flex-direction:column;min-height:0;}
+.wvw-pane > .is-off{display:none;}
+.wvw-pane > .wvw-detail{flex:0 0 auto;max-height:var(--pane-h, 62vh);}
+@media (max-width:760px){
+  .wvw-pane{height:var(--pane-h, 210px);}
+  .wvw-pane > .wvw-detail,
+  .wvw-pane > .wvw-caps{max-height:100%;}
+}
+
+/* Recent captures: one discreet line each - the hour, the marker in the
+   taker's colour, a short name, the map. */
+.wvw-caps{
+  flex:0 0 auto;max-height:var(--pane-h, 62vh);box-sizing:border-box;
+  overflow-y:auto;overscroll-behavior:contain;
+  border:1px solid var(--border);border-top-color:rgba(255,255,255,.12);
+  border-radius:10px;padding:6px 10px;
+  background:linear-gradient(180deg, rgba(26,32,41,.72), rgba(14,18,24,.6));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.45);
+}
+.wvw-caps-none{margin:0;color:#8d97a6;font-size:.68rem;}
+.wvw-cap{
+  display:flex;align-items:center;gap:6px;width:calc(100% + 8px);padding:2px 4px;margin:0 -4px;
+  border:0;border-radius:4px;background:none;box-shadow:none;text-shadow:none;
+  font:inherit;font-size:.68rem;line-height:1.35;color:#dbe3ec;text-align:left;cursor:pointer;
+}
+.wvw-cap:hover,.wvw-cap:focus-visible{background:rgba(255,255,255,.05);}
+.wvw-cap:focus-visible{outline-offset:-2px;}
+.wvw-cap:active{transform:none;}
+.wvw-cap img{display:block;flex-shrink:0;}
+.wvw-cap-time{color:#8d97a6;font-variant-numeric:tabular-nums;min-width:52px;}
+.wvw-cap-name{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.wvw-cap-map{color:#8d97a6;margin-left:auto;white-space:nowrap;}
+/* The site's thin scrollbar (css/base.css), on the list. */
+.wvw-caps::-webkit-scrollbar{width:9px;}
+.wvw-caps::-webkit-scrollbar-track,
+.wvw-caps::-webkit-scrollbar-corner{background:transparent;}
+.wvw-caps::-webkit-scrollbar-thumb{
+  background-color:rgba(154,164,178,.30);
+  border:2px solid transparent;
+  background-clip:padding-box;
+  border-radius:99px;
+}
+.wvw-caps::-webkit-scrollbar-thumb:hover{background-color:rgba(127,214,242,.55);}
+@supports not selector(::-webkit-scrollbar) {
+  .wvw-caps{scrollbar-width:thin;scrollbar-color:rgba(154,164,178,.45) transparent;}
 }
 
 /* Stands in while a tab's outline is still coming, or did not come at all.
@@ -474,10 +543,11 @@
   overflow-y:auto;max-height:62vh;
   overscroll-behavior:contain; /* without it a swipe at the end scrolls the page behind */
 }
-/* Stacked under the map, the panel is no scroller of its own: the popover is the
-   one that scrolls. A scroller with nothing to scroll and contain above kept a
-   swipe on the panel from reaching the popover (seen on a phone, 09/10/2026). */
-@media (max-width:760px){ .wvw-detail{flex:1 1 auto;max-height:none;overflow-y:visible;} }
+/* Stacked under the map it scrolls inside the pane, but hands a swipe at its
+   end on to the popover: contain there kept a swipe on a panel with nothing
+   to scroll from reaching the popover (seen on a phone, 09/10/2026). The
+   captures list the same. */
+@media (max-width:760px){ .wvw-detail,.wvw-caps{overscroll-behavior:auto;} }
 .wvw-detail-empty{color:#8d97a6;margin:0;}
 .wvw-detail-name{
   font-size:.95rem;font-weight:700;color:#f2f6fa;
@@ -595,8 +665,8 @@
 .wvw-missed.is-leaving{animation:wvw-missed-out 200ms ease-in both;}
 @keyframes wvw-missed-in{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:none;}}
 @keyframes wvw-missed-out{from{opacity:1;}to{opacity:0;}}
-/* Stacked narrow, above the scoreboard (which takes order -1 there too). */
-@media (max-width:760px){ .wvw-missed{order:-1;} }
+/* Stacked narrow, under the map and over the tabs (.wvw-subtabs). */
+@media (max-width:760px){ .wvw-missed{order:1;} }
 /* The whole header row is the button: the count in a small circle and a
    chevron that turns. */
 .wvw-missed-head{
