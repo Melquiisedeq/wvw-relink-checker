@@ -498,6 +498,31 @@ async function main() {
     return r.result.value;
   }
 
+  // The page after a navigation, not the one before it. Page.navigate answers
+  // when the load has started: until the new document is `complete` every
+  // script of the page, `matchDataCache` among them, may not have run, and a
+  // question asked then reads the old document or a half-built one (CI: main,
+  // run 248, "matchDataCache is not defined"). `navigateAndSettle` marks the
+  // old document, navigates, and `settled` waits for an unmarked one that has
+  // finished loading; the scripts are synchronous, so `complete` is the page's
+  // own "everything ran". Not for a load a step holds on purpose.
+  async function navigate() {
+    await ev('window.__checkPageOld = true').catch(() => {});
+    await send('Page.navigate', { url: base + '/' });
+  }
+  async function settled(name) {
+    const t0 = Date.now();
+    while (true) {
+      try {
+        if (await ev("!window.__checkPageOld && document.readyState === 'complete'")) return true;
+      } catch (e) {
+        if (!/navigated or closed|context was destroyed|Cannot find context/.test(e.message)) throw e;
+      }
+      if (Date.now() - t0 > 30000) { problem(`step '${name}': the new document never finished loading`); return false; }
+      await sleep(25);
+    }
+  }
+
   // Wait for a condition, never for a fixed time. A page that already threw
   // gets less patience: it is not going to recover.
   async function until(name, expr, what) {
@@ -609,8 +634,9 @@ async function main() {
   async function load(name, during) {
     loaded = false;
     ids.clear();
-    await send('Page.navigate', { url: base + '/' });
+    await navigate();
     if (during) await during();
+    await settled(name);
     let quiet = 0, tiersUp = false;
     while (true) {
       await sleep(100);
@@ -1110,7 +1136,8 @@ async function main() {
 
     // The table is rewritten, then the notice goes up.
     substitutes.set(tables[where[0].r].url, { body: Buffer.from(JSON.stringify(moved)), served: 0 });
-    const saved = await ev('JSON.stringify({ l: lockoutTime, a: assignNA, s: relinkState, t: relinkStateAt })');
+    // Kept in the page itself: nothing read from it is put back into code.
+    await ev('window.__checkPageSaved = { l: lockoutTime, a: assignNA, s: relinkState, t: relinkStateAt }');
     await ev(`(() => {
       const win = 1900000000;
       lockoutTime = Date.now() - 60000; assignNA = win * 1000;
@@ -1123,7 +1150,7 @@ async function main() {
     if (second && !String(second[0]).includes(nextName)) problem(`step '${step}': after the notice the Check reads "${second[0]}", wanted the new team "${nextName}" (still "${wasName}" is the kept table)`);
 
     substitutes.clear();
-    await ev(`(() => { const o = JSON.parse(${JSON.stringify(saved)});
+    await ev(`(() => { const o = window.__checkPageSaved;
       lockoutTime = o.l; assignNA = o.a; relinkState = o.s; relinkStateAt = o.t;
       wvwMapCache = null; hideTeamsNotice(); updateRelinkBanner(); loadStandings(); })()`);
     await idle(step + ': restore');
@@ -1466,8 +1493,9 @@ async function main() {
     stepNow = step;
     loaded = false;
     ids.clear();
-    await send('Page.navigate', { url: base + '/' });
+    await navigate();
     await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: pin.identifier });
+    await settled(step);
     await until(step, `/Trying again in \\d+ s/.test(${status('NA')}.textContent) && /Trying again in \\d+ s/.test(${status('EU')}.textContent)`, 'the "Trying again in N s" message under both standings');
     await until(step, `!!${status('NA')}.querySelector('button.retry-btn') && ${status('NA')}.querySelector('button.retry-btn').textContent === 'Try again'`, 'the Try again button');
     if (await ev("!!document.querySelector('.standings-header .retry-btn, .standings-header .sr-only')")) problem(`step '${step}': the error message sits in the title's row, not the card's top strip`);
@@ -1531,14 +1559,14 @@ async function main() {
       entry('1-9', bump(a, 99999)),           // an id the game never gave: must not
     ] });
     const scoreOf = id => ev(`(() => { const m = matchDataCache.get('${id}'); return m ? colorSum(m.scores) : -1; })()`);
-    const known = ev("typeof matchDataCache.has === 'function' && matchDataCache.has('1-9')");
+    const known = () => ev("matchDataCache.has('1-9')");
 
     latestMode = 'serve'; latestBody = Buffer.from(body); latestReads = 0;
     if (await load(step + ': newer')) {
       if (!latestReads) problem(`step '${step}': the page never asked /api/latest`);
       if (await scoreOf(a.id) !== sum(a) + 5000) problem(`step '${step}': the newer body of ${a.id} did not reach the page (${await scoreOf(a.id)}, wanted ${sum(a) + 5000})`);
       if (await scoreOf(b.id) !== sum(b)) problem(`step '${step}': a body under the wrong id changed ${b.id}`);
-      if (await known) problem(`step '${step}': an id the game never gave was kept`);
+      if (await known()) problem(`step '${step}': an id the game never gave was kept`);
     }
     // Garbage in every field the page checks: nothing may change, nothing may be said.
     latestBody = Buffer.from(JSON.stringify({ at: 0, matches: [
@@ -1561,7 +1589,7 @@ async function main() {
     latestMode = 'hang'; latestReads = 0;
     loaded = false; ids.clear(); stepNow = step + ': hang';
     const h0 = Date.now();
-    await send('Page.navigate', { url: base + '/' });
+    await navigate();
     let up = false;
     while (Date.now() - h0 < 30000 && !up) {
       await sleep(100);
@@ -1573,6 +1601,7 @@ async function main() {
     if (!up) problem(`step '${step}': tiers never appeared with /api/latest hung`);
     else if (!latestReads) problem(`step '${step}': the page never asked /api/latest (hung)`);
     else if (hangMs > baseMs + 2500) problem(`step '${step}': a hung /api/latest slowed the tiers to ${hangMs} ms (503: ${baseMs} ms)`);
+    await settled(step + ': hang');
     await idle(step + ': hang');
     latestMode = 'down';
   }
