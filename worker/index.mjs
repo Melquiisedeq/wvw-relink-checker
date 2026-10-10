@@ -64,6 +64,9 @@ const KEEP_DAYS = 14;
 // each match also carries its newest older row, up to BASE_MS back.
 const RECENT_MS = 30 * 60e3;
 const BASE_MS = 3 * 3600e3;
+// The page's kills window: it counts from a reading this much older than the
+// match's clock, so a stopped match also needs one that far behind its newest.
+const KILLS_WINDOW_MS = 10 * 60e3;
 // Past these a source counts as stopped, and the reads answer 503 so the
 // page goes to the sheet rather than show a copy that stopped moving. Kills
 // ticks every 5 minutes, relink every 15.
@@ -303,28 +306,38 @@ function toBase64(bytes) {
 // included, until midnight UTC.
 // It holds the last RECENT_MS plus, per match, the newest row before that
 // window (at most BASE_MS back, same start as the match's newest row, so the
-// same week), so a frozen match keeps a base. Driven by the list of matches,
+// same week), so a frozen match keeps a base. And one row more when the match's
+// newest row is not in that window's reach: the newest row at least
+// KILLS_WINDOW_MS older than its newest, so a match stopped for over 30 minutes
+// still has a reading to count kills from. Driven by the list of matches,
 // each lookup bounds `at` as well as the match: a correlated `k.at = (...)`
 // would walk every row of each match. A test checks the plan for it. The
 // fake D1 does not count rows read, so no figure here.
 function rebuildRecent(db, now) {
+  const n = MATCHES.length;
   const keys = MATCHES.map((_, i) => '?' + (i + 4)).join(', ');
   const ids = MATCHES.map((_, i) => '(?' + (i + 4) + ')').join(', ');
   const cut = now * 1000 - RECENT_MS;
   return db.prepare(
     'INSERT INTO recent (id, at, rows) ' +
     'WITH ids(m) AS (VALUES ' + ids + '), ' +
-    'base AS (SELECT m, ' +
-      '(SELECT at FROM kills WHERE match = ids.m AND at <= ?2 AND at > ?3 ORDER BY at DESC LIMIT 1) AS bat, ' +
-      '(SELECT start FROM kills WHERE match = ids.m AND at > ?3 ORDER BY at DESC LIMIT 1) AS st FROM ids) ' +
+    'top AS (SELECT m, ' +
+      '(SELECT at FROM kills WHERE match = ids.m AND at > ?3 ORDER BY at DESC LIMIT 1) AS tat, ' +
+      '(SELECT start FROM kills WHERE match = ids.m AND at > ?3 ORDER BY at DESC LIMIT 1) AS st FROM ids), ' +
+    'base AS (SELECT m, st, ' +
+      '(SELECT at FROM kills WHERE match = top.m AND at <= ?2 AND at > ?3 ORDER BY at DESC LIMIT 1) AS bat, ' +
+      '(SELECT at FROM kills WHERE match = top.m AND at <= min(?2, top.tat - ?' + (n + 4) + ') AND at > ?3 ORDER BY at DESC LIMIT 1) AS oat ' +
+      'FROM top) ' +
     'SELECT 1, ?1, json_group_array(json_array(at, match, center, red, blue, green)) ' +
     'FROM (' +
       'SELECT * FROM kills WHERE match IN (' + keys + ') AND at > ?2 ' +
       'UNION ALL ' +
       'SELECT k.* FROM base JOIN kills k ON k.match = base.m AND k.at = base.bat WHERE k.start = base.st ' +
+      'UNION ALL ' +
+      'SELECT k.* FROM base JOIN kills k ON k.match = base.m AND k.at = base.oat WHERE k.start = base.st AND base.oat IS NOT base.bat ' +
       'ORDER BY at) WHERE true ' +
     'ON CONFLICT (id) DO UPDATE SET at = excluded.at, rows = excluded.rows'
-  ).bind(now, cut, cut - BASE_MS, ...MATCHES).run();
+  ).bind(now, cut, cut - BASE_MS, ...MATCHES, KILLS_WINDOW_MS).run();
 }
 
 // Reads at most max bytes and gives up past that, so a chunked body with no

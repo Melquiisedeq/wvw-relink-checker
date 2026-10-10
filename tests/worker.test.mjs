@@ -202,11 +202,39 @@ test('/api/kills keeps a base for a frozen match, and only a recent one of its w
   assert.equal(await w.post('kills', { rows: [[w.now, '2-1', 9, 9, 9, 9, week]] }), 200);
   const got = JSON.parse((await w.get('/api/kills')).body).rows;
   const by = (m) => got.filter((r) => r[1] === m).map((r) => r[2]);
-  assert.deepEqual(by('1-1'), [1], 'the newest older row, not the one before it');
+  assert.deepEqual(by('1-1'), [2, 1], 'the stop, and the newest row 10 minutes older (the 70-minute one)');
   assert.deepEqual(by('1-2'), [], 'past 3 hours');
   assert.deepEqual(by('1-3'), [4], 'the newest older row is of last week: no base, and not the one before it');
   assert.deepEqual(by('1-4'), [8]);
   assert.ok(got.every((r) => w.now - r[0] <= 3 * 3600e3));
+  assert.deepEqual(got.map((r) => r[0]), got.map((r) => r[0]).sort((a, b) => a - b));
+});
+
+test('/api/kills adds a reading 10 minutes behind the newest of a match stopped over 30 minutes', async () => {
+  const w = setup();
+  const ins = w.sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,?,?,?,?,?)');
+  const min = 60e3;
+  const week = w.now - 86400e3;
+  // 1-1 stopped: rows 50 and 40 minutes back, nothing after.
+  ins.run('1-1', w.now - 50 * min, 1, 1, 1, 1, week);
+  ins.run('1-1', w.now - 40 * min, 2, 2, 2, 2, week);
+  // 1-2 stopped: rows 50, 45 and 40 minutes back; the newest is 40, so
+  // the reading 10 minutes older is the 50 one, not 45.
+  ins.run('1-2', w.now - 50 * min, 3, 3, 3, 3, week);
+  ins.run('1-2', w.now - 45 * min, 4, 4, 4, 4, week);
+  ins.run('1-2', w.now - 40 * min, 5, 5, 5, 5, week);
+  // 1-3: only a row of last week 50 minutes back: no pair.
+  ins.run('1-3', w.now - 50 * min, 6, 6, 6, 6, week - 7 * 86400e3);
+  ins.run('1-3', w.now - 40 * min, 7, 7, 7, 7, week);
+  // 1-4 live: the window has rows, the base is the one before; no extra.
+  for (const m of [5, 15, 25, 35, 45]) ins.run('1-4', w.now - m * min, 8, 8, 8, 8, week);
+  assert.equal(await w.post('kills', { rows: [[w.now, '2-1', 9, 9, 9, 9, week]] }), 200);
+  const got = JSON.parse((await w.get('/api/kills')).body).rows;
+  const by = (m) => got.filter((r) => r[1] === m).map((r) => w.now - r[0]);
+  assert.deepEqual(by('1-1'), [50 * min, 40 * min], 'the stop and a reading 10 minutes older');
+  assert.deepEqual(by('1-2'), [50 * min, 40 * min], 'the newest one at least 10 minutes older, not 45');
+  assert.deepEqual(by('1-3'), [40 * min], 'last week is no pair');
+  assert.deepEqual(by('1-4'), [35 * min, 25 * min, 15 * min, 5 * min]);
   assert.deepEqual(got.map((r) => r[0]), got.map((r) => r[0]).sort((a, b) => a - b));
 });
 
