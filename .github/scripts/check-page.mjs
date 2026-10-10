@@ -40,9 +40,10 @@ const ORIGINS = {
 
 const argv = process.argv.slice(2);
 const RECORD = argv.includes('--record');
-// A guard against a hang, not a speed bar: the walk takes ~47 s here, and a
-// shared CI machine can be twice as slow. Recording waits on the real hosts.
-const DEADLINE_MS = RECORD ? 240000 : 180000;
+// A guard against a hang, not a speed bar. In CI on 10/10/2026 the walk with
+// the "What happened" steps ran past 180 s; a shared CI machine can be slower
+// still. Recording waits on the real hosts.
+const DEADLINE_MS = RECORD ? 420000 : 360000;
 const ci = argv.indexOf('--chrome');
 
 const problems = [];
