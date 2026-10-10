@@ -510,3 +510,86 @@
   display:inline-block;flex-shrink:0;
 }
 
+
+/* What happened while the data was away (paintMissed in js/maps.js): at the
+   top of the right-hand column, a thin cyan bar down its left tying the
+   header to what it covers, and no box. */
+.wvw-missed{
+  position:relative;padding:1px 0 2px 11px;
+  animation:wvw-missed-in 250ms ease-out both;
+}
+.wvw-missed::before{
+  content:'';position:absolute;left:0;top:2px;bottom:2px;width:2px;border-radius:1px;
+  background:var(--accent);
+}
+.wvw-missed.is-leaving{animation:wvw-missed-out 200ms ease-in both;}
+@keyframes wvw-missed-in{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:none;}}
+@keyframes wvw-missed-out{from{opacity:1;}to{opacity:0;}}
+/* Stacked narrow, above the scoreboard (which takes order -1 there too). */
+@media (max-width:760px){ .wvw-missed{order:-1;} }
+/* The whole header row is the button: the count in a small circle and a
+   chevron that turns. */
+.wvw-missed-head{
+  display:flex;align-items:center;gap:6px;width:100%;margin:0;padding:3px 4px;
+  border:0;border-radius:5px;background:none;box-shadow:none;text-shadow:none;
+  font-family:inherit;text-align:left;cursor:pointer;
+}
+.wvw-missed-head:hover,.wvw-missed-head:focus-visible{background:rgba(255,255,255,.06);}
+.wvw-missed-head:active{transform:none;background:rgba(255,255,255,.09);}
+.wvw-missed.is-open > .wvw-missed-head{margin-bottom:4px;}
+.wvw-missed-head .wvw-group{flex:1 1 auto;min-width:0;margin:0;padding:0;border:0;line-height:1.4;}
+.wvw-missed-time{color:var(--accent);}
+.wvw-missed-count{
+  flex:none;min-width:18px;height:18px;padding:0 5px;border-radius:9px;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:rgba(127,214,242,.18);color:var(--accent);font-size:.64rem;font-weight:800;
+}
+.wvw-missed-chev{display:block;flex:none;color:var(--accent);transition:transform .2s ease;}
+.wvw-missed.is-open .wvw-missed-chev{transform:rotate(180deg);}
+.wvw-missed-sub{margin:2px 0 7px;color:#8d97a6;font-size:.68rem;line-height:1.35;}
+@media (max-width:480px){ .wvw-missed-sub{margin:7px 0 0;} }
+/* Kills in the site's own sign: the orange swords, the number in amber. */
+.wvw-missed-kills{display:flex;align-items:center;gap:5px;margin:7px 0 0;color:#c3ccd6;font-size:.72rem;}
+.wvw-missed-kills img{display:block;flex:none;filter:drop-shadow(0 1px 1px #000);}
+.wvw-missed-killn{color:#ffb070;font-weight:800;font-size:.8rem;font-variant-numeric:tabular-nums;}
+.wvw-missed-killhint{text-transform:none;letter-spacing:0;font-weight:600;color:#c9d2dd;white-space:nowrap;}
+/* One chip per objective that changed hands: its icon in the new owner's
+   colour, a short name, the map, and a dot for who held it before. */
+.wvw-chips{display:flex;flex-wrap:wrap;gap:6px;}
+.wvw-chip{
+  display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px 0 5px;
+  border-radius:6px;border:1px solid;font:inherit;font-size:.72rem;font-weight:700;
+  line-height:1;white-space:nowrap;cursor:pointer;box-shadow:none;text-shadow:none;
+  transition:opacity .15s;
+}
+.wvw-chip img{display:block;flex-shrink:0;}
+.wvw-chip.own-red{background:rgba(225,92,92,.14);border-color:rgba(225,92,92,.45);color:#ff8080;}
+.wvw-chip.own-blue{background:rgba(91,143,240,.14);border-color:rgba(91,143,240,.45);color:#8cb8ff;}
+.wvw-chip.own-green{background:rgba(76,175,125,.14);border-color:rgba(76,175,125,.45);color:#5fe89e;}
+.wvw-chip.own-neutral{background:rgba(154,164,178,.12);border-color:rgba(154,164,178,.4);color:#c3ccd6;}
+.wvw-chip-map{color:#8d97a6;font-weight:500;font-size:.64rem;}
+.wvw-chip.is-other{opacity:.62;}
+.wvw-chip:hover,.wvw-chip:focus-visible{filter:brightness(1.18);opacity:1;}
+.wvw-chip:active{transform:none;}
+.wvw-chip-from{width:6px;height:6px;border-radius:50%;flex-shrink:0;margin-left:1px;}
+.wvw-chip-from.own-red{background:var(--red);}
+.wvw-chip-from.own-blue{background:var(--blue);}
+.wvw-chip-from.own-green{background:var(--green);}
+.wvw-chip-from.own-neutral{background:var(--muted);}
+.wvw-chip-more{padding:0 8px;background:rgba(127,214,242,.1);border-color:rgba(127,214,242,.4);color:var(--accent);}
+
+/* The ring on a marker that changed hands: four pulses, about 7 s
+   (MISSED_RING_MS). Its group carries no transform of its own, so each
+   circle scales round its own centre. */
+.wvw-ring{pointer-events:none;}
+.wvw-ring circle{fill:none;stroke:#fff;stroke-width:3;transform-box:fill-box;transform-origin:center;}
+.wvw-ring-a{animation:wvw-ring 1.6s ease-out 4;opacity:0;}
+.wvw-ring .wvw-ring-b{stroke:var(--accent-bright);stroke-width:2;animation:wvw-ring 1.6s ease-out .8s 4;opacity:0;}
+@keyframes wvw-ring{0%{opacity:.95;transform:scale(.9);}100%{opacity:0;transform:scale(2.1);}}
+
+/* A dot on another map's tab that changed hands, pulsing until it is opened. */
+.wvw-tab-dot{
+  position:absolute;top:2px;right:3px;width:6px;height:6px;border-radius:50%;
+  background:var(--accent-bright);box-shadow:0 0 5px rgba(102,245,255,.8);pointer-events:none;
+  animation:pip-pulse 1.6s ease-in-out infinite;
+}

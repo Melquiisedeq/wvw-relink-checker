@@ -1625,6 +1625,8 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
     if (tier) g.appendChild(tierShields(r, tier));
     const ri = riBadge(r, p.ob);
     if (ri) g.appendChild(ri);
+    const ringUntil = missedRingUntil(match.id, p.meta.id);
+    if (ringUntil) g.appendChild(missedRingMark(r, ringUntil));
     const tip = svgEl('title', {});
     // The same words the detail panel uses. This said "Red" where a click
     // said "Mosswood", and "T3" where a click said "Fortified" - two
@@ -1644,6 +1646,7 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
       tabindex: '0',
       role: 'button',
     });
+    g.dataset.obj = p.meta.id;
     paintMarker(g, p);
 
     const pick = (e) => {
@@ -1843,6 +1846,21 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
       t.edge.setAttribute('class', `own-${owner}`);
     }
     apply();   // repainted markers lost their zoom scale
+  };
+
+  // The ring on markers that changed hands without being repainted, and a
+  // chip's tap: the same as a click on the marker.
+  wrap.ringChanged = () => {
+    for (let i = 0; i < pts.length; i++) {
+      const until = missedRingUntil(match.id, pts[i].meta.id);
+      if (until && !nodes[i].querySelector('.wvw-ring')) {
+        nodes[i].appendChild(missedRingMark(OBJ_SIZE[pts[i].ob.type] || 14, until));
+      }
+    }
+  };
+  wrap.selectObjective = (id) => {
+    const i = pts.findIndex((p) => p.meta.id === id);
+    if (i >= 0) nodes[i].dispatchEvent(new MouseEvent('click'));
   };
 
   return wrap;
@@ -2279,6 +2297,335 @@ function renderObjectiveDetail(panel, p, match) {
   if (cols.childElementCount) panel.appendChild(cols);
 }
 
+// ---- what happened while the data was away -----------------------------
+// Two gaps get a summary at the top of the maps' right-hand column: the
+// game's API answering the same body past HUD_STALE_MS while this page went
+// on asking (a "pause"), and this tab hidden past MISSED_AWAY_MS (a
+// "return"). Either way it is the body kept before the gap against the
+// first one after it: the objectives that changed hands, as chips, and the
+// kills between the two. Nothing changed, nothing shows. Every body passes
+// through missedMatchOffered, called from keepNewestMatch in api.js.
+const MISSED_SHOW_MS = 10 * 60 * 1000;      // the summary stays this long after the data came back
+const MISSED_RING_MS = 7 * 1000;            // four pulses of the ring (css/maps.css)
+const MISSED_ASLEEP_MS = 3 * 60 * 1000;     // no read for this long: the page was not asking (a laptop asleep)
+const MISSED_AWAY_MS = 3 * 60 * 1000;       // a tab hidden this long gets the summary on its return
+const MISSED_RETURN_WAIT_MS = 2 * 60 * 1000;
+const MISSED_CHANGES_MAX = 40;
+const MISSED_CHIPS_WIDE = 6;
+const MISSED_CHIPS_NARROW = 3;
+const MISSED_NARROW = '(max-width: 480px)';
+const MISSED_SHORT_NAME = Object.freeze({ 'Stonemist Castle': 'SM' });
+const MISSED_NO_FLIP = new Set(['Ruins', 'Spawn']);
+
+const missedLastOffer = new Map();   // match id -> ms of the last body offered
+const missedNotes = new Map();       // match id -> the summary
+const missedRings = new Map();       // match id -> { ids: Set, until }
+let missedHidden = null;             // { at, bodies } while the tab is hidden
+let missedReturn = null;             // { since, back, bodies } until each match answers once
+let missedOpen = null;               // { matchId, trigger } of the maps popover
+
+const missedOwner = (s) => {
+  const c = String(s || '').toLowerCase();
+  return COLORS.includes(c) ? c : 'neutral';
+};
+const missedMaps = (m) => (m && Array.isArray(m.maps) ? m.maps : []);
+const missedObjectives = (map) => (map && Array.isArray(map.objectives) ? map.objectives : []);
+const missedKillTotal = (m) => missedMaps(m).reduce((n, map) => n + colorSum(map && map.kills), 0);
+
+function missedMapOpenFor(matchId) {
+  return !!missedOpen && missedOpen.matchId === matchId && activeTrigger === missedOpen.trigger
+    && document.visibilityState === 'visible';
+}
+
+// Every objective whose owner differs between the two bodies, by map.
+function missedOwnerChanges(before, after) {
+  const was = new Map();
+  for (const map of missedMaps(before)) for (const o of missedObjectives(map)) if (o) was.set(o.id, o);
+  const out = [];
+  for (const map of missedMaps(after)) {
+    for (const o of missedObjectives(map)) {
+      const p = o && was.get(o.id);
+      if (!p || typeof o.id !== 'string' || MISSED_NO_FLIP.has(o.type)) continue;
+      const from = missedOwner(p.owner);
+      const to = missedOwner(o.owner);
+      if (from !== to) out.push({ id: o.id, map: map.type, type: o.type, from, to });
+    }
+  }
+  return out;
+}
+
+// The kills moved, or an objective changed hands or was flipped back.
+function missedBodyChanged(a, b) {
+  if (missedKillTotal(a) !== missedKillTotal(b)) return true;
+  const was = new Map();
+  for (const map of missedMaps(a)) for (const o of missedObjectives(map)) if (o) was.set(o.id, o);
+  for (const map of missedMaps(b)) {
+    for (const o of missedObjectives(map)) {
+      const p = o && was.get(o.id);
+      if (p && (p.owner !== o.owner || p.last_flipped !== o.last_flipped)) return true;
+    }
+  }
+  return false;
+}
+
+function missedRingFor(matchId, changes) {
+  if (!changes.length || !missedMapOpenFor(matchId)) return;
+  missedRings.set(matchId, { ids: new Set(changes.map((c) => c.id)), until: Date.now() + MISSED_RING_MS });
+}
+
+// The ring's end on an objective of an open map, or 0.
+function missedRingUntil(matchId, objId) {
+  const ring = missedRings.get(matchId);
+  return ring && ring.until > Date.now() && ring.ids.has(objId) ? ring.until : 0;
+}
+
+function missedMakeNote(before, after, since, back, kind) {
+  const changes = missedOwnerChanges(before, after).slice(0, MISSED_CHANGES_MAX);
+  const name = (c) => {
+    const id = COLORS.includes(c) ? matchTeamId(after, c) : null;
+    return id ? getTeamName(id) : 'Neutral';
+  };
+  for (const c of changes) { c.toName = name(c.to); c.fromName = name(c.from); }
+  // The whole match, before against after: the number a reader can check.
+  const kills = Math.max(0, missedKillTotal(after) - missedKillTotal(before));
+  missedNotes.set(after.id, { kind, since, back, until: back + MISSED_SHOW_MS, changes, kills,
+    seenTabs: new Set(), open: false, wideOpen: true, more: false });
+  missedRingFor(after.id, changes);
+}
+
+// Called by keepNewestMatch with every body offered and the one kept before it.
+function missedMatchOffered(match, kept) {
+  const now = Date.now();
+  const lastOffer = missedLastOffer.get(match.id) || 0;
+  missedLastOffer.set(match.id, now);
+  if (!kept || matchIsBehind(match, kept.match)) return;
+  if (match.start_time !== kept.match.start_time || !matchIsLive(match)) return;
+  if (missedReturn && now - missedReturn.back > MISSED_RETURN_WAIT_MS) missedReturn = null;
+  if (missedReturn && missedReturn.bodies.has(match.id)) {
+    const before = missedReturn.bodies.get(match.id);
+    missedReturn.bodies.delete(match.id);
+    if (before.start_time === match.start_time && missedBodyChanged(before, match)) {
+      missedMakeNote(before, match, missedReturn.since, now, 'return');
+      return;
+    }
+  }
+  if (now - kept.at > HUD_STALE_MS && lastOffer > kept.at && now - lastOffer < MISSED_ASLEEP_MS
+      && missedBodyChanged(kept.match, match)) {
+    missedMakeNote(kept.match, match, kept.at, now, 'pause');
+    return;
+  }
+  // Any other update: the ring alone, on what changed hands under your eyes.
+  missedRingFor(match.id, missedOwnerChanges(kept.match, match));
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    missedHidden = { at: Date.now(), bodies: new Map([...newestMatches].map(([id, k]) => [id, k.match])) };
+    return;
+  }
+  if (missedHidden && Date.now() - missedHidden.at > MISSED_AWAY_MS) {
+    missedReturn = { since: missedHidden.at, back: Date.now(), bodies: missedHidden.bodies };
+  }
+  missedHidden = null;
+});
+
+function missedNoteFor(matchId) {
+  const note = missedNotes.get(matchId);
+  if (note && Date.now() > note.until) { missedNotes.delete(matchId); return null; }
+  return note || null;
+}
+
+// ---- its pieces ----------------------------------------------------------
+const missedHhmm = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+// "05:03–05:33 PM" rather than "05:03 PM–05:33 PM" when both share the suffix.
+function missedSpan(a, b) {
+  const x = missedHhmm(a);
+  const y = missedHhmm(b);
+  const sx = /\s?[^\d:\s]+$/.exec(x);
+  const sy = /\s?[^\d:\s]+$/.exec(y);
+  if (sx && sy && sx[0] === sy[0]) return `${x.slice(0, -sx[0].length)}\u2013${y}`;
+  return `${x}\u2013${y}`;
+}
+
+function missedFullName(objId) {
+  const meta = objectiveCatalogue && objectiveCatalogue.get(objId);
+  return String((meta && meta.name) || objId).trim();
+}
+
+// A name that fits a chip: "SM", "Garrison", "Bay", "Hills", or the first word.
+function missedShortName(objId) {
+  const name = missedFullName(objId);
+  if (Object.prototype.hasOwnProperty.call(MISSED_SHORT_NAME, name)) return MISSED_SHORT_NAME[name];
+  if (/ Bay$/.test(name)) return 'Bay';
+  if (/ Hills$/.test(name)) return 'Hills';
+  const words = name.split(/\s+/);
+  if (name.length <= 12 || words.length === 1) return name;
+  return words[0] === 'The' || words[0] === 'Temple' ? words.slice(0, 2).join(' ') : words[0];
+}
+
+function missedEl(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function missedImg(src, size) {
+  const img = missedEl('img');
+  img.src = src;
+  img.alt = '';
+  img.width = size;
+  img.height = size;
+  return img;
+}
+
+// A 16 px chevron, pointing down; the CSS turns it up while the block is open.
+function missedChevron() {
+  const svg = svgEl('svg', { class: 'wvw-missed-chev', viewBox: '0 0 16 16', width: 16, height: 16, 'aria-hidden': 'true' });
+  svg.appendChild(svgEl('path', { d: 'M3.5 6 8 10.5 12.5 6', fill: 'none', stroke: 'currentColor',
+    'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+  return svg;
+}
+
+// The pulsing ring on a marker; recreated with the marker, as riBadge is.
+function missedRingMark(r, until) {
+  const g = svgEl('g', { class: 'wvw-ring' });
+  g.appendChild(svgEl('circle', { class: 'wvw-ring-a', r: r * 1.25 }));
+  g.appendChild(svgEl('circle', { class: 'wvw-ring-b', r: r * 1.25 }));
+  setTimeout(() => g.remove(), Math.max(0, until - Date.now()) + 500);
+  return g;
+}
+
+function missedChip(c, here, goTo) {
+  const map = MAP_TAB_NAME[c.map] || c.map;
+  const b = missedEl('button', `wvw-chip own-${c.to}${here ? '' : ' is-other'}`);
+  b.type = 'button';
+  b.dataset.obj = c.id;
+  b.dataset.map = c.map;
+  const src = markerIcon(c.type, c.to);
+  if (src) b.appendChild(missedImg(src, 16));
+  b.appendChild(missedEl('span', 'wvw-chip-name', missedShortName(c.id)));
+  b.appendChild(missedEl('span', 'wvw-chip-map', `· ${map}`));
+  // Who held it before: a dot in that colour.
+  const from = missedEl('span', `wvw-chip-from own-${c.from}`);
+  from.setAttribute('aria-hidden', 'true');
+  b.appendChild(from);
+  const words = `${missedFullName(c.id)} (${map}): taken by ${c.toName} from ${c.fromName}`;
+  b.title = words;
+  b.setAttribute('aria-label', words);
+  b.addEventListener('click', (e) => { e.stopPropagation(); goTo(c.map, c.id); });
+  return b;
+}
+
+// The dot on each other map's tab that changed hands, until that tab is opened.
+function missedPaintTabDots(note, tabs, type) {
+  if (note) note.seenTabs.add(type);
+  for (const [t, tab] of tabs) {
+    const on = !!note && !note.seenTabs.has(t) && note.changes.some((c) => c.map === t);
+    const dot = tab.querySelector('.wvw-tab-dot');
+    if (on && !dot) {
+      const d = missedEl('span', 'wvw-tab-dot');
+      d.setAttribute('aria-hidden', 'true');
+      tab.appendChild(d);
+    } else if (!on && dot) {
+      dot.remove();
+    }
+  }
+}
+
+// The block itself, at the top of the right-hand column. view: { matchId,
+// side, tabs, type, goTo, repaint }. Rebuilt only when what it shows moved.
+function paintMissed(view) {
+  const note = missedNoteFor(view.matchId);
+  missedPaintTabDots(note, view.tabs, view.type);
+  let box = view.side.querySelector('.wvw-missed:not(.is-leaving)');
+  if (!note || (!note.changes.length && !note.kills)) {
+    if (box) {
+      box.classList.add('is-leaving');
+      setTimeout(() => box.remove(), 200);
+    }
+    return;
+  }
+  const narrow = window.matchMedia(MISSED_NARROW).matches;
+  // Folded on a phone until asked; open beside the map until hidden.
+  const open = narrow ? note.open : note.wideOpen;
+  const key = JSON.stringify([view.type, note.since, note.back, narrow, open, note.more]);
+  if (box && box.dataset.key === key) return;
+  if (!box) {
+    box = missedEl('section', 'wvw-missed');
+    view.side.insertBefore(box, view.side.firstChild);
+  }
+  box.dataset.key = key;
+  box.dataset.kind = note.kind;
+  box.textContent = '';
+  box.classList.toggle('is-open', open);
+
+  const away = note.kind === 'return';
+  const span = missedSpan(note.since, note.back);
+  const mins = Math.max(1, Math.round((note.back - note.since) / 60000));
+  const changes = note.changes;
+
+  const head = missedEl('button', 'wvw-missed-head');
+  head.type = 'button';
+  head.setAttribute('aria-expanded', open ? 'true' : 'false');
+  head.title = (away
+    ? `What changed while this tab was in the background, ${span}.`
+    : `The game's API repeated an old answer from ${span}; this is what changed meanwhile.`)
+    + ' Shown for 10 minutes after the data came back.';
+  const title = missedEl('span', 'wvw-group wvw-missed-title');
+  title.append(`${away ? 'What you missed' : 'What happened'} · `, missedEl('span', 'wvw-missed-time', span));
+  // Folded, the kills stay in the title line.
+  if (!open && note.kills) {
+    const hint = missedEl('span', 'wvw-missed-killhint', ' · ');
+    hint.append(missedEl('b', 'wvw-missed-killn', String(note.kills)), ' kills');
+    title.appendChild(hint);
+  }
+  head.appendChild(title);
+  if (changes.length) {
+    const count = missedEl('span', 'wvw-missed-count', String(changes.length));
+    count.setAttribute('aria-label', `${changes.length} objective${changes.length === 1 ? '' : 's'} changed hands`);
+    head.appendChild(count);
+  }
+  head.appendChild(missedChevron());
+  head.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (narrow) note.open = !open; else note.wideOpen = !open;
+    note.more = false;
+    view.repaint();
+  });
+  box.appendChild(head);
+  if (!open) return;
+
+  const sub = missedEl('p', 'wvw-missed-sub',
+    away ? 'While this tab was in the background' : "While the game's API was behind");
+  // This map's first, the others a little quieter.
+  const sorted = [...changes.filter((c) => c.map === view.type), ...changes.filter((c) => c.map !== view.type)];
+  const row = missedEl('div', 'wvw-chips');
+  const room = note.more ? sorted.length : narrow ? MISSED_CHIPS_NARROW : MISSED_CHIPS_WIDE;
+  for (const c of sorted.slice(0, room)) row.appendChild(missedChip(c, c.map === view.type, view.goTo));
+  const hidden = sorted.length - Math.min(sorted.length, room);
+  if (hidden > 0) {
+    const more = missedEl('button', 'wvw-chip wvw-chip-more', `+${hidden}`);
+    more.type = 'button';
+    more.setAttribute('aria-label', `Show ${hidden} more`);
+    more.addEventListener('click', (e) => { e.stopPropagation(); note.more = true; view.repaint(); });
+    row.appendChild(more);
+  }
+  let kills = null;
+  if (note.kills) {
+    // The site's own sign for kills: the orange swords, the number in amber.
+    kills = missedEl('p', 'wvw-missed-kills');
+    kills.appendChild(missedImg('assets/icons/Event_Swords.webp', 16));
+    kills.append(missedEl('b', 'wvw-missed-killn', String(note.kills)), ` kills in those ${mins} min`);
+  }
+  const body = missedEl('div', 'wvw-missed-body');
+  // On a phone the chips come first: they are what a tap opened it for.
+  const parts = narrow ? [sorted.length ? row : null, kills, sub] : [sub, sorted.length ? row : null, kills];
+  for (const p of parts) if (p) body.appendChild(p);
+  box.appendChild(body);
+}
+
 // ---- the popover -----------------------------------------------------
 function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
                                sectorsByType, pendingSectors, triggerEl) {
@@ -2416,6 +2763,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     }
     stage.appendChild(side);
     emptyDetail();
+    paintNote();
   };
 
   const show = (type) => {
@@ -2442,6 +2790,20 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   };
 
   const tabByType = new Map();
+
+  // What happened while the data was away: paintMissed, for this match. A
+  // chip opens its map's tab and selects the objective, as a click on it would.
+  missedOpen = { matchId: match.id, trigger: triggerEl };
+  const goTo = (type, id) => {
+    show(type);
+    const pick = () => { if (activeTrigger === triggerEl && current === type && plotWrap) plotWrap.selectObjective(id); };
+    if (sectorsByType.get(type)) pick(); else pendingSectors.get(type).then(pick);
+  };
+  const paintNote = () => {
+    if (activeTrigger !== triggerEl) return;
+    paintMissed({ matchId: match.id, side, tabs: tabByType, type: current, goTo, repaint: paintNote });
+    if (plotWrap) plotWrap.ringChanged();
+  };
 
   let hotMarked = false;
   const markHotTab = (src) => {
@@ -2529,6 +2891,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
       if (sb) plotWrap.appendChild(sb);
     }
     paintCorners();
+    paintNote();
   };
 
   // The maps keep themselves current while they are open. The standings
@@ -2560,6 +2923,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     // The kills' silence grows by the second as the score's age does: the
     // swords, the badge and the corner are judged again together.
     if (hotMarked) markHotTab(liveMatch); else paintCorners();
+    paintNote();
   }, 1000);
 
   for (const type of available) {
