@@ -2879,6 +2879,7 @@ function paintMissed(view) {
     const name = missedEl('button', 'wvw-missed-mapname');
     name.type = 'button';
     name.title = `Open ${mapName}`;
+    name.appendChild(missedEl('span', `dot dot-${MISSED_MAP_TINT[type] || 'neutral'}`));
     name.append(mapName);
     name.addEventListener('click', (e) => { e.stopPropagation(); view.goTo(type, null, false); });
     top.appendChild(name);
