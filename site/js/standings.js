@@ -618,7 +618,7 @@ async function loadStandings(origin = 'cycle') {
 // Between the five-minute refreshes, the readers' summary (~0.2 KB on the
 // wire, kept 15 s by Cloudflare) is read while the tab is visible: every
 // PEEK_MS while the visitor is using the page, doubling to PEEK_IDLE_MAX_MS
-// while not (the readers move every 2 min, so "it moved" would never let it
+// while not (the readers move every minute, so "it moved" would never let it
 // slow down); never under PEEK_SAVE_MS with
 // Save-Data on. Hidden, it stops; it runs at once when the tab comes back,
 // when a popover closes and on the first input after an idle stretch. A live
