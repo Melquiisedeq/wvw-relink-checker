@@ -1688,8 +1688,8 @@ async function main() {
       const reset = () => { missedNotes.clear(); missedLastOffer.clear(); missedRings.clear(); missedReturn = null; };
       const now = Date.now(), MIN = 60000;
       const flipTo = o => ({ Red: 'Blue', Blue: 'Green', Green: 'Red' }[o] || 'Red');
-      const after = () => {
-        const m = clone(); const taken = [];
+      const after = (base) => {
+        const m = base ? JSON.parse(JSON.stringify(base)) : clone(); const taken = [];
         for (const map of m.maps) {
           const o = map.objectives.find(x => ['Camp', 'Tower', 'Keep'].includes(x.type));
           if (o && taken.length < 2) { o.owner = flipTo(o.owner); o.last_flipped = new Date(now).toISOString(); taken.push(o.id); }
@@ -1703,6 +1703,9 @@ async function main() {
         missedMatchOffered(body, { match: clone(), at: now - keptAt });
         return missedNotes.get(id) || null;
       };
+      const sheetWas = killSheet;
+      const logWas = localStorage.getItem(FIGHT_KEY);
+      localStorage.removeItem(FIGHT_KEY);
       try {
         const a = after();
         let n = offer(a.m, 7 * MIN, 30000);
@@ -1722,10 +1725,75 @@ async function main() {
         const r = after(); missedMatchOffered(r.m, { match: r.m, at: now });
         n = missedNotes.get(id);
         check('a return with changes raised no "return" summary', !!n && n.kind === 'return' && n.kills === 50, n && n.kind);
+        // A newer body while the summary is up: it follows the newest data.
+        n.open = true; n.wideOpen = false;
+        const newer = JSON.parse(JSON.stringify(r.m)); newer.maps[0].kills.red += 9; newer.scores.red += 20;
+        missedMatchOffered(newer, { match: r.m, at: now });
+        n = missedNotes.get(id);
+        check('a newer body did not update the summary', !!n && n.kills === 59 && n.perMap.reduce((t, m) => t + m.n, 0) === 59, n && n.kills);
+        check('a newer body reset what the reader had opened', !!n && n.open === true && n.wideOpen === false);
         reset();
         missedReturn = { since: now - 5 * MIN, back: now, bodies: new Map([[id, clone()]]) };
         missedMatchOffered(clone(), { match: clone(), at: now });
         check('a return with nothing changed raised a summary', !missedNotes.get(id));
+        // The period is the data's, not the page's clock: the history says when
+        // the total of the body before first appeared.
+        const sample = (at, body) => ({ at, n: fightTotals(body) });
+        const stalled = clone(); stalled.maps[0].kills.red += 200;
+        const longer = after(stalled);
+        longer.m.maps[1].kills.green += 7;
+        killSheet = new Map([[id, [sample(now - 40 * MIN, M0), sample(now - 36 * MIN, stalled)]]]);
+        reset();
+        missedLastOffer.set(id, now - 30000);
+        missedMatchOffered(longer.m, { match: stalled, at: now - 7 * MIN });
+        n = missedNotes.get(id);
+        check('a body stopped 36 min did not start the period at the stop', !!n && n.since === now - 36 * MIN && n.sure === true, n && (n.since - now) / MIN);
+        check('the period ended before the page read the new body', !!n && n.end >= n.since && n.end <= Date.now() + 1000);
+        const diff = missedKillTotal(longer.m) - missedKillTotal(stalled);
+        check('the kills per map did not add up to the difference of the bodies', !!n && n.kills === diff
+          && n.perMap.reduce((t, m) => t + m.n, 0) === diff, n && JSON.stringify(n.perMap));
+        check('only the maps that moved were listed', !!n && n.perMap.length === 2
+          && n.perMap.some(m => m.type === stalled.maps[0].type && m.n === 50)
+          && n.perMap.some(m => m.type === stalled.maps[1].type && m.n === 7), n && JSON.stringify(n.perMap));
+        // The new body already in the history: the period ends where it first showed.
+        killSheet = new Map([[id, [sample(now - 40 * MIN, M0), sample(now - 36 * MIN, stalled), sample(now - 2 * MIN, longer.m)]]]);
+        reset();
+        missedLastOffer.set(id, now - 30000);
+        missedMatchOffered(longer.m, { match: stalled, at: now - 7 * MIN });
+        n = missedNotes.get(id);
+        check('the period did not end where the new total first showed', !!n && n.sure && n.end === now - 2 * MIN, n && (n.end - now) / MIN);
+        // A return: the body before is older than the tab's hiding.
+        killSheet = new Map([[id, [sample(now - 50 * MIN, M0), sample(now - 30 * MIN, stalled)]]]);
+        reset();
+        missedReturn = { since: now - 5 * MIN, back: now, bodies: new Map([[id, JSON.parse(JSON.stringify(stalled))]]) };
+        missedMatchOffered(longer.m, { match: longer.m, at: now });
+        n = missedNotes.get(id);
+        check('a return started at the hiding, not where the body before began', !!n && n.kind === 'return' && n.since === now - 30 * MIN && n.sure === true, n && (n.since - now) / MIN);
+        // A normal return: a row a minute, none with the total of the body before
+        // (the page read another copy 30 s after the row under it).
+        const lower = clone(); lower.maps[0].kills.red += 190;
+        const upper = clone(); upper.maps[0].kills.red += 210;
+        killSheet = new Map([[id, [sample(now - 9 * MIN, lower), sample(now - 8 * MIN, lower), sample(now - 7 * MIN + 30000, upper), sample(now - 6 * MIN, upper)]]]);
+        reset();
+        missedLastOffer.set(id, now - 30000);
+        missedMatchOffered(longer.m, { match: stalled, at: now - 7 * MIN });
+        n = missedNotes.get(id);
+        check('a normal return between rows was not sure', !!n && n.sure === true && n.since === now - 7 * MIN, n && (n.since - now) / MIN + ' ' + n.sure);
+        // The oldest reading there is only bounds the start: not sure, never later.
+        killSheet = new Map([[id, [sample(now - 36 * MIN, stalled)]]]);
+        reset();
+        missedLastOffer.set(id, now - 30000);
+        missedMatchOffered(longer.m, { match: stalled, at: now - 7 * MIN });
+        n = missedNotes.get(id);
+        check('an oldest reading was taken as the exact start', !!n && n.sure === false && n.since === now - 36 * MIN, n && (n.since - now) / MIN + ' ' + n.sure);
+        // No reading of that total at all: the page's own time, not sure.
+        killSheet = new Map();
+        reset();
+        missedLastOffer.set(id, now - 30000);
+        missedMatchOffered(longer.m, { match: stalled, at: now - 7 * MIN });
+        n = missedNotes.get(id);
+        check('no history claimed a sure start', !!n && n.sure === false && n.since <= now - 7 * MIN, n && n.sure);
+        killSheet = sheetWas;
         const ruins = clone();
         for (const map of ruins.maps) for (const o of map.objectives) if (o.type === 'Ruins' || o.type === 'Spawn') o.owner = flipTo(o.owner);
         ruins.maps[0].kills.red += 5;
@@ -1749,6 +1817,8 @@ async function main() {
         out.push('threw: ' + e.message);
       } finally {
         newestMatches.set(id, keptWas);
+        killSheet = sheetWas;
+        if (logWas === null) localStorage.removeItem(FIGHT_KEY); else localStorage.setItem(FIGHT_KEY, logWas);
         reset();
       }
       return out;
@@ -1860,6 +1930,7 @@ async function main() {
     }
     after.scores.red += 1;
     const killsMore = 37 + 15;
+    const NAMES = { Center: 'EBG', RedHome: 'Red BL', BlueHome: 'Blue BL', GreenHome: 'Green BL' };
     serve(after);
     await later(31000, step + ': after');
     if (await until(step, `!!${block}`, 'the block after the gap')) {
@@ -1867,10 +1938,10 @@ async function main() {
         return { title: b.querySelector('.wvw-missed-title').textContent, open: b.classList.contains('is-open'),
           top: b === b.parentElement.firstElementChild && b.parentElement.classList.contains('wvw-side'),
           chips: [...b.querySelectorAll('.wvw-chip[data-obj]')].map(c => c.dataset.obj + ' ' + c.dataset.map),
-          kills: b.querySelector('.wvw-missed-kills .wvw-missed-killn')?.textContent || '',
+          kills: [...b.querySelectorAll('.wvw-missed-kills .wvw-missed-map')].map(e => e.textContent),
           rings: [...document.querySelectorAll('.info-popover .wvw-marker')].filter(g => g.querySelector('.wvw-ring')).map(g => g.dataset.obj),
           dots: [...document.querySelectorAll('.info-popover .wvw-tab')].filter(t => t.querySelector('.wvw-tab-dot')).map(t => t.dataset.type) }; })()`);
-      const want = { chips: [`${a.id} ${here}`, `${b.id} ${other}`], kills: String(killsMore), rings: [a.id], dots: [other] };
+      const want = { chips: [`${a.id} ${here}`, `${b.id} ${other}`], kills: ['Center', 'RedHome', 'BlueHome', 'GreenHome'].filter(ty => KILLS[ty]).map(ty => `${NAMES[ty]} ${KILLS[ty][1]}`), rings: [a.id], dots: [other] };
       if (!/^What happened · \S/.test(seen.title) || !seen.open || !seen.top) problem(`step '${step}': the block reads "${seen.title}", open ${seen.open}, at the top of the column ${seen.top}`);
       // Over the tabs, and the board standing still beside it.
       const boardWith = `(() => { const p = document.querySelector('.info-popover');
@@ -1899,11 +1970,11 @@ async function main() {
           && !document.querySelector('.info-popover .wvw-tab-dot')`, "the other map's tab open, its objective selected in the Objective tab, no dot left");
         await until(step + ': chip tapped', `${lit} === '${b.id}'`, `${b.id} lit a moment after its chip is pressed`);
       }
-      // A phone: folded, the kills in its title; a tap opens it to the chips.
+      // A phone: folded, the title alone; a tap opens it to the chips.
       await send('Emulation.setDeviceMetricsOverride', { width: 360, height: 800, deviceScaleFactor: 1, mobile: true });
       if (await until(step + ', 360 px', `!!${block} && !${block}.classList.contains('is-open') && !${block}.querySelector('.wvw-chip')`, 'the block folded')) {
         const folded = await ev(`${block}.textContent`);
-        if (!folded.includes(`${killsMore} kills`)) problem(`step '${step}, 360 px': folded it reads "${folded}", without the ${killsMore} kills`);
+        if (/\bkills\b/.test(folded)) problem(`step '${step}, 360 px': folded it reads "${folded}", with the kills total in its title`);
         if (await click(step + ', 360 px: open', `${block}.querySelector('.wvw-missed-head')`)) {
           await until(step + ', 360 px', `${block}.classList.contains('is-open') && ${block}.querySelectorAll('.wvw-chip[data-obj]').length === 2`, 'the block open with its two chips');
         }
