@@ -1311,7 +1311,7 @@ async function main() {
     if (!/No new map data for/.test(await ev(text('.wvw-hud-live')))) problem(`step '${step}': the gap was not spoken`);
     // Stale data claims no fight: no swords on a tab, and the kills corner is neutral -
     // either a dash with only "kills" (no window), or the last count dimmed with
-    // two lines, "N kills in M min" over "data up to HH:MM \u26a0" (never a bare 0 from no window).
+    // two lines, "N kills in M min" over "\u26a0 data up to HH:MM" (never a bare 0 from no window).
     if (await ev(`!!document.querySelector('.info-popover .wvw-tab.is-hot')`)) problem(`step '${step}': swords still show on a tab on stale data`);
     const frozen = await ev(`(() => {
       return { shown: ${shown('.wvw-hud-l')}, cold: !!${q('.wvw-hud-l.is-cold')}, dim: !!${q('.wvw-hud-l.is-dim')},
@@ -1320,8 +1320,8 @@ async function main() {
         when: ${q('.wvw-hud-small2 time')}?.dateTime || '' };
     })()`);
     const dash = frozen.big === '\u2013' && frozen.small === 'kills' && !frozen.dim;
-    const dimmed = /^\d+$/.test(frozen.big) && /^kills in \d+ min$/.test(frozen.small) && /^data up to \S+( \S+)?\s\u26a0$/.test(frozen.line2) && frozen.dim && Number.isFinite(Date.parse(frozen.when));
-    if (!frozen.shown || !frozen.cold || !(dash || dimmed)) problem(`step '${step}': on stale data the kills corner reads ${JSON.stringify(frozen)}, wanted a neutral dash or the last count dimmed over "data up to HH:MM \u26a0"`);
+    const dimmed = /^\d+$/.test(frozen.big) && /^kills in \d+ min$/.test(frozen.small) && /^\u26a0\sdata up to \S+( \S+)?$/.test(frozen.line2) && frozen.dim && Number.isFinite(Date.parse(frozen.when));
+    if (!frozen.shown || !frozen.cold || !(dash || dimmed)) problem(`step '${step}': on stale data the kills corner reads ${JSON.stringify(frozen)}, wanted a neutral dash or the last count dimmed over "\u26a0 data up to HH:MM"`);
     // The score one point up: new data, the corner back to a plain "data from".
     const bumped = { ...one, scores: { ...one.scores, red: (Number(one.scores?.red) || 0) + 1 } };
     substitutes.set(oneUrl, { body: Buffer.from(JSON.stringify(bumped)), served: 0 });
@@ -1771,13 +1771,13 @@ async function main() {
         const late = name === 'gapLate';
         const lead = name === 'gapQuiet' ? 'no new kills since' : 'data up to';
         if (!/^\d+$/.test(c.big) || c.small !== `kills in ${mins} min` || !c.two || c.dim !== late
-          || !new RegExp(`^${lead} \\S+( \\S+)?${late ? '\\s\\u26a0' : ''}$`).test(c.line2)) bad(`a base ${mins} min back should take two lines, "kills in ${mins} min" over "${lead} HH:MM${late ? ' ⚠' : ''}"`);
+          || !new RegExp(`^${late ? '\\u26a0\\s' : ''}${lead} \\S+( \\S+)?$`).test(c.line2)) bad(`a base ${mins} min back should take two lines, "kills in ${mins} min" over "${late ? '⚠ ' : ''}${lead} HH:MM"`);
         if (c.swords) bad('a window over 15 min should light no swords');
         const tip = await balloon(label, 'l');
         if (!/ The window is longer than 10 minutes because the game's API stopped sending data between \S+( \S+)? and \S+( \S+)?\./.test(tip)) problem(`step '${label}': the long window's balloon reads "${tip}"`);
       }
       if (name === 'late') {
-        if (!/^\d+$/.test(c.big) || c.small !== 'kills in 10 min' || !c.two || !c.dim || !/^data up to \S+( \S+)?\s⚠$/.test(c.line2)) bad('stalled data should take two lines, "kills in 10 min" over "data up to HH:MM ⚠", dimmed');
+        if (!/^\d+$/.test(c.big) || c.small !== 'kills in 10 min' || !c.two || !c.dim || !/^⚠\sdata up to \S+( \S+)?$/.test(c.line2)) bad('stalled data should take two lines, "kills in 10 min" over "⚠ data up to HH:MM", dimmed');
         if (!/^⚠ data from /.test(c.right)) bad('the right corner should carry the warning sign past 6 min');
         if (c.swords) bad('a stalled match should light no swords');
       }
