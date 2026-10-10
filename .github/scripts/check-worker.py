@@ -10,7 +10,7 @@ Then the two reads the page tries first, in the shape it reads them - a read
 that fails costs the page nothing, since it falls back to the sheets, which is
 exactly why nobody would notice it failing.
 
-The Supabase readers (supabase/reader.mjs) deliver to /api every 2 minutes from
+The Supabase readers (supabase/reader.mjs) deliver to /api every minute from
 both sides: both must have delivered lately, the summary of the matches must be
 fresh and made of known sources, and it must not run ahead of the game's own
 API - which only a stolen signing secret can do.
