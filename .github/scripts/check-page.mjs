@@ -1570,6 +1570,96 @@ async function main() {
     substitutes.delete(killsUrl);
   }
 
+  // The rules behind "What happened", straight on missedMatchOffered with
+  // bodies made from a kept match: no clicks, no clock, nothing that can be
+  // late. A summary only for a real gap (the score still past 6 min, the page
+  // reading through it, something changed) or a return to the tab; never for
+  // the same body, one behind, a new week, a laptop asleep, a short stop, or
+  // a gap the page did not read through; Ruins and Spawn never chips; kills
+  // never below 0; gone after 10 min; and a fault in the hook never costs
+  // keepNewestMatch its body. Everything it touched is put back.
+  async function whatHappenedRules() {
+    const step = 'what happened rules';
+    stepNow = step;
+    const failed = await ev(`(() => {
+      const out = [];
+      const check = (name, cond, info) => { if (!cond) out.push(name + (info ? ' (' + info + ')' : '')); };
+      const id = [...newestMatches.keys()].find(k => matchIsLive(newestMatches.get(k).match));
+      if (!id) return ['no live match kept'];
+      const keptWas = newestMatches.get(id);
+      const M0 = JSON.parse(JSON.stringify(keptWas.match));
+      const clone = () => JSON.parse(JSON.stringify(M0));
+      const reset = () => { missedNotes.clear(); missedLastOffer.clear(); missedRings.clear(); missedReturn = null; };
+      const now = Date.now(), MIN = 60000;
+      const flipTo = o => ({ Red: 'Blue', Blue: 'Green', Green: 'Red' }[o] || 'Red');
+      const after = () => {
+        const m = clone(); const taken = [];
+        for (const map of m.maps) {
+          const o = map.objectives.find(x => ['Camp', 'Tower', 'Keep'].includes(x.type));
+          if (o && taken.length < 2) { o.owner = flipTo(o.owner); o.last_flipped = new Date(now).toISOString(); taken.push(o.id); }
+        }
+        m.maps[0].kills.red += 30; m.maps[0].kills.blue += 20; m.scores.red += 10;
+        return { m, taken };
+      };
+      const offer = (body, keptAt, lastOfferAgo) => {
+        reset();
+        if (lastOfferAgo != null) missedLastOffer.set(id, now - lastOfferAgo);
+        missedMatchOffered(body, { match: clone(), at: now - keptAt });
+        return missedNotes.get(id) || null;
+      };
+      try {
+        const a = after();
+        let n = offer(a.m, 7 * MIN, 30000);
+        check('a real gap raised no summary', !!n && n.kind === 'pause');
+        check('a real gap listed other changes', !!n && n.changes.length === 2 && a.taken.every(x => n.changes.some(c => c.id === x)), n && n.changes.map(c => c.id).join(','));
+        check('a real gap counted kills other than after minus before', !!n && n.kills === 50, n && n.kills);
+        check('the same body again raised a summary', !offer(clone(), 7 * MIN, 30000));
+        const behind = clone(); behind.scores.red -= 50; behind.maps[0].kills.red += 5;
+        check('a body behind raised a summary', !offer(behind, 7 * MIN, 30000));
+        const week = after().m; week.start_time = new Date(Date.parse(M0.start_time) + 7 * 86400000).toISOString();
+        check('a new week raised a summary', !offer(week, 7 * MIN, 30000));
+        check('a laptop asleep raised a summary', !offer(after().m, 20 * MIN, 5 * MIN));
+        check('a 3-minute stop raised a summary', !offer(after().m, 3 * MIN, 30000));
+        check('a gap with no read in it raised a summary', !offer(after().m, 7 * MIN, 8 * MIN));
+        reset();
+        missedReturn = { since: now - 5 * MIN, back: now, bodies: new Map([[id, clone()]]) };
+        const r = after(); missedMatchOffered(r.m, { match: r.m, at: now });
+        n = missedNotes.get(id);
+        check('a return with changes raised no "return" summary', !!n && n.kind === 'return' && n.kills === 50, n && n.kind);
+        reset();
+        missedReturn = { since: now - 5 * MIN, back: now, bodies: new Map([[id, clone()]]) };
+        missedMatchOffered(clone(), { match: clone(), at: now });
+        check('a return with nothing changed raised a summary', !missedNotes.get(id));
+        const ruins = clone();
+        for (const map of ruins.maps) for (const o of map.objectives) if (o.type === 'Ruins' || o.type === 'Spawn') o.owner = flipTo(o.owner);
+        ruins.maps[0].kills.red += 5;
+        n = offer(ruins, 7 * MIN, 30000);
+        check('Ruins or Spawn became chips', !!n && n.changes.length === 0, n && n.changes.map(c => c.type).join(','));
+        const fewer = after().m; fewer.maps[0].kills.red -= 500;
+        n = offer(fewer, 7 * MIN, 30000);
+        check('kills went below 0', !n || n.kills >= 0, n && n.kills);
+        n = offer(after().m, 7 * MIN, 30000);
+        if (n) n.until = Date.now() - 1;
+        check('a summary outlived its 10 minutes', missedNoteFor(id) === null);
+        reset();
+        const real = missedMatchOffered;
+        missedMatchOffered = () => { throw new Error('on purpose'); };
+        const up = clone(); up.scores.red += 100;
+        let got, threw = false;
+        try { got = keepNewestMatch(up); } catch { threw = true; }
+        missedMatchOffered = real;
+        check('a fault in the hook cost keepNewestMatch its body', !threw && got === up && newestMatches.get(id).match === up);
+      } catch (e) {
+        out.push('threw: ' + e.message);
+      } finally {
+        newestMatches.set(id, keptWas);
+        reset();
+      }
+      return out;
+    })()`);
+    for (const f of failed) problem(`step '${step}': ${f}`);
+  }
+
   // The maps' "What happened": a match answered with the same body for over
   // 6 min while the page kept asking, then a body with two objectives taken
   // (one on the open map, one on another) and a known number of kills more.
@@ -2158,6 +2248,7 @@ async function main() {
   // load, whose maps have all been opened: a new load would ask for guild
   // tactics in an order the recording does not hold.
   await whatHappened();
+  await whatHappenedRules();
 
   // 6e. The board picks a team or a type, and the map lights it.
   await mapFocus();
