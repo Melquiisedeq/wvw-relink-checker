@@ -550,13 +550,12 @@
 .wvw-plot-wrap.is-zoomed .wvw-hud-note{display:none;}
 /* Narrow map: "min" shortens to "m", the number stacks over its words, and
    each corner stays inside the 29% either side of the score bar (42% wide):
-   the longer texts wrap and the swords give way to a two-line count. */
+   the longer texts wrap. */
 @container plot (max-width:480px){
   .wvw-hud-long{display:none;}
   .wvw-hud-short{display:inline;}
   .wvw-hud-line{flex-direction:column;align-items:flex-start;gap:0;}
   .wvw-hud-btn{max-width:calc(29cqw - 4px);}
-  .wvw-hud-l.is-two img{display:none;}
   .wvw-hud-l.is-two .wvw-hud-txt{white-space:normal;}
   .wvw-hud-ago{display:flex;flex-wrap:wrap;justify-content:flex-end;column-gap:.3em;
     white-space:normal;line-height:1.15;font-size:.62rem;}
