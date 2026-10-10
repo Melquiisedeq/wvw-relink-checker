@@ -1968,7 +1968,7 @@ async function main() {
           kills: [...b.querySelectorAll('.wvw-missed-kills .wvw-missed-map')].map(e => e.textContent),
           rings: [...document.querySelectorAll('.info-popover .wvw-marker')].filter(g => g.querySelector('.wvw-ring')).map(g => g.dataset.obj),
           dots: [...document.querySelectorAll('.info-popover .wvw-tab')].filter(t => t.querySelector('.wvw-tab-dot')).map(t => t.dataset.type) }; })()`);
-      const want = { chips: [`${a.id} ${here}`, `${b.id} ${other}`], kills: ['Center', 'RedHome', 'BlueHome', 'GreenHome'].filter(ty => KILLS[ty]).map(ty => `${NAMES[ty]} ${KILLS[ty][1]}`), rings: [a.id], dots: [other] };
+      const want = { chips: [`${a.id} ${here}`, `${b.id} ${other}`], kills: ['Center', 'RedHome', 'BlueHome', 'GreenHome'].filter(ty => KILLS[ty]).map(ty => `${NAMES[ty]} ${KILLS[ty][1]}`), rings: [a.id], dots: [] };
       if (!/^What happened · \S/.test(seen.title) || !seen.open || !seen.top) problem(`step '${step}': the block reads "${seen.title}", open ${seen.open}, at the top of the column ${seen.top}`);
       // Over the tabs, and the board standing still beside it.
       const boardWith = `(() => { const p = document.querySelector('.info-popover');
@@ -1994,7 +1994,7 @@ async function main() {
         await until(step, `!!document.querySelector('.info-popover .wvw-tab[data-type="${other}"].is-active')
           && !!document.querySelector('.info-popover .wvw-marker.is-selected[data-obj="${b.id}"]')
           && document.querySelector('.info-popover .wvw-subtab.is-active')?.dataset.pane === 'objective'
-          && !document.querySelector('.info-popover .wvw-tab-dot')`, "the other map's tab open, its objective selected in the Objective tab, no dot left");
+          && !document.querySelector('.info-popover .wvw-tab-dot')`, "the other map's tab open, its objective selected in the Objective tab, no tab dot");
         await until(step + ': chip tapped', `${lit} === '${b.id}'`, `${b.id} lit a moment after its chip is pressed`);
       }
       // A phone: folded, the title alone; a tap opens it to the chips.

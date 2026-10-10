@@ -2608,7 +2608,7 @@ function missedMakeNote(before, after, since, back, kind, endAt = back) {
   missedNotes.set(after.id, { kind, since: period.start, end: period.end, sure: period.sure, back,
     before, rawSince: since, after,
     until: back + MISSED_SHOW_MS, changes, kills, perMap,
-    seenTabs: new Set(), open: false, wideOpen: true, more: false });
+    open: false, wideOpen: true, more: false });
   if (endAt === back) missedRingFor(after.id, changes);
 }
 
@@ -2622,7 +2622,7 @@ function missedRefreshNote(match, now) {
   const old = note;
   missedMakeNote(old.before, match, old.rawSince, old.back, old.kind, now);
   const fresh = missedNotes.get(match.id);
-  Object.assign(fresh, { until: old.until, seenTabs: old.seenTabs, open: old.open, wideOpen: old.wideOpen, more: old.more });
+  Object.assign(fresh, { until: old.until, open: old.open, wideOpen: old.wideOpen, more: old.more });
   return true;
 }
 
@@ -2759,27 +2759,10 @@ function missedChip(c, here, goTo, spot) {
   return b;
 }
 
-// The dot on each other map's tab that changed hands, until that tab is opened.
-function missedPaintTabDots(note, tabs, type) {
-  if (note) note.seenTabs.add(type);
-  for (const [t, tab] of tabs) {
-    const on = !!note && !note.seenTabs.has(t) && note.changes.some((c) => c.map === t);
-    const dot = tab.querySelector('.wvw-tab-dot');
-    if (on && !dot) {
-      const d = missedEl('span', 'wvw-tab-dot');
-      d.setAttribute('aria-hidden', 'true');
-      tab.appendChild(d);
-    } else if (!on && dot) {
-      dot.remove();
-    }
-  }
-}
-
 // The block itself, at the top of the right-hand column. view: { matchId,
 // side, tabs, type, goTo, spot, repaint }. Rebuilt only when what it shows moved.
 function paintMissed(view) {
   const note = missedNoteFor(view.matchId);
-  missedPaintTabDots(note, view.tabs, view.type);
   let box = view.side.querySelector('.wvw-missed:not(.is-leaving)');
   if (!note || (!note.changes.length && !note.kills)) {
     if (box) {
