@@ -2516,7 +2516,7 @@ const MISSED_ASLEEP_MS = 3 * 60 * 1000;     // no read for this long: the page w
 const MISSED_AWAY_MS = 3 * 60 * 1000;       // a tab hidden this long gets the summary on its return
 const MISSED_RETURN_WAIT_MS = 2 * 60 * 1000;
 const MISSED_CHANGES_MAX = 40;
-const MISSED_CHIPS_WIDE = 6;
+const MISSED_CHIPS_WIDE = 4;   // per map
 const MISSED_CHIPS_NARROW = 3;
 const MISSED_NARROW = '(max-width: 480px)';
 const MISSED_SHORT_NAME = Object.freeze({ 'Stonemist Castle': 'SM' });
@@ -2657,7 +2657,7 @@ function missedMakeNote(before, after, since, back, kind, endAt = back) {
   missedNotes.set(after.id, { kind, since: period.start, end: period.end, sure: period.sure, back,
     before, rawSince: since, after,
     until: back + MISSED_SHOW_MS, changes, kills, perMap,
-    open: false, wideOpen: true, more: false });
+    open: false, wideOpen: true, moreMaps: new Set() });
   if (endAt === back) missedRingFor(after.id, changes);
 }
 
@@ -2671,7 +2671,7 @@ function missedRefreshNote(match, now) {
   const old = note;
   missedMakeNote(old.before, match, old.rawSince, old.back, old.kind, now);
   const fresh = missedNotes.get(match.id);
-  Object.assign(fresh, { until: old.until, open: old.open, wideOpen: old.wideOpen, more: old.more });
+  Object.assign(fresh, { until: old.until, open: old.open, wideOpen: old.wideOpen, moreMaps: old.moreMaps });
   return true;
 }
 
@@ -2789,7 +2789,6 @@ function missedChip(c, here, goTo, spot) {
   const src = markerIcon(c.type, c.to);
   if (src) b.appendChild(missedImg(src, 16));
   b.appendChild(missedEl('span', 'wvw-chip-name', missedShortName(c.id)));
-  b.appendChild(missedEl('span', 'wvw-chip-map', `· ${map}`));
   // Who held it before: a dot in that colour.
   const from = missedEl('span', `wvw-chip-from own-${c.from}`);
   from.setAttribute('aria-hidden', 'true');
@@ -2823,7 +2822,7 @@ function paintMissed(view) {
   const narrow = window.matchMedia(MISSED_NARROW).matches;
   // Folded on a phone until asked; open beside the map until hidden.
   const open = narrow ? note.open : note.wideOpen;
-  const key = JSON.stringify([view.type, note.since, note.end, note.sure, narrow, open, note.more]);
+  const key = JSON.stringify([view.type, note.since, note.end, note.sure, narrow, open, [...note.moreMaps].sort()]);
   if (box && box.dataset.key === key) return;
   if (!box) {
     box = missedEl('section', 'wvw-missed');
@@ -2857,7 +2856,7 @@ function paintMissed(view) {
   head.addEventListener('click', (e) => {
     e.stopPropagation();
     if (narrow) note.open = !open; else note.wideOpen = !open;
-    note.more = false;
+    note.moreMaps.clear();
     view.repaint();
   });
   box.appendChild(head);
@@ -2865,44 +2864,54 @@ function paintMissed(view) {
 
   const sub = missedEl('p', 'wvw-missed-sub',
     away ? 'While this tab was in the background' : "While the game's API was behind");
-  // This map's first, the others a little quieter.
-  const sorted = [...changes.filter((c) => c.map === view.type), ...changes.filter((c) => c.map !== view.type)];
-  const row = missedEl('div', 'wvw-chips');
-  const room = note.more ? sorted.length : narrow ? MISSED_CHIPS_NARROW : MISSED_CHIPS_WIDE;
-  for (const c of sorted.slice(0, room)) row.appendChild(missedChip(c, c.map === view.type, view.goTo, view.spot));
-  const hidden = sorted.length - Math.min(sorted.length, room);
-  if (hidden > 0) {
-    const more = missedEl('button', 'wvw-chip wvw-chip-more', `+${hidden}`);
-    more.type = 'button';
-    more.setAttribute('aria-label', `Show ${hidden} more`);
-    more.addEventListener('click', (e) => { e.stopPropagation(); note.more = true; view.repaint(); });
-    row.appendChild(more);
-  }
-  let kills = null;
-  if (note.kills) {
-    // The site's own sign for kills: the orange swords, the number in amber.
-    kills = missedEl('div', 'wvw-missed-kills');
-    const label = missedEl('p', 'wvw-missed-killlabel');
-    label.appendChild(missedImg('assets/icons/Event_Swords.webp', 16));
-    label.append('Kills by map, all teams');
-    kills.appendChild(label);
-    // Per map, the whole match, not the map that is open. The dot repeats the
-    // map's colour; the name stays written out beside it.
-    const maps = missedEl('div', 'wvw-missed-maps');
-    for (const m of note.perMap) {
-      const tint = MISSED_MAP_TINT[m.type] || 'neutral';
-      const one = missedEl('span', 'wvw-missed-map');
-      one.appendChild(missedEl('span', `dot dot-${tint}`));
-      one.append(`${MAP_TAB_NAME[m.type] || m.type} `);
-      one.appendChild(missedEl('b', 'wvw-missed-killn', String(m.n)));
-      maps.appendChild(one);
+  // One row per map that had a change or a kill, in the tabs' order: the map's
+  // name (a button to its tab) and its kills, then the chips of that map.
+  // The open map's chips are normal, the others a little quieter.
+  const kills = new Map(note.perMap.map((m) => [m.type, m.n]));
+  const rows = [];
+  for (const type of Object.keys(MAP_TAB_NAME)) {
+    const list = changes.filter((c) => c.map === type);
+    if (!list.length && !kills.has(type)) continue;
+    const mapName = MAP_TAB_NAME[type];
+    const here = type === view.type;
+    const row = missedEl('div', `wvw-missed-row tint-${MISSED_MAP_TINT[type] || 'neutral'}${here ? '' : ' is-other'}`);
+    const top = missedEl('div', 'wvw-missed-rowhead');
+    const name = missedEl('button', 'wvw-missed-mapname');
+    name.type = 'button';
+    name.title = `Open ${mapName}`;
+    name.appendChild(missedEl('span', `dot dot-${MISSED_MAP_TINT[type] || 'neutral'}`));
+    name.append(mapName);
+    name.addEventListener('click', (e) => { e.stopPropagation(); view.goTo(type, null, false); });
+    top.appendChild(name);
+    if (kills.has(type)) {
+      const n = kills.get(type);
+      const k = missedEl('span', 'wvw-missed-kills');
+      k.setAttribute('aria-label', `${n} kill${n === 1 ? '' : 's'} on ${mapName}`);
+      k.appendChild(missedEl('b', 'wvw-missed-killn', String(n)));
+      k.append(n === 1 ? ' kill' : ' kills');
+      top.appendChild(k);
     }
-    kills.appendChild(maps);
+    row.appendChild(top);
+    if (list.length) {
+      const chips = missedEl('div', 'wvw-chips');
+      const room = note.moreMaps.has(type) ? list.length : narrow ? MISSED_CHIPS_NARROW : MISSED_CHIPS_WIDE;
+      for (const c of list.slice(0, room)) chips.appendChild(missedChip(c, here, view.goTo, view.spot));
+      const hidden = list.length - Math.min(list.length, room);
+      if (hidden > 0) {
+        const more = missedEl('button', 'wvw-chip wvw-chip-more', `+${hidden}`);
+        more.type = 'button';
+        more.setAttribute('aria-label', `Show ${hidden} more on ${mapName}`);
+        more.addEventListener('click', (e) => { e.stopPropagation(); note.moreMaps.add(type); view.repaint(); });
+        chips.appendChild(more);
+      }
+      row.appendChild(chips);
+    }
+    rows.push(row);
   }
   const body = missedEl('div', 'wvw-missed-body');
-  // On a phone the chips come first: they are what a tap opened it for.
-  const parts = narrow ? [sorted.length ? row : null, kills, sub] : [sub, sorted.length ? row : null, kills];
-  for (const p of parts) if (p) body.appendChild(p);
+  // Rows first on every width: on a phone they are what a tap opened it for.
+  const parts = narrow ? [...rows, sub] : [sub, ...rows];
+  for (const p of parts) body.appendChild(p);
   box.appendChild(body);
 }
 
@@ -3346,6 +3355,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   missedOpen = { matchId: match.id, trigger: triggerEl };
   const goTo = (type, id, select = true) => {
     show(type);
+    if (id == null) return;
     const pick = () => {
       if (activeTrigger !== triggerEl || current !== type || !plotWrap) return;
       if (select) plotWrap.selectObjective(id);
