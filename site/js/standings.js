@@ -180,6 +180,72 @@ function flashValue(el, delta) {
   });
 }
 
+// After a guild search: the card of the team the first guild landed on blinks
+// three times, the page scrolls to it, and a strip hangs from its lower edge
+// with the guild's name for a few seconds. The cards are rebuilt every
+// refresh, so what was found is kept here and painted again onto the new
+// cards (without the blink) until the time runs out.
+const GUILD_FOUND_MS = 8000;
+const GUILD_FOUND_FLASH_MS = 2600;
+let guildFound = null; // { teamName, guildName, until }
+
+function paintGuildFound(root, fresh) {
+  if (!guildFound) return null;
+  const left = guildFound.until - Date.now();
+  if (left <= 0) { guildFound = null; return null; }
+  let card = null;
+  for (const n of root.querySelectorAll('.standing-side .standing-side-name')) {
+    if (n.textContent === guildFound.teamName) { card = n.closest('.standing-side'); break; }
+  }
+  if (!card) return null;
+  const next = card.nextElementSibling;
+  if (next && next.classList.contains('guild-found-strip')) next.remove();
+  const color = COLORS.find((c) => card.classList.contains(`side-${c}`)) || 'blue';
+  const strip = document.createElement('div');
+  strip.className = `guild-found-strip side-${color}`;
+  if (!fresh) strip.classList.add('is-settled');
+  const who = document.createElement('span');
+  who.className = 'guild-found-name';
+  who.textContent = guildFound.guildName;
+  const note = document.createElement('span');
+  note.className = 'guild-found-note';
+  note.textContent = ' \u00b7 from your search';
+  strip.append(who, note);
+  card.after(strip);
+  if (fresh) {
+    card.classList.remove('guild-found-flash');
+    void card.offsetWidth; // restart the blink
+    card.classList.add('guild-found-flash');
+    setTimeout(() => card.classList.remove('guild-found-flash'), GUILD_FOUND_FLASH_MS);
+  }
+  setTimeout(() => {
+    strip.classList.add('is-leaving');
+    setTimeout(() => strip.remove(), 300);
+  }, left);
+  return card;
+}
+
+// Called once, by the search, with the team and guild it chose.
+function showGuildFound(teamId, guildName) {
+  guildFound = { teamName: getTeamName(teamId), guildName, until: Date.now() + GUILD_FOUND_MS };
+  const card = paintGuildFound(document, true);
+  if (!card) return;
+  const b = card.getBoundingClientRect();
+  if (b.top >= 0 && b.bottom <= window.innerHeight) return;
+  // The visitor wins: a wheel, a touch, a key or a click while the page is
+  // still travelling stops it where it is and gives the scroll back.
+  const yield_ = () => {
+    window.scrollTo({ top: window.scrollY, behavior: 'instant' });
+    drop();
+  };
+  const types = ['wheel', 'touchstart', 'keydown', 'mousedown'];
+  const drop = () => types.forEach((t) => window.removeEventListener(t, yield_));
+  types.forEach((t) => window.addEventListener(t, yield_, { passive: true }));
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if ('onscrollend' in window) window.addEventListener('scrollend', drop, { once: true });
+  setTimeout(drop, 2000);
+}
+
 // Shows the pulsing live-dot next to the synced time on success; plain
 // text (no dot) for loading/error states.
 function setStandingsStatus(el, synced, text) {
@@ -206,8 +272,10 @@ function clearSkeleton(gridEl) {
 // than leaving it up and saying it did not update. The first load is the
 // exception, because what is up then is the skeleton.
 function showRegion(gridEl, statusEl, matches, label, syncedAt, failed) {
-  if (matches) renderStandingsRegion(gridEl, matches);
-  else clearSkeleton(gridEl);
+  if (matches) {
+    renderStandingsRegion(gridEl, matches);
+    paintGuildFound(gridEl, false);
+  } else clearSkeleton(gridEl);
   const ok = !!matches && matches.length > 0;
   if (ok) return setStandingsStatus(statusEl, true, syncedAt);
   // null is a request that failed, and it will be asked again (below);
