@@ -2,7 +2,8 @@
 // recording, walks it as a visitor would (guild search, every map, every icon
 // button and popover, the NA/EU swap, a map answered with the same body for
 // minutes, what changed hands over such a gap summed up beside the map, the
-// board picking what the map lights, a frozen match answer that must not be painted, a load whose API reads fail and are tried again, then a second load with /api/* down), and
+// board picking what the map lights, the Board, Captures and Objective tabs
+// beside it keeping their size, a frozen match answer that must not be painted, a load whose API reads fail and are tried again, then a second load with /api/* down), and
 // fails on anything the browser objects to: an exception, a console error, a
 // Content Security Policy violation, a step whose element never appears.
 //
@@ -41,9 +42,11 @@ const ORIGINS = {
 
 const argv = process.argv.slice(2);
 const RECORD = argv.includes('--record');
-// A guard against a hang, not a speed bar: the walk takes ~47 s here, and a
-// shared CI machine can be twice as slow. Recording waits on the real hosts.
-const DEADLINE_MS = RECORD ? 240000 : 180000;
+// A guard against a hang, not a speed bar. In a cloud container on 10/10/2026
+// the walk took 129-181 s without the 'map pane' step and 213-282 s with it
+// (the step alone 53 s: the board has to be seen standing still), and a
+// shared CI machine can be slower. Recording waits on the real hosts.
+const DEADLINE_MS = RECORD ? 420000 : 360000;
 const ci = argv.indexOf('--chrome');
 
 const problems = [];
@@ -536,6 +539,19 @@ async function main() {
     await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at });
     return true;
   }
+
+  // The target still and where it was a moment ago: a width just changed, or a row moved.
+  async function steady(name, el) {
+    stepNow = name;
+    let last = '';
+    for (let i = 0; i < 40; i++) {
+      const now = await ev(`(() => { const e = ${el}; if (!e) return ''; const b = e.getBoundingClientRect(); return [b.x, b.y, b.width, b.height].join(); })()`);
+      if (now && now === last) return;
+      last = now;
+      await ev('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))');
+    }
+  }
+  async function press(name, el) { await steady(name, el); return click(name, el); }
 
   // Nothing in flight on three looks running. A step that moves on while the
   // page is still asking (a popover closed mid-lookup) makes the set of URLs
@@ -1629,6 +1645,14 @@ async function main() {
           dots: [...document.querySelectorAll('.info-popover .wvw-tab')].filter(t => t.querySelector('.wvw-tab-dot')).map(t => t.dataset.type) }; })()`);
       const want = { chips: [`${a.id} ${here}`, `${b.id} ${other}`], kills: String(killsMore), rings: [a.id], dots: [other] };
       if (!/^What happened · \S/.test(seen.title) || !seen.open || !seen.top) problem(`step '${step}': the block reads "${seen.title}", open ${seen.open}, at the top of the column ${seen.top}`);
+      // Over the tabs, and the board standing still beside it.
+      const boardWith = `(() => { const p = document.querySelector('.info-popover');
+        return Math.round(p.querySelector('.wvw-board').getBoundingClientRect().height) + '/' + Math.round(p.getBoundingClientRect().height)
+          + '/' + (${block}.getBoundingClientRect().bottom <= p.querySelector('.wvw-subtabs').getBoundingClientRect().top); })()`;
+      const with1 = await ev(boardWith);
+      await sleep(2500);
+      const with2 = await ev(boardWith);
+      if (with1 !== with2 || !with1.endsWith('/true')) problem(`step '${step}': with the block shown the board/popover/block-over-tabs read ${with1}, then ${with2}`);
       for (const k of Object.keys(want)) {
         if (JSON.stringify(seen[k]) !== JSON.stringify(want[k])) problem(`step '${step}': ${k} ${JSON.stringify(seen[k])}, wanted ${JSON.stringify(want[k])}`);
       }
@@ -1644,7 +1668,8 @@ async function main() {
       if (await click(step + ': chip', `document.querySelector('.info-popover .wvw-chip[data-obj="${b.id}"]')`)) {
         await until(step, `!!document.querySelector('.info-popover .wvw-tab[data-type="${other}"].is-active')
           && !!document.querySelector('.info-popover .wvw-marker.is-selected[data-obj="${b.id}"]')
-          && !document.querySelector('.info-popover .wvw-tab-dot')`, "the other map's tab open, its objective selected, no dot left");
+          && document.querySelector('.info-popover .wvw-subtab.is-active')?.dataset.pane === 'objective'
+          && !document.querySelector('.info-popover .wvw-tab-dot')`, "the other map's tab open, its objective selected in the Objective tab, no dot left");
         await until(step + ': chip tapped', `${lit} === '${b.id}'`, `${b.id} lit a moment after its chip is pressed`);
       }
       // A phone: folded, the kills in its title; a tap opens it to the chips.
@@ -1728,17 +1753,6 @@ async function main() {
       }
       return ev(`!!${pop}`).then(open => { if (!open) problem(`step '${name}': ${what} closed the popover`); });
     };
-    // The target still and where it was a moment ago: a width just changed, or a row moved.
-    const steady = async (name, el) => {
-      let last = '';
-      for (let i = 0; i < 40; i++) {
-        const now = await ev(`(() => { const e = ${el}; if (!e) return ''; const b = e.getBoundingClientRect(); return [b.x, b.y, b.width, b.height].join(); })()`);
-        if (now && now === last) return;
-        last = now;
-        await ev('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))');
-      }
-    };
-    const press = async (name, el) => { await steady(name, el); return click(name, el); };
 
     for (const width of [1280, 360]) {
       const name = `${step}, ${width} px`;
@@ -1833,6 +1847,232 @@ async function main() {
     await cleanup();
   }
 
+  // The column beside the map: three tabs, Board, Captures and Objective, over
+  // one pane that keeps its size. The board stands still for 6 s and its box
+  // hugs its rows; a marker opens the Objective tab without the popover or the
+  // map moving on any frame; the captures are the body's own, in the 30 min up
+  // to its newest, and a row lights its objective on its map; beside the map
+  // every box ends above the map's bottom, stacked under it every tab ends on
+  // the same line, the map on top and still; fifteen switches change nothing.
+  // A map tab change keeps the board on the freshest body. At 1280 and 360 px.
+  async function mapPane() {
+    const step = 'map pane';
+    const label = await ev("document.querySelector('.tier-map-btn')?.getAttribute('aria-label') || ''");
+    const t = /\b(NA|EU) Tier (\d+)/.exec(label);
+    if (!t) return void problem(`step '${step}': no tier map button to read a match from`);
+    const matchId = `${t[1] === 'NA' ? 1 : 2}-${t[2]}`;
+    const oneUrl = `https://api.guildwars2.com/v2/wvw/matches?id=${matchId}`;
+    // The score last rose now: earlier steps moved the clock back past it.
+    const before = JSON.parse(await ev(`(() => { const k = newestMatches.get('${matchId}'); k.at = Date.now();
+      return JSON.stringify(k.match); })()`));
+    const serve = body => substitutes.set(oneUrl, { body: Buffer.from(JSON.stringify(body)), served: 0 });
+    serve(before);
+    let skew = 0;
+    const cleanup = async () => {
+      substitutes.delete(oneUrl);
+      await send('Emulation.clearDeviceMetricsOverride');
+      await closePopover(step);
+      await ev(`__skewClock(${-skew}); localStorage.removeItem('wvw-fight-v1')`);
+    };
+    // The captures the list must show, worked out here from the same body.
+    const OWNERS = ['Red', 'Blue', 'Green'];
+    const flips = before.maps.flatMap(m => m.objectives.map(o => ({ id: o.id, type: o.type, owner: o.owner, map: m.type, at: Date.parse(o.last_flipped) })));
+    const newest = Math.max(...flips.map(o => o.at).filter(Number.isFinite));
+    const wantCaps = flips.filter(o => ['Camp', 'Tower', 'Keep', 'Castle'].includes(o.type) && OWNERS.includes(o.owner)
+      && o.at <= newest && newest - o.at <= 30 * 60000).sort((a, b) => (b.at - a.at) || a.id.localeCompare(b.id));
+    if (!wantCaps.length) return void problem(`step '${step}': the recording has no capture in its last 30 min to list`);
+
+    const pop = "document.querySelector('.info-popover')";
+    const frame = 'new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))';
+    // Everything the pane shows and where, read at once.
+    const state = () => ev(`(() => {
+      const p = ${pop};
+      const r = e => { const b = e.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), height: Math.round(b.height) }; };
+      const shown = [...p.querySelectorAll('.wvw-pane > *')].filter(e => getComputedStyle(e).display !== 'none');
+      const board = p.querySelector('.wvw-board');
+      return {
+        tabs: [...p.querySelectorAll('.wvw-subtab')].map(b => ({ text: b.textContent, on: b.classList.contains('is-active'), off: b.disabled })),
+        shown: shown.map(e => e.className.split(' ')[0]), box: shown[0] ? r(shown[0]) : null,
+        pop: r(p), plot: r(p.querySelector('.wvw-plot-wrap')), tabsBar: r(p.querySelector('.wvw-subtabs')), pane: r(p.querySelector('.wvw-pane')),
+        board: board.offsetParent ? Math.round(board.getBoundingClientRect().height) : 0,
+        rows: [...board.children].reduce((n, c) => n + c.offsetHeight, 0),
+        caps: [...p.querySelectorAll('.wvw-caps .wvw-cap')].map(c => c.dataset.obj),
+        map: p.querySelector('.wvw-tab.is-active')?.dataset.type || '',
+        lit: [...p.querySelectorAll('.wvw-marker.is-lit')].map(g => g.dataset.obj).join(),
+        selected: p.querySelector('.wvw-marker.is-selected')?.dataset.obj || '' };
+    })()`);
+    // n readings 'every' ms apart, of one field.
+    const samples = async (n, every, pick) => { const v = []; for (let i = 0; i < n; i++) { if (i) await sleep(every); v.push(pick(await state())); } return v; };
+    const active = st => (st.tabs.find(x => x.on) || {}).text || '';
+    const tab = key => `${pop}.querySelector('.wvw-subtab[data-pane="${key}"]')`;
+    // A marker on the open map whose centre takes the click (not under a corner or the zoom).
+    const marker = n => `[...${pop}.querySelectorAll('.wvw-plot .wvw-marker')].filter(g => {
+      const b = g.getBoundingClientRect(), e = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      return !!e && g.contains(e) && !e.closest('.wvw-zoom, .wvw-hud');
+    })[${n}]`;
+    // Pressed with every frame watched for 1.5 s after: the popover's top and
+    // height and the map's top, as one set of distinct readings.
+    const pressWatched = async (name, el) => {
+      await steady(name, el);
+      const at = await ev(`(() => { const e = ${el}; if (!e) return null; const b = e.getBoundingClientRect();
+        return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`);
+      if (!at) { problem(`step '${name}': target missing`); return null; }
+      await ev(`(() => { window.__paneSeen = new Set(); const t0 = performance.now();
+        const look = () => { const p = ${pop}; const a = p.getBoundingClientRect(), m = p.querySelector('.wvw-plot-wrap').getBoundingClientRect();
+          __paneSeen.add(Math.round(a.top) + ',' + Math.round(a.height) + ',' + Math.round(m.top));
+          if (performance.now() - t0 < 1500) requestAnimationFrame(look); };
+        requestAnimationFrame(look); })()`);
+      const ms = { x: at.x, y: at.y, button: 'left', clickCount: 1 };
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', ...ms });
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...ms });
+      await sleep(1600);
+      return ev('[...window.__paneSeen]');
+    };
+
+    for (const width of [1280, 360]) {
+      const name = `${step}, ${width} px`;
+      const stacked = width <= 760;
+      await send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: width < 600 });
+      await until(name, `innerWidth === ${width}`, 'the new width');
+      await ev(frame);
+      if (!(await press(name + ': open', "document.querySelector('.tier-map-btn')"))) continue;
+      if (!(await until(name, `!!document.querySelector("${POPOVERS['tier-map-btn']}") && !!${pop}.querySelector('.wvw-subtab') && !!${pop}.querySelector('.wvw-board-row')`, 'drawn objectives and the tabs'))) continue;
+      await idle(name);
+      await ev(frame);
+      const home = (await state()).map;
+
+      // The tabs, in order; the board first, the objective off until one is picked.
+      let st = await state();
+      const order = st.tabs.map(x => x.text.replace(/ \(\d+\)$/, '')).join();
+      if (order !== 'Board,Captures,Objective') problem(`step '${name}': the tabs read ${order}`);
+      if (active(st) !== 'Board' || !st.tabs[2].off || st.tabs[0].off || st.tabs[1].off) problem(`step '${name}': on opening ${JSON.stringify(st.tabs)}`);
+      if (st.tabs[1].text !== `Captures (${wantCaps.length})`) problem(`step '${name}': the tab reads "${st.tabs[1].text}", wanted "Captures (${wantCaps.length})"`);
+      // Standing still: the board measured once, never again (it grew 2 px a second when it was).
+      const boardH = await samples(6, 1000, x => `${x.board}/${x.pop.height}`);
+      if (new Set(boardH).size !== 1) problem(`step '${name}': the board (height/popover) moved over 6 s: ${boardH.join(' ')}`);
+      st = await state();
+      if (st.board - st.rows >= 40) problem(`step '${name}': the board is ${st.board} px for ${st.rows} px of rows`);
+      const popH = st.pop.height, board0 = st.board, ends = {};
+      ends.board = st.box && st.box.bottom;
+      const pane0 = st.pane.bottom;
+
+      // A marker: the Objective tab opens by itself, nothing moves on any frame.
+      const seen = await pressWatched(name + ': marker', marker(3));
+      if (seen && seen.length !== 1) problem(`step '${name}': picking an objective moved the popover or the map: ${seen.join(' ; ')}`);
+      if (await until(name, `${pop}.querySelector('.wvw-subtab.is-active')?.dataset.pane === 'objective'`, 'the Objective tab opened by the marker')) {
+        const det = await samples(4, 500, x => `${x.box && x.box.height}/${x.pop.height}`);
+        if (new Set(det).size !== 1) problem(`step '${name}': the objective (height/popover) moved: ${det.join(' ')}`);
+        st = await state();
+        if (JSON.stringify(st.shown) !== '["wvw-detail"]' || st.tabs[2].off) problem(`step '${name}': on Objective the pane shows ${JSON.stringify(st.shown)}`);
+        if (Math.abs(st.pop.height - popH) > 4) problem(`step '${name}': the popover went from ${popH} to ${st.pop.height} px on opening an objective`);
+        ends.objective = st.box && st.box.bottom;
+      }
+      // Back to the board: the same board.
+      if (await press(name + ': board', tab('board'))) {
+        await ev(frame);
+        const back = await samples(3, 500, x => x.board);
+        if (new Set(back).size !== 1 || Math.abs(back[0] - board0) > 2) problem(`step '${name}': the board came back ${back.join(',')} px, was ${board0}`);
+      }
+      // Captures: the body's own, still.
+      if (await press(name + ': captures', tab('captures'))) {
+        await ev(frame);
+        st = await state();
+        const want = wantCaps.slice(0, 40).map(o => o.id);
+        if (JSON.stringify(st.caps) !== JSON.stringify(want)) problem(`step '${name}': the captures listed ${st.caps.slice(0, 6).join(',')}… (${st.caps.length}), wanted ${want.slice(0, 6).join(',')}… (${want.length})`);
+        const capsH = await samples(3, 500, x => x.box && x.box.height);
+        if (new Set(capsH).size !== 1) problem(`step '${name}': the captures moved: ${capsH.join(',')}`);
+        ends.captures = (await state()).box?.bottom;
+        // A capture on this map lights its objective, the list staying.
+        const here = wantCaps.find(o => o.map === home);
+        const picked = (await state()).selected;
+        if (here && await press(name + ': a capture here', `${pop}.querySelector('.wvw-cap[data-obj="${here.id}"]')`)) {
+          if (await until(name, `[...${pop}.querySelectorAll('.wvw-marker.is-lit')].map(g => g.dataset.obj).join() === '${here.id}'`, `${here.id} lit by its capture`)) {
+            st = await state();
+            if (!active(st).startsWith('Captures') || st.selected !== picked) problem(`step '${name}': a capture's row left the tab on "${active(st)}", selected "${st.selected}" (was "${picked}")`);
+          }
+        }
+        // One on another map opens that map's tab and lights it there.
+        const away = width === 1280 && wantCaps.find(o => o.map !== home);
+        if (away && await press(name + ': a capture elsewhere', `${pop}.querySelector('.wvw-cap[data-obj="${away.id}"]')`)) {
+          await until(name, `${pop}.querySelector('.wvw-tab.is-active')?.dataset.type === '${away.map}'
+            && [...${pop}.querySelectorAll('.wvw-marker.is-lit')].map(g => g.dataset.obj).join() === '${away.id}'
+            && ${pop}.querySelector('.wvw-subtab.is-active')?.dataset.pane === 'captures'`, `${away.map} open, ${away.id} lit, the captures still shown`);
+          await idle(name);
+          if (await press(name + ': back home', `${pop}.querySelector('.wvw-tab[data-type="${home}"]')`)) {
+            await until(name, `${pop}.querySelector('.wvw-tab.is-active')?.dataset.type === '${home}' && !!document.querySelector("${POPOVERS['tier-map-btn']}")`, `${home} open again`);
+            await idle(name);
+          }
+        }
+      }
+      // Where each tab ends: under the map, one line; beside it, above the map's bottom.
+      if (await press(name + ': board again', tab('board'))) await ev(frame);
+      st = await state();
+      if (stacked) {
+        const lines = Object.values(ends);
+        if (st.pane.bottom !== pane0 || lines.some(b => !b || b > st.pane.bottom)) problem(`step '${name}': the tabs end at ${JSON.stringify(ends)}, the pane at ${st.pane.bottom} (was ${pane0})`);
+      } else if (Object.values(ends).some(b => !b || b > st.plot.bottom + 1)) {
+        problem(`step '${name}': the tabs end at ${JSON.stringify(ends)}, past the map's bottom ${st.plot.bottom}`);
+      }
+
+      // Three objectives picked in turn, each watched frame by frame.
+      for (const n of [2, 6, 10]) {
+        const moved = await pressWatched(`${name}: marker ${n}`, marker(n));
+        if (moved && moved.length !== 1) problem(`step '${name}': picking marker ${n} moved the popover or the map: ${moved.join(' ; ')}`);
+      }
+      await until(name, `${pop}.querySelector('.wvw-subtab.is-active')?.dataset.pane === 'objective'`, 'the Objective tab after the markers');
+
+      // Fifteen switches: the board and the popover as they were. On a phone
+      // the map on top, its top the same in every tab, the tabs and pane under it.
+      const seenBoard = new Set(), seenPop = new Set(), mapTops = new Set();
+      for (let i = 0; i < 5; i++) {
+        for (const key of ['objective', 'captures', 'board']) {
+          if (!(await click(`${name}: switch ${key}`, tab(key)))) break;
+          await until(name, `${pop}.querySelector('.wvw-subtab.is-active')?.dataset.pane === '${key}'`, `the ${key} tab`);
+          await ev(frame);
+          st = await state();
+          seenPop.add(st.pop.height);
+          if (key === 'board') seenBoard.add(st.board);
+          if (stacked) {
+            mapTops.add(st.plot.top);
+            if (!(st.tabsBar.top > st.plot.bottom && st.box && st.box.top > st.tabsBar.bottom)) problem(`step '${name}': on ${key} the map is not on top (map ${st.plot.top}-${st.plot.bottom}, tabs ${st.tabsBar.top}, pane ${st.box && st.box.top})`);
+          }
+        }
+      }
+      if (seenBoard.size !== 1 || Math.abs([...seenBoard][0] - board0) > 2 || [...seenPop].some(h => Math.abs(h - popH) > 4)) problem(`step '${name}': over 15 switches the board read ${[...seenBoard]} (was ${board0}), the popover ${[...seenPop]} (was ${popH})`);
+      if (stacked && mapTops.size !== 1) problem(`step '${name}': the map moved with the tabs: tops ${[...mapTops]}`);
+
+      // A refresh moves the board; a map tab change keeps it there.
+      if (!stacked) {
+        const kept = JSON.parse(await ev(`JSON.stringify(newestMatches.get('${matchId}').match)`));
+        const flip = kept.maps.flatMap(m => m.objectives).find(o => o.type === 'Camp' && OWNERS.includes(o.owner));
+        if (flip) {
+          const boardText = `${pop}.querySelector('.wvw-board').textContent`;
+          const was = await ev(boardText);
+          for (const m of kept.maps) for (const o of m.objectives) if (o.id === flip.id) o.owner = OWNERS[(OWNERS.indexOf(o.owner) + 1) % 3];
+          kept.scores.red += 1;
+          serve(kept);
+          skew += 31000;
+          await ev("__skewClock(31000); window.dispatchEvent(new Event('focus'))");
+          if (await until(name, `${boardText} !== ${JSON.stringify(was)}`, 'the board repainted by the refresh')) {
+            await idle(name);
+            const now = await ev(boardText);
+            const other = kept.maps.map(m => m.type).find(type => type !== home);
+            if (await press(name + ': another map', `${pop}.querySelector('.wvw-tab[data-type="${other}"]')`)) {
+              await until(name, `${pop}.querySelector('.wvw-tab.is-active')?.dataset.type === '${other}' && !!document.querySelector("${POPOVERS['tier-map-btn']}")`, `${other} open`);
+              await idle(name);
+              const after = await ev(boardText);
+              if (after !== now) problem(`step '${name}': a map tab change put the board back to "${after.slice(0, 80)}", the refresh had "${now.slice(0, 80)}"`);
+            }
+          }
+          serve(before);
+        }
+      }
+      await closePopover(name);
+    }
+    await cleanup();
+  }
+
   // The walk, the same for the recording and for the replay: whatever it asks
   // of the hosts, the recording has. Recording picks the guild names first.
   recordedAt = RECORD ? Date.now() : recordedAt;
@@ -1921,6 +2161,9 @@ async function main() {
 
   // 6e. The board picks a team or a type, and the map lights it.
   await mapFocus();
+
+  // 6f. Board, Captures and Objective: three tabs over one pane that keeps its size.
+  await mapPane();
 
   // 7. A frozen answer: some API servers serve a match body from the past.
   await frozenMatch();

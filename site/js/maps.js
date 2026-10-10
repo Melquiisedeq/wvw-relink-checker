@@ -2779,6 +2779,86 @@ function paintMissed(view) {
   box.appendChild(body);
 }
 
+// ---- recent captures (the "Captures" tab) --------------------------------
+// Camps to castles taken in the CAPTURES_WINDOW_MS up to the newest capture in
+// the body, by last_flipped - not up to now: while the API repeats an old body
+// the captures it knows stay listed instead of ageing out of a moving window.
+const CAPTURES_WINDOW_MS = 30 * 60 * 1000;
+const CAPTURES_MAX = 40;
+const CAPTURE_TYPES = new Set(['Camp', 'Tower', 'Keep', 'Castle']);
+// The tabs' pane (renderTierMapsContent). MAP_STACKED is css/maps.css's
+// breakpoint, where the column goes under the map.
+const MAP_STACKED = '(max-width: 760px)';
+const PANE_ROOM = 80;    // px left under the board, stacked: room for charts later
+const PANE_MIN = 210;    // px, stacked
+const PANE_FLOOR = 150;  // px, beside the map: under this the column outgrows the map
+
+function recentCaptures(match) {
+  // A clock running ahead on the API's side must not set the window.
+  const ceiling = Date.now() + 60000;
+  let newest = 0;
+  for (const map of missedMaps(match)) {
+    for (const o of missedObjectives(map)) {
+      const at = Date.parse(o && o.last_flipped);
+      if (Number.isFinite(at) && at <= ceiling) newest = Math.max(newest, at);
+    }
+  }
+  const out = [];
+  for (const map of missedMaps(match)) {
+    for (const o of missedObjectives(map)) {
+      if (!o || typeof o.id !== 'string' || !CAPTURE_TYPES.has(o.type)) continue;
+      const owner = missedOwner(o.owner);
+      const at = Date.parse(o.last_flipped);
+      if (owner === 'neutral' || !Number.isFinite(at) || at > newest || newest - at > CAPTURES_WINDOW_MS) continue;
+      out.push({ at, id: o.id, type: o.type, owner, map: map.type });
+    }
+  }
+  return out.sort((a, b) => (b.at - a.at) || a.id.localeCompare(b.id));
+}
+
+// The list, rebuilt only when what it shows moved. view: { box, match, goTo,
+// spot }. A row lights its objective while pointed at; pressed, it opens the
+// objective's map and lights it a moment, without selecting it - the list
+// stays on screen.
+function paintCaptures(view, items) {
+  const shown = items.slice(0, CAPTURES_MAX);
+  const key = JSON.stringify(shown);
+  if (view.box.dataset.key === key) return;
+  view.box.dataset.key = key;
+  view.box.textContent = '';
+  if (!shown.length) {
+    view.box.appendChild(missedEl('p', 'wvw-caps-none', 'No recent captures.'));
+    return;
+  }
+  for (const it of shown) {
+    const map = MAP_TAB_NAME[it.map] || it.map;
+    const row = missedEl('button', 'wvw-cap');
+    row.type = 'button';
+    row.dataset.obj = it.id;
+    row.dataset.map = it.map;
+    const time = missedEl('time', 'wvw-cap-time', missedHhmm(it.at));
+    time.dateTime = new Date(it.at).toISOString();
+    row.appendChild(time);
+    const src = markerIcon(it.type, it.owner);
+    if (src) row.appendChild(missedImg(src, 14));
+    row.appendChild(missedEl('span', 'wvw-cap-name', missedShortName(it.id)));
+    row.appendChild(missedEl('span', 'wvw-cap-map', map));
+    const id = matchTeamId(view.match, it.owner);
+    const words = `${missedFullName(it.id)} (${map}): taken by ${id ? getTeamName(id) : FOCUS_COLOR_WORD[it.owner]}`
+      + ` at ${missedHhmm(it.at)}`;
+    row.title = words;
+    row.setAttribute('aria-label', words);
+    row.addEventListener('click', (e) => { e.stopPropagation(); view.goTo(it.map, it.id, false); });
+    const on = () => view.spot({ ids: [it.id] }, { map: it.map, el: row });
+    const off = () => view.spot(null, { el: row });
+    row.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') on(); });
+    row.addEventListener('pointerleave', off);
+    row.addEventListener('focus', on);
+    row.addEventListener('blur', off);
+    view.box.appendChild(row);
+  }
+}
+
 // ---- the popover -----------------------------------------------------
 function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
                                sectorsByType, pendingSectors, triggerEl) {
@@ -2836,20 +2916,51 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   stage.className = 'wvw-stage';
   popover.appendChild(stage);
 
-  // The right-hand column: the scoreboard on top, the objective detail
-  // under it. Both answer "who holds what", so they read as one column,
-  // and neither is ever over the map.
+  // The right-hand column, never over the map: "What happened" on top when
+  // there is one (paintMissed), then three tabs over one pane - the
+  // scoreboard, the recent captures, and the objective a click picked.
   const side = document.createElement('div');
   side.className = 'wvw-side';
+
+  const paneTabs = document.createElement('div');
+  paneTabs.className = 'wvw-subtabs';
+  paneTabs.setAttribute('role', 'tablist');
+  side.appendChild(paneTabs);
+
+  const pane = document.createElement('div');
+  pane.className = 'wvw-pane';
+  side.appendChild(pane);
 
   const board = document.createElement('div');
   board.className = 'wvw-board';
   board.hidden = true;
-  side.appendChild(board);
+  pane.appendChild(board);
+
+  const caps = document.createElement('div');
+  caps.className = 'wvw-caps';
+  pane.appendChild(caps);
 
   const detail = document.createElement('div');
   detail.className = 'wvw-detail';
-  side.appendChild(detail);
+  pane.appendChild(detail);
+
+  const paneTab = new Map();
+  for (const [key, text, tip] of [
+    ['board', 'Board', 'Objectives held and points per tick, every map added up'],
+    ['captures', 'Captures', 'Camps, towers, keeps and castles taken in the 30 minutes up to the newest capture'],
+    ['objective', 'Objective', 'The objective picked on the map'],
+  ]) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'wvw-subtab';
+    b.dataset.pane = key;
+    b.textContent = text;
+    b.title = tip;
+    b.setAttribute('role', 'tab');
+    b.addEventListener('click', (e) => { e.stopPropagation(); showPane(key); });
+    paneTabs.appendChild(b);
+    paneTab.set(key, b);
+  }
 
   // What the detail panel is showing, so the refresh can repaint it.
   // Cleared with the panel, because a point belongs to the stage that
@@ -2928,7 +3039,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   let downAt = null;
   popover.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY]; }, true);
   popover.addEventListener('click', (e) => {
-    if (!focusPick || e.target.closest('.wvw-board, .wvw-marker, .wvw-zoom, .wvw-hud, .wvw-hud-note, .wvw-missed, .wvw-tabs')) return;
+    if (!focusPick || e.target.closest('.wvw-board, .wvw-marker, .wvw-zoom, .wvw-hud, .wvw-hud-note, .wvw-missed, .wvw-tabs, .wvw-subtabs, .wvw-caps')) return;
     if (downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6) return;
     pickFocus(null);
   });
@@ -2971,11 +3082,18 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
 
   const draw = (type, sectors) => {
     focusSpot = null;
-    paintMapBoard(board, match, matchIsLive(match));
+    // The freshest body, not the one this popover opened with: on a map tab
+    // change that one put the board back to the opening's numbers until the
+    // next read.
+    paintMapBoard(board, liveMatch, matchIsLive(liveMatch));
     stage.textContent = '';
     plotWrap = sectors && sectors.length
-      ? buildMapStage(match, byType.get(type), sectors, catalogue,
-        (p, m) => { selected = p; renderObjectiveDetail(detail, p, m); })
+      ? buildMapStage(match, byType.get(type), sectors, catalogue, (p, m) => {
+        selected = p;
+        renderObjectiveDetail(detail, p, m);
+        detail.scrollTop = 0;
+        showPane('objective');
+      })
       : null;
     if (plotWrap) {
       // Over the plot, not inside the SVG: the SVG is the camera and
@@ -3028,11 +3146,11 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   // What happened while the data was away: paintMissed, for this match. A
   // chip opens its map's tab and selects the objective, as a click on it would.
   missedOpen = { matchId: match.id, trigger: triggerEl };
-  const goTo = (type, id) => {
+  const goTo = (type, id, select = true) => {
     show(type);
     const pick = () => {
       if (activeTrigger !== triggerEl || current !== type || !plotWrap) return;
-      plotWrap.selectObjective(id);
+      if (select) plotWrap.selectObjective(id);
       spotlight({ ids: [id] }, { ms: FOCUS_TAP_MS });
     };
     if (sectorsByType.get(type)) pick(); else pendingSectors.get(type).then(pick);
@@ -3040,8 +3158,71 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   const paintNote = () => {
     if (activeTrigger !== triggerEl) return;
     paintMissed({ matchId: match.id, side, tabs: tabByType, type: current, goTo, spot: spotlight, repaint: paintNote });
+    paintPane();
     if (plotWrap) plotWrap.ringChanged();
     if (focusSpot && focusSpot.el && !focusSpot.el.isConnected) paintFocus();
+  };
+
+  // ---- the pane under the tabs: one box shown, hugging what it holds up to
+  // the pane's height, then scrolling. Beside the map the pane ends where the
+  // map ends; stacked under it (a phone) the pane has a fixed height and the
+  // rest is empty, so the map above does not move when the tab changes.
+  // The map is measured once per opening (per width and map): measuring it
+  // on every repaint fed back - the pane stretched the column, the map with
+  // it, then the pane again, 2 px a second. And the drawing is measured, not
+  // its frame, which is the one the column stretches.
+  let paneOn = 'board';
+  let paneSize = null;   // { key, at }: the map's bottom (wide) or the pane (stacked)
+  const sizePane = () => {
+    let h;
+    if (window.matchMedia(MAP_STACKED).matches) {
+      const key = `stacked ${window.innerWidth}`;
+      if (!paneSize || paneSize.key !== key || paneSize.guess) {
+        // From the board's own height, while it shows; a guess until it does.
+        const rows = paneOn === 'board' && !board.hidden ? board.offsetHeight : 0;
+        paneSize = { key, at: Math.max(rows + PANE_ROOM, PANE_MIN), guess: !rows };
+      }
+      h = paneSize.at;
+    } else {
+      const plot = plotWrap && plotWrap.querySelector('.wvw-plot');
+      if (!plot) return;
+      const top = side.getBoundingClientRect().top;
+      // The drawing's width, not the window's: the popover's own size button
+      // changes it too. Neither depends on the pane.
+      const key = `wide ${Math.round(plot.getBoundingClientRect().width)} ${current}`;
+      if (!paneSize || paneSize.key !== key) {
+        // The frame's bottom border under the drawing.
+        paneSize = { key, at: plot.getBoundingClientRect().bottom - top + 1 };
+      }
+      // Under the tabs, which move when "What happened" comes or goes.
+      const gap = parseFloat(getComputedStyle(side).rowGap) || 0;
+      h = Math.max(PANE_FLOOR, Math.floor(paneSize.at - (paneTabs.getBoundingClientRect().bottom - top) - gap));
+    }
+    if (side.style.getPropertyValue('--pane-h') !== `${h}px`) side.style.setProperty('--pane-h', `${h}px`);
+  };
+  const paintPane = () => {
+    if (activeTrigger !== triggerEl) return;
+    // Nothing picked (a map tab change throws the pick away): back to the board.
+    if (paneOn === 'objective' && !selected) paneOn = 'board';
+    const items = recentCaptures(liveMatch);
+    for (const [key, b] of paneTab) {
+      const on = key === paneOn;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+    paneTab.get('objective').disabled = !selected;
+    const label = `Captures (${items.length})`;
+    if (paneTab.get('captures').textContent !== label) paneTab.get('captures').textContent = label;
+    board.classList.toggle('is-off', paneOn !== 'board');
+    caps.classList.toggle('is-off', paneOn !== 'captures');
+    detail.classList.toggle('is-off', paneOn !== 'objective');
+    paintCaptures({ box: caps, match: liveMatch, goTo, spot: spotlight }, items);
+    sizePane();
+  };
+  const showPane = (key) => {
+    if (key === 'objective' && !selected) return;
+    paneOn = key;
+    paintPane();
   };
 
   let hotMarked = false;
