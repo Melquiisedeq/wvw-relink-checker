@@ -712,11 +712,16 @@
 .wvw-missed-sub{margin:2px 0 7px;color:#8d97a6;font-size:.68rem;line-height:1.35;}
 @media (max-width:480px){ .wvw-missed-sub{margin:7px 0 0;} }
 /* Kills in the site's own sign: the orange swords, the number in amber. */
-.wvw-missed-kills{display:flex;align-items:flex-start;gap:5px;margin:7px 0 0;color:#c3ccd6;font-size:.72rem;}
-.wvw-missed-kills img{display:block;flex:none;filter:drop-shadow(0 1px 1px #000);}
-.wvw-missed-killtext{min-width:0;line-height:1.4;}
+.wvw-missed-kills{margin:7px 0 0;color:#c3ccd6;font-size:.72rem;}
+.wvw-missed-killlabel{display:flex;align-items:center;gap:5px;margin:0;font-weight:600;}
+.wvw-missed-killlabel img{display:block;flex:none;filter:drop-shadow(0 1px 1px #000);}
+/* Each map's name and number stay together; on a phone, two by two. */
+.wvw-missed-maps{display:flex;flex-wrap:wrap;gap:3px 14px;margin-top:4px;}
+.wvw-missed-map{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;}
+.wvw-missed-map .dot{width:8px;height:8px;}
+.wvw-missed-map .dot-neutral{background:radial-gradient(circle at 30% 30%, #f1f4f8, #aab4c0);color:#aab4c0;}
+@media (max-width:480px){ .wvw-missed-maps{display:grid;grid-template-columns:1fr 1fr;} }
 .wvw-missed-killn{color:#ffb070;font-weight:800;font-size:.8rem;font-variant-numeric:tabular-nums;}
-.wvw-missed-killhint{text-transform:none;letter-spacing:0;font-weight:600;color:#c9d2dd;white-space:nowrap;}
 /* One chip per objective that changed hands: its icon in the new owner's
    colour, a short name, the map, and a dot for who held it before. */
 .wvw-chips{display:flex;flex-wrap:wrap;gap:6px;}

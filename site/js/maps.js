@@ -2471,6 +2471,7 @@ const MISSED_CHIPS_WIDE = 6;
 const MISSED_CHIPS_NARROW = 3;
 const MISSED_NARROW = '(max-width: 480px)';
 const MISSED_SHORT_NAME = Object.freeze({ 'Stonemist Castle': 'SM' });
+const MISSED_MAP_TINT = Object.freeze({ RedHome: 'red', BlueHome: 'blue', GreenHome: 'green' });
 const MISSED_NO_FLIP = new Set(['Ruins', 'Spawn']);
 
 const missedLastOffer = new Map();   // match id -> ms of the last body offered
@@ -2797,12 +2798,6 @@ function paintMissed(view) {
     + ' Shown for 10 minutes after the data came back.';
   const title = missedEl('span', 'wvw-group wvw-missed-title');
   title.append(`${away ? 'What you missed' : 'What happened'} · `, missedEl('span', 'wvw-missed-time', span));
-  // Folded, the kills stay in the title line.
-  if (!open && note.kills) {
-    const hint = missedEl('span', 'wvw-missed-killhint', ' · ');
-    hint.append(missedEl('b', 'wvw-missed-killn', String(note.kills)), ' kills');
-    title.appendChild(hint);
-  }
   head.appendChild(title);
   if (changes.length) {
     const count = missedEl('span', 'wvw-missed-count', String(changes.length));
@@ -2837,17 +2832,23 @@ function paintMissed(view) {
   let kills = null;
   if (note.kills) {
     // The site's own sign for kills: the orange swords, the number in amber.
-    kills = missedEl('p', 'wvw-missed-kills');
-    kills.appendChild(missedImg('assets/icons/Event_Swords.webp', 16));
-    // Per map, all teams: the whole match, not the map that is open.
-    const text = missedEl('span', 'wvw-missed-killtext', "All teams' kills, per map: ");
-    note.perMap.forEach((m, i) => {
-      if (i) text.append(' \u00b7 ');
-      const one = missedEl('span', 'wvw-missed-map', `${MAP_TAB_NAME[m.type] || m.type} `);
+    kills = missedEl('div', 'wvw-missed-kills');
+    const label = missedEl('p', 'wvw-missed-killlabel');
+    label.appendChild(missedImg('assets/icons/Event_Swords.webp', 16));
+    label.append('Kills by map, all teams');
+    kills.appendChild(label);
+    // Per map, the whole match, not the map that is open. The dot repeats the
+    // map's colour; the name stays written out beside it.
+    const maps = missedEl('div', 'wvw-missed-maps');
+    for (const m of note.perMap) {
+      const tint = MISSED_MAP_TINT[m.type] || 'neutral';
+      const one = missedEl('span', 'wvw-missed-map');
+      one.appendChild(missedEl('span', `dot dot-${tint}`));
+      one.append(`${MAP_TAB_NAME[m.type] || m.type} `);
       one.appendChild(missedEl('b', 'wvw-missed-killn', String(m.n)));
-      text.appendChild(one);
-    });
-    kills.appendChild(text);
+      maps.appendChild(one);
+    }
+    kills.appendChild(maps);
   }
   const body = missedEl('div', 'wvw-missed-body');
   // On a phone the chips come first: they are what a tap opened it for.

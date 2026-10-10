@@ -1970,11 +1970,11 @@ async function main() {
           && !document.querySelector('.info-popover .wvw-tab-dot')`, "the other map's tab open, its objective selected in the Objective tab, no dot left");
         await until(step + ': chip tapped', `${lit} === '${b.id}'`, `${b.id} lit a moment after its chip is pressed`);
       }
-      // A phone: folded, the kills in its title; a tap opens it to the chips.
+      // A phone: folded, the title alone; a tap opens it to the chips.
       await send('Emulation.setDeviceMetricsOverride', { width: 360, height: 800, deviceScaleFactor: 1, mobile: true });
       if (await until(step + ', 360 px', `!!${block} && !${block}.classList.contains('is-open') && !${block}.querySelector('.wvw-chip')`, 'the block folded')) {
         const folded = await ev(`${block}.textContent`);
-        if (!folded.includes(`${killsMore} kills`)) problem(`step '${step}, 360 px': folded it reads "${folded}", without the ${killsMore} kills`);
+        if (/\bkills\b/.test(folded)) problem(`step '${step}, 360 px': folded it reads "${folded}", with the kills total in its title`);
         if (await click(step + ', 360 px: open', `${block}.querySelector('.wvw-missed-head')`)) {
           await until(step + ', 360 px', `${block}.classList.contains('is-open') && ${block}.querySelectorAll('.wvw-chip[data-obj]').length === 2`, 'the block open with its two chips');
         }
