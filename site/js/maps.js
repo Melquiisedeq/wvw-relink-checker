@@ -2505,7 +2505,7 @@ function missedOwnerChanges(before, after) {
       if (!p || typeof o.id !== 'string' || MISSED_NO_FLIP.has(o.type)) continue;
       const from = missedOwner(p.owner);
       const to = missedOwner(o.owner);
-      if (from !== to) out.push({ id: o.id, map: map.type, type: o.type, from, to });
+      if (from !== to) out.push({ id: o.id, map: map.type, type: o.type, from, to, flipped: Date.parse(o.last_flipped) });
     }
   }
   return out;
@@ -2546,11 +2546,18 @@ function missedRingUntil(matchId, objId) {
 // a reading under it (the oldest there is) or with a wide gap and an old body,
 // the start is only an upper bound: sure is false and the text says "since
 // before". Never later than the page's own `since`.
+// And never later than the oldest `last_flipped` among the objectives listed
+// (`changes`): that is the game's own time for the flip, so a body that was old
+// when the tab hid or the API stalled cannot leave a listed flip outside the
+// period written. When that flip is older than what the history proves, the
+// start is the flip itself and it is sure: the time is exact data, not a bound.
+// A time that is not a number, or past `end`, says nothing and is skipped.
+// The end is likewise never earlier than the newest of those flips.
 // The history's rows bound when a total first showed: within this of the
 // page's own reading, or this close to the row before it, the start is fixed.
 const MISSED_BOUND_MS = 3 * 60 * 1000;
 
-function missedPeriod(before, after, since, back) {
+function missedPeriod(before, after, since, back, changes = []) {
   const need = missedKillTotal(before);
   const got = missedKillTotal(after);
   const list = fightSamples(after);
@@ -2563,12 +2570,22 @@ function missedPeriod(before, after, since, back) {
     sure = i > 0 && (total(list[i]) === need || list[i].at - list[i - 1].at <= MISSED_BOUND_MS
       || list[i].at >= since - MISSED_BOUND_MS);
   }
+  let oldest = Infinity;
+  let newest = -Infinity;
+  for (const c of changes) {
+    if (!Number.isFinite(c.flipped) || c.flipped > back) continue;
+    oldest = Math.min(oldest, c.flipped);
+    newest = Math.max(newest, c.flipped);
+  }
+  if (oldest < start) { start = oldest; sure = true; }
   let end = back;
   if (got > need) {
     const j = list.findIndex((s) => total(s) === got && s.at > start);
     if (j >= 0) end = Math.min(back, list[j].at);
   }
-  return { start, end, sure };
+  // The history may show the new total before a listed flip happened (its
+  // rows are a minute apart): the end is never before the newest of them.
+  return { start, end: Math.max(end, newest), sure };
 }
 
 function missedMakeNote(before, after, since, back, kind, endAt = back) {
@@ -2587,7 +2604,7 @@ function missedMakeNote(before, after, since, back, kind, endAt = back) {
     .map((m) => ({ type: m && m.type, n: Math.max(0, colorSum(m && m.kills) - (was.get(m && m.type) || 0)) }))
     .filter((m) => m.n > 0 && typeof m.type === 'string')
     .sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
-  const period = missedPeriod(before, after, since, endAt);
+  const period = missedPeriod(before, after, since, endAt, changes);
   missedNotes.set(after.id, { kind, since: period.start, end: period.end, sure: period.sure, back,
     before, rawSince: since, after,
     until: back + MISSED_SHOW_MS, changes, kills, perMap,
