@@ -1064,6 +1064,70 @@ async function main() {
     await idle(step + ': restore');
   }
 
+  // A Check before the teams notice and another after it, the table written
+  // in between: the second must read the new table, not the kept one. The
+  // notice is raised the way the page raises it (a relink state for this
+  // window, the lockout gone, the assignment ahead), and then taken down.
+  async function noticeFreshTable() {
+    const step = 'fresh table after the notice';
+    if (guilds.length < 2) return void problem(`step '${step}': the two guild names are not recorded`);
+    const tables = {};
+    for (const r of ['na', 'eu']) {
+      const hit = recorded.get(`https://api.guildwars2.com/v2/wvw/guilds/${r}`);
+      if (!hit) return void problem(`step '${step}': wvw/guilds/${r} not recorded`);
+      tables[r] = { url: `https://api.guildwars2.com/v2/wvw/guilds/${r}`, body: JSON.parse(bodyOf(hit).toString('utf8')) };
+    }
+    const where = [];
+    for (const name of guilds.slice(0, 2)) {
+      const hit = recorded.get(`https://api.guildwars2.com/v2/guild/search?name=${encodeURIComponent(name)}`);
+      const gid = hit && JSON.parse(bodyOf(hit).toString('utf8'))[0];
+      const r = ['na', 'eu'].find(x => gid && Object.hasOwn(tables[x].body, gid));
+      if (!r) return void problem(`step '${step}': ${name} is in neither recorded guild table`);
+      where.push({ gid, r });
+    }
+    const was = tables[where[0].r].body[where[0].gid];
+    const next = tables[where[1].r].body[where[1].gid];
+    const nameOf = t => ev(`getTeamName(${JSON.stringify(t)})`);
+    const [wasName, nextName] = [await nameOf(was), await nameOf(next)];
+    if (wasName === nextName) return void problem(`step '${step}': the two guilds' teams share the name "${wasName}"`);
+    const moved = JSON.parse(JSON.stringify(tables[where[0].r].body));
+    moved[where[0].gid] = next;
+    const rows = "JSON.stringify([...document.querySelectorAll('#resultBody tr')].map(tr => tr.querySelector('.server-cell')?.textContent ?? null))";
+    const check = async (name) => {
+      await ev("document.getElementById('guildInput').value = " + JSON.stringify(guilds[0]));
+      if (!(await click(name, "document.getElementById('runBtn')"))) return null;
+      await until(name, "/^Done/.test(document.getElementById('statusMsg').textContent)", 'the "Done" status');
+      await until(name, "!document.getElementById('runBtn').disabled", 'the Check button enabled again');
+      await idle(name);
+      return JSON.parse(await ev(rows));
+    };
+    const reads = { body: Buffer.from(JSON.stringify(tables[where[0].r].body)), served: 0 };
+    substitutes.set(tables[where[0].r].url, reads);
+    await ev('wvwMapCache = null');
+    const first = await check(step + ': first Check');
+    if (first && !String(first[0]).includes(wasName)) problem(`step '${step}': the first Check reads "${first[0]}", wanted "${wasName}"`);
+
+    // The table is rewritten, then the notice goes up.
+    substitutes.set(tables[where[0].r].url, { body: Buffer.from(JSON.stringify(moved)), served: 0 });
+    const saved = await ev('JSON.stringify({ l: lockoutTime, a: assignNA, s: relinkState, t: relinkStateAt })');
+    await ev(`(() => {
+      const win = 1900000000;
+      lockoutTime = Date.now() - 60000; assignNA = win * 1000;
+      relinkState = { window: win, published: 1 }; relinkStateAt = Date.now();
+      localStorage.removeItem('wvw-relink-checker:teams-notice');
+      updateRelinkBanner();
+    })()`);
+    await until(step, "document.getElementById('teamsNotice').dataset.window === '1900000000'", 'the teams notice');
+    const second = await check(step + ': second Check');
+    if (second && !String(second[0]).includes(nextName)) problem(`step '${step}': after the notice the Check reads "${second[0]}", wanted the new team "${nextName}" (still "${wasName}" is the kept table)`);
+
+    substitutes.clear();
+    await ev(`(() => { const o = JSON.parse(${JSON.stringify(saved)});
+      lockoutTime = o.l; assignNA = o.a; relinkState = o.s; relinkStateAt = o.t;
+      wvwMapCache = null; hideTeamsNotice(); updateRelinkBanner(); loadStandings(); })()`);
+    await idle(step + ': restore');
+  }
+
   // The week's line-up kept between loads (wvw-weeks-v1). A load sees 1-2 and
   // 1-3 on a new week with each other's teams; the next load, same profile, is
   // served last week's 1-2 and 1-3 everywhere: their cards show the new line-up
@@ -2479,6 +2543,7 @@ async function main() {
 
   // 7b. Last week's tier and this week's, and a team the API does not hold yet.
   await mixedWeeks();
+  await noticeFreshTable();
 
   // 7c. The week's line-up between loads.
   await weekMemory();
