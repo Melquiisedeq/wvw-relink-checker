@@ -21,7 +21,7 @@
 .match-panel{text-shadow:0 1px 2px rgba(0,0,0,.55);}
 .match-panel-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
 .match-tier{font-weight:700;font-size:.95rem;color:#f2f6fa;}
-.team-cols{display:grid;grid-template-columns:1fr;gap:10px;}
+.team-cols{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;}
 .team-col{
   border:1px solid var(--border);border-radius:10px;padding:10px;
   text-shadow:0 1px 2px rgba(0,0,0,.6);
@@ -44,7 +44,7 @@
    The dot is a bare span and only gets its 10px by being a flex item,
    so the flex moves inward rather than away. */
 .server-cell{display:inline-flex;align-items:center;gap:8px;vertical-align:middle;}
-.team-name{font-weight:600;font-size:.88rem;color:#f2f6fa;}
+.team-name{font-weight:600;font-size:.88rem;color:#f2f6fa;min-width:0;overflow-wrap:anywhere;}
 /* Chips carry their own dark-on-light text, and a drop shadow meant for
    light-on-dark only muddies them. */
 .rank-badge,.pin-badge,.tag{text-shadow:none;}
