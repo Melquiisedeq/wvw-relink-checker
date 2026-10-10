@@ -722,19 +722,25 @@
 .wvw-missed.is-open .wvw-missed-chev{transform:rotate(180deg);}
 .wvw-missed-sub{margin:2px 0 7px;color:#8d97a6;font-size:.68rem;line-height:1.35;}
 @media (max-width:480px){ .wvw-missed-sub{margin:7px 0 0;} }
-/* One row per map: its dot and name (a button to its tab), its kills with the
-   number in amber, then that map's chips under them. */
-.wvw-missed-row{margin:7px 0 0;min-width:0;}
+/* One row per map, one box: a faint fill, a 3px stripe in the map's colour
+   (the open map's stronger, the others quieter), the name (a button to its
+   tab) with its kills in amber, then that map's chips. */
+.wvw-missed-row{
+  --tint:#aab4c0;margin:7px 0 0;min-width:0;padding:6px 8px 7px 9px;
+  border-radius:6px;border-left:3px solid var(--tint);background:rgba(255,255,255,.05);
+}
+.wvw-missed-row.tint-red{--tint:var(--red);}
+.wvw-missed-row.tint-blue{--tint:var(--blue);}
+.wvw-missed-row.tint-green{--tint:var(--green);}
+.wvw-missed-row.is-other{background:rgba(255,255,255,.025);border-left-color:color-mix(in srgb, var(--tint) 55%, transparent);}
 .wvw-missed-row.is-other .wvw-missed-mapname{opacity:.75;}
-.wvw-missed-rowhead{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 10px;margin:0 0 4px;font-size:.72rem;color:#c3ccd6;}
+.wvw-missed-rowhead{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 10px;margin:0 0 5px;font-size:.72rem;color:#c3ccd6;}
 .wvw-missed-mapname{
-  display:inline-flex;align-items:center;gap:5px;margin:0;padding:1px 4px 1px 0;border:0;border-radius:4px;
+  display:inline-flex;align-items:center;margin:0;padding:1px 4px 1px 0;border:0;border-radius:4px;
   background:none;box-shadow:none;text-shadow:none;font:inherit;font-weight:700;color:#e4e9ef;cursor:pointer;
 }
 .wvw-missed-mapname:hover,.wvw-missed-mapname:focus-visible{color:var(--accent);}
 .wvw-missed-mapname:active{transform:none;}
-.wvw-missed-mapname .dot{width:8px;height:8px;}
-.wvw-missed-mapname .dot-neutral{background:radial-gradient(circle at 30% 30%, #f1f4f8, #aab4c0);color:#aab4c0;}
 .wvw-missed-kills{white-space:nowrap;}
 .wvw-missed-killn{color:#ffb070;font-weight:800;font-size:.8rem;font-variant-numeric:tabular-nums;}
 /* One chip per objective that changed hands: its icon in the new owner's

@@ -2874,12 +2874,11 @@ function paintMissed(view) {
     if (!list.length && !kills.has(type)) continue;
     const mapName = MAP_TAB_NAME[type];
     const here = type === view.type;
-    const row = missedEl('div', `wvw-missed-row${here ? '' : ' is-other'}`);
+    const row = missedEl('div', `wvw-missed-row tint-${MISSED_MAP_TINT[type] || 'neutral'}${here ? '' : ' is-other'}`);
     const top = missedEl('div', 'wvw-missed-rowhead');
     const name = missedEl('button', 'wvw-missed-mapname');
     name.type = 'button';
     name.title = `Open ${mapName}`;
-    name.appendChild(missedEl('span', `dot dot-${MISSED_MAP_TINT[type] || 'neutral'}`));
     name.append(mapName);
     name.addEventListener('click', (e) => { e.stopPropagation(); view.goTo(type, null, false); });
     top.appendChild(name);
