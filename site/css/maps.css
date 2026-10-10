@@ -524,15 +524,6 @@
 .wvw-hud-small2{font-size:.62rem;line-height:1.15;}
 .wvw-hud-small2[hidden]{display:none;}
 .wvw-hud-when{white-space:nowrap;}
-/* The two-line state: the number spans both lines, the two texts stack
-   in one column beside it. (The one-line state keeps the flex rows above.) */
-.wvw-hud-l.is-two .wvw-hud-txt{display:grid;grid-template-columns:auto auto;column-gap:6px;align-items:center;justify-content:start;}
-.wvw-hud-l.is-two img{display:none;}  /* the room goes to the texts, beside the score bar */
-.wvw-hud-l.is-two .wvw-hud-line{display:contents;}
-.wvw-hud-l.is-two .wvw-hud-big{grid-row:1 / 3;grid-column:1;font-size:1.05rem;line-height:1;}
-.wvw-hud-l.is-two .wvw-hud-line .wvw-hud-small{white-space:nowrap;}
-.wvw-hud-l.is-two .wvw-hud-line .wvw-hud-small{grid-row:1;grid-column:2;}
-.wvw-hud-l.is-two .wvw-hud-small2{grid-row:2;grid-column:2;}
 .wvw-hud-ago{font-size:.68rem;color:#dbe3ec;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .wvw-hud-ago.is-stale{color:#ffb347;font-weight:700;}
 .wvw-hud-l.is-cold img{filter:grayscale(1) brightness(1.1) drop-shadow(0 1px 1px #000);opacity:.75;}
@@ -565,10 +556,8 @@
   .wvw-hud-short{display:inline;}
   .wvw-hud-line{flex-direction:column;align-items:flex-start;gap:0;}
   .wvw-hud-btn{max-width:calc(29cqw - 4px);}
-  .wvw-hud-l.is-two .wvw-hud-btn{padding:2px 4px;}
-  .wvw-hud-l.is-two .wvw-hud-txt{white-space:normal;column-gap:4px;}
-  .wvw-hud-l.is-two .wvw-hud-big{font-size:.85rem;}
-  .wvw-hud-l.is-two .wvw-hud-small,.wvw-hud-l.is-two .wvw-hud-small2{font-size:.52rem;}
+  .wvw-hud-l.is-two img{display:none;}
+  .wvw-hud-l.is-two .wvw-hud-txt{white-space:normal;}
   .wvw-hud-ago{display:flex;flex-wrap:wrap;justify-content:flex-end;column-gap:.3em;
     white-space:normal;line-height:1.15;font-size:.62rem;}
   .wvw-hud-big{font-size:.8rem;line-height:1.1;}
@@ -576,15 +565,6 @@
   .wvw-hud-small2{font-size:.56rem;}
   .wvw-hud{padding:4px;}
   .wvw-hud-btn{padding:2px 5px;gap:4px;}
-}
-
-/* A 320 px phone: 29% either side of the score bar is about 75 px, so the
-   two-line count gives up a little more room and size. */
-@container plot (max-width:300px){
-  .wvw-hud-l.is-two .wvw-hud-btn{padding:2px 2px 2px 3px;}
-  .wvw-hud-l.is-two .wvw-hud-txt{column-gap:3px;}
-  .wvw-hud-l.is-two .wvw-hud-big{font-size:.78rem;}
-  .wvw-hud-l.is-two .wvw-hud-small,.wvw-hud-l.is-two .wvw-hud-small2{font-size:.5rem;}
 }
 
 /* The detail panel: everything the API knows about one objective. */
