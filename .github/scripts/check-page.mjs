@@ -1964,9 +1964,122 @@ async function main() {
         if (JSON.stringify(st.rows) !== JSON.stringify([color]) || st.team !== color || st.label !== `${word} only✕`) problem(`step '${name}': after the repaint rows ${JSON.stringify(st.rows)}, bar "${st.team}", label "${st.label}"`);
         await idle(name);
       }
+
+      await chooseRules(name, width, matchId);
       await closePopover(name);
     }
     await cleanup();
+  }
+
+  // What the board's pick does when the map in view holds none of it, applied
+  // at the click only: one case per rule, counted from the body the page holds,
+  // the way the page counts. (1) the view holds some: stays. (2) one other map
+  // holds some: goes there. (3) several do: goes to the one with most (a tie:
+  // tab order), the note names the rest and its button goes there. (4) no map
+  // holds any: nothing darkens and the note says so.
+  async function chooseRules(name, width, matchId) {
+    const nm = `${name}, where the pick lands`;
+    const pop = "document.querySelector('.info-popover')";
+    const SEL = {
+      row: c => `.info-popover .wvw-board-row[data-focus-color="${c}"] .wvw-board-team`,
+      cell: (c, t) => `.info-popover .wvw-board-row[data-focus-color="${c}"] [data-focus-type="${t}"]`,
+      col: t => `.info-popover .wvw-board-head [data-focus-type="${t}"]` };
+    const specs = [];
+    for (const c of ['red', 'blue', 'green']) specs.push({ color: c, type: null, sel: SEL.row(c) });
+    for (const t of ['Camp', 'Tower', 'Keep', 'Castle']) specs.push({ color: null, type: t, sel: SEL.col(t) });
+    for (const c of ['red', 'blue', 'green']) for (const t of ['Camp', 'Tower', 'Keep', 'Castle']) specs.push({ color: c, type: t, sel: SEL.cell(c, t) });
+    const cat = JSON.parse(await ev("JSON.stringify([...objectiveCatalogue.values()].map(m => [m.id, m.map_id, m.type]))"));
+    const bodyNow = async () => JSON.parse(await ev(`JSON.stringify(newestMatches.get('${matchId}').match)`));
+    const tabs = async () => JSON.parse(await ev(`JSON.stringify([...${pop}.querySelectorAll('.wvw-tab')].map(b => [b.dataset.type, b.textContent]))`));
+    const tally = (body, spec, order) => Object.fromEntries(order.map(type => {
+      const m = body.maps.find(x => x.type === type);
+      const held = new Map((m.objectives || []).map(o => [o.id, o.owner]));
+      return [type, cat.filter(([id, map, t]) => map === m.id && t !== 'Spawn'
+        && (!spec.color || String(held.get(id) || 'neutral').toLowerCase() === spec.color) && (!spec.type || t === spec.type)).length];
+    }));
+    const active = () => ev(`${pop}.querySelector('.wvw-tab.is-active')?.dataset.type || ''`);
+    const view = () => ev(`(() => { const p = ${pop}; const n = p.querySelector('.wvw-focus-note');
+      return { tab: p.querySelector('.wvw-tab.is-active')?.dataset.type || '', note: n ? n.textContent : '', lit: p.querySelectorAll('.wvw-marker.is-lit').length,
+        veil: !!p.querySelector('.wvw-focus-veil'), pill: !!p.querySelector('.wvw-focus-pill'),
+        said: p.querySelector(':scope > .sr-only[role="status"]')?.textContent || '' }; })()`);
+    const goTab = async type => {
+      if ((await active()) !== type) await press(nm, `${pop}.querySelector('.wvw-tab[data-type="${type}"]')`);
+      await until(nm, `${pop}.querySelector('.wvw-tab.is-active')?.dataset.type === '${type}' && !!${pop}.querySelector('.wvw-marker')`, `the ${type} tab drawn`);
+      await idle(nm);
+    };
+    const letGo = async () => { if (await ev(`!!${pop}.querySelector('.wvw-focus-pill')`)) await press(nm, `${pop}.querySelector('.wvw-focus-pill')`); };
+    const pick = async (start, spec) => {
+      await letGo();
+      await goTab(start);
+      await press(nm, `document.querySelector('${spec.sel}')`);
+      await until(nm, `!!${pop}.querySelector('.wvw-focus-pill')`, 'the pick made');
+      // A map not drawn yet shows "Loading"; the pick waits for its markers.
+      await until(nm, `!!${pop}.querySelector('.wvw-marker')`, 'the map after the pick');
+      await sleep(200);
+      return view();
+    };
+    const label = (spec, start, to) => `${spec.color || 'any'}/${spec.type || 'any'} from ${start}${to ? ' to ' + to : ''}`;
+    const order = (await tabs()).map(t => t[0]);
+    const short = Object.fromEntries(await tabs());
+    const body = await bodyNow();
+    const found = { 1: null, 2: null, 3: null };
+    for (const start of order) for (const spec of specs) {
+      const n = tally(body, spec, order);
+      const have = order.filter(t => n[t] > 0);
+      if (!found[1] && n[start] > 0 && have.length > 1) found[1] = { start, spec, n };
+      if (!found[2] && !n[start] && have.length === 1) found[2] = { start, spec, n };
+      if (!found[3] && !n[start] && have.length > 1) found[3] = { start, spec, n };
+    }
+    for (const r of [1, 2, 3]) if (!found[r]) problem(`step '${nm}': the recorded body has no case for rule ${r} (${width} px)`);
+
+    if (found[1]) {
+      const { start, spec } = found[1];
+      const v = await pick(start, spec);
+      if (v.tab !== start || !v.lit || !v.veil || v.note) problem(`step '${nm}': rule 1 ${label(spec, start)}: ${JSON.stringify(v)}, wanted to stay with some lit and no note`);
+    }
+    if (found[2]) {
+      const { start, spec, n } = found[2];
+      const to = order.find(t => n[t] > 0);
+      const v = await pick(start, spec);
+      if (v.tab !== to || !v.lit || !v.veil || v.note) problem(`step '${nm}': rule 2 ${label(spec, start, to)}: ${JSON.stringify(v)}, wanted the ${to} tab, some lit, no note`);
+      if (!v.said) problem(`step '${nm}': rule 2: the switch was not said in the status line`);
+    }
+    if (found[3]) {
+      const { start, spec, n } = found[3];
+      const have = order.filter(t => n[t] > 0);
+      const to = have.reduce((b, t) => (n[t] > n[b] ? t : b), have[0]);
+      const rest = have.filter(t => t !== to);
+      const v = await pick(start, spec);
+      const wantNote = 'also ' + rest.map(t => `${n[t]} on ${short[t]}`).join(', ');
+      if (v.tab !== to || !v.lit || !v.veil || v.note !== wantNote) problem(`step '${nm}': rule 3 ${label(spec, start, to)} ${JSON.stringify(n)}: ${JSON.stringify(v)}, wanted the ${to} tab, some lit, note "${wantNote}"`);
+      if (!v.said) problem(`step '${nm}': rule 3: the switch was not said in the status line`);
+      if (await ev(`!!${pop}.querySelector('.wvw-focus-note button')`)) {
+        await press(nm, `${pop}.querySelector('.wvw-focus-note button')`);
+        await until(nm, `${pop}.querySelector('.wvw-tab.is-active')?.dataset.type === '${rest[0]}'`, `the note's button going to ${rest[0]}`);
+        await until(nm, `!!${pop}.querySelector('.wvw-marker')`, 'the map after the note');
+        await sleep(200);
+        const w = await view();
+        if (!w.lit || !w.pill) problem(`step '${nm}': rule 3: after the note's button, ${JSON.stringify(w)}, wanted some lit and the pick kept`);
+      } else problem(`step '${nm}': rule 3: the note has no button`);
+    }
+
+    // Rule 4: every castle is Blue's, so Red's castles are nowhere.
+    await letGo();
+    const none = JSON.parse(JSON.stringify(body));
+    for (const m of none.maps) for (const o of m.objectives) if (o.type === 'Castle') o.owner = 'Blue';
+    none.scores.red += 5;
+    const spec = { color: 'red', type: 'Castle', sel: SEL.cell('red', 'Castle') };
+    if (Object.values(tally(none, spec, order)).some(x => x)) return void problem(`step '${nm}': the made-up body still has Red castles`);
+    await closePopover(nm);
+    substitutes.set(`https://api.guildwars2.com/v2/wvw/matches?id=${matchId}`, { body: Buffer.from(JSON.stringify(none)), served: 0 });
+    if (!(await press(nm + ': open', "document.querySelector('.tier-map-btn')"))) return;
+    if (!(await until(nm, `!!document.querySelector("${POPOVERS['tier-map-btn']}") && !!${pop}.querySelector('.wvw-board-row[data-focus-color]')`, 'the map reopened'))) return;
+    await until(nm, `newestMatches.get('${matchId}').match.scores.red >= ${none.scores.red}`, 'the made-up body taken');
+    await sleep(400);
+    const start = order[order.length - 1];
+    const v = await pick(start, spec);
+    if (v.tab !== start || v.veil || v.lit || !v.pill || v.note !== 'None on any map right now') problem(`step '${nm}': rule 4 ${label(spec, start)}: ${JSON.stringify(v)}, wanted to stay, nothing darkened, note "None on any map right now"`);
+    if (await ev(`${pop}.querySelector('.wvw-plot').classList.contains('is-focused')`)) problem(`step '${nm}': rule 4: the map is darkened`);
   }
 
   // The column beside the map: three tabs, Board, Captures and Objective, over

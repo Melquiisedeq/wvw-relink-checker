@@ -2987,22 +2987,105 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   let focusPick = null;
   let focusSpot = null;     // { spec, el }: el, when given, holds it
   let focusTimer = 0;
+  // How many objectives a spec lights on each map, by the same focusMatches
+  // and the same owners the markers use, over the newest body.
+  const focusCounts = (spec) => {
+    const n = new Map();
+    const live = matchIsLive(liveMatch);
+    for (const type of available) {
+      const data = (liveMatch.maps || []).find((m) => m.type === type) || byType.get(type);
+      const held = new Map(((live && data && data.objectives) || []).map((o) => [o.id, o]));
+      let c = 0;
+      for (const meta of catalogue.values()) {
+        if (!data || meta.map_id !== data.id || MAP_SKIP_TYPES.has(meta.type)) continue;
+        const ob = held.get(meta.id);
+        if (focusMatches(spec, meta.id, String((ob && ob.owner) || 'neutral').toLowerCase(), meta.type)) c++;
+      }
+      n.set(type, c);
+    }
+    return n;
+  };
+  const sumOf = (n) => [...n.values()].reduce((a, b) => a + b, 0);
+  // Set by a click that sent the view to another map while more maps had some:
+  // the board's note then says where the rest are (paintFocusNote).
+  let focusAlso = false;
+  const focusLive = document.createElement('span');
+  focusLive.className = 'sr-only';
+  focusLive.setAttribute('role', 'status');
+  popover.appendChild(focusLive);
+  const paintFocusNote = () => {
+    const old = board.querySelector('.wvw-focus-note');
+    const head = board.querySelector('.wvw-board-head');
+    let parts = null;   // [text] or [type, count] pairs
+    if (head && focusPick && !focusSpot) {
+      const n = focusCounts(focusPick);
+      if (!sumOf(n)) parts = ['None on any map right now'];
+      else if (focusAlso) {
+        const others = available.filter((t) => t !== current && n.get(t) > 0);
+        if (others.length) parts = others.map((t) => [t, n.get(t)]);
+      }
+    }
+    const key = JSON.stringify(parts);
+    if (!parts) { if (old) old.remove(); return; }
+    if (old && old.dataset.key === key) return;
+    if (old) old.remove();
+    const note = document.createElement('div');
+    note.className = 'wvw-focus-note';
+    note.dataset.key = key;
+    if (typeof parts[0] === 'string') note.textContent = parts[0];
+    else {
+      note.append('also ');
+      parts.forEach(([t, c], i) => {
+        if (i) note.append(', ');
+        note.append(`${c} on `);
+        const go = document.createElement('button');
+        go.type = 'button';
+        go.className = 'wvw-focus-go';
+        go.textContent = MAP_TAB_NAME[t] || t;
+        go.title = `Show ${MAP_PANEL_NAME[t] || t}`;
+        go.addEventListener('click', (e) => { e.stopPropagation(); show(t); });
+        note.appendChild(go);
+      });
+    }
+    head.after(note);
+  };
   const paintFocus = () => {
     if (activeTrigger !== triggerEl) return;
     // A chip rebuilt under the pointer never says it was left.
     if (focusSpot && focusSpot.el && !focusSpot.el.isConnected) focusSpot = null;
     if (plotWrap) {
-      plotWrap.paintFocus(focusSpot ? focusSpot.spec : focusPick);
+      // A pick that nothing holds on any map darkens nothing.
+      const empty = !focusSpot && !!focusPick && !sumOf(focusCounts(focusPick));
+      plotWrap.paintFocus(empty ? null : focusSpot ? focusSpot.spec : focusPick);
       // The bar over the map follows the picked team (css/maps.css).
       if (focusPick && focusPick.color) plotWrap.dataset.focusTeam = focusPick.color;
       else delete plotWrap.dataset.focusTeam;
     }
     paintBoardFocus(board, focusPick, () => pickFocus(null));
+    paintFocusNote();
   };
-  const pickFocus = (spec) => {
+  // fromClick: the board was clicked. Then a pick with nothing on the map in
+  // view goes to the map that has the most (a tie: tab order), and only then -
+  // never on a refresh.
+  const pickFocus = (spec, fromClick) => {
     clearTimeout(focusTimer);
     focusPick = spec;
     focusSpot = null;
+    focusAlso = false;
+    focusLive.textContent = '';
+    let moveTo = null;
+    if (spec && fromClick) {
+      const n = focusCounts(spec);
+      if (!n.get(current)) {
+        const have = available.filter((t) => n.get(t) > 0);
+        moveTo = have.reduce((best, t) => (!best || n.get(t) > n.get(best) ? t : best), null);
+        focusAlso = have.length > 1;
+      }
+      const words = focusWords(spec);
+      if (moveTo) focusLive.textContent = `${words}: showing ${MAP_PANEL_NAME[moveTo] || moveTo}`;
+      else if (!sumOf(n)) focusLive.textContent = `${words}: none on any map right now`;
+    }
+    if (moveTo) show(moveTo);
     paintFocus();
   };
   // spotlight({ ids } or { color, type }, { map, el, ms }): lit only on
@@ -3023,7 +3106,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     if (!el || !board.contains(el)) return false;
     const spec = { color: el.dataset.focusColor || null, type: el.dataset.focusType || null };
     const same = !!focusPick && focusPick.color === spec.color && focusPick.type === spec.type;
-    pickFocus(same ? null : spec);
+    pickFocus(same ? null : spec, true);
     return true;
   };
   board.addEventListener('click', (e) => { if (pickFromBoard(e.target)) e.stopPropagation(); });
