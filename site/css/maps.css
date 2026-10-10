@@ -767,10 +767,3 @@
 .wvw-ring-a{animation:wvw-ring 1.6s ease-out 4;opacity:0;}
 .wvw-ring .wvw-ring-b{stroke:var(--accent-bright);stroke-width:2;animation:wvw-ring 1.6s ease-out .8s 4;opacity:0;}
 @keyframes wvw-ring{0%{opacity:.95;transform:scale(.9);}100%{opacity:0;transform:scale(2.1);}}
-
-/* A dot on another map's tab that changed hands, pulsing until it is opened. */
-.wvw-tab-dot{
-  position:absolute;top:2px;right:3px;width:6px;height:6px;border-radius:50%;
-  background:var(--accent-bright);box-shadow:0 0 5px rgba(102,245,255,.8);pointer-events:none;
-  animation:pip-pulse 1.6s ease-in-out infinite;
-}
