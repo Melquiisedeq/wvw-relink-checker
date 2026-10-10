@@ -1899,6 +1899,8 @@ async function main() {
         const stalled = clone(); stalled.maps[0].kills.red += 200;
         const longer = after(stalled);
         longer.m.maps[1].kills.green += 7;
+        // Its flips happened 3 min ago, before the history's row of the new total.
+        for (const map of longer.m.maps) for (const o of map.objectives) if (longer.taken.includes(o.id)) o.last_flipped = new Date(now - 3 * MIN).toISOString();
         killSheet = new Map([[id, [sample(now - 40 * MIN, M0), sample(now - 36 * MIN, stalled)]]]);
         reset();
         missedLastOffer.set(id, now - 30000);
@@ -1950,6 +1952,31 @@ async function main() {
         missedMatchOffered(longer.m, { match: stalled, at: now - 7 * MIN });
         n = missedNotes.get(id);
         check('no history claimed a sure start', !!n && n.sure === false && n.since <= now - 7 * MIN, n && n.sure);
+        // A listed flip older than the period the history proves: the period
+        // starts at that flip (its last_flipped is exact), a future one is skipped.
+        const old = after();
+        const flips = (k) => { const o = [].concat(...old.m.maps.map(x => x.objectives)).find(x => x.id === old.taken[k]); return o; };
+        flips(0).last_flipped = new Date(now - 120 * MIN).toISOString();
+        flips(1).last_flipped = new Date(now + 60 * MIN).toISOString();
+        reset();
+        missedReturn = { since: now - 5 * MIN, back: now, bodies: new Map([[id, clone()]]) };
+        missedMatchOffered(old.m, { match: old.m, at: now });
+        n = missedNotes.get(id);
+        check('a return with a flip 2 h old started later than the flip', !!n && n.kind === 'return' && n.since === now - 120 * MIN && n.sure === true, n && (n.since - now) / MIN + ' ' + n.sure);
+        reset();
+        missedLastOffer.set(id, now - 30000);
+        missedMatchOffered(old.m, { match: clone(), at: now - 7 * MIN });
+        n = missedNotes.get(id);
+        check('a pause with a flip 2 h old started later than the flip', !!n && n.kind === 'pause' && n.since === now - 120 * MIN && n.sure === true, n && (n.since - now) / MIN + ' ' + n.sure);
+        // The history showed the new total 5 min ago, a listed flip came 1 min ago:
+        // the period must reach the flip.
+        flips(0).last_flipped = new Date(now - MIN).toISOString();
+        killSheet = new Map([[id, [sample(now - 40 * MIN, M0), sample(now - 5 * MIN, old.m)]]]);
+        reset();
+        missedLastOffer.set(id, now - 30000);
+        missedMatchOffered(old.m, { match: clone(), at: now - 7 * MIN });
+        n = missedNotes.get(id);
+        check('the period ended before a flip it lists', !!n && n.end >= now - MIN, n && (n.end - now) / MIN);
         killSheet = sheetWas;
         const ruins = clone();
         for (const map of ruins.maps) for (const o of map.objectives) if (o.type === 'Ruins' || o.type === 'Spawn') o.owner = flipTo(o.owner);
