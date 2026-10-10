@@ -2279,7 +2279,19 @@ async function main() {
     for (const width of [320, 360]) {
       const name = `${step}, ${width} px`;
       await send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: true });
-      await until(name, `innerWidth === ${width}`, 'the new width');
+      if (!(await until(name, `innerWidth === ${width}`, 'the new width'))) {
+        // What a phone this wide would see instead: a page wider than the
+        // screen makes a mobile browser widen the layout to fit it.
+        problem(`step '${name}': ` + await ev(`(() => {
+          let wide = null;
+          for (const e of document.querySelectorAll('body *')) {
+            const r = e.getBoundingClientRect();
+            if (r.width && (!wide || r.right > wide.r)) wide = { r: Math.round(r.right), what: e.tagName + '.' + String(e.className?.baseVal ?? e.className).split(' ')[0] };
+          }
+          return 'innerWidth ' + innerWidth + ', page ' + document.documentElement.scrollWidth + ' px wide, rightmost edge ' + (wide ? wide.r + ' px at ' + wide.what : 'none') + ', popover open: ' + !!document.querySelector('.info-popover');
+        })()`));
+        continue;
+      }
       await steady(name, "document.querySelector('.tier-map-btn')");
       if (!(await press(name + ': open', "document.querySelector('.tier-map-btn')"))) continue;
       if (!(await until(name, "!!document.querySelector('.info-popover .wvw-board-row[data-focus-color]') && !!document.querySelector('.info-popover .wvw-zoom button')", 'the board and the zoom buttons'))) continue;
