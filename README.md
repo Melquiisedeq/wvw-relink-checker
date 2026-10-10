@@ -12,7 +12,7 @@ standings and live maps that show where the fighting is, for every NA and EU mat
 
 [![Live demo](https://img.shields.io/badge/demo-wvwrelink.com-7fd6f2?style=for-the-badge)](https://wvwrelink.com/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3fa9cc?style=for-the-badge)](LICENSE)
-[![Dependencies: none](https://img.shields.io/badge/dependencies-none-4caf7d?style=for-the-badge)](#-project-layout)
+[![Site dependencies: none](https://img.shields.io/badge/site_dependencies-none-4caf7d?style=for-the-badge)](#-project-layout)
 [![Build step: none](https://img.shields.io/badge/build_step-none-4caf7d?style=for-the-badge)](#-project-layout)
 
 ### [→ Open the live tool](https://wvwrelink.com/)
@@ -179,7 +179,9 @@ worker/        wvwrelink.com/api: takes each script's signed results into
                serves the page its two reads (/api/kills, /api/relink)
 tests/         the Worker's rules, and the page's rules with its scripts in a
                node:vm (no browser), run by node --test with nothing installed
-.github/       the checks, and the workflows that run them
+.github/       the checks, and the workflows that run them; e2e/ holds the
+               browser tests, Playwright Test - the repository's one
+               dependency, for the tests only, never for the site
 ```
 
 The scripts are plain (non-module) and share one global scope, so the

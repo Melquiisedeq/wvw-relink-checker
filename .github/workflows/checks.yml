@@ -3,7 +3,7 @@
 # *silently* in production - a script missing from the ordered list in
 # index.html, a host missing from the Content Security Policy, a syntax error in
 # a file nothing parses until a browser does. The first two jobs are aimed at
-# exactly those, and the fourth opens the page in a real Chrome and fails on
+# exactly those, and the last ones open the page in a real Chrome and fail on
 # whatever the browser objects to. The Worker behind /api is different: it is
 # rules - what it refuses, keeps and serves - and the third job runs them.
 name: Checks
@@ -73,7 +73,8 @@ jobs:
       - name: What the /api Worker refuses, keeps and serves, and the page's rules
         run: node --test --test-reporter=dot "tests/*.test.mjs"
 
-  page:
+  # The check-page's walk (the required check `page` gathers it with e2e below).
+  walk:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -86,3 +87,72 @@ jobs:
       # read-only token, no secret.
       - name: The page loads with no exception, no CSP violation, every tier
         run: node .github/scripts/check-page.mjs
+
+  # Playwright Test (.github/e2e): the repository's one dependency, for the
+  # tests only - the exact versions of the lockfile, no install scripts, no
+  # browser downloaded (the image's Google Chrome), no secret, the same
+  # read-only token. The recording answers the page, as in the walk.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: .github/e2e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Playwright Test from the lockfile
+        run: npm ci --ignore-scripts
+
+      - name: Chrome version
+        run: |
+          echo "Chrome: $(google-chrome --version)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The runner's commands are stopped while the tests run: a failure prints
+      # what the page said, and a line of it starting with "::" would be read as
+      # one. support/summary.mjs turns them back on (E2E_RESUME) only to write
+      # its own warnings for tests that passed on their retry.
+      - name: The page in Playwright Test (a retry passing is a warning, a skip fails)
+        run: |
+          token="$(openssl rand -hex 16)"
+          echo "::stop-commands::$token"
+          set +e
+          E2E_RESUME="$token" npx playwright test
+          code=$?
+          echo "::$token::"
+          exit "$code"
+
+      # Traces of what failed, kept three days; nothing on a green run.
+      - name: Keep the traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-traces
+          path: .github/e2e/test-results/
+          retention-days: 3
+          if-no-files-found: ignore
+
+  # The required check. The ruleset names `page`, so this job keeps the name
+  # and passes only when both browser jobs did: a job that was skipped counts
+  # as a success to the ruleset, hence always() and the explicit test.
+  page:
+    needs: [walk, e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # A result is success, failure, cancelled or skipped; only success passes.
+      - name: The walk and Playwright Test both passed
+        env:
+          WALK: ${{ needs.walk.result }}
+          E2E: ${{ needs.e2e.result }}
+        run: |
+          failed=0
+          for pair in "walk=$WALK" "e2e=$E2E"; do
+            echo "$pair"
+            case "${pair#*=}" in
+              success) ;;
+              *) failed=1 ;;
+            esac
+          done
+          exit "$failed"
