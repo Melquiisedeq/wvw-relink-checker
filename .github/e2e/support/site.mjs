@@ -17,7 +17,8 @@ export const SITE = process.env.SITE_DIR ? resolve(process.env.SITE_DIR) : join(
 
 // One port per worker, the same on every run: a failure names the address it
 // was served from, and nothing else on the machine is asked for a free one.
-const BASE_PORT = 47300;
+// E2E_PORT_BASE moves the block, for two checkouts testing on one machine.
+const BASE_PORT = Number(process.env.E2E_PORT_BASE) || 47300;
 
 // The `/*` block of _headers.
 function siteHeaders() {

@@ -10,6 +10,7 @@
 //     .olderPool(10).advance(20).olderPool(0)   // a server group 10 min behind
 //     .freeze(40)                         // 40 min, nothing new from the API
 //     .status(503).advance(8).status(null)      // the game moves, the API is down
+//     .latestStatus(503)                  // /api/latest down (or 'hang': never answers)
 //
 // Immutable: every method returns a new timeline. Time is in minutes after the
 // recording's instant (recordedAt). Only the focus match plays; the others keep
@@ -155,9 +156,9 @@ class Timeline {
   }
 
   // From here on, /api/latest and its summary answer `code` (503: the Worker
-  // with nothing recent kept); null ends it.
+  // with nothing recent kept) or never ('hang'); null ends it.
   latestStatus(code) {
-    if (code !== null && !(code >= 400 && code < 600)) throw new Error(`gw2: latest status ${code}`);
+    if (code !== null && code !== 'hang' && !(code >= 400 && code < 600)) throw new Error(`gw2: latest status ${code}`);
     return this.#with([{ kind: 'latest', at: this.#cursor, code }]);
   }
 
@@ -515,6 +516,7 @@ class Server {
     const path = (() => { try { return new URL(url).pathname; } catch { return ''; } })();
     if (path === '/api/latest' || path === '/api/latest/summary') {
       const down = this.#tl.latestStatusAt(t);
+      if (down === 'hang') return 'hang';
       if (down) {
         this.#planted.add(url);
         return json(down, { error: 'down' });
