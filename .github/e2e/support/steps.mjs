@@ -1,6 +1,7 @@
 // Moves several specs make the same way. Nothing here asserts a rule of its
 // own beyond "the thing a visitor waits for appeared".
 import { expect } from '@playwright/test';
+import { recording } from './recordings.mjs';
 
 // A phone's screen at `width`, as the check-page puts it (the protocol's device
 // override, mobile on). A page wider than the screen makes the layout widen to fit
@@ -48,4 +49,44 @@ export async function search(page, names) {
   await expect(page.locator('#resultBody tr').first()).toBeVisible();
   await expect(page.locator('#matchPanelsContainer > *').first()).toBeAttached();
   await expect(page.locator('#runBtn')).toBeEnabled();
+}
+
+// A body the recording holds, parsed: what a test bends into a state of its own.
+export function recordedJson(url) {
+  const e = recording().entries.get(url);
+  if (!e) throw new Error(`steps: ${url} is not in the recording`);
+  return JSON.parse(Buffer.from(e[2], e[3] ? 'base64' : 'utf8').toString('utf8'));
+}
+
+// Every address the page asks of the game's matches API from now on, in order.
+export function matchReads(page) {
+  const asked = [];
+  page.on('request', r => { if (r.url().startsWith('https://api.guildwars2.com/v2/wvw/matches?')) asked.push(r.url()); });
+  return asked;
+}
+
+// The game's list of matches as `list` says, by ids=all and by any ids=<some>
+// (filtered from it, as the game would), until off(). A read by id that is
+// answered from the recording instead would hand the page a live body the
+// list was made to lack.
+export async function serveList(page, list) {
+  const state = { reads: 0, on: true, off() { state.on = false; } };
+  await page.route(/^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches\?ids=/, async route => {
+    if (!state.on || route.request().method() !== 'GET') return route.fallback();
+    state.reads++;
+    const want = route.request().url().split('ids=')[1];
+    const body = want === 'all' ? list : list.filter(m => want.split(',').includes(m.id));
+    await route.fulfill({ status: 200, body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } });
+  });
+  return state;
+}
+
+// A Check of `names`, to "Done": the result rows' dots.
+export async function check(page, wvw, names) {
+  await page.evaluate(v => { document.getElementById('guildInput').value = v; }, names.join('\n'));
+  await page.locator('#runBtn').click();
+  await expect(page.locator('#statusMsg')).toHaveText(/^Done/, { timeout: 15000 });
+  await expect(page.locator('#runBtn')).toBeEnabled();
+  await wvw.settle();
 }
