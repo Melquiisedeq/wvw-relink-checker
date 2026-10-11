@@ -58,6 +58,9 @@ export const test = base.extend({
     const { recordedAt, guilds } = recording();
     // Declared before the log listener below reads it.
     const server = timeline ? timeline.serve(problem) : null;
+    // Addresses a test makes fail on purpose (support/faults.mjs): the browser
+    // logs each refused read as an error, and that one is expected.
+    const allowed = [];
 
     const cdp = await context.newCDPSession(page);
     cdp.on('Runtime.exceptionThrown', ({ exceptionDetails: d }) => {
@@ -70,7 +73,7 @@ export const test = base.extend({
       // The 503 /api/latest answers on purpose (support/recordings.mjs), or, with
       // a timeline, what it failed on purpose; and the analytics refused there.
       const expected = (!server && /\/api\/latest$/.test(e.url || '')) || (server && server.planted(e.url || ''))
-        || BLOCKED.test(e.url || '') || BLOCKED.test(e.text);
+        || allowed.some(re => re.test(e.url || '')) || BLOCKED.test(e.url || '') || BLOCKED.test(e.text);
       if (e.level === 'error' && !expected) problem(`log error (${e.source}): ${e.text}${e.url ? ' ' + e.url : ''}`);
     });
     cdp.on('Audits.issueAdded', ({ issue: i }) => {
@@ -119,7 +122,7 @@ export const test = base.extend({
     };
     await page.route('**/*', answerFrom(site.url, problem, server && (async url => server.answer(url, await now()))));
 
-    await use({ url: site.url + '/', recordedAt, opensAt, guilds, tiers: expectedTiers(), problems, problem, settle, now, skew, timeline });
+    await use({ url: site.url + '/', recordedAt, opensAt, guilds, tiers: expectedTiers(), problems, problem, allowLog: re => allowed.push(re), settle, now, skew, timeline });
 
     await page.unrouteAll({ behavior: 'ignoreErrors' });
     // The problems in the message's first line: the summary prints that line.
