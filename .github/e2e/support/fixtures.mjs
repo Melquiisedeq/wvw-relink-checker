@@ -6,6 +6,16 @@
 //
 //   import { test, expect } from './support/fixtures.mjs';
 //   test('...', async ({ page, wvw }) => { await page.goto(wvw.url); ... });
+//
+// Two options, per file or describe block with test.use():
+//   timeline  a timeline of support/gw2.mjs: the match URLs, /api/latest and
+//             /api/kills answered from it at the page's own time, and the
+//             page's clock started where it says the page opens. Default: the
+//             recording as it is, /api/latest down.
+//   clock     'shim' (default): the check-page's clock below, jumped with
+//             wvw.skew(ms). 'playwright': no shim, page.clock installed at the
+//             same instant, for tests that drive the timers (runFor,
+//             fastForward); wvw.skew(ms) then jumps it with setSystemTime.
 import { test as base, expect } from '@playwright/test';
 import { startSite } from './site.mjs';
 import { BLOCKED, answerFrom, expectedTiers, recording } from './recordings.mjs';
@@ -28,6 +38,9 @@ const clockShim = anchor => `(() => {
 })();`;
 
 export const test = base.extend({
+  timeline: [null, { option: true }],
+  clock: ['shim', { option: true }],
+
   // One server per worker, on that worker's fixed port.
   site: [async ({}, use, workerInfo) => {
     const site = await startSite(workerInfo.parallelIndex);
@@ -35,7 +48,7 @@ export const test = base.extend({
     await site.close();
   }, { scope: 'worker' }],
 
-  wvw: async ({ page, context, site }, use) => {
+  wvw: async ({ page, context, site, timeline, clock }, use) => {
     const problems = [];
     // One line each, whitespace folded: page text must never start a line.
     const problem = text => {
@@ -43,6 +56,8 @@ export const test = base.extend({
       if (!problems.includes(line)) problems.push(line);
     };
     const { recordedAt, guilds } = recording();
+    // Declared before the log listener below reads it.
+    const server = timeline ? timeline.serve(problem) : null;
 
     const cdp = await context.newCDPSession(page);
     cdp.on('Runtime.exceptionThrown', ({ exceptionDetails: d }) => {
@@ -52,9 +67,10 @@ export const test = base.extend({
       if (p.type === 'error') problem('console.error: ' + p.args.map(a => a.value ?? a.description).join(' '));
     });
     cdp.on('Log.entryAdded', ({ entry: e }) => {
-      // The 503 /api/latest answers on purpose (support/recordings.mjs), and the
-      // analytics refused there.
-      const expected = /\/api\/latest$/.test(e.url || '') || BLOCKED.test(e.url || '') || BLOCKED.test(e.text);
+      // The 503 /api/latest answers on purpose (support/recordings.mjs), or, with
+      // a timeline, what it failed on purpose; and the analytics refused there.
+      const expected = (!server && /\/api\/latest$/.test(e.url || '')) || (server && server.planted(e.url || ''))
+        || BLOCKED.test(e.url || '') || BLOCKED.test(e.text);
       if (e.level === 'error' && !expected) problem(`log error (${e.source}): ${e.text}${e.url ? ' ' + e.url : ''}`);
     });
     cdp.on('Audits.issueAdded', ({ issue: i }) => {
@@ -83,10 +99,27 @@ export const test = base.extend({
       }
     };
 
-    await page.addInitScript(clockShim(recordedAt));
-    await page.route('**/*', answerFrom(site.url, problem));
+    const opensAt = recordedAt + (timeline ? timeline.opensAt : 0);
+    if (clock === 'playwright') await page.clock.install({ time: opensAt });
+    else if (clock === 'shim') await page.addInitScript(clockShim(opensAt));
+    else throw new Error(`wvw: clock '${clock}', wanted 'shim' or 'playwright'`);
+    // The page's own time, asked of the page: the timeline answers at it. A
+    // page between documents answers from the last offset it gave.
+    let offset = opensAt - Date.now();
+    const now = async () => {
+      try {
+        const t = await page.evaluate(() => Date.now());
+        offset = t - Date.now();
+        return t;
+      } catch { return Date.now() + offset; }
+    };
+    const skew = async ms => {
+      if (clock === 'shim') await page.evaluate(n => globalThis.__skewClock(n), ms);
+      else await page.clock.setSystemTime(await now() + ms);
+    };
+    await page.route('**/*', answerFrom(site.url, problem, server && (async url => server.answer(url, await now()))));
 
-    await use({ url: site.url + '/', recordedAt, guilds, tiers: expectedTiers(), problems, problem, settle });
+    await use({ url: site.url + '/', recordedAt, opensAt, guilds, tiers: expectedTiers(), problems, problem, settle, now, skew, timeline });
 
     await page.unrouteAll({ behavior: 'ignoreErrors' });
     // The problems in the message's first line: the summary prints that line.
