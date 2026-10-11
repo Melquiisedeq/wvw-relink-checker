@@ -29,6 +29,11 @@ const EXTERNAL = /^https:\/\/(api\.guildwars2\.com|docs\.google\.com)\//;
 export const BLOCKED = /goatcounter|cloudflareinsights/;
 const IDS_URL = 'https://api.guildwars2.com/v2/wvw/matches?ids=';
 const ALL_URL = IDS_URL + 'all';
+// The guild tactics a map asks for are the ones its match holds that no map
+// opened before it asked for, so the address depends on the order maps are
+// opened in. A test opens maps in its own order: an unrecorded list of ids is
+// answered from the tactics the recording holds, one by one, in the order asked.
+const TACTICS_URL = 'https://api.guildwars2.com/v2/guild/upgrades?ids=';
 
 // 1x1 transparent PNG: guild emblems and icons, which only need to decode.
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
@@ -118,6 +123,19 @@ export function answerFrom(base, problem, own = null) {
         }
         const list = JSON.parse(bodyOf(all).toString('utf8')).filter(m => want.includes(m.id));
         return await fulfil(route, 200, 'application/json; charset=utf-8', Buffer.from(JSON.stringify(list)));
+      }
+      if (url.startsWith(TACTICS_URL) && !entries.has(url)) {
+        const want = url.slice(TACTICS_URL.length).split(',');
+        const known = new Map();
+        for (const [key, e] of entries) {
+          if (!key.startsWith(TACTICS_URL)) continue;
+          for (const t of JSON.parse(bodyOf(e).toString('utf8'))) known.set(String(t.id), t);
+        }
+        if (!want.every(i => /^\d{1,6}$/.test(i) && known.has(i))) {
+          problem(`not answered: ${url} (a tactic the recording does not hold)`);
+          return await route.abort('failed');
+        }
+        return await fulfil(route, 200, 'application/json; charset=utf-8', Buffer.from(JSON.stringify(want.map(i => known.get(i)))));
       }
       if (EXTERNAL.test(url)) {
         const hit = entries.get(url);

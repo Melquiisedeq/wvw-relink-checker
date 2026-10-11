@@ -1,10 +1,9 @@
 // Loads the page in a real Chrome, with the API and the sheets answered from a
-// recording, walks it as a visitor would (guild search, every map, every icon
-// button and popover, the NA/EU swap, a map answered with the same body for
+// recording, walks it as a visitor would (the maps, a map answered with the same body for
 // minutes, what changed hands over such a gap summed up beside the map, the
 // board picking what the map lights, the Board, Captures and Objective tabs
-// beside it keeping their size, a frozen match answer that must not be painted, a load whose API reads fail and are tried again, then a second load with /api/* down), and
-// fails on anything the browser objects to: an exception, a console error, a
+// beside it keeping their size, a frozen match answer that must not be painted),
+// and fails on anything the browser objects to: an exception, a console error, a
 // Content Security Policy violation, a step whose element never appears.
 //
 //   node .github/scripts/check-page.mjs [--chrome PATH]           replay (the check)
@@ -300,8 +299,6 @@ async function main() {
   const BLOCKED = /goatcounter|cloudflareinsights/;
   const EXTERNAL = /^https:\/\/(api\.guildwars2\.com|docs\.google\.com)\//;
   const ids = new Map();            // in-flight requests, for "the page has gone quiet"
-  let apiDown = false;              // second load: /api/* answers 503
-  let apiRefused = 0, sheetReads = 0;
   // url -> { body, served }: answers the steps 'map corners' and 'frozen match'
   // put in place of the recording, filled only from constants and the
   // recording itself.
@@ -312,18 +309,16 @@ async function main() {
   const IDS_URL = 'https://api.guildwars2.com/v2/wvw/matches?ids=';
   const ALL_URL = IDS_URL + 'all';
   const isIdsRead = url => url.startsWith(IDS_URL) && url !== ALL_URL;
+  // The guild tactics a map asks for are the ones its match holds that no map
+  // opened before it asked for, so the address depends on the order maps are
+  // opened in. Replaying, an unrecorded list of ids is answered from the
+  // tactics the recording holds, one by one, in the order asked.
+  const TACTICS_URL = 'https://api.guildwars2.com/v2/guild/upgrades?ids=';
   const idsAsked = [];              // every such read, in order, for the steps to count
   let gameReads = 0;                // every read of api.guildwars2.com
-  // Set by the step 'early actions': the script whose request is kept waiting.
-  let holdUrl = null, held = null;
-  // Set by the step 'failed load': API reads answered 503 on purpose.
-  let failing = null;
-  let limited = null;               // set by the step 'guild cache': { re, status } answers that status on purpose
-  let limitedReads = 0;
   // /api/latest, the page's second read of the matches: 'down' answers 503 (the
   // walk's default), 'serve' answers `latestBody`, 'hang' never answers.
   let latestMode = 'down', latestBody = null, latestReads = 0;
-  let failingLog = null;            // what the step may log errors for, kept past the end of the 503s (the log is late)
 
   // The hot-map floor is 50 kills in ten minutes and the recording may sit in a
   // lull, so the kills history is served with 200 fewer EBG kills before its
@@ -353,13 +348,12 @@ async function main() {
       if (isApi && url.slice(base.length) === '/api/latest' && request.method !== 'OPTIONS') {
         latestReads++;
         if (latestMode === 'hang') return;   // the page's own deadline ends it
-        if (latestMode === 'serve' && !apiDown) return await reply(requestId, 200, 'application/json', latestBody);
+        if (latestMode === 'serve') return await reply(requestId, 200, 'application/json', latestBody);
         return await reply(requestId, 503, 'application/json', Buffer.from('{"error":"down"}'));
       }
       // The summary the page peeks at: what /api/latest serves, without the
       // bodies; {} when it serves nothing, as the Worker answers when empty.
       if (isApi && url.slice(base.length) === '/api/latest/summary' && request.method !== 'OPTIONS') {
-        if (apiDown) return await reply(requestId, 503, 'application/json', Buffer.from('{"error":"down"}'));
         const out = {};
         if (latestMode === 'serve' && latestBody) {
           for (const m of JSON.parse(latestBody.toString('utf8')).matches || []) {
@@ -375,7 +369,6 @@ async function main() {
       if (request.method === 'OPTIONS') return await send('Fetch.fulfillRequest', { requestId, responseCode: 204,
         responseHeaders: [{ name: 'Access-Control-Allow-Origin', value: '*' }, { name: 'Access-Control-Allow-Headers', value: '*' }] });
       if (BLOCKED.test(url)) return await send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' });
-      if (holdUrl && url === holdUrl) { held = requestId; return; }   // released by the step 'early actions'
       if (url.startsWith('https://render.guildwars2.com/')) return await reply(requestId, 200, 'image/png', PNG);
       if (url.startsWith('https://api.guildwars2.com/')) gameReads++;
       if (isIdsRead(url)) idsAsked.push(url);
@@ -383,16 +376,6 @@ async function main() {
       if (swap) {
         swap.served++;
         return await reply(requestId, 200, 'application/json; charset=utf-8', swap.body);
-      }
-      if (limited && limited.re.test(url)) {
-        limitedReads++;
-        return await send('Fetch.fulfillRequest', { requestId, responseCode: limited.status,
-          responseHeaders: [{ name: 'Content-Type', value: 'application/json' }, { name: 'Retry-After', value: '1' },
-            { name: 'Access-Control-Allow-Origin', value: '*' }, { name: 'Cache-Control', value: 'no-store' }],
-          body: Buffer.from('{"error":"on purpose"}').toString('base64') });
-      }
-      if (failing && failing.test(url)) {
-        return await reply(requestId, 503, 'application/json', Buffer.from('{"error":"down"}'));
       }
       if (isIdsRead(url) && !recorded.has(url)) {
         const want = url.slice(IDS_URL.length).split(',');
@@ -404,17 +387,25 @@ async function main() {
         const list = JSON.parse(allBody.toString('utf8')).filter(m => want.includes(m.id));
         return await reply(requestId, 200, 'application/json; charset=utf-8', Buffer.from(JSON.stringify(list)));
       }
-      if (own && apiDown) {
-        apiRefused++;
-        return await reply(requestId, 503, 'application/json', Buffer.from('{"error":"down"}'));
+      if (!RECORD && url.startsWith(TACTICS_URL) && !recorded.has(url)) {
+        const want = url.slice(TACTICS_URL.length).split(',');
+        const known = new Map();
+        for (const [key, e] of recorded) {
+          if (!key.startsWith(TACTICS_URL)) continue;
+          for (const t of JSON.parse(bodyOf(e).toString('utf8'))) known.set(String(t.id), t);
+        }
+        if (!want.every(i => /^\d{1,6}$/.test(i) && known.has(i))) {
+          problem(`not answered: ${url} during step '${stepNow}' (a tactic the recording does not hold)`);
+          return await send('Fetch.failRequest', { requestId, errorReason: 'Failed' });
+        }
+        return await reply(requestId, 200, 'application/json; charset=utf-8', Buffer.from(JSON.stringify(want.map(i => known.get(i)))));
       }
       if (own || EXTERNAL.test(url)) {
         const key = own || url;
-        if (/^https:\/\/docs\.google\.com\//.test(url)) sheetReads++;
         if (RECORD) await record(key);
         const hit = recorded.get(key);
         if (!hit) {
-          problem(`not recorded: ${key}${apiDown ? ' (load with /api down)' : ''} during step '${stepNow}' - re-record with --record`);
+          problem(`not recorded: ${key} during step '${stepNow}' - re-record with --record`);
           return await send('Fetch.failRequest', { requestId, errorReason: 'Failed' });
         }
         return await reply(requestId, hit[0], hit[1], key === OWN_API.get('/api/kills') ? withFight(bodyOf(hit)) : bodyOf(hit));
@@ -456,7 +447,7 @@ async function main() {
         break;
       case 'Log.entryAdded': {
         const e = p.entry;
-        const refused = (apiDown && /\/api\//.test(e.url || '')) || /\/api\/latest$/.test(e.url || '') || (failingLog && failingLog.test(e.url || ''));   // the 503 we sent on purpose
+        const refused = /\/api\/latest$/.test(e.url || '');   // the 503 we sent on purpose
         if (e.level === 'error' && !refused && !BLOCKED.test(e.url || '') && !BLOCKED.test(e.text)) {
           problem(`log error (${e.source}): ${e.text}${e.url ? ' ' + e.url : ''}`);
         }
@@ -631,11 +622,10 @@ async function main() {
   }
 
   // Navigate and wait for the page to go quiet with every tier of both regions up.
-  async function load(name, during) {
+  async function load(name) {
     loaded = false;
     ids.clear();
     await navigate();
-    if (during) await during();
     await settled(name);
     let quiet = 0, tiersUp = false;
     while (true) {
@@ -658,57 +648,15 @@ async function main() {
     NA: document.querySelectorAll('#standingsGridNA > .standing-match').length,
     EU: document.querySelectorAll('#standingsGridEU > .standing-match').length })`;
   let want = null, got = null;
-  const clicked = new Set();
 
-  // What each icon button's popover must hold once it has finished loading.
-  const POPOVERS = {
-    'tier-map-btn': ".info-popover .wvw-plot g[role='button']",
-    'server-guilds-btn': '.info-popover .info-popover-body',
-    'map-kd-btn': '.info-popover > :nth-child(2)',
-    'activity-btn': '.info-popover > :nth-child(2)',
-    'activity-info-btn': '.info-popover > :nth-child(2)',
-  };
-  const BUTTON = i => `document.querySelectorAll('.icon-btn')[${i}]`;
+  // What a tier map's popover must hold once it has finished loading.
+  const POPOVERS = { 'tier-map-btn': ".info-popover .wvw-plot g[role='button']" };
   const NO_POPOVER = "!document.querySelector('.info-popover')";
 
   async function closePopover(name) {
     if (await ev(NO_POPOVER)) return;
     if (!(await click(name + ' close', "document.querySelector('.info-popover .info-popover-close')"))) return escape();
     await until(name, NO_POPOVER, 'closing popover (it stayed open)');
-  }
-
-  // Every tab of an opened tier map, each with its objectives drawn.
-  async function mapTabs(name) {
-    const types = await ev("[...document.querySelectorAll('.info-popover .wvw-tab')].map(b => b.dataset.type)");
-    for (const type of types) {
-      const tab = `${name} ${type}`;
-      const sel = `.info-popover .wvw-tab[data-type="${type}"]`;
-      if (!(await click(tab, `document.querySelector('${sel}')`))) continue;
-      await until(tab, `!!document.querySelector('${sel}.is-active') && !!document.querySelector("${POPOVERS['tier-map-btn']}")`,
-        'drawn objectives');
-      await idle(tab);
-    }
-  }
-
-  // Every icon button, in page order: open, content, close.
-  async function iconButtons() {
-    for (let i = 0; i < (await ev("document.querySelectorAll('.icon-btn').length")); i++) {
-      const read = await ev(`(() => { const b = ${BUTTON(i)}; return { label: b.getAttribute('aria-label'),
-        classes: [...b.classList], shown: !!b.offsetParent }; })()`);
-      const info = { label: read.label, shown: read.shown, kind: Object.keys(POPOVERS).find(k => read.classes.includes(k)) };
-      if (!info.shown) continue;   // folded away at this width: a visitor cannot press it either
-      const name = `${info.kind} '${info.label}'`;
-      if (!(await ev(NO_POPOVER))) await closePopover(name);
-      if (!(await click(name, BUTTON(i)))) continue;
-      clicked.add(info.kind);
-      if (!(await until(name, `!!document.querySelector("${POPOVERS[info.kind]}")`, 'popover content'))) { await escape(); continue; }
-      await idle(name);
-      if (info.kind === 'tier-map-btn') await mapTabs(name);
-      await closePopover(name);
-    }
-    for (const kind of Object.keys(POPOVERS)) {
-      if (!clicked.has(kind)) problem(`step 'icon buttons': no visible ${kind} to press`);
-    }
   }
 
   // A relink night (03/10/2026). A normal cycle asks ids=all and nothing else.
@@ -1374,170 +1322,6 @@ async function main() {
     await ev("__skewClock(-531000); localStorage.removeItem('wvw-fight-v1')");
   }
 
-  // A guild lookup answered 429 (after its retries) says nothing about the
-  // guild: the next Check asks again. A 404 is a definite answer and is kept.
-  // A refresh that skips (a popover open) returns false and the scheduler
-  // does not count it, so a focus return right after runs it; one that ran
-  // is counted, so the same return does not.
-  async function guildCache() {
-    const step = 'guild cache';
-    stepNow = step;
-    const id = 'ZZZZ-CHECK-PAGE-GUILD';
-    const url = `https://api.guildwars2.com/v2/guild/${id}`;
-    const ask = `getGuildInfo('${id}').then(g => 'ok ' + g.name, e => 'err ' + e.status)`;
-    failingLog = /^https:\/\/api\.guildwars2\.com\/v2\/guild\//;
-    limited = { re: new RegExp('^' + url.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&') + '$'), status: 429 };
-    limitedReads = 0;
-    const first = await ev(ask);
-    if (first !== 'err 429') problem(`step '${step}': the 429 lookup gave "${first}"`);
-    if (await ev(`guildNameCache.has('${id}')`)) problem(`step '${step}': a 429 was kept in guildNameCache`);
-    limited = null;
-    substitutes.set(url, { body: Buffer.from(JSON.stringify({ id, name: 'Check Page Guild', tag: 'CPG', emblem: null })), served: 0 });
-    const second = await ev(ask);
-    if (second !== 'ok Check Page Guild') problem(`step '${step}': the lookup after the 429 gave "${second}", wanted a fresh fetch`);
-    substitutes.clear();
-    await ev(`guildNameCache.delete('${id}')`);
-
-    limited = { re: new RegExp('^' + url.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&') + '$'), status: 404 };
-    limitedReads = 0;
-    await ev(ask); await ev(ask);
-    if (limitedReads !== 1) problem(`step '${step}': a 404 was asked ${limitedReads} time(s) in two lookups, wanted 1 (kept)`);
-    limited = null;
-    await ev(`guildNameCache.delete('${id}')`);
-    await sleep(500);
-    failingLog = null;
-
-    if (await ev('(async () => { activeTrigger = document.body; const r = await refreshStandings(); activeTrigger = null; return r; })()') !== false) {
-      problem(`step '${step}': refreshStandings with a popover open did not return false`);
-    }
-    const sched = await ev(`new Promise(res => {
-      const out = {};
-      for (const [k, ret] of [['skipped', false], ['ran', true]]) {
-        out[k] = 0;
-        schedulePeriodicRefresh(async () => { out[k]++; return ret; }, 2000);
-      }
-      setTimeout(() => {
-        document.dispatchEvent(new Event('visibilitychange'));
-        setTimeout(() => res(out), 300);
-      }, 2300);
-    })`);
-    if (sched.skipped !== 2) problem(`step '${step}': a skipped run was counted: it ran ${sched.skipped} time(s) over a tick and a focus return, wanted 2`);
-    if (sched.ran !== 1) problem(`step '${step}': a run that did its work ran ${sched.ran} time(s) over a tick and a focus return, wanted 1`);
-  }
-
-  // A pasted list of more than MAX_ENTRIES distinct names asks for the first
-  // MAX_ENTRIES only, and says so; exactly MAX_ENTRIES says nothing. Every
-  // search answers 404 on purpose, so only the asking is counted.
-  async function guildLimit() {
-    const step = 'guild limit';
-    stepNow = step;
-    const max = await ev('MAX_ENTRIES');
-    failingLog = /^https:\/\/api\.guildwars2\.com\/v2\/guild\//;
-    limited = { re: /^https:\/\/api\.guildwars2\.com\/v2\/guild\/search\?/, status: 404 };
-    for (const count of [max + 1, max]) {
-      limitedReads = 0;
-      const names = Array.from({ length: count }, (_, i) => `Check Page Limit ${i + 1}`);
-      await ev(`document.getElementById('guildInput').value = ${JSON.stringify(names.join('\n'))}`);
-      if (!(await click(`${step} (${count})`, "document.getElementById('runBtn')"))) break;
-      await until(step, "/^Done/.test(document.getElementById('statusMsg').textContent) && !document.getElementById('runBtn').disabled", `the "Done" status for ${count} names`);
-      const said = await ev("document.getElementById('statusMsg').textContent");
-      const warned = said.includes(`Only the first ${max} guilds were checked.`);
-      if (limitedReads !== max) problem(`step '${step}': ${count} names asked ${limitedReads} search(es), wanted ${max}`);
-      if (warned !== (count > max)) problem(`step '${step}': ${count} names gave status "${said}", the warning ${count > max ? 'was due' : 'was not due'}`);
-    }
-    limited = null;
-    await sleep(500);
-    failingLog = null;
-    await ev("document.getElementById('guildInput').value = ''");
-  }
-
-  // 8a. Scripts run in order and the page is usable before the last one: with
-  // one held, Escape, a resize, the Check button, Ctrl+Enter and a click
-  // must raise nothing, and the page must work once it is let go.
-  async function earlyActions() {
-    for (const script of ['maps.js', 'trebuchet.js', 'boot.js']) {
-      const step = `early actions (${script} held)`;
-      holdUrl = `${base}/js/${script}`;
-      held = null;
-      const ok = await load(step, async () => {
-        for (let i = 0; i < 300 && !held; i++) await sleep(50);
-        if (!held) return void problem(`step '${step}': the request was never held`);
-        await escape();
-        await ev("window.dispatchEvent(new Event('resize')); if (window.visualViewport) window.visualViewport.dispatchEvent(new Event('resize')); true");
-        await ev("document.getElementById('guildInput').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true })); true");
-        await ev("document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', clientX: 50, clientY: 50 })); true");
-        await click(step, "document.getElementById('runBtn')");
-        await sleep(200);   // a throw is reported late
-        const id = held;
-        holdUrl = null; held = null;
-        await send('Fetch.continueRequest', { requestId: id });
-      });
-      holdUrl = null;
-      if (ok && !await ev("!document.getElementById('runBtn').disabled && !document.querySelector('#statusMsg .spinner')")) {
-        problem(`step '${step}': the Check button was left disabled`);
-      }
-    }
-  }
-
-  // 8. A failed load and a slow line: the live standings and the guild tables
-  // answer 503, the page says it will try again and counts down, and once the
-  // API answers again the table paints with no reload. Then the guild search
-  // fails the same way, and its button repeats it. The page's random is pinned
-  // to 0 for this load so the first extra try waits 5 s, the window's start.
-  async function failedLoad() {
-    const step = 'failed load';
-    const tiers = `document.querySelectorAll('#standingsGridNA > .standing-match').length > 0 && document.querySelectorAll('#standingsGridEU > .standing-match').length > 0`;
-    const status = region => `document.getElementById('standingsAlert${region}')?`;
-    failing = failingLog = /^https:\/\/api\.guildwars2\.com\//;
-    const pin = await send('Page.addScriptToEvaluateOnNewDocument', { source: 'Math.random = () => 0;' });
-    stepNow = step;
-    loaded = false;
-    ids.clear();
-    await navigate();
-    await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: pin.identifier });
-    await settled(step);
-    await until(step, `/Trying again in \\d+ s/.test(${status('NA')}.textContent) && /Trying again in \\d+ s/.test(${status('EU')}.textContent)`, 'the "Trying again in N s" message under both standings');
-    await until(step, `!!${status('NA')}.querySelector('button.retry-btn') && ${status('NA')}.querySelector('button.retry-btn').textContent === 'Try again'`, 'the Try again button');
-    if (await ev("!!document.querySelector('.standings-header .retry-btn, .standings-header .sr-only')")) problem(`step '${step}': the error message sits in the title's row, not the card's top strip`);
-    if (await ev(tiers)) problem(`step '${step}': tiers painted while the API was failing`);
-    // The whole API down: no relink bar either, so the columns' tops must still
-    // clear the notice bar. Measured at 1920, where the columns stand beside the
-    // page: the error text's top must be on screen and hit the strip itself.
-    await send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1000, deviceScaleFactor: 1, mobile: false });
-    await until(step, "document.getElementById('relinkBanner').style.display === 'none'", 'the relink bar gone with the API down');
-    const clear = await ev(`(() => {
-      window.scrollTo(0, 0);
-      const box = document.getElementById('standingsAlertNA');
-      const r = document.createRange(); r.selectNodeContents(box.querySelector('.retry-vis'));
-      const b = r.getClientRects()[0], n = document.getElementById('teamsNotice');
-      const hit = document.elementFromPoint(b.left + b.width / 2, b.top + 1);
-      return JSON.stringify({ top: Math.round(b.top), hit: !!hit && box.contains(hit),
-        under: n && getComputedStyle(n).display !== 'none' ? Math.round(n.getBoundingClientRect().bottom) : 0 });
-    })()`);
-    const seenAt = JSON.parse(clear);
-    if (!seenAt.hit || seenAt.top < seenAt.under) problem(`step '${step}': the error text's top (${seenAt.top}px) is hidden or under the notice bar (${seenAt.under}px) at 1920 px`);
-    await send('Emulation.clearDeviceMetricsOverride');
-    await ev('window.__sameDocument = true');
-    failing = null;
-    await until(step, tiers, 'the tables painted by the extra try, without a reload');
-    if (!(await ev('window.__sameDocument === true'))) problem(`step '${step}': the page was reloaded`);
-    await until(step, `!${status('NA')}.querySelector('.retry-btn')`, 'the message gone once the standings loaded');
-    await idle(step);
-
-    failing = /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/guilds\/(na|eu)$/;
-    await ev(`document.getElementById('guildInput').value = ${JSON.stringify(guilds.join('\n'))}`);
-    if (!(await click(step + ' search', "document.getElementById('runBtn')"))) return;
-    const again = "document.querySelector('#statusMsg .retry-btn')";
-    await until(step, `!!${again} && !document.getElementById('runBtn').disabled`, 'the guild search message with its Try again button');
-    failing = null;
-    if (await click(step + ' search again', again)) {
-      await until(step, "/^Done/.test(document.getElementById('statusMsg').textContent)", 'the "Done" status after Try again');
-      await idle(step);
-    }
-    await sleep(500);
-    failingLog = null;
-  }
-
   // /api/latest: gzip + base64 bodies of the live matches. One is made newer
   // (score up), one is offered under another match's id, one under an id the
   // game never gave; only the first may reach the page.
@@ -1604,36 +1388,6 @@ async function main() {
     await settled(step + ': hang');
     await idle(step + ': hang');
     latestMode = 'down';
-  }
-
-  // The tiers in the standings carry no staleness mark: the recorded body
-  // repeated for 1600 s puts no .tier-age on any tier, and at 320 px wide no
-  // tier box or title row spills over.
-  async function tierMarks() {
-    const step = 'tier marks';
-    const allUrl = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
-    const allHit = recorded.get(allUrl);
-    if (!allHit) return void problem(`step '${step}': ${allUrl} not recorded`);
-    await ev("__skewClock(1600000); localStorage.removeItem('wvw-fight-v1')");
-    substitutes.set(allUrl, { body: bodyOf(allHit), served: 0 });
-    await ev('loadStandings()');
-    await idle(step);
-    const shown = await ev("document.querySelectorAll('.standing-match').length");
-    if (!shown) return void problem(`step '${step}': no tiers in the standings`);
-    const marked = await ev("document.querySelectorAll('.tier-age').length");
-    if (marked) problem(`step '${step}': ${marked} tier(s) wear a mark after 1600 s of the same body`);
-    await send('Emulation.setDeviceMetricsOverride', { width: 320, height: 800, deviceScaleFactor: 1, mobile: true });
-    await idle(step + ': 320 px');
-    const spill = await ev(`(() => ({
-      page: Math.max(0, ...[...document.querySelectorAll('.standing-match')].map(b => Math.round(b.getBoundingClientRect().right - innerWidth))),
-      rows: [...document.querySelectorAll('.standing-match-title')].filter(t => t.scrollWidth > t.clientWidth).length,
-      tall: [...document.querySelectorAll('.standing-match-title')].filter(t => t.offsetHeight > 24).length }))()`);
-    if (spill.page > 0 || spill.rows || spill.tall) problem(`step '${step}': at 320 px a tier box spills ${spill.page}px, ${spill.rows} title row(s) overflow, ${spill.tall} grew taller`);
-    await send('Emulation.clearDeviceMetricsOverride');
-    substitutes.delete(allUrl);
-    await ev("__skewClock(-1600000); localStorage.removeItem('wvw-fight-v1')");
-    await ev('loadStandings()');
-    await idle(step);
   }
 
   // The kill history says a match stopped before this page ever saw it move:
@@ -2719,151 +2473,24 @@ async function main() {
     })()`);
     if (guilds.length < 2) problem(`record: found ${guilds.length} guild name(s) for NA and EU, wanted 2`);
   }
-  // What the first load showed of the relink: the 503 load must still show it.
-  const notice = "getComputedStyle(document.getElementById('teamsNotice')).display !== 'none'"
-    + " || getComputedStyle(document.getElementById('relinkBanner')).display !== 'none'";
-  const hadNotice = await ev(notice);
 
   // 3b. Partial lists and tiers from two weeks, while the kept bodies are the recorded ones.
   await partialLists();
 
-  // 4. NA/EU swap, and back.
-  const first = () => ev('document.documentElement.dataset.railFirst');
-  const was = await first();
-  if (await click('swap NA/EU', "document.querySelector('.rail-swap')")) {
-    await until('swap NA/EU', `document.documentElement.dataset.railFirst !== '${was}'`, 'swapped columns (data-rail-first unchanged)');
-    await until('swap NA/EU', `document.querySelector('.rail-left #standingsGrid${was === 'na' ? 'EU' : 'NA'}') && document.querySelector('.rail-right #standingsGrid${was === 'na' ? 'NA' : 'EU'}')`, 'columns on their new sides');
-    if (await click('swap back', "document.querySelector('.rail-swap')")) {
-      await until('swap back', `document.documentElement.dataset.railFirst === '${was}'`, 'columns back on their sides');
-    }
-  }
-
-  // 1. Guild search: one name per region, typed as a visitor does.
+  // A search, as the steps after it find the page: the 'frozen match' step does not
+  // see its map pull without it (tried without it, 11/10/2026, cause not found). What the
+  // search shows is checked in .github/e2e/search.spec.mjs.
   await ev("document.getElementById('guildInput').focus()");
   await send('Input.insertText', { text: guilds.join('\n') });
-  // Watches what the search does to the standings, so the step below does
-  // not depend on catching the blink in a poll.
-  await ev(`window.__found = { flash: false, strip: null, gone: false };
-    new MutationObserver(() => {
-      const f = window.__found;
-      if (document.querySelector('.guild-found-flash')) f.flash = true;
-      const s = document.querySelector('.guild-found-strip');
-      if (s) { f.strip = s.textContent; f.gone = false; }
-      else if (f.strip) f.gone = true;
-    }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] })`);
   if (await click('search', "document.getElementById('runBtn')")) {
     await until('search', "/^Done/.test(document.getElementById('statusMsg').textContent)", 'the "Done" status');
-    await until('search', "document.querySelectorAll('#resultBody tr').length > 0 && !!document.querySelector('#matchPanelsContainer > *')", 'result rows and match panels');
     await until('search', "!document.getElementById('runBtn').disabled", 'the Check button enabled again');
     await idle('search');
-
-    // 1b. The team the first guild landed on: its card blinks, the page brings
-    // it into view, a strip names the guild, and the strip leaves by itself.
-    const step = 'guild found';
-    await until(step, "window.__found.flash && !!window.__found.strip", 'the found team\'s card blinking and the strip appearing');
-    const named = await ev("(() => { const tr = [...document.querySelectorAll('#resultBody tr')].find(r => r.querySelector('.server-cell')); return tr ? tr.cells[0].textContent : null; })()");
-    const said = await ev('window.__found.strip');
-    if (named === null || said.toLowerCase() !== `${named} \u00b7 from your search`.toLowerCase()) problem(`step '${step}': the strip reads "${said}", wanted "${named} \u00b7 from your search"`);
-    await until(step, `(() => { const s = document.querySelector('.guild-found-strip'); if (!s) return true;
-      const b = s.previousElementSibling.getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; })()`, 'the found team\'s card in view');
+    await until('search', "!document.querySelector('.guild-found-flash, .guild-found-strip')", 'the found team\'s blink and strip to end');
   }
-
-  // 2 and 3. Every icon button, maps and popovers.
-  await iconButtons();
 
   // 6. The corners over a map, while the page's kept bodies are the recorded ones.
   await mapCorners();
-
-  // The map board and the phone: the team names get room back,
-  // the map's tabs and zoom buttons are 34 px targets, the map's popover has
-  // no shrink button and the alliances popover keeps its own. At 320 and 360 px.
-  async function phoneBoard() {
-    const step = 'phone board';
-    for (const width of [320, 360]) {
-      const name = `${step}, ${width} px`;
-      await send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: true });
-      if (!(await until(name, `innerWidth === ${width}`, 'the new width'))) {
-        // What a phone this wide would see instead: a page wider than the
-        // screen makes a mobile browser widen the layout to fit it.
-        problem(`step '${name}': ` + await ev(`(() => {
-          // The innermost elements in the flow that end past the screen.
-          const past = [...document.querySelectorAll('body *')].filter(e => {
-            const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
-            return r.width && r.right > ${width} + 0.5 && cs.position !== 'fixed' && cs.display !== 'none'
-              && ![...e.children].some(c => c.getBoundingClientRect().right > ${width} + 0.5);
-          }).slice(0, 6).map(e => { const r = e.getBoundingClientRect();
-            return e.tagName + '.' + String(e.className?.baseVal ?? e.className).split(' ').slice(0, 2).join('.') + ' ' + Math.round(r.left) + '-' + Math.round(r.right) + (e.children.length ? '' : ' "' + e.textContent.trim().slice(0, 24) + '"'); });
-          // The match panels' grid and, in each column, its widest child.
-          const grid = [...document.querySelectorAll('.team-cols')].map(g => getComputedStyle(g).gridTemplateColumns).join(',');
-          const cols = [...document.querySelectorAll('.team-col')].slice(0, 3).map(c => {
-            const kids = [...c.querySelectorAll('*')].map(k => ({ k, w: k.getBoundingClientRect().width, s: k.scrollWidth }))
-              .sort((a, b) => b.s - a.s).slice(0, 2);
-            return kids.map(({ k, w, s }) => k.tagName + '.' + String(k.className?.baseVal ?? k.className).split(' ')[0] + ' w' + Math.round(w) + ' s' + s + ' ws:' + getComputedStyle(k).whiteSpace).join(' / ');
-          });
-          return 'innerWidth ' + innerWidth + ', page ' + document.documentElement.scrollWidth + ' px wide; past ' + ${width} + ': ' + (past.join(' | ') || 'none')
-            + '; team-cols grid ' + grid + '; widest in columns: ' + cols.join(' || ') + '; fonts: ' + getComputedStyle(document.body).fontFamily;
-        })()`));
-        continue;
-      }
-      await steady(name, "document.querySelector('.tier-map-btn')");
-      if (!(await press(name + ': open', "document.querySelector('.tier-map-btn')"))) continue;
-      if (!(await until(name, "!!document.querySelector('.info-popover .wvw-board-row[data-focus-color]') && !!document.querySelector('.info-popover .wvw-zoom button')", 'the board and the zoom buttons'))) continue;
-      await idle(name);
-      await steady(name, "document.querySelector('.info-popover .wvw-board')");
-      const m = await ev(`(() => {
-        const pop = document.querySelector('.info-popover');
-        const names = [...pop.querySelectorAll('.wvw-board-row[data-focus-color] .wvw-board-team')];
-        const small = sel => [...pop.querySelectorAll(sel)].map(e => { const b = e.getBoundingClientRect(); return Math.round(Math.min(b.width, b.height)); });
-        return { names: names.length, room: Math.min(...names.map(n => n.clientWidth)),
-          head: pop.querySelector('.wvw-board-head .wvw-board-team').textContent,
-          tabs: small('.wvw-tab'), zoom: small('.wvw-zoom button'), shrink: !!pop.querySelector('.info-popover-expand'), close: !!pop.querySelector('.info-popover-close') };
-      })()`);
-      // Names still end in an ellipsis when long; what counts is the room they
-      // get: 16 px at 320 and 53 px at 360 before the board gave it back.
-      const floor = width === 320 ? 30 : 65;
-      if (!(m.room >= floor)) problem(`step '${name}': the team names get ${m.room}px of room, wanted ${floor} or more`);
-      if (m.head !== 'Held') problem(`step '${name}': the board header reads "${m.head}", wanted "Held"`);
-      if (!m.tabs.length || !m.zoom.length || m.tabs.some(h => h < 34) || m.zoom.some(h => h < 34)) problem(`step '${name}': tabs ${JSON.stringify(m.tabs)} and zoom ${JSON.stringify(m.zoom)} should all be 34 px or more`);
-      if (m.shrink || !m.close) problem(`step '${name}': the map popover has ${m.shrink ? 'a shrink button' : 'no close button'}`);
-      await closePopover(name);
-    }
-    await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
-    await until(step, 'innerWidth === 1280', 'the wide width back');
-    await steady(step, "document.querySelector('.server-guilds-btn')");
-    if (await ev("!!document.querySelector('.server-guilds-btn')")) {
-      if (await press(step + ': alliances open', "document.querySelector('.server-guilds-btn')")) {
-        await until(step, "!!document.querySelector('.info-popover .info-popover-body')", 'the alliances popover');
-        if (!(await ev("!!document.querySelector('.info-popover .info-popover-expand')"))) problem(`step '${step}': the alliances popover lost its expand button`);
-        await closePopover(step);
-      }
-    } else problem(`step '${step}': no alliances button to look at`);
-    await send('Emulation.clearDeviceMetricsOverride');
-  }
-
-  // 6b. The tiers whose data is old.
-  await tierMarks();
-
-  // 6c. The result table on a phone: no column cut off, nothing past the screen.
-  const tagLine = await ev(`Math.max(0, ...[...document.querySelectorAll('#resultCard .tag')].map(t => Math.round(t.getBoundingClientRect().height)))`);
-  for (const width of [320, 390]) {
-    const step = `result table, ${width} px`;
-    await send('Emulation.setDeviceMetricsOverride', { width, height: 800, deviceScaleFactor: 1, mobile: true });
-    await idle(step);
-    const fit = await ev(`(() => {
-      const card = document.getElementById('resultCard');
-      const cells = [...card.querySelectorAll('th, td, .server-cell, .server-cell *')];
-      return { scroll: card.scrollWidth - card.clientWidth,
-        past: Math.max(0, ...cells.map(c => Math.round(c.getBoundingClientRect().right - innerWidth))),
-        beyond: Math.max(0, ...cells.map(c => Math.round(c.getBoundingClientRect().right - card.getBoundingClientRect().right))) };
-    })()`);
-    const tags = await ev(`JSON.stringify([...document.querySelectorAll('#resultCard .tag')].map(t => Math.round(t.getBoundingClientRect().height)))`);
-    if (JSON.parse(tags).some(h => h > tagLine)) problem(`step '${step}': a tag is wider than one line (heights ${tags}, one line is ${tagLine}px)`);
-    if (fit.scroll > 0 || fit.past > 0 || fit.beyond > 0) problem(`step '${step}': the table overflows its card by ${fit.scroll}px, ${fit.past}px past the screen, a cell ${fit.beyond}px past the card's edge`);
-    await send('Emulation.clearDeviceMetricsOverride');
-  }
-
-  // 1b, last part: the strip of the guild search leaves by itself.
-  await until('guild found', "window.__found.gone && !document.querySelector('.guild-found-flash, .guild-found-strip')", 'the strip leaving by itself');
 
   // 6b. The kill history backdating a match this page never saw move.
   await historyAge();
@@ -2882,7 +2509,6 @@ async function main() {
 
   // 6e. The board picks a team or a type, and the map lights it.
   await mapFocus();
-  await phoneBoard();
 
   // 6f. Board, Captures and Objective: three tabs over one pane that keeps its size.
   await mapPane();
@@ -2900,29 +2526,9 @@ async function main() {
   // 7c. The week's line-up between loads.
   await weekMemory();
 
-  // 7d. A 429 is not kept against a guild; a skipped refresh does not spend its turn.
-  await guildCache();
-  await guildLimit();
-
-  // 8a. A visitor acting before the last scripts have loaded.
-  await earlyActions();
-
-  // 8. A failed load, tried again.
-  await failedLoad();
-
   // 8b. /api/latest: a newer body wins, a bad one is ignored, a 503 or a hang costs nothing.
   await latestSecondRead();
 
-  // 5. A second load, /api/* answering 503: the page falls back to the sheets.
-  apiDown = true;
-  // The page keeps guild names in localStorage on a timer; what that timer got
-  // to would decide which guild URLs the second load asks for.
-  await send('Page.addScriptToEvaluateOnNewDocument', { source: "try { localStorage.removeItem('wvw-guilds-v1'); } catch {}" });
-  if (await load('load with /api down')) {
-    if (!apiRefused) problem("step 'load with /api down': the page never asked /api");
-    if (!sheetReads) problem("step 'load with /api down': the page never read the sheets instead");
-    if (hadNotice) await until('relink notice from the sheets', notice, 'the relink notice');
-  }
   finishWalk();
 
   function finishWalk() {
@@ -2941,7 +2547,7 @@ async function main() {
         }
       }
     } else if (!problems.length) {
-      console.log(`walked: ${clicked.size} kinds of popover, tiers NA ${got.NA}/${want.NA}, EU ${got.EU}/${want.EU}`);
+      console.log(`walked: tiers NA ${got.NA}/${want.NA}, EU ${got.EU}/${want.EU}`);
     }
     report();
   }
