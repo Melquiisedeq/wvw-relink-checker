@@ -70,13 +70,20 @@ const fulfil = (route, status, type, body) => route.fulfill({
 });
 
 // The page.route handler for every request of a page served at `base`.
-// `problem(text)` records what fails the test.
-export function answerFrom(base, problem) {
+// `problem(text)` records what fails the test. `own(url)`, when given, answers
+// first (a timeline of support/gw2.mjs): null passes the URL on to the
+// recording, 'hang' never answers, else { status, type, body }.
+export function answerFrom(base, problem, own = null) {
   const { entries } = recording();
   return async route => {
     const request = route.request();
     const url = request.url();
     try {
+      if (own && request.method() === 'GET' && (url.startsWith(base + '/api/') || !url.startsWith(base + '/'))) {
+        const hit = await own(url);
+        if (hit === 'hang') return;
+        if (hit) return await fulfil(route, hit.status, hit.type, hit.body);
+      }
       if (url.startsWith(base + '/api/')) {
         const path = url.slice(base.length);
         const fixed = OWN_FIXED.get(path);
