@@ -15,6 +15,21 @@ const NA = '#standingsGridNA > .standing-match';
 const LATEST = /\/api\/latest(\/summary)?$/;
 const sum = m => ['red', 'blue', 'green'].reduce((n, c) => n + m.scores[c], 0);
 const scoreOf = (page, id) => page.evaluate(i => { const m = matchDataCache.get(i); return m ? colorSum(m.scores) : -1; }, id);
+// The score of `id` once the page has painted what /api/latest gave. The page
+// holds its paint LATEST_WAIT_MS (1.2 s, js/api.js) for the read; an answer that
+// comes later is kept for the next paint (a machine under load got there: 1 run
+// in 20). The rule under test is "the newest body wins", not the 1.2 s (the hung
+// test times that), so a missed window asks the page for its next paint.
+async function settledScore(page, id, want) {
+  let score;
+  for (let i = 0; i < 4; i++) {
+    score = await scoreOf(page, id);
+    if (score === want) break;
+    await page.evaluate(() => loadStandings());
+    await page.waitForTimeout(1500);
+  }
+  return score;
+}
 
 async function opened(page, wvw) {
   await page.goto(wvw.url);
@@ -56,7 +71,7 @@ test.describe('bodies offered by /api/latest', () => {
     ] });
     await opened(page, wvw);
     expect(latest.reads, 'reads of /api/latest').toBeGreaterThan(0);
-    expect(await scoreOf(page, a.id), `${a.id}, the newer body`).toBe(sum(a) + 5000);
+    expect(await settledScore(page, a.id, sum(a) + 5000), `${a.id}, the newer body`).toBe(sum(a) + 5000);
     expect(await scoreOf(page, b.id), `${b.id}, offered another match's body`).toBe(sum(b));
     expect(await page.evaluate(() => matchDataCache.has('1-9')), 'an id the game never gave').toBe(false);
   });
@@ -83,7 +98,7 @@ test.describe('a group behind the game', () => {
     const t = 13 * MIN;
     const newest = sum(wvw.timeline.body(FOCUS, t)), older = sum(wvw.timeline.body(FOCUS, t - 10 * MIN));
     expect(newest, 'a timeline whose older body is behind').toBeGreaterThan(older);
-    expect(await scoreOf(page, FOCUS)).toBe(newest);
+    expect(await settledScore(page, FOCUS, newest)).toBe(newest);
   });
 });
 
