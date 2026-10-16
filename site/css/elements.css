@@ -16,7 +16,7 @@ tr:last-child td{border-bottom:none;}
 /* Phones: each row is a block - the guild name on its own line, then tag,
    region and team beneath it, the team wrapping to the next line when it
    does not fit. The header stays for screen readers, clipped like
-   .sr-only. check-page measures at 320 and 390 px. */
+   .sr-only. phone.spec.mjs measures at 320 and 390 px. */
 @media (max-width:520px){
   #resultCard table,#resultCard tbody{display:block;}
   #resultCard thead{

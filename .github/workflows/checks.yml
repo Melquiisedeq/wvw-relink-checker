@@ -3,7 +3,7 @@
 # *silently* in production - a script missing from the ordered list in
 # index.html, a host missing from the Content Security Policy, a syntax error in
 # a file nothing parses until a browser does. The first two jobs are aimed at
-# exactly those, and the last ones open the page in a real Chrome and fail on
+# exactly those, and the last one opens the page in a real Chrome and fails on
 # whatever the browser objects to. The Worker behind /api is different: it is
 # rules - what it refuses, keeps and serves - and the third job runs them.
 name: Checks
@@ -73,25 +73,12 @@ jobs:
       - name: What the /api Worker refuses, keeps and serves, and the page's rules
         run: node --test --test-reporter=dot "tests/*.test.mjs"
 
-  # The check-page's walk (the required check `page` gathers it with e2e below).
-  walk:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # The runner's own Chrome and Node, nothing installed: Node drives Chrome
-      # over DevTools. The API and the sheets answer from a recording, so a GW2
-      # outage cannot turn a pull request red. It runs the pull request's
-      # JavaScript in a browser, like `rules` does in Node: throwaway machine,
-      # read-only token, no secret.
-      - name: The page loads with no exception, no CSP violation, every tier
-        run: node .github/scripts/check-page.mjs
-
   # Playwright Test (.github/e2e): the repository's one dependency, for the
   # tests only - the exact versions of the lockfile, no install scripts, no
   # browser downloaded (the image's Google Chrome), no secret, the same
-  # read-only token. The recording answers the page, as in the walk.
+  # read-only token. The API and the sheets answer from a recording, so a GW2
+  # outage cannot turn a pull request red; the tests run the pull request's
+  # JavaScript in a browser: throwaway machine, no secret.
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -133,22 +120,21 @@ jobs:
           if-no-files-found: ignore
 
   # The required check. The ruleset names `page`, so this job keeps the name
-  # and passes only when both browser jobs did: a job that was skipped counts
-  # as a success to the ruleset, hence always() and the explicit test.
+  # and passes only when `e2e` did: a job that was skipped counts as a success
+  # to the ruleset, hence always() and the explicit test.
   page:
-    needs: [walk, e2e]
+    needs: [e2e]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       # A result is success, failure, cancelled or skipped; only success passes.
-      - name: The walk and Playwright Test both passed
+      - name: Playwright Test passed
         env:
-          WALK: ${{ needs.walk.result }}
           E2E: ${{ needs.e2e.result }}
         run: |
           failed=0
-          for pair in "walk=$WALK" "e2e=$E2E"; do
+          for pair in "e2e=$E2E"; do
             echo "$pair"
             case "${pair#*=}" in
               success) ;;

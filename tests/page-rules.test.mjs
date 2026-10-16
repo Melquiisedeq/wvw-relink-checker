@@ -1,6 +1,6 @@
 // The page's own rules, run in Node without a browser: the scripts of site/js
 // load into a node:vm (tests/page-harness.mjs) and the rules are fed bodies
-// from the check-page recording, mutated by a fixed-seed PRNG (a missing
+// from the e2e recording (.github/e2e/recordings.json.gz), mutated by a fixed-seed PRNG (a missing
 // field, null, a garbage date, a frozen body, an older body in between).
 // Each test names the file holding the rule it pins down.
 import test from 'node:test';

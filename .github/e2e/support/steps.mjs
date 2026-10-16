@@ -3,9 +3,8 @@
 import { expect } from '@playwright/test';
 import { recording } from './recordings.mjs';
 
-// A phone's screen at `width`, as the check-page puts it (the protocol's device
-// override, mobile on). A page wider than the screen makes the layout widen to fit
-// and innerWidth then differs: `exact` (default) says so, for the steps that
+// A phone's screen at `width`, with the protocol's device override, mobile on.
+// A page wider than the screen makes the layout widen to fit and innerWidth then differs: `exact` (default) says so, for the steps that
 // check the width first; the others only measure.
 export async function phone(page, width, { exact = true, height = 800 } = {}) {
   const cdp = await page.context().newCDPSession(page);
@@ -89,4 +88,40 @@ export async function check(page, wvw, names) {
   await expect(page.locator('#statusMsg')).toHaveText(/^Done/, { timeout: 15000 });
   await expect(page.locator('#runBtn')).toBeEnabled();
   await wvw.settle();
+}
+
+// The page opened with every tier of both regions up and nothing in flight.
+export async function load(page, wvw) {
+  await page.goto(wvw.url);
+  await expect(page.locator('#standingsGridNA > .standing-match')).toHaveCount(wvw.tiers.NA);
+  await expect(page.locator('#standingsGridEU > .standing-match')).toHaveCount(wvw.tiers.EU);
+  await wvw.settle();
+}
+
+// A tier's map button and the match it is about (default: the first tier).
+export async function firstTier(page, button = page.locator('.tier-map-btn').first()) {
+  const label = await button.getAttribute('aria-label');
+  const t = /\b(NA|EU) Tier (\d+)/.exec(label || '');
+  expect(t, `a tier map button to read a match from ("${label}")`).not.toBeNull();
+  const id = `${t[1] === 'NA' ? 1 : 2}-${t[2]}`;
+  return { button, label, id, url: 'https://api.guildwars2.com/v2/wvw/matches?id=' + id };
+}
+
+// The map opened, its objectives drawn and the page quiet.
+export async function openMap(page, wvw, button) {
+  await button.click();
+  await expect(page.locator(".info-popover .wvw-plot g[role='button']").first()).toBeAttached();
+  await wvw.settle();
+}
+
+// Time passes with the tab asking again: the focus pull.
+export async function later(page, wvw, ms) {
+  await wvw.skew(ms);
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await wvw.settle();
+}
+
+// The match a page keeps for a tier, as a copy, its score last rising now.
+export function keptMatch(page, id) {
+  return page.evaluate(i => { const k = newestMatches.get(i); k.at = Date.now(); return JSON.parse(JSON.stringify(k.match)); }, id);
 }
