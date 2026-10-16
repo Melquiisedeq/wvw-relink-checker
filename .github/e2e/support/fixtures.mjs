@@ -19,6 +19,7 @@
 import { test as base, expect } from '@playwright/test';
 import { startSite } from './site.mjs';
 import { BLOCKED, answerFrom, expectedTiers, recording } from './recordings.mjs';
+import { addCoverage, startCoverage } from './coverage.mjs';
 
 // The shim clock, as an init script: "live", the relink banner and the
 // stale-fight cutoff read Date.now(), and recorded matches age. The page's
@@ -61,6 +62,9 @@ export const test = base.extend({
     // Addresses a test makes fail on purpose (support/faults.mjs): the browser
     // logs each refused read as an error, and that one is expected.
     const allowed = [];
+
+    // V8 coverage of the page's scripts, only under E2E_COVERAGE (support/coverage.mjs).
+    const covering = await startCoverage(page);
 
     const cdp = await context.newCDPSession(page);
     cdp.on('Runtime.exceptionThrown', ({ exceptionDetails: d }) => {
@@ -129,6 +133,8 @@ export const test = base.extend({
 
     await use({ url: site.url + '/', recordedAt, opensAt, guilds, tiers: expectedTiers(), problems, problem, allowLog: re => allowed.push(re), settle, now, skew, timeline });
 
+    // A failure here must not hide the test's own: it joins the problems below.
+    await addCoverage(covering).catch(e => problem('coverage: ' + (e?.message || e)));
     await page.unrouteAll({ behavior: 'ignoreErrors' });
     // The problems in the message's first line: the summary prints that line.
     expect(problems, `${problems.length} problem(s) on the page: ${problems.join(' | ')}`).toEqual([]);

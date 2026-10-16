@@ -3,9 +3,12 @@
   "private": true,
   "description": "Browser tests for the page in site/. The site itself has no dependencies; this folder is the only one.",
   "scripts": {
-    "test": "playwright test"
+    "test": "playwright test",
+    "coverage": "node support/coverage.mjs run",
+    "coverage:write": "node support/coverage.mjs run-write"
   },
   "devDependencies": {
-    "@playwright/test": "1.64.0"
+    "@playwright/test": "1.64.0",
+    "monocart-coverage-reports": "2.13.2"
   }
 }
