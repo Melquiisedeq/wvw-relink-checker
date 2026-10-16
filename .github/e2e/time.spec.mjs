@@ -18,6 +18,7 @@
 // And on the row that hides the tab, "What you missed": it shows, its period
 // holds every flip, its count is the flips', its kills are the timeline's.
 import { test, expect } from './support/fixtures.mjs';
+import { gw2 } from './support/gw2.mjs';
 import { FOCUS, HOUR, MIN, apiDown, frozen, hidden, missed, playing, twoPools, visible, wake } from './support/scenarios.mjs';
 
 const STALE_MS = 6 * MIN;
@@ -257,5 +258,61 @@ test.describe('map open while the API is down', () => {
     const seen = r.looks[r.looks.length - 1];
     expect(seen.map.stale, 'the state: current again').toBe(false);
     expect(seen.map.tabs.some(b => b.hot && b.active), 'the state: swords on the open tab').toBe(true);
+  });
+});
+
+// The API stopped answering anew 20 min before the page comes back: what the
+// corner says is the time of the data, not of the first read after the gap.
+const stoppedBeforeBack = gw2.match(FOCUS).advance(12).pageOpens().advance(10).freeze(20);
+
+// With or without a rise watched before the gap: a page open for a while has
+// seen the score go up, and must date the next rise from the history all the same.
+for (const before of [0, 4]) {
+  const seen = before ? 'after 4 min watched' : 'nothing watched';
+  test.describe(`laptop waking after 30 min, the API stopped for the last 20, ${seen}`, () => {
+    test.use({ timeline: stoppedBeforeBack });
+    test('the corner does not say the data is from now', async ({ page, wvw }) => {
+      const r = rower(page, wvw);
+      await r.load();
+      await r.open();
+      await r.check('map open', READ_OPEN_MS);
+      if (before) await r.pass(before, 2, 'watching', READ_OPEN_MS);
+      await wake(page, 30 * MIN);
+      await r.check('awake', READ_OPEN_MS);
+      expect(await r.age(), 'the state: data over 11 min old').toBeGreaterThan(STALE_MS + READ_OPEN_MS);
+      await r.pass(2, 1, 'awake', READ_OPEN_MS);
+    });
+  });
+
+  test.describe(`tab hidden 2 h, the API stopped for the last 20 min, ${seen}`, () => {
+    test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().advance(100).freeze(20) });
+    test('the corner does not say the data is from now', async ({ page, wvw }) => {
+      const r = rower(page, wvw);
+      await r.load();
+      await r.open();
+      await r.check('map open', READ_OPEN_MS);
+      if (before) await r.pass(before, 2, 'watching', READ_OPEN_MS);
+      await hidden(page, wvw, 2 * HOUR);
+      await visible(page);
+      await r.check('back', READ_OPEN_MS);
+      expect(await r.age(), 'the state: data over 11 min old').toBeGreaterThan(STALE_MS + READ_OPEN_MS);
+      await r.pass(2, 1, 'back', READ_OPEN_MS);
+    });
+  });
+}
+
+test.describe('map open over normal polls', () => {
+  test.use({ timeline: playing(40) });
+  test('the history is not read again', async ({ page, wvw }) => {
+    const kills = [];
+    page.on('request', q => { if (q.url().includes('/api/kills')) kills.push(q.url()); });
+    const r = rower(page, wvw);
+    await r.load();
+    await r.open();
+    await r.check('map open', READ_OPEN_MS);
+    const opened = kills.length;
+    expect(opened, '/api/kills requests when the map opens').toBeGreaterThan(0);
+    await r.pass(8, 1, 'polling', READ_OPEN_MS);
+    expect(kills.length, '/api/kills requests while the map polls').toBe(opened);
   });
 });

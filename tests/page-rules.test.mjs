@@ -132,6 +132,29 @@ test('keepNewestMatch: what is not a match passes through; a frozen body keeps i
   assert.equal(p.call('matchScoreRoseAt', m.id), p.clock.now, 'a higher score is');
 });
 
+test('keepNewestMatch: a rise after a gap is not watched, and its burst shares the gap (js/api.js)', () => {
+  const p = fresh();
+  const m = matches[0];
+  const entry = () => p.run(`newestMatches.get(${JSON.stringify(m.id)})`);
+  p.call('keepNewestMatch', m);
+  p.clock.now += 30000;
+  p.call('keepNewestMatch', state(m, 1));
+  assert.equal(entry().rose, true, 'a rise after a normal poll is watched');
+  const before = p.clock.now;
+  p.clock.now += 30 * MIN;
+  p.call('keepNewestMatch', state(m, 2));
+  assert.equal(entry().rose, false, 'a rise after a gap is a first sight again, though one was watched before');
+  assert.equal(entry().gapFrom, before);
+  p.clock.now += 200;
+  p.call('keepNewestMatch', state(m, 3));
+  assert.equal(entry().rose, false, 'the next body of the same burst');
+  assert.equal(entry().gapFrom, before, 'keeps the gap');
+  p.clock.now += 30000;
+  p.call('keepNewestMatch', state(m, 4));
+  assert.equal(entry().rose, true, 'a rise after a normal poll is watched again');
+  assert.equal(entry().gapFrom, undefined);
+});
+
 // A live match whose four maps carry `perType` kills (all on the red side).
 function liveWith(base, perType) {
   const m = clone(base);

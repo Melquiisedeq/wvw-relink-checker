@@ -3520,6 +3520,12 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     }
     paintCorners();
     paintNote();
+    // A rise after a gap is dated by the history, which this open map has
+    // not read since before the gap: once, then killSheetAt passes gapFrom.
+    const gapFrom = (newestMatches.get(match.id) || {}).gapFrom;
+    if (gapFrom && killSheetAt < gapFrom) {
+      getKillSheet().then(() => { if (activeTrigger === triggerEl) paintCorners(); });
+    }
   };
 
   // The maps keep themselves current while they are open. The standings

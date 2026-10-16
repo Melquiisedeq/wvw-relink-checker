@@ -242,6 +242,9 @@ const newestMatches = new Map();
 // When this page last got an answer for each match, any body, a frozen repeat
 // included (newestMatches keeps only when the score rose): the map's "checked".
 const matchAnsweredAt = new Map();
+// Longer without an answer is a gap; answers closer than the burst are one read.
+const MATCH_GAP_MS = 2 * STANDINGS_REFRESH_MS;
+const GAP_BURST_MS = 5000;
 
 const colorSum = (obj) => COLORS.reduce((n, c) => n + (Number(obj && obj[c]) || 0), 0);
 const matchActivity = (m) => colorSum(m.kills) + colorSum(m.deaths);
@@ -266,6 +269,7 @@ function matchIsBehind(fresh, kept) {
 // not a match passes through untouched.
 function keepNewestMatch(match) {
   if (!match || typeof match.id !== 'string') return match;
+  const answeredBefore = matchAnsweredAt.get(match.id);
   matchAnsweredAt.set(match.id, Date.now());
   const kept = newestMatches.get(match.id);
   // Every offer, a frozen repeat included, with the body it would replace:
@@ -282,10 +286,24 @@ function keepNewestMatch(match) {
     || colorSum(match.scores) > colorSum(kept.match.scores);
   // `rose`: this page watched the score go up. False while `at` is only the
   // time of the first sight, which the kill history may know to be older.
-  const rose = !!kept && match.start_time === kept.match.start_time
-    ? (colorSum(match.scores) > colorSum(kept.match.scores) || kept.rose)
-    : false;
-  newestMatches.set(match.id, { match, at: moved ? Date.now() : kept.at, rose });
+  // A rise after a gap (a sleep, a hidden tab) happened somewhere in it, not
+  // now: it is a first sight again, and `gapFrom` lets a history line from
+  // inside the gap date it (ageBehindHistory). Bodies of the same burst (the
+  // game's answer, /api/latest, a re-read) share the gap.
+  const same = !!kept && match.start_time === kept.match.start_time;
+  const risen = same && colorSum(match.scores) > colorSum(kept.match.scores);
+  const now = Date.now();
+  const burst = !!kept && kept.gapFrom !== undefined && now - answeredBefore <= GAP_BURST_MS;
+  const gapped = !(now - answeredBefore <= MATCH_GAP_MS);
+  let gapFrom;
+  let rose = same && kept.rose;
+  if (risen) {
+    gapFrom = burst ? kept.gapFrom : (gapped ? answeredBefore : undefined);
+    rose = !burst && !gapped;
+  } else if (same && !moved) {
+    gapFrom = kept.gapFrom;
+  }
+  newestMatches.set(match.id, { match, at: moved ? Date.now() : kept.at, rose, gapFrom });
   weekStoreOffer(match);
   return match;
 }
@@ -481,7 +499,11 @@ function ageBehindHistory(byMatch, totalsOf) {
     const week = Date.parse(kept.match.start_time);
     if (!Number.isFinite(week) || last.at < week) continue;
     const now = totalsOf(kept.match);
-    if (!Object.keys(now).some((t) => now[t] < (Number(last.n && last.n[t]) || 0))) continue;
+    const behind = Object.keys(now).some((t) => now[t] < (Number(last.n && last.n[t]) || 0));
+    // The score rose inside a gap this page did not watch: a line written
+    // since its last answer is the rise's own, unless a map is ahead of it.
+    const ahead = Object.keys(now).some((t) => now[t] > (Number(last.n && last.n[t]) || 0));
+    if (!behind && !(kept.gapFrom && last.at > kept.gapFrom && !ahead)) continue;
     kept.at = last.at;
     n++;
   }
