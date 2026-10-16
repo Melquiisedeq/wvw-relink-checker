@@ -5,6 +5,7 @@
 //   test.use({ timeline: frozen(40), clock: 'playwright' });
 //   ... await hidden(page, wvw, 2 * HOUR); await visible(page);
 import { gw2 } from './gw2.mjs';
+import { recording } from './recordings.mjs';
 
 export const MIN = 60 * 1000;
 export const HOUR = 60 * MIN;
@@ -36,6 +37,18 @@ export const apiDown = (min = 10, code = 503, id) =>
 // `min` minutes of play with `flips` objectives changing hands, from the moment
 // the page opens: what a tab away for that long comes back to.
 export const missed = (min = 5, flips = 3, id) => opened(id).advance(min, { flips });
+
+// The world as of an absolute instant (`iso`, UTC) instead of minutes after the
+// recording: the recorded weeks rolled over to the one that holds it, twelve
+// minutes of a fight ending at most a minute before it. The fixture installs
+// the page's clock there; a test that needs the instant to the second sets it
+// itself (page.clock.setSystemTime) before opening the page. Weeks turn at
+// their ends, so an instant such as a reset is served as the new week.
+export const at = (iso, id = FOCUS) => {
+  const t = Date.parse(iso) - recording().recordedAt;
+  if (!(t > 12 * MIN)) throw new Error(`scenarios: ${iso} is not 12 minutes after the recording`);
+  return gw2.match(id).freeze(Math.floor(t / MIN) - 12).advance(12).pageOpens();
+};
 
 // ---- the tab ---------------------------------------------------------
 // A hidden tab cannot be had for real in a test browser (measured, 10/10/2026:
