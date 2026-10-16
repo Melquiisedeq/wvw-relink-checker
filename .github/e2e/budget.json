@@ -1,0 +1,8 @@
+{
+  "_note": "Ceilings for budget.spec.mjs, reviewed by hand. One number per metric: the measure of 16/10/2026 plus a margin (bytes +1 KB, rounded up to 100; requests and blocking scripts none, so one more fails; nodes and listeners +10 %). No fonts today: a font would fail until it gets a ceiling here. If a rise is on purpose, raise the number in the same PR.",
+  "bytes": { "html": 7400, "js": 133200, "css": 43400, "image": 131300 },
+  "requests": 38,
+  "blockingScripts": 18,
+  "nodes": 2700,
+  "listeners": 163
+}
