@@ -26,6 +26,7 @@ permissions:
 jobs:
   api:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Every route the page reads, and the shape it reads
@@ -37,6 +38,7 @@ jobs:
   # Its own job, so the email says "contract" and the fix is to re-record.
   contract:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: The keys and types the page reads, against the live API and the recording
@@ -49,6 +51,7 @@ jobs:
   # instead.
   team-names:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -59,8 +62,11 @@ jobs:
           # Read all_worlds properly instead of grepping the raw JSON:
           # scores and kill counts land in the same 5-digit range and would
           # produce a stream of false alarms.
-          ids=$(curl -fsS 'https://api.guildwars2.com/v2/wvw/matches?ids=all' \
-            | jq -r '.[].all_worlds[][] | select(. >= 10000)' | sort -u)
+          # To a file, not a pipe: a retry after a partial read would hand jq
+          # the cut-off body and the whole one back to back.
+          curl -fsS --max-time 30 --retry 2 --retry-delay 5 --retry-all-errors \
+            -o "$RUNNER_TEMP/matches.json" 'https://api.guildwars2.com/v2/wvw/matches?ids=all'
+          ids=$(jq -r '.[].all_worlds[][] | select(. >= 10000)' "$RUNNER_TEMP/matches.json" | sort -u)
 
           if [ -z "$ids" ]; then
             echo "::error::No team IDs came back from the API - the endpoint or its shape changed."
@@ -82,6 +88,7 @@ jobs:
 
   sheets:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: The community sheet's columns, and whether kills is still being written
@@ -89,6 +96,7 @@ jobs:
 
   site:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: wvwrelink.com serves every file it asks for; old Pages gone; domain not expiring
@@ -99,6 +107,7 @@ jobs:
   # email says "worker": the page carries on from the sheets when this fails.
   worker:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Both sources pushing, the reads answering, the entrance shut
@@ -112,6 +121,7 @@ jobs:
   # fails.
   relink-notice:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Every relink produced a notice

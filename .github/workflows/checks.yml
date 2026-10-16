@@ -67,11 +67,13 @@ jobs:
 
       # The runner's own Node, no setup step and nothing installed: node:test
       # is built in, and node:sqlite (the fake D1) needs 22.13 or later, which
-      # the image carries (22.23.2 on ubuntu-24.04, read 30/09/2026).
+      # the image carries (Node 22; the step prints the exact version).
       # The page's own rules ride along (tests/page-rules.test.mjs: the scripts
       # in a node:vm, no browser). The dot reporter keeps the log to the failures.
       - name: What the /api Worker refuses, keeps and serves, and the page's rules
-        run: node --test --test-reporter=dot "tests/*.test.mjs"
+        run: |
+          node --version
+          node --test --test-reporter=dot "tests/*.test.mjs"
 
   # Playwright Test (.github/e2e): the repository's dependencies (with monocart-coverage-reports,
   # below), for the tests only - the exact versions of the lockfile, no install scripts, no

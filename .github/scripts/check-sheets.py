@@ -29,6 +29,7 @@ Run it by hand any time:  python .github/scripts/check-sheets.py
 
 import csv
 import io
+import json
 import os
 import re
 import sys
@@ -49,6 +50,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # because it buys confidence without delivering any.
 CONFIG_ID = {'community': 'SHEET_ID', 'kills': 'KILLS_SHEET_ID'}
 
+GAME_MATCHES = 'https://api.guildwars2.com/v2/wvw/matches?ids=all'
 ATTEMPTS = 3
 PAUSE_SECONDS = 5
 TIMEOUT_SECONDS = 30
@@ -101,6 +103,14 @@ def csv_url(sheet_id, tab):
 
 def fetch_rows(url):
     """GET a gviz CSV export and parse it. Returns (rows, error)."""
+    body, error = fetch_body(url)
+    if error:
+        return None, error
+    return list(csv.reader(io.StringIO(body))), None
+
+
+def fetch_body(url):
+    """GET a url, retried. Returns (text, error)."""
     last = None
     for attempt in range(ATTEMPTS):
         if attempt:
@@ -110,12 +120,25 @@ def fetch_rows(url):
                 url, headers={'User-Agent': 'wvwrelink-health-check'})
             with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as res:
                 body = res.read().decode('utf-8', 'replace')
-            return list(csv.reader(io.StringIO(body))), None
+            return body, None
         except urllib.error.HTTPError as exc:
             last = 'HTTP %s' % exc.code
         except Exception as exc:
             last = '%s: %s' % (type(exc).__name__, exc)
     return None, '%s after %d attempts' % (last, ATTEMPTS)
+
+
+def game_api_down():
+    """True when the game's own API does not answer (retried); asked only once
+    the kills sheet is already late."""
+    body, error = fetch_body(GAME_MATCHES)
+    if error:
+        return True
+    try:
+        data = json.loads(body)
+    except ValueError:
+        return True
+    return not isinstance(data, list) or not data
 
 
 def fallbacks_in_code():
@@ -209,6 +232,12 @@ def check_kills(problems, notes, sheet_id):
                  % ('kills', len(stamped), matches, age_minutes))
 
     if age_minutes > KILLS_STALE_MINUTES:
+        if game_api_down():
+            problems.append('The game API is not answering, so kills.gs has '
+                            'nothing to write; the newest row in the kills '
+                            'sheet is %.0f minutes old. This clears when '
+                            'the game API is back.' % age_minutes)
+            return
         problems.append('The newest row in the kills sheet is %.0f minutes old. '
                         'The Apps Script trigger runs every five minutes and '
                         'writes whenever a score rose, so it has stopped - and the crossed swords stop with it, '
