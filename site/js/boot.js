@@ -299,10 +299,9 @@ const emberField = (function () {
   // draws every frame at 60Hz and every second frame at 144.
   const MIN_FRAME_MS = 1000 / 85;
 
-  let clock = 0, last = 0, running = false;
+  let clock = 0, last = 0, running = false, frameId = 0;
   function frame(now) {
-    if (!running) return;
-    requestAnimationFrame(frame);
+    frameId = requestAnimationFrame(frame);
     if (now - last < MIN_FRAME_MS) return;   // clock waits too, so no skip
     const dt = (now - last) / 1000;
     clock += dt;
@@ -328,11 +327,11 @@ const emberField = (function () {
       if (running) return;
       running = true;
       last = performance.now();
-      requestAnimationFrame(frame);
+      frameId = requestAnimationFrame(frame);
     },
     // The clock stops with it, so coming back carries on from where it
     // was rather than jumping forward by however long you were away.
-    stop() { running = false; },
+    stop() { running = false; cancelAnimationFrame(frameId); },
     blast() {
       for (let i = 0; i < 12; i++) {
         blasting.push({

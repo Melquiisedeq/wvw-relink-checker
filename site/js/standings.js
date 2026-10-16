@@ -678,7 +678,10 @@ async function runPeek() {
   const floor = peekFloor();
   const using = Date.now() - inputAt < PEEK_ACTIVE_MS || !!activeTrigger;
   peekDelay = using ? floor : Math.min(Math.max(peekDelay * 2, floor), PEEK_IDLE_MAX_MS);
-  if (document.visibilityState !== 'hidden') peekTimer = setTimeout(runPeek, peekDelay);
+  if (document.visibilityState !== 'hidden') {
+    clearTimeout(peekTimer);   // a show or an input during the peek may have armed one
+    peekTimer = setTimeout(runPeek, peekDelay);
+  }
 }
 
 // Now, unless a peek ran less than the floor ago: then when the floor is up.

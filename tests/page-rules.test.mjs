@@ -5,6 +5,8 @@
 // Each test names the file holding the rule it pins down.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
 import { loadPage, loadRecording, prng } from './page-harness.mjs';
 
 const { recordedAt, matches } = loadRecording();
@@ -393,4 +395,64 @@ test('skirmishProgress: block and fraction follow the clock, and stop at end_tim
     if (bad === undefined) delete broken.start_time; else broken.start_time = bad;
     assert.equal(at(start + 3600000, broken), null);
   }
+});
+
+test('runPeek: a show during the peek leaves one pending timer, not two (js/standings.js)', async () => {
+  const page = fresh();
+  const pending = new Set();
+  let nextId = 1;
+  page.ctx.setTimeout = () => { const id = nextId++; pending.add(id); return id; };
+  page.ctx.clearTimeout = (id) => { pending.delete(id); };
+  page.ctx.document = { visibilityState: 'visible' };
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  page.ctx.__gate = gate;
+  page.run('peekLatest = () => __gate');
+  const running = page.run('runPeek()');
+  page.run('peekSoon()');   // what the visibilitychange to visible does
+  release();
+  await running;
+  assert.equal(pending.size, 1);
+});
+
+test('emberField: stop then start in the same frame leaves one frame chain (js/boot.js)', () => {
+  const src = fs.readFileSync(new URL('../site/js/boot.js', import.meta.url), 'utf8');
+  const a = src.indexOf('const emberField = (function () {');
+  const b = src.indexOf('\n})();', a);
+  assert.ok(a >= 0 && b > a);
+  const dummy = () => {
+    const f = function () { return p; };
+    const p = new Proxy(f, {
+      get: (t, k) => (k === Symbol.toPrimitive ? () => '' : k === 'length' ? 0 : p),
+      apply: () => p, construct: () => p, set: () => true,
+    });
+    return p;
+  };
+  const queue = new Map();
+  let nextId = 1;
+  const g = {
+    console, Math, Date, performance: { now: () => 0 }, document: dummy(), window: dummy(),
+    requestAnimationFrame: (cb) => { const id = nextId++; queue.set(id, cb); return id; },
+    cancelAnimationFrame: (id) => { queue.delete(id); },
+    matchMedia: () => ({ matches: false, addEventListener() {} }),
+    ResizeObserver: class { observe() {} },
+  };
+  const ctx = vm.createContext(g);
+  vm.runInContext(`${src.slice(a, b + 5)}\nglobalThis.__field = emberField;`, ctx);
+  const field = ctx.__field;
+  queue.clear();
+  field.start();
+  field.stop();
+  field.start();
+  const due = [...queue.values()];
+  queue.clear();
+  for (const cb of due) cb(1000);   // one frame: each live chain asks for the next
+  assert.equal(queue.size, 1);
+});
+
+test('fetchTimers: a lockout date that does not parse is no lockout (js/relink.js)', async () => {
+  const page = fresh();
+  page.ctx.fetchJson = async () => [{ na: 'not a date', eu: 'also not' }];
+  await page.run('fetchTimers()');
+  assert.equal(page.run('lockoutTime'), null);
 });
