@@ -55,36 +55,32 @@ The Worker behind `wvwrelink.com/api` has tests, and so do the page's rules
 
     node --test "tests/*.test.mjs"
 
-The page itself has a check that opens it in a real Chrome (Node 22 and one
-installed Chrome or Chromium, nothing else to install):
-
-    node .github/scripts/check-page.mjs
-
-It finds `google-chrome` or `chromium` on the PATH; `--chrome PATH` or the
-`CHROME` variable say which one otherwise. The API and the sheets answer from
-a recording in `.github/scripts/check-page/recordings.json.gz`, so it runs
-offline. It loads the page, then walks it as a visitor would: a guild search,
-every tier map and each of its tabs, every icon button and popover, the NA/EU
-swap, and a second load with `/api` answering 503. It fails on an exception, a
-console error, a Content Security Policy violation, or a step whose element
-never appears (the message names the step), and names the URL when the page
-asks for something that was not recorded. After a change that makes the page
-fetch something new, record again from the real hosts and commit the file; the
-recording replays itself at the end, and is kept only if that passes:
-
-    node .github/scripts/check-page.mjs --record
-
-The newer browser tests use Playwright Test, pinned in
-`.github/e2e/package-lock.json` (Node 20 or later; no browser is downloaded):
+The page itself has browser tests that open it in a real Chrome. They use
+Playwright Test, pinned in `.github/e2e/package-lock.json` (Node 22 and one
+installed Chrome or Chromium; no browser is downloaded):
 
     cd .github/e2e && npm ci --ignore-scripts && npx playwright test
 
 They drive your installed Google Chrome, or the executable `CHROME` names
-(`CHROME=/usr/bin/chromium npx playwright test`); CI uses its own Google Chrome. They serve `site/` with its real headers (`SITE_DIR` serves
-another folder), answer the page from the same recording, start its clock at
-the recording's instant, and fail a test on an exception, a console error, a
-Content Security Policy violation or a URL that was not recorded. A skipped test
-fails the run; on CI a test that passes only on its retry is a warning.
+(`CHROME=/usr/bin/chromium npx playwright test`); CI uses its own Google
+Chrome. They serve `site/` with its real headers (`SITE_DIR` serves another
+folder) and answer the API and the sheets from a recording in
+`.github/e2e/recordings.json.gz`, so they run offline, and start the page's
+clock at the recording's instant. The tests walk the page as a visitor would: a
+guild search, every tier map and each of its tabs, the popovers, the NA/EU
+swap, a second load with `/api` answering 503. A test fails on an exception, a
+console error, a Content Security Policy violation, or a URL that was not
+recorded (the message names it). A skipped test fails the run; on CI a test
+that passes only on its retry is a warning.
+
+After a change that makes the page fetch something new, record again from the
+real hosts and commit the file. The run is live, one worker; what decides is the
+replay of the whole suite against the new file at the end, and the old
+recording is replaced only if that passes:
+
+    cd .github/e2e && RECORD=1 npx playwright test
+
+(`RECORDINGS=/some/path.json.gz` writes the new recording there instead.)
 
 The page runs your JavaScript in that Chrome, so run a stranger's pull request
 in CI, not on your own machine.

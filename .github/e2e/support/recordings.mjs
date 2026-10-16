@@ -1,24 +1,19 @@
-// Answers the page's outside reads from the check-page's recording, by exact
-// URL, as .github/scripts/check-page.mjs does in its replay: the GW2 API, the
-// sheets on docs.google.com and this site's /api. A URL the recording does not
-// hold is a problem that fails the test, naming the URL; nothing reaches the
-// network. To refresh the recording: node .github/scripts/check-page.mjs --record
-// (the same file, read here).
+// Answers the page's outside reads from the recording (recordings.json.gz, or
+// $RECORDINGS), by exact URL: the GW2 API, the sheets on docs.google.com and
+// this site's /api. A URL the recording does not hold is a problem that fails
+// the test, naming the URL; nothing reaches the network. To refresh the
+// recording: RECORD=1 npx playwright test (support/record.mjs), which answers
+// from the real hosts instead, keeping what it fetched.
 import { readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
-
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-const RECORDINGS = join(ROOT, '.github', 'scripts', 'check-page', 'recordings.json.gz');
+import { RECORDING, RECORDING_ON, heldRecording, recordUrl } from './record.mjs';
 
 // The /api routes the recording holds, each under its full recorded address.
 const OWN_API = new Map([
   ['/api/kills', 'https://wvwrelink.com/api/kills'],
   ['/api/relink', 'https://wvwrelink.com/api/relink'],
 ]);
-// /api routes the recording does not hold, answered as the check-page's walk
-// answers them by default: /api/latest down (the Worker's 503 when its newest
+// /api routes the recording does not hold, answered by default: /api/latest down (the Worker's 503 when its newest
 // body is too old), its summary empty (what the Worker serves with nothing kept).
 const OWN_FIXED = new Map([
   ['/api/latest', { status: 503, body: '{"error":"down"}' }],
@@ -42,8 +37,11 @@ let cache = null;
 // { recordedAt, guilds, entries: Map url -> [status, content-type, body, base64?] }
 export function recording() {
   if (!cache) {
-    const data = JSON.parse(gunzipSync(readFileSync(RECORDINGS)).toString('utf8'));
-    cache = { recordedAt: data.recordedAt, guilds: data.guilds || [], entries: new Map(Object.entries(data.entries)) };
+    if (RECORDING_ON) cache = heldRecording();
+    else {
+      const data = JSON.parse(gunzipSync(readFileSync(RECORDING)).toString('utf8'));
+      cache = { recordedAt: data.recordedAt, guilds: data.guilds || [], entries: new Map(Object.entries(data.entries)) };
+    }
   }
   return cache;
 }
@@ -59,7 +57,7 @@ export function expectedTiers() {
 
 // The hot-map floor is 50 kills in ten minutes and the recording may sit in a
 // lull, so the kills history is served with 200 fewer EBG kills before its
-// newest snapshot, as the check-page serves it: a real fight on the map.
+// newest snapshot: a real fight on the map.
 function withFight(body) {
   try {
     const j = JSON.parse(body.toString('utf8'));
@@ -98,9 +96,10 @@ export function answerFrom(base, problem, own = null) {
           problem(`unknown /api route, not fetched: ${url}`);
           return await route.abort('failed');
         }
+        if (RECORDING_ON) await recordUrl(key, entries);
         const hit = entries.get(key);
         if (!hit) {
-          problem(`not recorded: ${key} - re-record with check-page.mjs --record`);
+          problem(`not recorded: ${key} - re-record with RECORD=1`);
           return await route.abort('failed');
         }
         return await fulfil(route, hit[0], hit[1], key === OWN_API.get('/api/kills') ? withFight(bodyOf(hit)) : bodyOf(hit));
@@ -124,7 +123,7 @@ export function answerFrom(base, problem, own = null) {
         const list = JSON.parse(bodyOf(all).toString('utf8')).filter(m => want.includes(m.id));
         return await fulfil(route, 200, 'application/json; charset=utf-8', Buffer.from(JSON.stringify(list)));
       }
-      if (url.startsWith(TACTICS_URL) && !entries.has(url)) {
+      if (!RECORDING_ON && url.startsWith(TACTICS_URL) && !entries.has(url)) {
         const want = url.slice(TACTICS_URL.length).split(',');
         const known = new Map();
         for (const [key, e] of entries) {
@@ -138,9 +137,10 @@ export function answerFrom(base, problem, own = null) {
         return await fulfil(route, 200, 'application/json; charset=utf-8', Buffer.from(JSON.stringify(want.map(i => known.get(i)))));
       }
       if (EXTERNAL.test(url)) {
+        if (RECORDING_ON) await recordUrl(url, entries);
         const hit = entries.get(url);
         if (!hit) {
-          problem(`not recorded: ${url} - re-record with check-page.mjs --record`);
+          problem(`not recorded: ${url} - re-record with RECORD=1`);
           return await route.abort('failed');
         }
         return await fulfil(route, hit[0], hit[1], bodyOf(hit));

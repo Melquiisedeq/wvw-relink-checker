@@ -2,7 +2,7 @@
 // reads answered from the recording (support/recordings.mjs), its clock started
 // at the recording's instant, and every exception, console error and Content
 // Security Policy violation collected and failed at the end of the test - the
-// same things, seen the same way (DevTools events), as the check-page.
+// same things, seen through DevTools events.
 //
 //   import { test, expect } from './support/fixtures.mjs';
 //   test('...', async ({ page, wvw }) => { await page.goto(wvw.url); ... });
@@ -12,7 +12,7 @@
 //             /api/kills answered from it at the page's own time, and the
 //             page's clock started where it says the page opens. Default: the
 //             recording as it is, /api/latest down.
-//   clock     'shim' (default): the check-page's clock below, jumped with
+//   clock     'shim' (default): the clock below, jumped with
 //             wvw.skew(ms). 'playwright': no shim, page.clock installed at the
 //             same instant, for tests that drive the timers (runFor,
 //             fastForward); wvw.skew(ms) then jumps it with setSystemTime.
@@ -20,7 +20,7 @@ import { test as base, expect } from '@playwright/test';
 import { startSite } from './site.mjs';
 import { BLOCKED, answerFrom, expectedTiers, recording } from './recordings.mjs';
 
-// The check-page's clock, as an init script: "live", the relink banner and the
+// The shim clock, as an init script: "live", the relink banner and the
 // stale-fight cutoff read Date.now(), and recorded matches age. The page's
 // clock starts at the recording's instant and runs normally from there;
 // window.__skewClock(ms) jumps it. Date.parse and new Date(x) stay real.
@@ -84,8 +84,8 @@ export const test = base.extend({
     });
     for (const domain of ['Runtime', 'Log', 'Audits']) await cdp.send(domain + '.enable');
 
-    // Requests in flight, for settle(): the check-page's "the page has gone
-    // quiet". An error answer the page never reads (/api/latest's 503) is not
+    // Requests in flight, for settle(): "the page has gone quiet".
+    // An error answer the page never reads (/api/latest's 503) is not
     // waiting on the network, and Chrome holds its end back.
     const inFlight = new Set();
     // A navigation cancels what the old document still had in flight, and

@@ -23,7 +23,9 @@ export default defineConfig({
   // smoke tests, three runs each of `npx playwright test`: 2 workers 3.7-4.0 s,
   // 3 workers 3.7-3.9 s, 4 workers 4.0-4.1 s - noise, since two tests never
   // fill more than two. Re-measure when the suite grows.
-  workers: 3,
+  // One when recording: the live reads happen once, in order (support/record.mjs).
+  workers: process.env.RECORD ? 1 : 3,
+  globalSetup: './support/record.mjs',
   // Only on CI, and only the test that failed; a pass on the retry is a
   // warning there (support/summary.mjs), never silence.
   retries: CI ? 1 : 0,

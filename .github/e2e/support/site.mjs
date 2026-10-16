@@ -1,8 +1,7 @@
 // Serves site/ as Cloudflare does for the tests: the `/*` headers of
 // site/_headers on every answer, so the Content Security Policy is production's
-// and acts before any request reaches page.route. The same rules as
-// .github/scripts/check-page.mjs: 127.0.0.1 only, and only the files listed
-// when the server starts - a request only looks its path up in that list, so no
+// and acts before any request reaches page.route. 127.0.0.1 only, and only the files
+// listed when the server starts - a request only looks its path up in that list, so no
 // file path is ever built from what the browser asked for.
 //
 // SITE_DIR serves another folder instead (a mutated copy of site/, or a checkout

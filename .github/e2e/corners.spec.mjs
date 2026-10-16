@@ -1,7 +1,5 @@
 // The two corners over a tier's map, and the skirmish trend, on states of time
-// and of the data's clock the page is put in (the check-page steps 'map
-// corners', 'history ages first sight', 'corners by the data clock' and
-// 'skirmish trend stalled'). The clock is the fixture's shim, jumped with
+// and of the data's clock the page is put in. The clock is the fixture's shim, jumped with
 // wvw.skew; the page's kept bodies, the kill history and the score time are
 // planted in the page, and the match is served back so nothing replaces them.
 //
