@@ -169,9 +169,7 @@ async function fetchTimers() {
     const lockoutRaw = await fetchJson(`${API_BASE}/wvw/timers/lockout`);
     const lockout = Array.isArray(lockoutRaw) ? lockoutRaw[0] : lockoutRaw;
     // NA and EU lockout timestamps are always identical, so only one is kept.
-    lockoutTime = lockout?.na
-      ? new Date(lockout.na).getTime()
-      : (lockout?.eu ? new Date(lockout.eu).getTime() : null);
+    lockoutTime = msOrNull(lockout?.na) ?? msOrNull(lockout?.eu);
     timersLoaded = true;
   } catch {
     // Keep showing the last known value; the banner just skips this cycle.
