@@ -21,7 +21,7 @@ _source
 
 # The local test bench for the teams notice: a copy of the page with a control
 # panel bolted on, twelve situations and a verdict for each. Useful and never
-# shipped - it exists to exercise a strip that is only on screen four days a
+# shipped - it exists to exercise a strip that is only on screen about one day a
 # month. Ignored here rather than in .git/info/exclude so a fresh clone cannot
 # commit it by accident.
 _teste

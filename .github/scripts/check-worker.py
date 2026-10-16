@@ -115,7 +115,7 @@ def check_feeds(problems, notes):
             problems.append(
                 '%s last reported %d minutes ago (limit %d). Its Apps Script '
                 'stopped pushing: the trigger, the ingest property, or the '
-                'Worker secret INGEST_%s - .claude/docs/api.md.'
+                'Worker secret INGEST_%s.'
                 % (source, age // 60, limit // 60, source.upper()))
         else:
             notes.append('%-34s %d min ago' % (source + ' last reported', age // 60))

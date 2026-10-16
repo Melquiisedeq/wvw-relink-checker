@@ -254,7 +254,7 @@ function setStandingsStatus(el, synced, text) {
   if (!synced) { el.textContent = text; return; }
   const dot = document.createElement('span');
   dot.className = 'live-dot';
-  dot.title = 'Checks for new standings every 30 seconds while this tab is open';
+  dot.title = 'Checks for new standings every half minute or so while you use the page';
   el.appendChild(dot);
   el.appendChild(document.createTextNode(text));
 }

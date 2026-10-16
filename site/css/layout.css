@@ -126,8 +126,8 @@ html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:1;}
 /* ---- The teams notice ------------------------------------------- */
 /* A bar across the very top of the window, edge to edge, sticking there once
    the page scrolls past it. Why a bar rather than a toast, why it stands
-   still rather than travelling, and why the surface carries no hue are in
-   _source/decisoes-aviso-times.md with the alternatives that lost. The one
+   still rather than travelling, and why the surface carries no hue were
+   decided against alternatives that lost. The one
    thing here that is not taste is the position: see index.html, where the
    element actually sits, and check-structure.py, which asserts it. */
 .teams-notice{

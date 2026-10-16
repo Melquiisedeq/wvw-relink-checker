@@ -7,9 +7,9 @@
 <!-- The Content Security Policy is a response header, set in _headers. -->
 <meta name="referrer" content="no-referrer">
 <!--
-  Both hosts are reached on a click, never at load. Measured cold,
-  DNS+TCP+TLS to the API is ~575ms of a ~780ms first call, all of it
-  inside the click; this moves the handshake to page load. crossorigin
+  The API host is reached at load, by the preloads below; the emblem host
+  on a click. Measured cold, DNS+TCP+TLS to the API is ~575ms of a ~780ms
+  first call; these hints move the handshake to page load. crossorigin
   on one and not the other is not a slip - fetch() lands in the
   anonymous connection pool while emblems are plain <image> loads that
   are not CORS, and a hint in the wrong pool opens a socket nothing

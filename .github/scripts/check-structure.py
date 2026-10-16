@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Structural checks for a site that has no tests and cannot easily have any.
+"""Structural checks for the mistakes that fail silently in a site with no build.
 
 Nothing in this file is shipped. Cloudflare publishes site/ and nothing
 else, and this lives under .github/; it runs only in CI. It exists because the mistakes this project can actually make - a script missing from

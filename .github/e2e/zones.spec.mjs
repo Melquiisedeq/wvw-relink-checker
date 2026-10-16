@@ -70,7 +70,7 @@ const read = page => page.evaluate(() => {
   const words = [...document.querySelectorAll('[title], [aria-label]')].map(e => (e.title || '') + ' ' + (e.getAttribute('aria-label') || ''));
   return {
     now: Date.now(),
-    synced: ['NA', 'EU'].map(r => ({ text: q('#standingsStatus' + r).textContent, dots: q('#standingsStatus' + r).querySelectorAll('.live-dot').length })),
+    synced: ['NA', 'EU'].map(r => ({ text: q('#standingsStatus' + r).textContent, dots: q('#standingsStatus' + r).querySelectorAll('.live-dot').length, tip: q('#standingsStatus' + r + ' .live-dot')?.title })),
     ago: ago ? { text: ago.querySelector('.wvw-hud-when').textContent, at: Date.parse(ago.dateTime) } : null,
     small: small && !small.closest('[hidden]') && small.dateTime ? { text: small.textContent, at: Date.parse(small.dateTime) } : null,
     note: note && !note.hidden ? note.textContent : null,
@@ -104,6 +104,7 @@ function wrong(seen, zone, locale, { synced }) {
     const want = synced.map(t => `Synced ${hhmm(t, zone, locale)}`);
     if (!want.includes(squash(s.text))) out.push(`region ${i ? 'EU' : 'NA'} reads "${squash(s.text)}", wanted one of ${want.join(' / ')}`);
     if (s.dots !== 1) out.push(`region ${i ? 'EU' : 'NA'} has ${s.dots} live dots`);
+    else if (s.tip !== 'Checks for new standings every half minute or so while you use the page') out.push(`region ${i ? 'EU' : 'NA'} live dot says "${s.tip}"`);
   }
   if (seen.ago) {
     if (!Number.isFinite(seen.ago.at)) out.push('the corner has no instant');
