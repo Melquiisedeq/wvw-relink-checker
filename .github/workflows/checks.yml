@@ -73,8 +73,8 @@ jobs:
       - name: What the /api Worker refuses, keeps and serves, and the page's rules
         run: node --test --test-reporter=dot "tests/*.test.mjs"
 
-  # Playwright Test (.github/e2e): the repository's one dependency, for the
-  # tests only - the exact versions of the lockfile, no install scripts, no
+  # Playwright Test (.github/e2e): the repository's dependencies (with monocart-coverage-reports,
+  # below), for the tests only - the exact versions of the lockfile, no install scripts, no
   # browser downloaded (the image's Google Chrome), no secret, the same
   # read-only token. The API and the sheets answer from a recording, so a GW2
   # outage cannot turn a pull request red; the tests run the pull request's
@@ -88,7 +88,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Playwright Test from the lockfile
+      - name: Install the test dependencies from the lockfile
         run: npm ci --ignore-scripts
 
       - name: Chrome version
@@ -104,10 +104,18 @@ jobs:
           token="$(openssl rand -hex 16)"
           echo "::stop-commands::$token"
           set +e
-          E2E_RESUME="$token" npx playwright test
+          E2E_COVERAGE=1 E2E_RESUME="$token" npx playwright test
           code=$?
           echo "::$token::"
           exit "$code"
+
+      # Coverage (support/coverage.mjs says how): the node tests run again here, with
+      # V8 coverage on (about 6 s), so the `rules` job and `page` keep their names
+      # and rule. A file falling more than 0.5 point fails this job, so `page`.
+      - name: Coverage per file, and it may not fall
+        run: |
+          node support/coverage.mjs node
+          node support/coverage.mjs check
 
       # Traces of what failed, kept three days; nothing on a green run.
       - name: Keep the traces
