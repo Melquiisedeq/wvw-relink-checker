@@ -95,6 +95,13 @@ def is_int(n):
 kills_age = [None]
 
 
+def game_api_down():
+    """True when the game's own API does not answer (retried); asked only once
+    a source is already late, since kills.gs has nothing to write without it."""
+    data, why = get_json(GAME_MATCHES)
+    return why is not None or not isinstance(data, list) or not data
+
+
 def check_feeds(problems, notes):
     data, why = get_json(API + 'health')
     if why:
@@ -112,6 +119,12 @@ def check_feeds(problems, notes):
             continue
         age = now - at
         if age > limit:
+            if source == 'kills' and game_api_down():
+                problems.append(
+                    "The game API is not answering, so kills.gs has nothing to "
+                    "write; kills last reported %d minutes ago. This clears when "
+                    "the game API is back." % (age // 60))
+                continue
             problems.append(
                 '%s last reported %d minutes ago (limit %d). Its Apps Script '
                 'stopped pushing: the trigger, the ingest property, or the '
