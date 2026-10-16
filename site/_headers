@@ -29,7 +29,7 @@
 # check-structure.py reads the policy from this line; check-site.py compares
 # it with what wvwrelink.com serves.
 /*
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://static.cloudflareinsights.com/beacon.min.js; style-src 'self'; connect-src 'self' https://api.guildwars2.com https://docs.google.com https://cloudflareinsights.com https://melquiisedeq.goatcounter.com; img-src 'self' data: https://render.guildwars2.com https://melquiisedeq.goatcounter.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://static.cloudflareinsights.com/beacon.min.js; style-src 'self'; connect-src 'self' https://api.guildwars2.com https://docs.google.com https://cloudflareinsights.com https://melquiisedeq.goatcounter.com; img-src 'self' https://render.guildwars2.com https://melquiisedeq.goatcounter.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Cross-Origin-Opener-Policy: same-origin
