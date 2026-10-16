@@ -11,10 +11,11 @@ manager, nothing pulled from a CDN.** That is not something waiting to be fixed,
 the point — the page works because there is nothing between the browser and
 the files, and it will still work in five years for the same reason. The one
 script from elsewhere is Cloudflare's visit counter, and the page does not
-need it to work. `worker/`, the only code that runs on a server, follows the
+need it to work. `worker/`, the Supabase readers in `supabase/` and the Apps Scripts in
+`apps-script/` are the code that runs outside the browser; `worker/` follows the
 same rule: one file, no dependencies, nothing to install. The browser tests in
-`.github/e2e/` are the one place with a dependency, Playwright Test, and
-nothing in `site/` or `worker/` may import from there.
+`.github/e2e/` are the one place with dependencies, Playwright Test and
+monocart-coverage-reports, and nothing in `site/` or `worker/` may import from there.
 
 So a pull request that adds a library, a bundler or a framework will not be
 merged, however good the library is. If something really does need one, open

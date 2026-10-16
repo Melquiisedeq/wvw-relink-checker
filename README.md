@@ -70,24 +70,24 @@ in those few days and puts a line at the top when it has.
 
 ## 🔒 Privacy
 
-**Everything the page does runs in your browser, and nothing it does is sent
-to me.** There is one small server of mine, at `wvwrelink.com/api`. It receives game
-data from this project's own two scripts, signed, and the page reads two things
-back from it — the kills history and whether the new teams are out, falling
-back to the spreadsheets if it cannot. Nothing you type goes near it.
+**Everything the page does runs in your browser, and nothing you type is sent
+to me; the visits are counted, as the table below shows.** There is one small server of mine, at `wvwrelink.com/api`. It receives game
+data from this project's own two Apps Scripts and two Supabase readers, each signed, and the page reads three things
+back from it — the kills history, whether the new teams are out (both fall
+back to the spreadsheets if it cannot answer) and the newest match bodies. Nothing you type goes near it.
 
 | Host | What for |
 |---|---|
 | `api.guildwars2.com` | The guild names you paste go here to be resolved — that request *is* the lookup. Also all match, objective and upgrade data. |
 | `render.guildwars2.com` | Guild emblem images, for objectives claimed by a guild. Images only. |
-| `wvwrelink.com/api` | This site's own server: the kills history when you open a tier's maps, and whether the new teams are out — read only in the days before a relink. |
-| `docs.google.com` | Three public spreadsheets, read-only: the community guild list when you click a shield icon, and the same two things as above when `/api` does not answer. |
+| `wvwrelink.com/api` | This site's own server: the kills history when you open a tier's maps, whether the new teams are out (read only in the days before a relink), and the newest match bodies, kept only when further along than the game's own answer. |
+| `docs.google.com` | Three public spreadsheets, read-only: the community guild list when you click a shield icon, and the kills history and the new-teams notice when `/api` does not answer. |
 | `melquiisedeq.goatcounter.com` | One anonymous page view per visit. Nothing else. |
 | `static.cloudflareinsights.com`, `cloudflareinsights.com` | Cloudflare Web Analytics: its script, and a report of how fast the page loaded. |
 
 Six things are kept in your browser's own storage. None of them ever
 leave your device; three clear themselves out as they age, and the other
-two are a single value each that gets overwritten.
+three are a single value each that gets overwritten.
 
 | Key | What it holds |
 |---|---|
@@ -162,7 +162,7 @@ Plain static files. Everything the browser downloads is in `site/`, and
 Cloudflare serves that folder as it is, as a Worker with no code:
 `wrangler.jsonc` says so. Nothing outside `site/` is published. The one piece
 with code on the server is `worker/`, a second Worker at `wvwrelink.com/api/*`
-that stores what the two Apps Scripts send it, in a Cloudflare D1 database.
+that stores what the two Apps Scripts and the two Supabase readers send it, in a Cloudflare D1 database.
 
 ```
 site/
@@ -176,12 +176,16 @@ apps-script/   the two Google Apps Script projects behind the spreadsheets:
                these are the copies they are pasted from.
 worker/        wvwrelink.com/api: takes each script's signed results into
                the database, says when each last reported (/api/health), and
-               serves the page its two reads (/api/kills, /api/relink)
+               serves the page its reads (/api/kills, /api/relink,
+               /api/latest)
+supabase/      the two readers, one per API server pool, that push the
+               newest match bodies to the Worker every minute
 tests/         the Worker's rules, and the page's rules with its scripts in a
                node:vm (no browser), run by node --test with nothing installed
 .github/       the checks, and the workflows that run them; e2e/ holds the
-               browser tests, Playwright Test - the repository's one
-               dependency, for the tests only, never for the site
+               browser tests, Playwright Test and monocart-coverage-reports,
+               the repository's two dependencies, for the tests only, never
+               for the site
 ```
 
 The scripts are plain (non-module) and share one global scope, so the

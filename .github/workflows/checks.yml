@@ -1,11 +1,11 @@
-# The page has no unit tests: there is no pure function to call, just a page and
-# the scripts that build it. What it has is a set of mistakes that fail
-# *silently* in production - a script missing from the ordered list in
-# index.html, a host missing from the Content Security Policy, a syntax error in
-# a file nothing parses until a browser does. The first two jobs are aimed at
-# exactly those, and the last one opens the page in a real Chrome and fails on
-# whatever the browser objects to. The Worker behind /api is different: it is
-# rules - what it refuses, keeps and serves - and the third job runs them.
+# The page is checked two ways: the structure job and the syntax job aim at
+# mistakes that fail *silently* in production - a script missing from the
+# ordered list in index.html, a host missing from the Content Security Policy,
+# a syntax error in a file nothing parses until a browser does - and the e2e
+# job (Playwright Test) opens it in a real Chrome and fails on whatever the
+# browser objects to. The rules job runs the unit tests (tests/): the Worker
+# behind /api, and the page's own functions in a node:vm. Five jobs; four are
+# required (structure, syntax, rules, page), and page passes only if e2e did.
 name: Checks
 
 on:
