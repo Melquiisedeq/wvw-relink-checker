@@ -265,6 +265,14 @@ test.describe('map open while the API is down', () => {
 // corner says is the time of the data, not of the first read after the gap.
 const stoppedBeforeBack = gw2.match(FOCUS).advance(12).pageOpens().advance(10).freeze(20);
 
+// The rise after the gap is dated by the history, which the map asks for only
+// after the match and /api/latest answer (js/maps.js pullFresh, up to
+// LATEST_WAIT_MS later): until it lands the corner says the time of the read.
+// settle() alone can find the network quiet before it is asked, on a busy
+// machine 12 looks in 120 (16/10/2026, four workers).
+const historyRead = page => page.waitForResponse(q => new URL(q.url()).pathname === '/api/kills', { timeout: 15000 })
+  .catch(() => { throw new Error('the page never read /api/kills after waking'); });
+
 // With or without a rise watched before the gap: a page open for a while has
 // seen the score go up, and must date the next rise from the history all the same.
 for (const before of [0, 4]) {
@@ -277,7 +285,9 @@ for (const before of [0, 4]) {
       await r.open();
       await r.check('map open', READ_OPEN_MS);
       if (before) await r.pass(before, 2, 'watching', READ_OPEN_MS);
+      const history = historyRead(page);
       await wake(page, 30 * MIN);
+      await history;
       await r.check('awake', READ_OPEN_MS);
       expect(await r.age(), 'the state: data over 11 min old').toBeGreaterThan(STALE_MS + READ_OPEN_MS);
       await r.pass(2, 1, 'awake', READ_OPEN_MS);
@@ -293,7 +303,9 @@ for (const before of [0, 4]) {
       await r.check('map open', READ_OPEN_MS);
       if (before) await r.pass(before, 2, 'watching', READ_OPEN_MS);
       await hidden(page, wvw, 2 * HOUR);
+      const history = historyRead(page);
       await visible(page);
+      await history;
       await r.check('back', READ_OPEN_MS);
       expect(await r.age(), 'the state: data over 11 min old').toBeGreaterThan(STALE_MS + READ_OPEN_MS);
       await r.pass(2, 1, 'back', READ_OPEN_MS);

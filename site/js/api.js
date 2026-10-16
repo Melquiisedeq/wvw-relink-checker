@@ -279,7 +279,14 @@ function keepNewestMatch(match) {
   if (typeof missedMatchOffered === 'function') {
     try { missedMatchOffered(match, kept); } catch { /* the summary only */ }
   }
-  if (kept && matchIsBehind(match, kept.match)) return kept.match;
+  // An answer that does not move the data still ends a gap - a read asked
+  // before a sleep can land after it - so the rise after it in the same burst
+  // happened inside the gap too: it keeps `gapFrom` (tests/page-rules.test.mjs).
+  const gapped = !(Date.now() - answeredBefore <= MATCH_GAP_MS);
+  if (kept && matchIsBehind(match, kept.match)) {
+    if (gapped) kept.gapFrom = answeredBefore;
+    return kept.match;
+  }
   // First sight, a new week, or a higher score: the data moved. The same
   // body again keeps the old time.
   const moved = !kept || match.start_time !== kept.match.start_time
@@ -294,14 +301,13 @@ function keepNewestMatch(match) {
   const risen = same && colorSum(match.scores) > colorSum(kept.match.scores);
   const now = Date.now();
   const burst = !!kept && kept.gapFrom !== undefined && now - answeredBefore <= GAP_BURST_MS;
-  const gapped = !(now - answeredBefore <= MATCH_GAP_MS);
   let gapFrom;
   let rose = same && kept.rose;
   if (risen) {
     gapFrom = burst ? kept.gapFrom : (gapped ? answeredBefore : undefined);
     rose = !burst && !gapped;
   } else if (same && !moved) {
-    gapFrom = kept.gapFrom;
+    gapFrom = gapped ? answeredBefore : kept.gapFrom;
   }
   newestMatches.set(match.id, { match, at: moved ? Date.now() : kept.at, rose, gapFrom });
   weekStoreOffer(match);

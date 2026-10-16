@@ -157,6 +157,26 @@ test('keepNewestMatch: a rise after a gap is not watched, and its burst shares t
   assert.equal(entry().gapFrom, undefined);
 });
 
+test('keepNewestMatch: an answer that does not move the data still ends the gap for the rise after it (js/api.js)', () => {
+  // A read asked before a sleep can land after it, ahead of the game's new
+  // answer (/api/latest, mergeLatest's late offer): seen under load in time.spec.mjs.
+  for (const [what, late] of [['the same body', 1], ['an older body', 0]]) {
+    const p = fresh();
+    const m = matches[0];
+    const entry = () => p.run(`newestMatches.get(${JSON.stringify(m.id)})`);
+    p.call('keepNewestMatch', m);
+    p.clock.now += 30000;
+    p.call('keepNewestMatch', state(m, 1));
+    const before = p.clock.now;
+    p.clock.now += 30 * MIN;
+    p.call('keepNewestMatch', state(m, late));
+    p.clock.now += 117;
+    p.call('keepNewestMatch', state(m, 2));
+    assert.equal(entry().rose, false, `${what} first: the rise is still a first sight`);
+    assert.equal(entry().gapFrom, before, `${what} first: the gap runs from the last answer before it`);
+  }
+});
+
 // A live match whose four maps carry `perType` kills (all on the red side).
 function liveWith(base, perType) {
   const m = clone(base);
