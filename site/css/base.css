@@ -32,6 +32,9 @@
   --green-ink:#3fbd83;
 }
 *{box-sizing:border-box;}
+/* The shake (.page.struck) would widen the document by up to 9 px; clip on
+   both, html alone does not hold (.github/e2e/layout.spec.mjs). */
+html,body{overflow-x:clip;}
 body{
   margin:0;
   padding:0;
