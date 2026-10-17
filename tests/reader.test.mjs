@@ -7,9 +7,8 @@ import { createHmac } from 'node:crypto';
 import worker from '../worker/index.mjs';
 import { fakeD1 } from './fake-d1.mjs';
 import {
-  REGIONS, regionFor, checkMatch, checkRead, checkSummaryBody, pickNewer, buildBody, sign, sameSecret
+  REGIONS, regionFor, checkMatch, checkRead, checkSummaryBody, pickNewer, buildBody, sign, sameSecret, handle
 } from '../supabase/reader.mjs';
-import { handle } from '../supabase/reader.mjs';
 
 // 2026-10-03 is a Saturday: the NA week began 02:00Z, 10 hours before this clock.
 const NOW = Date.parse('2026-10-03T12:00:00Z');

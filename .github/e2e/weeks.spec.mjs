@@ -8,7 +8,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
-import { check, recordedJson, matchReads, serveList } from './support/steps.mjs';
+import { check, iso, recordedJson, matchReads, serveList } from './support/steps.mjs';
 import { MIN, FOCUS } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, timezoneId: 'UTC', locale: 'en-US' });
@@ -17,7 +17,6 @@ const GAME = 'https://api.guildwars2.com/v2/';
 const ALL = GAME + 'wvw/matches?ids=all';
 const IDS = GAME + 'wvw/matches?ids=';
 const WEEK = 7 * 86400000;
-const iso = t => new Date(t).toISOString().replace('.000Z', 'Z');
 const NA = '#standingsGridNA > .standing-match';
 const TEAMS = ['red', 'blue', 'green'];
 // The team of a tier the new line-up brought (ids from 10000 are the real ones).

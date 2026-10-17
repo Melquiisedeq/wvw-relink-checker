@@ -9,14 +9,13 @@
 // body. At 1280 and 360 px.
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
-import { phone, load, firstTier, openMap, keptMatch } from './support/steps.mjs';
+import { phone, frame, load, firstTier, openMap, keptMatch } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
 test.describe.configure({ timeout: 90 * 1000 });
 
 const POP = '.info-popover';
 const OWNERS = ['Red', 'Blue', 'Green'];
-const frame = page => page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
 const tab = (page, key) => page.locator(`${POP} .wvw-subtab[data-pane="${key}"]`);
 const activePane = page => page.locator(`${POP} .wvw-subtab.is-active`);
 

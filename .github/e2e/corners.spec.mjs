@@ -9,41 +9,12 @@
 // cannot answer fails the test, naming the address.
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
-import { phone, recordedJson } from './support/steps.mjs';
+import { phone, recordedJson, load, firstTier, openMap, later } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
 
 const GAME = 'https://api.guildwars2.com/v2/wvw/matches?id=';
-const PLOT = ".info-popover .wvw-plot g[role='button']";
 const hud = sel => `.info-popover .wvw-plot-wrap ${sel}`;
-
-async function load(page, wvw) {
-  await page.goto(wvw.url);
-  await expect(page.locator('#standingsGridNA > .standing-match')).toHaveCount(wvw.tiers.NA);
-  await expect(page.locator('#standingsGridEU > .standing-match')).toHaveCount(wvw.tiers.EU);
-  await wvw.settle();
-}
-
-// The first tier's map button and the match it is about.
-async function firstTier(page, button = page.locator('.tier-map-btn').first()) {
-  const label = await button.getAttribute('aria-label');
-  const t = /\b(NA|EU) Tier (\d+)/.exec(label || '');
-  expect(t, `a tier map button to read a match from ("${label}")`).not.toBeNull();
-  return { button, label, id: `${t[1] === 'NA' ? 1 : 2}-${t[2]}` };
-}
-
-async function openMap(page, wvw, button) {
-  await button.click();
-  await expect(page.locator(PLOT).first()).toBeAttached();
-  await wvw.settle();
-}
-
-// Time passes with the tab asking again: the focus pull.
-async function later(page, wvw, ms) {
-  await wvw.skew(ms);
-  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-  await wvw.settle();
-}
 
 const touchAction = page => page.evaluate(() => getComputedStyle(document.querySelector('.info-popover .wvw-plot-wrap')).touchAction);
 

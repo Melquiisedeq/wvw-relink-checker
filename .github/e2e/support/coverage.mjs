@@ -30,7 +30,7 @@ const E2E = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = resolve(E2E, '..', '..');
 const OUT = join(E2E, 'test-results', 'coverage');
 const NODE_DIR = join(E2E, 'test-results', 'coverage-node');
-export const COVERAGE_ON = !!process.env.E2E_COVERAGE;
+const COVERAGE_ON = !!process.env.E2E_COVERAGE;
 export const TOLERANCE = 0.5;
 const COMMITTED = join(E2E, 'coverage.json');
 
