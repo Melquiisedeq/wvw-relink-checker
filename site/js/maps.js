@@ -44,20 +44,15 @@ const MARKER_FOLLOW = 0.2;
 // as the terrain has detail to show anyway.
 const MAX_ZOOM = 4.5;
 
-// Where each picture sits in continent coordinates. Solved, not
-// eyeballed: the renders carry the sector borders and the API publishes
-// the same borders as polygons, so the transform is whatever makes the
-// two coincide.
-//
-// `edge` is how wide our own border is drawn, in map units, and it has to
-// cover the one already printed into the picture. All four renders carry
-// the same 5-unit white line and 14 buries it. EBG printed a second one
-// beside it, 23 units in the home team's colour, which 14 did not cover -
-// that line was taken out of the image instead.
-//
-// `lite` is the same picture LITE_WIDTH pixels wide, a third to a half of
-// the bytes. A map opens on it and takes `src` only once the zoom puts
-// more pixels on screen than it holds - see upgradeTerrain.
+// Where each picture sits in continent coordinates (x, y, w, h).
+// `edge` is how wide our own border is drawn, in map units; it has to
+// cover the 5-unit white line printed into every render. EBG's render also
+// printed a 23-unit line in the home team's colour, which 14 does not
+// cover; it was taken out of the image, so a fresh render needs it taken
+// out again.
+// `lite` is the same picture LITE_WIDTH pixels wide; a map opens on it and
+// takes `src` only once the zoom puts more pixels on screen than it holds
+// - see upgradeTerrain.
 const LITE_WIDTH = 1280;
 const MAP_IMAGE = Object.freeze({
   38: { src: 'assets/map-ebg.webp', lite: 'assets/map-ebg-1280.webp', x: 8846.4, y: 12710.9, w: 3308.0, h: 3293.5, edge: 14 },
@@ -783,18 +778,12 @@ function shieldPath(cx, cy, w, h, cls) {
 
 
 // ---- the fight log --------------------------------------------------
-// What puts the crossed swords on a map tab. Which map is busy cannot be
-// read from one answer: the API publishes kills only as running totals
-// for the week, so a map that was a warzone at breakfast still carries
-// the number at midnight. It takes two readings, apart in time.
-//
-// The standings already fetch wvw/matches every five minutes, and that
-// answer carries maps[].kills - so every refresh drops a snapshot here on
-// its way past and the popover compares now against one already waiting.
-// No extra request, and the cadence is untouched. It survives a reload; a
-// first-ever visit has no history, and the swords stay off until two
-// samples exist. The other half comes from the kills sheet, whose format
-// is this project's own - see KILLS_SHEET_ID in js/config.js.
+// What puts the crossed swords on a map tab. The API publishes kills only
+// as running totals for the week, so which map is busy takes two readings,
+// apart in time. Every standings refresh (wvw/matches) drops a snapshot
+// here on its way past; no extra request. It survives a reload; the swords
+// stay off until two samples exist. The other half comes from the kills
+// sheet - see KILLS_SHEET_ID in js/config.js.
 const FIGHT_KEY = 'wvw-fight-v1';
 const FIGHT_KEEP_MS = 40 * 60 * 1000;
 const FIGHT_MAX_SAMPLES = 12;
@@ -804,13 +793,8 @@ const FIGHT_MIN_GAP_MS = 60 * 1000;
 // off them would look plausible and be meaningless.
 const FIGHT_STALE_MS = 3 * 60 * 60 * 1000;
 
-// Player kills per map, and only those. deaths look like the same measure
-// and are not: summed over the three sides they also count everyone who
-// died to a lord, a guard or a fall - a roamer soloing a camp, which is
-// the opposite of what the swords are for. Measured across thirty-six
-// live maps, deaths run 0.9% above kills on a busy map and 18.6% above on
-// an empty borderland, so counting them would lift exactly the map nobody
-// wants to be sent to.
+// Player kills per map, and only those: deaths also count everyone who
+// died to a lord, a guard or a fall, which would lift an empty map.
 function fightTotals(match) {
   const out = {};
   for (const m of (match && match.maps) || []) {
@@ -831,14 +815,13 @@ function readFightLog() {
   } catch { return {}; }
 }
 
-// Called by whoever happens to be holding fresh match data, with `asked`:
-// when the request went out. A body is stamped with that, not with the
-// moment it is written - a slow answer or a sleeping computer would
-// otherwise carry the time of the waking up. Only bodies whose score this
-// page watched rise since `asked` are written: a first sight may come from
-// a server behind the others and would become the window's base. Cheap enough to call on every
-// refresh, and it declines samples that arrive too close together so the
-// popover's own thirty-second poll cannot flood it.
+// Called by whoever holds fresh match data, with `asked`: when the request
+// went out. A body is stamped with that, not with the moment it is written
+// - a slow answer or a sleeping computer would otherwise carry the time of
+// the waking up. Only bodies whose score this page watched rise since
+// `asked` are written: a first sight may come from a server behind the
+// others and would become the window's base. It declines samples that
+// arrive too close together.
 function recordFightSamples(matches, asked) {
   const log = readFightLog();
   const now = Date.now();
@@ -1022,25 +1005,9 @@ function sumKills(n) {
 
 // Which map is busy, and how much the corner may say, in one place: the
 // map's corner, the tab's swords and the tier button's badge all read this,
-// so they cannot part. Ten minutes back is what the window aims for: long
-// enough that one gank does not decide it, short enough that "busy" still
-// means now. `types`: the maps to pick from, in the order a tie keeps.
-//   clock    ms when the match's kills reached their newest total; 0, none
-//   atLeast  the clock is the week's oldest reading: nothing known before it
-//   silence  ms since the clock
-//   prevRun  ms the total before the newest stood still; Infinity, unknown
-//   rates    { per: type -> kills per 10 min, span }, over the window that
-//            ends at the clock; its base is the reading nearest to 10 min
-//            before the clock, never under 8 nor over 15 min back (the
-//            history has a line every 5 min). Without one, the newest reading
-//            at least 10 min back, over 15 min (`long`, with `gap`: the two
-//            readings the game's API sent nothing between); null without
-//            even that (a dash)
-//   noWindow 'reset' when the dash is the week's first minutes, else 'data'
-//   pace     the match's kills per minute in that window; 0 without one
-//   strange  silent past KILLS_QUIET_MS plus KILLS_LATE_KILLS at that pace
-//   frozen   the score itself still past HUD_STALE_MS (the corner's amber)
-//   hot      the map with the orange swords, or null
+// so they cannot part. `types`: the maps to pick from, in the order a tie
+// keeps. The rates window aims at 10 min back, never under 8 nor over 15
+// (the history has a line every 5 min).
 const HOT_WANT_MS = 10 * 60 * 1000;
 const WINDOW_MIN_MS = 8 * 60 * 1000;
 const WINDOW_MAX_MS = 15 * 60 * 1000;

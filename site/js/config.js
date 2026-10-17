@@ -110,18 +110,10 @@ const TIMERS_REFRESH_MS = 10 * 60 * 1000;    // season lockout
 // Community sheet is edited by hand; re-fetched on click with a short TTL.
 const COMMUNITY_SHEET_TTL_MS = 5 * 60 * 1000;
 
-// Kills history. The GW2 API publishes kills and deaths only as running
-// totals for the week, so "which map is busy now" cannot be read from one
-// answer - and a visitor arriving cold has no earlier reading. So a
-// Google Apps Script trigger takes a snapshot every five minutes and
-// appends it here, trimming to a rolling two hours. Read through the gviz
-// CSV export, the same trick the community guild sheet uses: no API key,
-// and docs.google.com is already in the CSP. Measured at 449ms for the
-// whole file, faster than the GW2 call the popover already waits on.
-//
-// The sheet and the script that fills it are part of this project, not a
-// third-party feed, so the shape below is a decision rather than a
-// constraint: change it at the source, not around it here.
+// Kills history: an Apps Script trigger appends a snapshot every five
+// minutes, trimmed to a rolling two hours, read through the gviz CSV
+// export. The shape below is this project's own: change it at the source,
+// not around it here.
 //
 // Columns, in this order and with no header row:
 //   epoch ms | match id | Center | RedHome | BlueHome | GreenHome
@@ -143,13 +135,9 @@ const OWN_API_TIMEOUT_MS = 4000;
 // Must match the column order the Apps Script writes.
 const KILLS_MAP_ORDER = Object.freeze(['Center', 'RedHome', 'BlueHome', 'GreenHome']);
 
-// The teams notice. In the days before a relink the new team assignment becomes
-// queryable and nothing announces it: the API has no timestamp for it, no ETag,
-// no field that changes. The only signal in existence is the guild-to-team
-// table itself moving, and seeing that means holding a copy and comparing half
-// a megabyte - which is why the comparing happens in an Apps Script trigger on
-// this project's own account, the same way the kills history is produced, and
-// arrives here as two integers in one cell.
+// The teams notice. The API announces a new team assignment nowhere, so an
+// Apps Script trigger compares the guild-to-team table and leaves two
+// integers in one cell.
 //
 //   window     the NA teamAssignment these numbers are about, epoch seconds
 //   published  when the table was seen to have moved, epoch seconds, or 0
@@ -157,10 +145,8 @@ const KILLS_MAP_ORDER = Object.freeze(['Center', 'RedHome', 'BlueHome', 'GreenHo
 // Both are integers and nothing else is ever read out of that cell.
 // updateTeamsNotice in js/relink.js says what each of them decides.
 //
-// Its own spreadsheet rather than a tab of the kills one, so the two features
-// do not share a fate. The cost is a second sharing setting to keep right, and
-// it is the one that matters: published read-only, because whoever could write
-// that cell could make this page announce a relink that has not happened.
+// Its own spreadsheet, shared read-only: whoever could write that cell could
+// make this page announce a relink that has not happened.
 const RELINK_SHEET_ID = '14kWfueHYO2-aLKGDVFgdkuO9pHkmYs1fghCO9eMIEl4';
 // `range=A1:A1` is load-bearing, not tidiness. A2 of the same tab holds the
 // trigger's heartbeat, and RELINK_STATE_RE anchors the WHOLE body - so a second

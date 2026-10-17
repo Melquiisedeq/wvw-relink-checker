@@ -3,9 +3,7 @@
 // The two static catalogues the objective maps are built from, written
 // out instead of fetched: the keeps, towers and camps on the four WvW
 // maps, and the polygons of the sectors they stand in. Both sit on the
-// popover's critical path, and neither changes - ArenaNet last moved any
-// of it when the Desert Borderlands was rebuilt. The four requests these
-// replace took 349ms before the first map could start drawing.
+// popover's critical path, and neither is expected to change.
 //
 // Only the fields the drawing code reads are kept, and coordinates are
 // rounded to one decimal: the smallest marker has a radius of 80 map
