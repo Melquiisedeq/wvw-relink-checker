@@ -12,25 +12,14 @@ standings and live maps that show where the fighting is, for every NA and EU mat
 
 [![Live demo](https://img.shields.io/badge/demo-wvwrelink.com-7fd6f2?style=for-the-badge)](https://wvwrelink.com/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3fa9cc?style=for-the-badge)](LICENSE)
-[![Site dependencies: none](https://img.shields.io/badge/site_dependencies-none-4caf7d?style=for-the-badge)](#-project-layout)
-[![Build step: none](https://img.shields.io/badge/build_step-none-4caf7d?style=for-the-badge)](#-project-layout)
+[![Site dependencies: none](https://img.shields.io/badge/site_dependencies-none-4caf7d?style=for-the-badge)](CONTRIBUTING.md#the-shape-of-it)
+[![Build step: none](https://img.shields.io/badge/build_step-none-4caf7d?style=for-the-badge)](CONTRIBUTING.md#the-shape-of-it)
 
 ### [→ Open the live tool](https://wvwrelink.com/)
 
 *No account · No API key · Nothing to install · The link **is** the tool*
 
 </div>
-
-https://github.com/user-attachments/assets/372a3ade-0d54-4f39-aa1f-d4fc1354904d
-
-## 🎯 Why this exists
-
-After every relink, alliance members ask the same question: **which
-team did we land on?** Answering it by hand means looking up each
-guild's ID and cross referencing it against the API one at a time.
-
-This does it for a whole list at once, and puts match data around
-the answer.
 
 ## ✨ Features
 
@@ -43,30 +32,23 @@ the answer.
 | 📈 | **Match detail** — weekly skirmish scores, per-map K/D, alliances per server |
 | ⏱️ | **Timers** — relink and season lockout, each with its own warning beforehand |
 
+## 🚀 How to use
+
+Open [wvwrelink.com](https://wvwrelink.com/), paste guild names (one per
+line) and read which team each landed on.
+
 > [!NOTE]
-> Guild names must match **exactly** — the API only does exact search, not
-> partial or tag matches. A guild ID works too. Up to 20 per run. The
-> alliance list behind the shield icon is NA only.
+> Guild names must match **exactly**: the guild search is exact, not partial
+> and not by tag. A guild ID works too. Up to 20 per run. The alliance list
+> behind the shield icon is NA only.
 
-## ⚙️ How it works
-
-Guild names are resolved to IDs through the API's guild search, then
-matched against live match data to find each one's team, tier and side.
-Team names come from ArenaNet's published list, since no endpoint
-resolves them.
-
-Standings load once and keep refreshing in the background, so most checks
-reuse data the page already has. The NA alliance list is a public Google
-Sheet maintained by the NA WvW Discord, read only when you click a shield
-icon. The crossed swords marking the busiest map come from a second
-sheet, this one filled by the project itself — the API only publishes
-totals for the whole week, so spotting a fight happening *now* takes two
-readings taken apart in time.
-
-New teams are published a few days before the relink they belong to, and
-nothing in the API says when. So a third sheet, also the project's own,
-holds one cell saying whether it has happened yet; the page reads it only
-in those few days and puts a line at the top when it has.
+How it works: names are resolved to IDs through the API's guild search, then
+matched against live match data for each one's team, tier and side. Standings
+load once and keep refreshing in the background. The page reads
+this project's own `/api` for the kills history, the new-teams notice and the
+newest match bodies; the first two fall back to public Google Sheets when it
+cannot answer. The NA alliance list is a public sheet kept by the NA WvW
+Discord, read only when you click a shield icon.
 
 ## 🔒 Privacy
 
@@ -103,95 +85,39 @@ three are a single value each that gets overwritten.
 
 <br>
 
-Visits are counted with [GoatCounter](https://www.goatcounter.com): no
-cookies, no fingerprinting, no persistent identifier. One request per
-page load records the page address, referrer, title, screen width and
-country — and nothing you type. Its script is served from this repository
-rather than a CDN.
-A copy of the page served anywhere else is told not to count, though it
-can still count if GoatCounter's script happens to run first.
-
-To keep your own browser out of the count, run `localStorage.skipgc = 't'`
-in the developer console on the site.
+Visits are counted with [GoatCounter](https://www.goatcounter.com) (no
+cookies, no persistent identifier; its script is `site/js/count.js`, served
+from this repository). To keep your own browser out of its count, run
+`localStorage.skipgc = 't'` in the developer console on the site.
 
 Cloudflare, which serves the site, also counts visits with its
 [Web Analytics](https://developers.cloudflare.com/web-analytics/about/).
 Cloudflare says it "does not use any client-side state, such as cookies or
 localStorage, to collect usage metrics" and does not "fingerprint"
-individuals ([cloudflare.com/web-analytics](https://www.cloudflare.com/web-analytics/)),
-and that it "does not track individual end users across our customers'
-Internet properties" ([data origin and collection](https://developers.cloudflare.com/web-analytics/data-metrics/data-origin-and-collection/)).
-What it reports is how long the page took to load and draw, grouped by
-page, referrer, country, browser, operating system and device type
+individuals ([cloudflare.com/web-analytics](https://www.cloudflare.com/web-analytics/)).
+What it reports is how long the page took to load and draw, grouped by page,
+referrer, country, browser, operating system and device type
 ([dimensions](https://developers.cloudflare.com/web-analytics/data-metrics/dimensions/)).
-Its script comes from Cloudflare; a content blocker stops it, and
-Cloudflare documents no opt-out of its own.
+Its script comes from Cloudflare; a content blocker stops it.
 
 </details>
 
-## 🛡️ Security
-
-A strict Content Security Policy denies everything by default and allows
-only the hosts above. Every script is served from this repository but one
-— no CDN, nothing else fetched from someone else's host to be run. The
-exception is Cloudflare Web Analytics' beacon, named in the policy down to
-its path and loaded from Cloudflare, which already serves every byte of
-this site. The other piece of third-party code is GoatCounter's counter,
-vendored unmodified into `site/js/count.js`. Anything the API or the community
-sheet returns is treated as text, never as markup.
-
-The reasoning for each of these lives in a comment next to the code that
-does it.
-
 ## ⚠️ Limitations
 
-- Match data updates inconsistently on ArenaNet's end, which no amount of
-  client-side polling can fix.
-- Team names come from a static table in `site/js/config.js`, since the API has
-  no endpoint for them. A scheduled GitHub Action fails when the live team
-  IDs drift from that table.
-- The NA alliance list is community-maintained — not by ArenaNet, not by
-  this project — and may be incomplete or out of date.
-- The score for the 2-hour block being played lands half an hour to an hour
-  late, depending on the match.
-  Until it does, the trend popover says so rather than inventing a number.
+- Guild search is exact: the full name or a guild ID, not the tag or part of the name.
+- Team names come from a static table in `site/js/config.js`. A scheduled
+  GitHub Action fails when the live team IDs drift from that table.
+- The NA alliance list is community-maintained, not by ArenaNet and not by
+  this project, and may be incomplete or out of date.
+- The score for the 2-hour block being played can arrive late. Until it does,
+  the trend popover says so rather than inventing a number.
 
-## 📁 Project layout
+## 🤝 Contributing
 
-Plain static files. Everything the browser downloads is in `site/`, and
-Cloudflare serves that folder as it is, as a Worker with no code:
-`wrangler.jsonc` says so. Nothing outside `site/` is published. The one piece
-with code on the server is `worker/`, a second Worker at `wvwrelink.com/api/*`
-that stores what the two Apps Scripts and the two Supabase readers send it, in a Cloudflare D1 database.
-
-```
-site/
-  index.html   markup, the CSP, and the ordered list of scripts
-  css/         one stylesheet per concern
-  js/          one file per concern, loaded in order; boot.js runs last
-  assets/      map renders, game icons, and the link-preview card
-  _headers     security headers Cloudflare adds to every response
-apps-script/   the two Google Apps Script projects behind the spreadsheets:
-               the teams notice and the kills history. They run in Google;
-               these are the copies they are pasted from.
-worker/        wvwrelink.com/api: takes each script's signed results into
-               the database, says when each last reported (/api/health), and
-               serves the page its reads (/api/kills, /api/relink,
-               /api/latest)
-supabase/      the two readers, one per API server pool, that push the
-               newest match bodies to the Worker every minute
-tests/         the Worker's rules, and the page's rules with its scripts in a
-               node:vm (no browser), run by node --test with nothing installed
-.github/       the checks, and the workflows that run them; e2e/ holds the
-               browser tests, Playwright Test and monocart-coverage-reports,
-               the repository's two dependencies, for the tests only, never
-               for the site
-```
-
-The scripts are plain (non-module) and share one global scope, so the
-order in `index.html` matters: `config.js` and `dom.js` come first because
-everything reads them, and `boot.js` comes last because it starts the
-page.
+Bugs and ideas: [open an issue](https://github.com/Melquiisedeq/wvw-relink-checker/issues/new/choose)
+([bug](.github/ISSUE_TEMPLATE/bug.yml) and [idea](.github/ISSUE_TEMPLATE/idea.yml) forms).
+Code and project layout: [CONTRIBUTING.md](CONTRIBUTING.md). Security
+problems: [SECURITY.md](SECURITY.md), not a public issue.
 
 ## 📜 Disclaimer & license
 
