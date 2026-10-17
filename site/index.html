@@ -30,27 +30,10 @@
 <link rel="preload" as="fetch" crossorigin href="https://api.guildwars2.com/v2/wvw/timers/teamAssignment">
 <title>WvW Relink Checker - Guild Wars 2 World vs World Teams and Standings</title>
 <!--
-  The tool circulates as a bare URL in Discord, so the unfurled card is
-  most of the first impression. Discord fetches og:image from its own
-  servers, so the CSP does not apply to it - and the URL has to be
-  absolute for the same reason. 1200x630 is the frame every unfurl is
-  built around. JPEG because WhatsApp drops previews it judges too
-  heavy: measured on 29/09/2026, 130 KB here against 400 KB as a PNG,
-  with WhatsApp reported to start refusing around 300 KB.
-
-  Three things about the file itself, each of which was wrong before and
-  showed it. WhatsApp CENTRE-CROPS the card, so everything that has to
-  survive - crest, title, domain - fits inside the middle 630px, which
-  is the narrowest crop any platform applies. It is saved without chroma
-  subsampling, because the card is almost entirely cyan text on a dark
-  ground and 4:2:0 stores colour at half resolution, which is what put
-  the fringes on the old one. And its background is the page's own,
-  rebuilt from css/base.css rather than approximated: ground, the photo
-  at the same 22% 42% crop under the same filter, the scrim, then the
-  embers. The piece that matters there is mix-blend-mode:luminosity -
-  it throws the photo's colour away and returns only its light and dark
-  in the site's slate, which is why the page has no blue sky in it and
-  why a card that kept one made the crest look pasted on.
+  Discord fetches og:image from its own servers, so the CSP does not
+  apply to it, and the URL has to be absolute. 1200x630, JPEG (WhatsApp
+  drops previews it judges too heavy). WhatsApp centre-crops the card, so
+  crest, title and domain stay inside the middle 630px.
 -->
 <!--
   One address for this page, named in the page itself. Cloudflare

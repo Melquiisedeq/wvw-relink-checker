@@ -4,60 +4,33 @@
  * Teams notice - the counting half, for wvwrelink.com
  * ---------------------------------------------------------------------------
  * That annotation is load-bearing, and it is the first line for a reason.
+ * Apps Script works out its scopes by READING THE SOURCE, and one call that
+ * opens a spreadsheet by id anywhere in the file makes it request every
+ * spreadsheet in the account. @OnlyCurrentDoc limits the grant to the one
+ * document this script lives in, and it is enforced at runtime. (No comment
+ * below spells such a call out either: the scan reads the file, not the
+ * syntax tree.)
  *
- * Apps Script works out what to ask for by READING THE SOURCE, and it rounds
- * up: one call that opens a spreadsheet by id anywhere in the file and it
- * requests "view, edit, create and delete ALL your Google Sheets files" - even
- * for a script bound to one spreadsheet, because an id could name any of them.
- * The authorisation screen then asks for the whole account's spreadsheets in
- * order to touch exactly one. (Which is why no comment below spells that call
- * out either: the scan reads the file, not the syntax tree.)
- *
- * @OnlyCurrentDoc stops guessing and states it: the grant becomes
- * spreadsheets.currentonly, the one document this script lives in. And it is
- * enforced rather than merely requested - code that tries to open another
- * document fails at runtime instead of quietly having the right to. So it is
- * also a guard against a future edit here reaching further than this one ever
- * needed to.
- *
- * BUT THE ANNOTATION IS THE WEAKER OF THE TWO WAYS TO SAY IT. A hand-written
- * oauthScopes in appsscript.json overrides both it and the source scan, which
- * cuts both ways: a manifest left with the broad scope in it keeps asking for
- * the broad scope no matter what this file says. So the manifest is pinned too,
- * and its content is kept beside this file as appsscript.json - two scopes,
- * currentonly and external requests, and nothing else. If the authorisation
- * screen ever says "all your Google Sheets files" again, read the manifest
- * before reading the code.
+ * A hand-written oauthScopes in appsscript.json overrides both it and the
+ * scan, so the manifest is pinned too and kept beside this file as
+ * appsscript.json: two scopes, currentonly and external requests. If the
+ * authorisation screen ever asks for all your Google Sheets files again, read
+ * the manifest before the code.
  * ---------------------------------------------------------------------------
- * This is BOUND to the relink spreadsheet - created from it through
- * Extensions > Apps Script, not as a standalone project at script.google.com -
- * with a time-driven trigger on relinkTick() every 15 minutes.
+ * This is BOUND to the relink spreadsheet (created from it through Extensions
+ * > Apps Script), with a time-driven trigger on relinkTick() every 15
+ * minutes. A standalone script would have to reach the sheet by id, which is
+ * the broad grant above.
  *
- * Bound, and to a spreadsheet of its own rather than added to the one that
- * writes the kills history. Two separate reasons, both of which bit:
+ * It is a project of its own, not added to the kills script, because an Apps
+ * Script project shares ONE global scope across all of its files: a `var API`
+ * here against a `const API` there is a SyntaxError that stops the whole
+ * project, and two functions with the same name are NOT an error - the last
+ * one declared wins, silently. The 90 minutes a day of trigger time is a
+ * per-ACCOUNT quota, so separating the projects buys isolation, not headroom.
  *
- * The project is its own because an Apps Script project shares ONE global scope
- * across all of its files - the same arrangement as the js/ files of the site
- * itself, which are not modules. Dropped in beside the kills script, a `var
- * API` here against a `const API` there is a SyntaxError that stops the whole
- * project, and far worse, two functions with the same name are NOT an error:
- * the last one declared wins, silently, and one feature starts calling the
- * other's code. `get`, `cell`, `readState` are exactly the names two scripts
- * like these both want.
- *
- * It is bound rather than standalone because of what the authorisation screen
- * asks for. A standalone script has to reach the sheet by id, which
- * Google can only grant as "view, edit, create and delete ALL your Google
- * Sheets files" - the kills history included. Bound, the grant is the one
- * document it lives in, which is all it ever touches.
- *
- * Note that the 90 minutes a day of trigger time is a per-ACCOUNT quota, not
- * per project: separating the projects buys isolation, not headroom.
- *
- * The closure below is kept even so. In a project of its own nothing can
- * collide with it, but it costs nothing and it keeps that true if anything is
- * ever added here. Exactly four names are global, and three of those only
- * because they are run by name:
+ * The closure below is kept even so. Exactly four names are global, and three
+ * of those only because they are run by name:
  *
  *   relinkTick    the function the trigger calls
  *   relinkSetup   the function you run once, by hand
@@ -65,14 +38,11 @@
  *   RelinkNotice_ everything else, private inside it
  * ---------------------------------------------------------------------------
  *
- * What it is for. In the days between the season lockout closing and the relink
- * landing, ArenaNet republishes /v2/wvw/guilds/{na,eu} with everyone's new team,
- * and nothing announces it: no timestamp, no ETag, no conditional request, no
- * field that changes. The only signal that exists is the table itself moving.
- * Seeing that means holding a copy of the table and comparing - half a megabyte
- * - which is exactly what ten thousand browsers must not be made to download to
- * find out whether a strip should appear. So it happens here, once, and the
- * answer is two integers in a cell.
+ * What it is for. ArenaNet republishes /v2/wvw/guilds/{na,eu} with everyone's
+ * new team and announces it nowhere: no timestamp, no ETag. The only signal is
+ * the table itself moving, and seeing that means holding a copy of it and
+ * comparing - half a megabyte - which the visitors' browsers must not do. So
+ * it happens here, and the answer is two integers in a cell.
  *
  * What it writes. Two cells in the relink tab, both as text.
  *
@@ -81,33 +51,26 @@
  *   window     the NA teamAssignment these numbers are about, epoch seconds
  *   published  when the table was seen to have moved, epoch seconds, or 0
  *
- * relink!A2, one epoch integer - the heartbeat, which the site never reads.
- * It answers one question and only one: did this script run. So it is written
- * FIRST, before anything that can throw, and on every tick in and out of the
- * window. That ordering is the whole design. A tick that runs and then fails is
- * already loud - Apps Script emails the owner on an uncaught exception, and
- * fail() above turns a streak of them into exactly that - but a trigger that
- * never runs at all makes no sound anywhere: no execution, no log, no email.
- * Deleted trigger, locked account, lapsed authorisation, a project Google
- * disabled. Without this cell the first evidence of any of those is a month with
- * no notice, six weeks later. check-notice.py reads it and fails on a stale one.
+ * `window` is what ends the notice with nothing having to switch it off: the
+ * page compares it against the relink it is counting down to.
  *
- * `window` is what ends the notice with nothing having to come back and switch
- * it off: the page compares it against the relink it is counting down to, and a
- * row about last month's relink says nothing at all.
+ * Text, not two number cells: the CSV export renders a numeric cell in
+ * whatever format the sheet uses, and a thousands separator is a comma inside
+ * a comma-separated file.
  *
- * Text, not two number cells: the CSV export renders a numeric cell in whatever
- * format the sheet happens to be using, and a thousands separator is a comma
- * inside a comma-separated file.
+ * relink!A2, one epoch integer - the heartbeat, which the site never reads. It
+ * answers whether this script ran, so it is written FIRST, before anything that
+ * can throw, on every tick in and out of the window. A tick that fails is
+ * already loud (Apps Script emails the owner, and fail() turns a streak into
+ * that), but a trigger that never runs makes no sound anywhere.
+ * check-notice.py reads it and fails on a stale one.
  *
- * After every tick both cells also go to wvwrelink.com/api, signed - see push().
- * The cells stay the one source: what is sent is read back from them.
+ * After every tick both cells also go to wvwrelink.com/api, signed - see
+ * push(). The cells stay the one source: what is sent is read back from them.
  *
- * Cost. Outside the window it reads two small timers and returns - a second or
- * so, a hundred times a day. Inside the window (about four days a month) it
- * also reads the two tables, which is the only expensive part. That keeps it
- * well clear of the 90 minutes a day of trigger time a free account gets, which
- * it shares with the kills trigger.
+ * Cost. Outside the window it reads two small timers and returns; inside it
+ * (about four days a month) it also reads the two tables, the only expensive
+ * part, within the 90 minutes a day it shares with the kills trigger.
  */
 
 /**

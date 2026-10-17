@@ -28,10 +28,8 @@ async function run() {
   statusMsg.innerHTML = '<span class="spinner"></span>Talking to the GW2 API…';
   resultBody.textContent = '';
   matchPanelsContainer.textContent = '';
-  // Goes with them. It used to be touched only at the end of a run, so
-  // the previous run's buttons sat there through the whole of the next
-  // one - still holding the previous run's summary, and copying it if
-  // pressed. A run that ended early left them up for good.
+  // Goes with them: left up, they would still hold the previous run's
+  // summary and copy it if pressed.
   copyRow.style.display = 'none';
   resultsPlaceholder.style.display = 'none';
   resultCard.style.display = 'block';
@@ -51,11 +49,9 @@ async function run() {
     playFinale();
   };
 
-  // Everything past the setup is inside the try. finish() used to be
-  // called by hand on each way out, so anything that threw in between
-  // left the page needing a reload: the button stays disabled, the
-  // trebuchet stays hauled back, and followSling keeps a rAF loop alive
-  // with the charge still lit in the corner.
+  // Everything past the setup is inside the try, so that however it ends
+  // finish() runs: otherwise the button stays disabled, the trebuchet
+  // hauled back and followSling's rAF loop alive.
   try {
     let maps;
     try {

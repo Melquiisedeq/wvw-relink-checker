@@ -22,13 +22,10 @@ schedulePeriodicRefresh(fetchTimers, TIMERS_REFRESH_MS);
 
 // Embers drifting up the page: 46 of them, one in four cyan instead of
 // warm, each with its own column, duration and sideways drift so the
-// field never resolves into a visible loop.
-//
-// One canvas, where this used to be 46 elements - each its own
-// compositor layer and draw call, which put the GPU process main thread
-// at 98.6% against 4.4% with them hidden. The cost is the clock: the
-// timing curves below are the CSS keyframes written out by hand, and
-// pausing while nobody is watching is now this file's own job.
+// field never resolves into a visible loop. One canvas, not an element per
+// ember: each element is its own compositor layer and draw call. The cost:
+// the timing curves below are the CSS keyframes written out by hand, and
+// pausing while nobody is watching is this file's own job.
 const emberField = (function () {
   const canvas = document.getElementById('fxEmbers');
   if (!canvas || !canvas.getContext) return { start() {}, stop() {}, blast() {} };
@@ -36,23 +33,16 @@ const emberField = (function () {
 
   const WARM = { core: '#ffb765', glow: '255,150,60' };
   const COLD = { core: '#9fe6ff', glow: '127,214,242' };
-  // The glow's shape, kept in one place so it can be turned from the
-  // console against the real thing. sigma is the blur's standard
-  // deviation, spread how far the lit disc grows before blurring, alpha
-  // how strong the halo is - what box-shadow 0 0 7px 1px encodes.
+  // The glow's shape: sigma is the blur's standard deviation, spread how far
+  // the lit disc grows before blurring, alpha how strong the halo is.
   const GLOW = { sigma: 3.5, spread: 1, alpha: .75 };
   // The wind. `eddy` is how wide a gust is in pixels, `churn` how fast
   // the field itself changes, `push` how hard it shoves, `drag` how much
-  // sideways speed survives a second - which is what gives an ember the
-  // feel of having mass rather than being drawn along a line.
-  //
-  // `gust` is the exponent that keeps this from being a fan pointed at
-  // the screen: noise hands out roughly even energy everywhere, so
-  // raising push alone makes everything restless at once. Raised to a
-  // power first, the small values collapse and only the rare large ones
-  // survive - long calm, brief shove. At 1 it is the even breeze again,
-  // and push is large to compensate: interpolated noise only reaches
-  // about a third of the way out, and a third cubed is a fortieth.
+  // sideways speed survives a second.
+  // `gust` is the exponent that makes it long calm, brief shove: the noise
+  // is raised to it, so small values collapse. At 1 it is an even breeze,
+  // and push is large to compensate because interpolated noise only reaches
+  // about a third of the way out.
   const WIND = { eddy: 220, churn: .08, push: 280, gust: 4, drag: .45 };
 
   // Value noise: a lattice of hashed numbers with smooth interpolation

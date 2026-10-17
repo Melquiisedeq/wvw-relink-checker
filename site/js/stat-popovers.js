@@ -153,11 +153,9 @@ function buildMapKdButton(serverName, match, color) {
   return btn;
 }
 
-// How far into a block the projection is allowed to start. ArenaNet
-// publishes a running block's score about fifteen minutes late, so an
-// early estimate divides their lagging number by our honest clock and
-// lands far too low - 2,690 against a weekly average of 4,771. Past
-// three quarters of an hour it settles: 5,013 at 109 minutes.
+// How far into a block the projection is allowed to start. The API
+// publishes a running block's score late, so an early estimate divides its
+// lagging number by our honest clock and lands far too low.
 const LIVE_PROJECT_AFTER = 0.375;  // 45 of the 120 minutes
 
 // Which skirmish block the match is in, and how far through it. Blocks
