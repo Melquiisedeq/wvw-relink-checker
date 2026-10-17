@@ -9,11 +9,9 @@ import worker from '../worker/index.mjs';
 import { fakeD1 } from './fake-d1.mjs';
 
 const SOURCES = {
-  'latest-supa-us': 'INGEST_LATEST_SUPA_US', 'latest-supa-eu': 'INGEST_LATEST_SUPA_EU',
-  'latest-vercel-eu': 'INGEST_LATEST_VERCEL_EU', 'latest-vercel-us': 'INGEST_LATEST_VERCEL_US'
+  'latest-supa-us': 'INGEST_LATEST_SUPA_US', 'latest-supa-eu': 'INGEST_LATEST_SUPA_EU'
 };
-const KEYS = { kills: 'k'.repeat(128), 'latest-supa-us': 'a'.repeat(128), 'latest-supa-eu': 'b'.repeat(128),
-  'latest-vercel-eu': 'c'.repeat(128), 'latest-vercel-us': 'd'.repeat(128) };
+const KEYS = { kills: 'k'.repeat(128), 'latest-supa-us': 'a'.repeat(128), 'latest-supa-eu': 'b'.repeat(128) };
 const US = 'latest-supa-us';
 const EU = 'latest-supa-eu';
 const MIN = 60e3;
@@ -93,8 +91,13 @@ test('each reader has its own door and its own replay clock', async () => {
   for (const s of Object.keys(SOURCES)) {
     assert.equal(await w.post(s, body([match('1-1')]), { t: t - 1 }), 200, s);
   }
-  assert.equal(w.count('source'), 6);
+  assert.equal(w.count('source'), 4);
   assert.deepEqual({ ...w.sql.prepare("SELECT t FROM source WHERE name = 'latest-supa-eu'").get() }, { t: t - 1 });
+});
+
+test('a source dropped from the Worker stays refused even with its secret in the environment', async () => {
+  const w = setup({ env: { INGEST_LATEST_VERCEL_EU: 'c'.repeat(128) } });
+  assert.equal(await w.post('latest-vercel-eu', body([match('1-1')]), { key: 'c'.repeat(128) }), 404);
 });
 
 test('the entrance refuses what is not a signed, fresh, small message', async (t) => {

@@ -2,7 +2,7 @@
 //
 //   POST /api/ingest/kills    the kills script, after every tick
 //   POST /api/ingest/relink   the teams notice script, after every tick
-//   POST /api/ingest/latest-supa-us, latest-supa-eu, latest-vercel-eu, latest-vercel-us
+//   POST /api/ingest/latest-supa-us, latest-supa-eu
 //                              the outside readers of the game API, the newest match bodies
 //   GET  /api/health            when each last reported; nothing else
 //   GET  /api/kills            the last 30 minutes of kills plus each match's newest older row (up to 3 h back), for the map swords
@@ -32,8 +32,7 @@ const MAX_SLICE = 16 * 1024;
 const MAX_RAW = 256 * 1024;
 const SOURCES = {
   kills: 'INGEST_KILLS', relink: 'INGEST_RELINK',
-  'latest-supa-us': 'INGEST_LATEST_SUPA_US', 'latest-supa-eu': 'INGEST_LATEST_SUPA_EU',
-  'latest-vercel-eu': 'INGEST_LATEST_VERCEL_EU', 'latest-vercel-us': 'INGEST_LATEST_VERCEL_US'
+  'latest-supa-us': 'INGEST_LATEST_SUPA_US', 'latest-supa-eu': 'INGEST_LATEST_SUPA_EU'
 };
 // When a region's weekly match starts, UTC (day 0 = Sunday), checked against the
 // live API on 04/10/2026: 2-x 2026-10-02T18:00Z, 1-x 2026-10-03T02:00Z.

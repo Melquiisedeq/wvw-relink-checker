@@ -47,9 +47,7 @@ KILLS_WORKER_STALE = 20 * 60
 MATCH_RE = re.compile(r'^[12]-[1-9]$')
 # The readers deliver only when something is newer, so a frozen game API (~65
 # min seen) silences them with no fault of ours: same 90 minutes as kills.
-# latest-vercel-* do not exist yet (0 is normal), so they are not required.
 LATEST_REQUIRED = ('latest-supa-us', 'latest-supa-eu')
-LATEST_SOURCES = LATEST_REQUIRED + ('latest-vercel-eu', 'latest-vercel-us')
 LATEST_STALE = 90 * 60
 # The summary may lead a stale read of the game's API by at most 600 points a
 # minute for the 70 minutes the API has been seen to lag; past it, a score the
@@ -147,8 +145,6 @@ def check_latest_feeds(data, now, problems, notes):
                 % (source, (now - at) // 60, LATEST_STALE // 60))
         else:
             notes.append('%-34s %d min ago' % (source + ' last delivered', (now - at) // 60))
-    notes.append('latest-vercel-*: not required yet (%s)' % ', '.join(
-        '%s=%s' % (k, data.get(k)) for k in LATEST_SOURCES[2:]))
 
 
 def game_scores():
@@ -180,7 +176,7 @@ def check_latest(problems, notes):
     bad = [k for k, v in data.items() if not (
         MATCH_RE.match(k) and isinstance(v, dict) and is_int(v.get('start'))
         and is_int(v.get('score')) and is_int(v.get('at'))
-        and v.get('by') in LATEST_SOURCES)]
+        and v.get('by') in LATEST_REQUIRED)]
     if bad:
         problems.append('/api/latest/summary: %d of %d matches are not {start, '
                         'score, at, by} from a known latest-* source, e.g. %s'
