@@ -19,6 +19,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { at, MIN, HOUR } from './support/scenarios.mjs';
 import { recording } from './support/recordings.mjs';
+import { iso } from './support/steps.mjs';
 
 const ZONES = [
   { zone: 'Europe/Berlin', city: 'Berlin' },
@@ -51,7 +52,6 @@ const changeAfter = (from, zone) => {
   for (let t = first; t < first + 400 * DAY; t += HOUR) if (offsetOf(t, zone) !== offsetOf(t - HOUR, zone)) return t;
   throw new Error(`zones: no change of clock in ${zone} within 400 days of ${new Date(from).toISOString()}`);
 };
-const iso = ms => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
 const euReset = resetAfter(FROM + 13 * DAY, 5, 18);
 const naReset = resetAfter(FROM + 13 * DAY, 6, 2);
 const ANCHORS = [euReset, naReset, naReset + 80 * MIN].map(iso);

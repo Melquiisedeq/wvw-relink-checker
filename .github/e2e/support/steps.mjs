@@ -125,3 +125,9 @@ export async function later(page, wvw, ms) {
 export function keptMatch(page, id) {
   return page.evaluate(i => { const k = newestMatches.get(i); k.at = Date.now(); return JSON.parse(JSON.stringify(k.match)); }, id);
 }
+
+// Two animation frames: what a repaint scheduled has been drawn.
+export const frame = page => page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+// An ISO time without a trailing .000; other milliseconds stay (support/gw2.mjs has the game's whole-second form).
+export const iso = t => new Date(t).toISOString().replace('.000Z', 'Z');

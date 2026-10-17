@@ -12,7 +12,7 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-export const SITE = process.env.SITE_DIR ? resolve(process.env.SITE_DIR) : join(ROOT, 'site');
+const SITE = process.env.SITE_DIR ? resolve(process.env.SITE_DIR) : join(ROOT, 'site');
 
 // One port per worker, the same on every run: a failure names the address it
 // was served from, and nothing else on the machine is asked for a free one.
