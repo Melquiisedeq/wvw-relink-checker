@@ -21,6 +21,28 @@ test('the NA/EU swap moves the columns, and back', async ({ page, wvw }) => {
   await wvw.settle();
 });
 
+// A swap slides the four halves of the relink bar (NA, NA time, EU, EU time);
+// a swap undone before its first frame (two in the same task) slides none. The
+// move is measured with the running animation included, so the second swap
+// finds each half where it will end and has nothing to move; measured any
+// other way, a half would jump on a swap repeated in mid-flight.
+test('the relink bar halves slide on a swap, and none does on a swap undone before its first frame', async ({ page, wvw }) => {
+  await page.goto(wvw.url);
+  await expect(page.locator('#relinkBanner .region').first()).toBeVisible();
+  await wvw.settle();
+  const swapping = page.locator('#relinkBanner .is-swapping');
+  const click = n => page.evaluate(k => { for (let i = 0; i < k; i++) document.querySelector('.rail-swap').click(); }, n);
+
+  await click(1);
+  await expect(swapping, 'halves wearing is-swapping after one swap').toHaveCount(4);
+  await expect(swapping, 'the class is gone once they arrived').toHaveCount(0);
+
+  await click(2);
+  await expect(page.locator('#relinkBanner .time').first(), 'the bar after two swaps').toBeVisible();
+  expect(await swapping.count(), 'halves that moved nothing and were given is-swapping').toBe(0);
+  await wvw.settle();
+});
+
 // The recorded body repeated for 1600 s puts no .tier-age on any tier, and at
 // 320 px no tier box or title row spills over.
 test('no tier wears a mark after 1600 s of the same body, and at 320 px none spills', async ({ page, wvw }) => {
