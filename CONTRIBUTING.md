@@ -21,6 +21,30 @@ So a pull request that adds a library, a bundler or a framework will not be
 merged, however good the library is. If something really does need one, open
 an issue first and say what for.
 
+```
+site/          everything the browser downloads; Cloudflare serves it as it is
+  index.html   markup and the ordered list of scripts
+  css/         one stylesheet per concern
+  js/          one file per concern, loaded in order; boot.js runs last
+  assets/      map renders, game icons, and the link-preview card
+  _headers     response headers, the CSP among them
+worker/        wvwrelink.com/api: takes each script's signed results into a
+               Cloudflare D1 database, says when each last reported
+               (/api/health), and serves the page its reads (/api/kills,
+               /api/relink, /api/latest)
+apps-script/   the two Google Apps Script projects behind the spreadsheets:
+               the teams notice and the kills history; the copies they are
+               pasted from
+supabase/      the two readers, one per API server pool, that push the newest
+               match bodies to the Worker every minute
+tests/         the Worker's and the Supabase readers' rules, and the page's
+               rules with its scripts in a node:vm; run by node --test
+.github/       the checks and the workflows that run them; e2e/ holds the
+               browser tests (Playwright Test, monocart-coverage-reports)
+wrangler.jsonc the root Worker: serves site/ as static assets, no code
+CONTRIBUTING.md  SECURITY.md  LICENSE
+```
+
 ## Four things that will bite you
 
 **The scripts are not modules.** They share one global scope, so the order in
