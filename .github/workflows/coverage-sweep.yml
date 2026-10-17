@@ -1,0 +1,127 @@
+# The committed coverage (.github/e2e/coverage.json) is the minimum per file over
+# several runs, because a few lines and branches are covered by luck of timing
+# (real timers, an aborted read). This runs the whole e2e job N times at once,
+# lists what some runs covered and others did not, and fails if anything did, so the
+# email GitHub sends is the reminder. Nothing is written to the repository: the
+# list is in the job summary, and a test that covers what it names is a normal pull request.
+name: Coverage sweep
+
+on:
+  schedule:
+    # Mondays at 07:17 UTC. Not on the hour: scheduled runs bunch up there.
+    - cron: '17 7 * * 1'
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: 'Number of runs, 2 to 20 (the Free plan runs 20 jobs at once: docs.github.com/en/actions/reference/limits)'
+        default: '10'
+
+# One sweep at a time: two together would just halve the runners each gets.
+concurrency:
+  group: coverage-sweep
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      indexes: ${{ steps.indexes.outputs.indexes }}
+    steps:
+      # A schedule has no inputs, so 10. Over 20 the extra jobs would queue and
+      # the sweep would take twice as long for no more information.
+      - name: The number of runs
+        id: indexes
+        env:
+          RUNS: ${{ inputs.runs || '10' }}
+        run: |
+          if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [ "$RUNS" -lt 2 ] || [ "$RUNS" -gt 20 ]; then
+            echo "runs must be a whole number from 2 to 20, got '$RUNS'" >&2
+            exit 1
+          fi
+          echo "indexes=$(seq -s, 1 "$RUNS" | sed 's/^/[/; s/$/]/')" >> "$GITHUB_OUTPUT"
+
+  # The e2e job of checks.yml, kept in step with it by hand, except that the
+  # coverage is saved instead of compared. A red run is not a coverage run, so a
+  # failure here fails the sweep.
+  run:
+    needs: [plan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        index: ${{ fromJSON(needs.plan.outputs.indexes) }}
+    defaults:
+      run:
+        working-directory: .github/e2e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the test dependencies from the lockfile
+        run: npm ci --ignore-scripts
+
+      # Commands stopped while the tests run, as in checks.yml: a failure prints
+      # what the page said, and a line starting with "::" would be read as one.
+      - name: The page in Playwright Test
+        run: |
+          token="$(openssl rand -hex 16)"
+          echo "::stop-commands::$token"
+          set +e
+          E2E_COVERAGE=1 E2E_RESUME="$token" npx playwright test
+          code=$?
+          echo "::$token::"
+          exit "$code"
+
+      - name: Coverage of this run
+        run: |
+          node support/coverage.mjs node
+          node support/coverage.mjs save sweep-out
+
+      # The name carries the index: equal names in one matrix conflict.
+      - name: Keep this run's report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-${{ matrix.index }}
+          path: .github/e2e/sweep-out/
+          retention-days: 1
+          if-no-files-found: error
+
+  report:
+    needs: [plan, run]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Without merge-multiple each artifact lands in its own folder, coverage-<i>/:
+      # every one holds an istanbul.json, which merging would overwrite.
+      - name: Download every run's report
+        if: needs.run.result != 'skipped'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: coverage-*
+          path: .github/e2e/sweep-in
+
+      # A run that failed has no report; the sweep says so and fails, then lists
+      # what the others show. The report reads JSON only: no npm ci.
+      - name: What oscillates
+        env:
+          PLAN: ${{ needs.plan.result }}
+          RUN: ${{ needs.run.result }}
+        run: |
+          cd .github/e2e
+          arrived=$(ls -d sweep-in/coverage-* 2>/dev/null | wc -l)
+          echo "Runs that reached the report: $arrived (plan $PLAN, run $RUN)" | tee -a "$GITHUB_STEP_SUMMARY"
+          code=0
+          [ "$PLAN" = success ] && [ "$RUN" = success ] || code=1
+          if [ "$arrived" -ge 2 ]; then
+            node support/coverage.mjs sweep sweep-in || code=1
+          else
+            code=1
+          fi
+          exit "$code"
