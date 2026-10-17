@@ -8,7 +8,7 @@ import { fail } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { recordedJson } from './support/steps.mjs';
 import { recording } from './support/recordings.mjs';
-import { FOCUS, MIN } from './support/scenarios.mjs';
+import { FOCUS, MIN, hidden, playing, visible } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 const NA = '#standingsGridNA > .standing-match';
@@ -137,5 +137,55 @@ test.describe('/api/latest hung', () => {
     expect(asked, 'reads of /api/latest (hung)').toBeGreaterThan(0);
     expect(hung, `tiers with /api/latest hung ${hung} ms, with a 503 ${base} ms`).toBeLessThanOrEqual(base + 2500);
     await wvw.settle(20000);
+  });
+});
+
+// The peek (a read of /api/latest/summary every 30 s while the tab is shown)
+// does not arm its next turn for a tab that went to the background while the
+// read was out; the tab coming back arms it. The read is held here until the
+// tab is hidden, so the state is reached every time, not when a timer happens
+// to land there. What the tab leaves behind is watched at the source: no
+// setTimeout of runPeek while it is hidden.
+test.describe('the tab hides during a peek', () => {
+  test.use({ timeline: playing(), clock: 'playwright' });
+
+  test('no peek is scheduled while hidden; one comes when the tab is back', async ({ page, wvw }) => {
+    let reads = 0, answered = 0, holding = false, release;
+    const held = new Promise(r => { release = r; });
+    await page.route(/\/api\/latest\/summary$/, async route => {
+      reads++;
+      if (holding) { holding = false; await held; }
+      await route.fulfill({ status: 200, body: '{}',
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } });
+      answered++;
+    });
+    await opened(page, wvw);
+    await page.evaluate(() => {
+      window.__armed = 0;
+      const set = window.setTimeout;
+      window.setTimeout = function (fn, ...rest) {
+        if (typeof fn === 'function' && fn.name === 'runPeek') window.__armed++;
+        return set.call(this, fn, ...rest);
+      };
+    });
+    const armed = () => page.evaluate(() => window.__armed);
+    const before = reads;   // the opening reads, if any, answered already
+    holding = true;
+    const peek = page.waitForRequest(r => /\/api\/latest\/summary$/.test(r.url()));
+    await page.clock.fastForward(31 * 1000);
+    await peek;
+    await expect.poll(() => reads, 'the peek is out and held').toBe(before + 1);
+    await hidden(page, wvw, 0);
+    release();
+    await expect.poll(() => answered, 'the held read answered').toBe(reads);
+    await page.clock.fastForward(3 * MIN);
+    expect(reads, 'peeks started while hidden').toBe(before + 1);
+    expect(await armed(), 'peek timers armed while hidden').toBe(0);
+    await visible(page);
+    // A peek that finds a load in flight (the tab coming back brings one) reads
+    // nothing and arms the next, so the clock goes on until one reads.
+    await expect.poll(async () => { await page.clock.fastForward(31 * 1000); return reads; },
+      'the peek after the tab came back').toBe(before + 2);
+    expect(await armed(), 'peek timers armed after the tab came back').toBeGreaterThan(0);
   });
 });
