@@ -21,7 +21,7 @@ So a pull request that adds a library, a bundler or a framework will not be
 merged, however good the library is. If something really does need one, open
 an issue first and say what for.
 
-## Three things that will bite you
+## Four things that will bite you
 
 **The scripts are not modules.** They share one global scope, so the order in
 `index.html` decides everything: `config.js` and `dom.js` come first because
@@ -29,12 +29,19 @@ everything reads them, and `boot.js` comes last because it starts the page. A
 new file goes into that list at the right position, not at the end by default.
 
 **The Content Security Policy is strict.** It is a response header in
-`site/_headers`, never a `<meta>`, and names every host the page talks to.
+`site/_headers`, never a `<meta>` (in Chromium, a policy in a `<meta>` makes the
+preload scanner's fetches wait until the tag is read and applied, so the scripts
+end up requested one after another), and names every host the page talks to.
 Anything fetched from a host that is not on that list is blocked by the
 browser — quietly, with the page looking perfectly fine and the feature
 simply not happening. Adding a host is a
 decision, not a side effect: if a change needs one, say so in the pull request
 and say why.
+
+**Reduced motion is not honoured, on purpose.** The effects are the character
+of the site, so `prefers-reduced-motion` is a decision, not an oversight. The
+mechanism is there if that changes: `.is-idle` in `site/css/base.css` pauses
+every looping animation and `idleWhenUnwatched` in `site/js/boot.js` stops the canvas.
 
 **What comes back from the API or the spreadsheet is text, never markup.**
 Guild names are written by other people and end up on the page. They go in as
@@ -86,6 +93,17 @@ recording is replaced only if that passes:
 The page runs your JavaScript in that Chrome, so run a stranger's pull request
 in CI, not on your own machine.
 
+A pull request needs four checks to pass: `structure`, `syntax`, `rules` and
+`page` (`.github/workflows/checks.yml`). `rules` and `page` are the two test
+commands above; `structure` runs without a network or an install:
+
+    python3 .github/scripts/check-structure.py
+
+`page` also fails if the page goes over its budget (`.github/e2e/budget.json`)
+or a file's test coverage falls (`.github/e2e/coverage.json`); the message says
+which measure and which file. `npm run coverage` in `.github/e2e` measures
+it locally, running both test suites and comparing with `coverage.json`.
+
 ## Style
 
 Match whatever is around you. The one habit worth knowing: comments explain
@@ -98,7 +116,8 @@ One concern each. A fix and a redesign on the same branch means neither can be
 taken without the other, and the small one ends up waiting on the big one.
 
 A change in what the page does brings its test in the same pull request: a
-rule in `tests/`, or a browser test in `.github/e2e/`.
+rule in `tests/`, or a browser test in `.github/e2e/`. A bug fix brings a test
+that fails before the fix and passes after it.
 
 If a change is visible on the page, say what it looks like — a screenshot
 saves a round trip.
