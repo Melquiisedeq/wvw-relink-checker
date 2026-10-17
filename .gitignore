@@ -38,3 +38,4 @@ CLAUDE.md
 # lockfile, and what a run leaves behind: traces and the JSON report.
 node_modules
 .github/e2e/test-results
+.github/e2e/sweep-results

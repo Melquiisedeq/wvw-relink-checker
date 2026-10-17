@@ -5,7 +5,8 @@
   "scripts": {
     "test": "playwright test",
     "coverage": "node support/coverage.mjs run",
-    "coverage:write": "node support/coverage.mjs run-write"
+    "coverage:write": "node support/coverage.mjs run-write",
+    "coverage:sweep": "node support/coverage.mjs sweep-run"
   },
   "devDependencies": {
     "@playwright/test": "1.64.0",
