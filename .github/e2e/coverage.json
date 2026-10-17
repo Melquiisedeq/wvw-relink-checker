@@ -1,11 +1,11 @@
 {
   "site/js/api.js": {
-    "lines": 86.2,
-    "branches": 85.4
+    "lines": 86.8,
+    "branches": 85.7
   },
   "site/js/boot.js": {
-    "lines": 90.3,
-    "branches": 80.3
+    "lines": 90.7,
+    "branches": 81.4
   },
   "site/js/config.js": {
     "lines": 98.7,
@@ -24,8 +24,8 @@
     "branches": 47.2
   },
   "site/js/maps.js": {
-    "lines": 88.1,
-    "branches": 81.5
+    "lines": 88.5,
+    "branches": 82.3
   },
   "site/js/panels.js": {
     "lines": 92.4,
@@ -44,8 +44,8 @@
     "branches": 75
   },
   "site/js/relink.js": {
-    "lines": 85.7,
-    "branches": 82.5
+    "lines": 86.5,
+    "branches": 85.3
   },
   "site/js/run.js": {
     "lines": 70.5,
@@ -56,7 +56,7 @@
     "branches": 79.7
   },
   "site/js/standings.js": {
-    "lines": 86.5,
+    "lines": 87.8,
     "branches": 78.8
   },
   "site/js/stat-popovers.js": {
@@ -68,8 +68,8 @@
     "branches": 46.7
   },
   "site/js/trebuchet.js": {
-    "lines": 95,
-    "branches": 80.3
+    "lines": 95.5,
+    "branches": 81.8
   },
   "site/js/wvw-static.js": {
     "lines": 100,
@@ -80,7 +80,7 @@
     "branches": 85.8
   },
   "worker/index.mjs": {
-    "lines": 96.9,
+    "lines": 96.8,
     "branches": 96.6
   }
 }

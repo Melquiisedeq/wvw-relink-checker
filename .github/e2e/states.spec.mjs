@@ -1,0 +1,306 @@
+// States that used to be reached by the luck of a timer, taken here on purpose so
+// that the branch behind each runs every time (the coverage sweep,
+// support/coverage.mjs, lists the places that oscillated). Each test drives the
+// page there with the clock (page.clock) or with a read it holds, and asserts
+// what a visitor sees at the end, not that the code was passed.
+import { test, expect } from './support/fixtures.mjs';
+import { answer } from './support/faults.mjs';
+import { check, firstTier, frame, keptMatch, later, load, openMap, search } from './support/steps.mjs';
+
+test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
+const NA = '#standingsGridNA > .standing-match';
+
+const opened = async (page, wvw) => {
+  await page.goto(wvw.url);
+  await expect(page.locator(NA)).toHaveCount(wvw.tiers.NA);
+  await expect(page.locator('#standingsGridEU > .standing-match')).toHaveCount(wvw.tiers.EU);
+  await wvw.settle();
+};
+
+// The page's clock stops a moment ahead, and only runFor moves it from there. It runs by
+// itself until then, so the instant asked for may already be behind it: asked again, further on.
+async function pause(page, wvw) {
+  for (let ahead = 100; ; ahead *= 2) {
+    try { return await page.clock.pauseAt(await wvw.now() + ahead); }
+    catch (e) { if (!/past/.test(String(e)) || ahead > 5000) throw e; }
+  }
+}
+
+// ---- a read that outlasts its deadline ---------------------------------------
+// The guild search's first read (the name's id) never answers. After the page's
+// 10 s it gives up on its own and the row says why; a name that was never
+// looked up does not hang the run.
+test.describe('a read that never answers', () => {
+  test.use({ clock: 'playwright' });
+
+  test('the guild row says the request timed out, and the search ends', async ({ page, wvw }) => {
+    await opened(page, wvw);
+    await page.route(/^https:\/\/api\.guildwars2\.com\/v2\/guild\/search\?/, () => new Promise(() => {}));
+    await page.locator('#guildInput').fill('Nobody Answers Here');
+    // The 10 s run from the moment the read leaves, after the page's own wait for the tables.
+    const out = page.waitForRequest(/\/guild\/search\?/);
+    await page.locator('#runBtn').click();
+    await out;
+    const row = page.locator('#resultBody tr');
+    await expect(row, 'no row before the deadline').toHaveCount(0);
+    await page.clock.runFor(9 * 1000);
+    await expect(row, 'no row one second before the deadline').toHaveCount(0);
+    await page.clock.runFor(1500);
+    await expect(row.first(), 'the row after the deadline').toContainText('Request timed out');
+    await page.clock.runFor(2000);
+    await expect(page.locator('#statusMsg'), 'the search ended').toHaveText(/^Done/);
+    await expect(page.locator('#runBtn')).toBeEnabled();
+    await wvw.settle();
+  });
+});
+
+// ---- the page travelling to the found card, and the visitor stopping it ---------
+// A guild found below the fold: the page glides to its card. A wheel, a touch, a
+// key or a click while it glides gives the page back where it is. The first
+// scroll event after the card starts blinking is the page on its way, and the
+// visitor acts right there, so the glide is cut mid-way every time.
+for (const kind of ['wheel', 'touchstart', 'keydown', 'mousedown']) {
+  test.describe(`${kind} while the page glides to the found guild's card`, () => {
+    test.use({ viewport: { width: 1280, height: 420 } });
+
+    test('the page stops where it is, the card still out of view', async ({ page, wvw }) => {
+      await opened(page, wvw);
+      await page.evaluate(kind => {
+        window.__cut = null;
+        window.addEventListener('scroll', () => {
+          if (window.__cut !== null || !document.querySelector('.guild-found-flash')) return;
+          window.__cut = window.scrollY;
+          window.dispatchEvent(new Event(kind));
+        }, { passive: true });
+      }, kind);
+      await search(page, [wvw.guilds[0]]);
+      await expect.poll(() => page.evaluate(() => window.__cut), { message: 'the page on its way to the card' }).not.toBeNull();
+      const cut = await page.evaluate(() => window.__cut);
+      // A glide to a card ~1600 px down takes far longer than this.
+      await page.waitForTimeout(1200);
+      const end = await page.evaluate(() => ({ y: window.scrollY, top: document.querySelector('.guild-found-flash')?.getBoundingClientRect().top, h: innerHeight }));
+      expect(end.y, `the page went on from ${cut} px after the ${kind}`).toBe(cut);
+      expect(end.top, 'the found card, its top (px) below the window').toBeGreaterThan(end.h);
+      await wvw.settle();
+    });
+  });
+}
+
+// ---- the second explosion -----------------------------------------------------
+// A search that finds a guild ends in the siege engine's blast: lobes, rays and
+// shards thrown from the crest. They stay in the page after they fade; the next
+// blast takes them out before it puts its own, so the pieces do not pile up.
+test('a second search blasts again: the first one\'s lobes, rays and shards are gone', async ({ page, wvw }) => {
+  await opened(page, wvw);
+  const PIECES = '.blast-lobe, .blast-ray, .impact-shard';
+  const count = () => page.evaluate(sel => ({
+    all: document.querySelectorAll(sel).length,
+    first: document.querySelectorAll(sel.split(', ').map(x => x + '[data-first]').join(', ')).length,
+    lobes: document.querySelectorAll('.blast-lobe').length,
+    rays: document.querySelectorAll('.blast-ray').length,
+    shards: document.querySelectorAll('.impact-shard').length,
+  }), PIECES);
+  await search(page, [wvw.guilds[0]]);
+  await expect.poll(async () => (await count()).all, { message: 'the first blast thrown' }).toBeGreaterThan(0);
+  expect(await count(), 'the first blast: lobes, rays, shards').toMatchObject({ lobes: 7, rays: 12, shards: 22 });
+  await page.evaluate(sel => document.querySelectorAll(sel).forEach(e => e.setAttribute('data-first', '')), PIECES);
+  await check(page, wvw, [wvw.guilds[0]]);
+  await expect.poll(async () => (await count()).all - (await count()).first, { message: 'the second blast thrown' }).toBeGreaterThan(0);
+  expect(await count(), 'after the second blast: none of the first, one blast of each').toEqual({ all: 41, first: 0, lobes: 7, rays: 12, shards: 22 });
+});
+
+// ---- the map's lit objective ---------------------------------------------------
+const POP = '.info-popover';
+const LIT = `${POP} .wvw-marker.is-lit`;
+const lit = page => page.evaluate(sel => [...document.querySelectorAll(sel)].map(m => m.dataset.obj).join(), LIT);
+
+// The first tier's map open on its Captures tab, and the capture rows of the map in view.
+async function onCaptures(page, wvw) {
+  await load(page, wvw);
+  const tier = await firstTier(page);
+  await openMap(page, wvw, tier.button);
+  await page.locator(`${POP} .wvw-subtab[data-pane="captures"]`).click();
+  const home = await page.locator(`${POP} .wvw-tab.is-active`).getAttribute('data-type');
+  const row = page.locator(`${POP} .wvw-cap[data-map="${home}"]`).first();
+  await expect(row, 'a capture on the map in view').toBeAttached();
+  return { tier, row, id: await row.getAttribute('data-obj') };
+}
+
+test.describe('a capture pressed', () => {
+  test.use({ clock: 'playwright' });
+
+  test('lights its objective for 2.5 s, then the light goes out by itself', async ({ page, wvw }) => {
+    const { row, id } = await onCaptures(page, wvw);
+    await pause(page, wvw);
+    await row.click();
+    await expect.poll(() => lit(page), { message: `${id} lit by its capture` }).toBe(id);
+    await page.mouse.move(1, 1);
+    await page.clock.runFor(2000);
+    expect(await lit(page), 'lit 2 s after the press').toBe(id);
+    await page.clock.runFor(700);
+    expect(await lit(page), 'lit 2.7 s after the press').toBe('');
+  });
+});
+
+// A row pointed at lights its objective for as long as it is pointed at. When
+// the list is rebuilt under the pointer (a capture came in) the old row is gone
+// and never says it was left: the light must not stay on for a row that is not
+// there. The pointer is the page's own event, from a mouse parked away from the
+// popover, so that no real move lights the new rows again.
+test('a capture row rebuilt under the pointer takes its light with it', async ({ page, wvw }) => {
+  const { tier, row, id } = await onCaptures(page, wvw);
+  await page.mouse.move(1, 1);
+  const pointed = await row.elementHandle();
+  await pointed.evaluate(el => el.dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse' })));
+  expect(await lit(page), 'lit while the row is pointed at').toBe(id);
+  // A body with one more capture, newer than all: the list is rebuilt.
+  const body = await keptMatch(page, tier.id);
+  const flip = body.maps.flatMap(m => m.objectives).find(o => /^\d+-\d+$/.test(o.id) && ['Camp', 'Tower', 'Keep'].includes(o.type) && o.id !== id);
+  const newest = Math.max(...body.maps.flatMap(m => m.objectives).map(o => Date.parse(o.last_flipped) || 0));
+  flip.owner = flip.owner === 'Red' ? 'Blue' : 'Red';
+  flip.last_flipped = new Date(newest + 60000).toISOString().replace('.000Z', 'Z');
+  body.scores.red += 1;
+  await answer(page, tier.url, body);
+  await later(page, wvw, 31000);
+  await expect(page.locator(`${POP} .wvw-cap[data-obj="${flip.id}"]`), 'the new capture on the list').toBeAttached();
+  expect(await pointed.evaluate(el => el.isConnected), 'the pointed row still in the page').toBe(false);
+  expect(await lit(page), 'lit after the list was rebuilt').toBe('');
+});
+
+// ---- an answer that arrives after a newer read was asked -----------------------
+// The map asks again every 30 s and when the tab is back. A read held on the
+// way (a slow line) is overtaken by the next one; when it lands at last, the
+// map keeps what the newer read painted. The held read's body is the further
+// along one (a server ahead of the others) and hands Red every camp, tower and
+// keep of the map in view, so a map that painted it would show Red's share of
+// the bar over the map grow past what the newer read drew.
+test('a read overtaken on the way is dropped when it lands', async ({ page, wvw }) => {
+  await load(page, wvw);
+  const tier = await firstTier(page);
+  const body = await keptMatch(page, tier.id);
+  await openMap(page, wvw, tier.button);
+  const type = await page.locator(`${POP} .wvw-tab.is-active`).getAttribute('data-type');
+  const bent = flips => {
+    const b = JSON.parse(JSON.stringify(body));
+    const objectives = b.maps.find(m => m.type === type).objectives.filter(o => ['Camp', 'Tower', 'Keep'].includes(o.type) && o.owner !== 'Red');
+    for (const o of objectives.slice(0, flips)) o.owner = 'Red';
+    b.scores.red += flips;
+    b.flipped = objectives.slice(0, flips).map(o => o.id);
+    return b;
+  };
+  const newer = bent(1), further = bent(1000);
+  // Taken by the held body alone: the tick rings it as changed hands, though nothing else of that body is painted.
+  const ringed = further.flipped.filter(id => !newer.flipped.includes(id)).pop();
+  const red = () => page.evaluate(() => parseFloat(document.querySelector('.info-popover .wvw-scorebar-seg.own-red').style.width));
+  const before = await red();
+
+  let reads = 0, release;
+  const held = new Promise(r => { release = r; });
+  const reply = (route, b) => route.fulfill({ status: 200, body: JSON.stringify(b),
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } });
+  await page.route(tier.url, async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    if (++reads === 1) { await held; return reply(route, further); }
+    return reply(route, newer);
+  });
+  const catchUp = async () => {
+    await wvw.skew(31000);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  };
+  await catchUp();
+  await expect.poll(() => reads, { message: 'the first read, held' }).toBe(1);
+  await catchUp();
+  await expect.poll(() => red(), { message: 'the bar after the newer read' }).toBeGreaterThan(before);
+  const drawn = await red();
+  release();
+  await expect.poll(() => page.evaluate(id => newestMatches.get(id).match.scores.red, tier.id),
+    { message: 'the held read landed (the page keeps the further body)' }).toBe(further.scores.red);
+  await frame(page);
+  expect(await red(), 'the red share of the bar after the held read landed').toBe(drawn);
+  await expect(page.locator(`${POP} .wvw-marker[data-obj="${ringed}"] .wvw-ring`), 'the ring on an objective only the held body took').toBeAttached();
+  expect(await red(), 'the red share of the bar after the ring').toBe(drawn);
+  await wvw.settle();
+});
+
+// ---- the one-second tick of an open map ---------------------------------------
+// While a map is open a tick every second judges its corners again as the data
+// ages. Before the swords are marked (the map's first read has not landed and
+// 2.5 s have not passed) it repaints the corners alone; once marked it judges
+// the swords, the badge and the corners together. The clock is paused so that
+// the state is held for as long as the test needs, and its date is jumped past
+// the 6 minutes after which the data is called stale, then one tick is run.
+const swords = page => page.locator(`${POP} .wvw-tab-swords`);
+const corner = page => page.locator(`${POP} .wvw-hud-r`);
+const ago = page => page.locator(`${POP} .wvw-hud-ago`);
+
+test.describe('the tick of an open map', () => {
+  test.use({ clock: 'playwright' });
+
+  // The map of a tier whose button wears the swords, opened a couple of minutes after the page
+  // (a body that fresh would mark the swords on opening).
+  async function opening(page, wvw, hold) {
+    await load(page, wvw);
+    const tier = await firstTier(page, page.locator('.tier-map-btn:has(.tier-map-badge)').first());
+    await page.clock.setSystemTime(await wvw.now() + 2 * 60 * 1000);
+    let release = () => {};
+    if (hold) {
+      const held = new Promise(r => { release = r; });
+      await page.route(tier.url, async route => { await held; await route.fallback(); });
+      await pause(page, wvw);
+    }
+    await tier.button.click();
+    await expect(page.locator(`${POP} .wvw-plot g[role='button']`).first()).toBeAttached();
+    return release;
+  }
+  const jump = async (page, wvw, min) => {
+    await page.clock.setSystemTime(await wvw.now() + min * 60 * 1000);
+    await page.clock.runFor(1000);
+  };
+
+  test('before the swords are marked it repaints the corners: data too old to trust without a read leaves the screen', async ({ page, wvw }) => {
+    const release = await opening(page, wvw, true);
+    await expect(corner(page), 'the age corner, the map just opened').toBeVisible();
+    await expect(swords(page), 'swords on a tab before any read landed').toHaveCount(0);
+    await page.clock.runFor(1000);
+    await expect(swords(page), 'swords on a tab after a tick, nothing marked them').toHaveCount(0);
+    await jump(page, wvw, 7);
+    await expect(corner(page), 'the age corner, 7 min on with the read still out').toBeHidden();
+    await expect(swords(page), 'swords on a tab, nothing marked them').toHaveCount(0);
+    release();
+    await wvw.settle();
+  });
+
+  test('a first read that never lands: after 2.5 s the swords go up from the body the map opened with', async ({ page, wvw }) => {
+    const release = await opening(page, wvw, true);
+    await page.clock.runFor(1000);
+    await expect(swords(page), 'swords at 1 s, the read still out').toHaveCount(0);
+    await page.clock.runFor(1600);
+    await expect(swords(page), 'swords at 2.6 s, the read still out').toHaveCount(1);
+    release();
+    await wvw.settle();
+  });
+
+  test('a map closed before the idle warm-up leaves the other terrain pictures unasked', async ({ page, wvw }) => {
+    const release = await opening(page, wvw, true);
+    await page.locator(`${POP} .info-popover-close`).click();
+    await expect(page.locator(POP)).toHaveCount(0);
+    const asked = [];
+    page.on('request', r => { if (/\/assets\/map-\w+-1280\.webp$/.test(r.url())) asked.push(r.url()); });
+    await page.clock.runFor(5000);
+    release();
+    await wvw.settle();
+    expect(asked, 'terrain pictures asked after the map was closed').toEqual([]);
+  });
+
+  test('once marked it judges the swords and the corners together: the swords leave, the data turns amber', async ({ page, wvw }) => {
+    await opening(page, wvw, false);
+    await expect(swords(page), 'swords on the busiest tab').toHaveCount(1);
+    await expect(ago(page)).not.toHaveClass(/is-stale/);
+    await jump(page, wvw, 7);
+    await expect(swords(page), 'swords on a tab 7 min with no kills').toHaveCount(0);
+    await expect(ago(page), 'the age corner, 7 min on').toHaveText(/^⚠ data from \d/);
+    await expect(ago(page)).toHaveClass(/is-stale/);
+    await expect(page.locator(`${POP} .wvw-hud-l`)).toContainText('⚠ data up to');
+    await wvw.settle();
+  });
+});
