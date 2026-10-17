@@ -2,7 +2,7 @@
 // acting before the last scripts have loaded, a failed load that tries again,
 // and /api down so that the page falls back to the sheets.
 import { test, expect } from './support/fixtures.mjs';
-import { fail } from './support/faults.mjs';
+import { fail, hold } from './support/faults.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 const TIERS = '#standingsGridNA > .standing-match';
@@ -13,15 +13,9 @@ const TIERS = '#standingsGridNA > .standing-match';
 // once it is let go.
 for (const script of ['maps.js', 'trebuchet.js', 'boot.js']) {
   test(`early actions with ${script} held`, async ({ page, wvw }) => {
-    let held = false, release;
-    const gate = new Promise(ok => { release = ok; });
-    await page.route(wvw.url + 'js/' + script, async route => {
-      held = true;
-      await gate;
-      await route.fallback();
-    });
+    const release = await hold(page, wvw.url + 'js/' + script);
     await page.goto(wvw.url, { waitUntil: 'commit' });
-    await expect.poll(() => held, { message: 'the request being held' }).toBe(true);
+    await expect.poll(() => release.reads > 0, { message: 'the request being held' }).toBe(true);
     await page.keyboard.press('Escape');
     await page.evaluate(() => {
       window.dispatchEvent(new Event('resize'));
