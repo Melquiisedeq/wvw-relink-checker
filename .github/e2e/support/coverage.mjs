@@ -24,13 +24,15 @@
 //                                     those in none, over the runs saved under <dir> (one folder each); exit 1 if any
 //                                     oscillates; --write rewrites coverage.json with the minimum per file and metric
 //                                     (needs no node_modules: the CI sweep reads artifacts with it)
+//   node support/coverage.mjs untested <base>   after `check`: the lines `git diff <base> HEAD` added in site/js, worker and
+//                                     supabase that no test ran, to the job summary; never fails (what a line asks is judgement)
 //
 // The browser side only measures with E2E_COVERAGE=1: the page is slower under it.
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { compareRuns, minimumOf, sweepText } from './sweep.mjs';
+import { compareRuns, minimumOf, sweepText, untestedLines, untestedText } from './sweep.mjs';
 
 // Loaded when needed: the sweep's report reads JSON only and runs without node_modules.
 const monocart = async () => (await import('monocart-coverage-reports')).CoverageReport;
@@ -153,7 +155,21 @@ async function sweep(dir, write) {
   if (flaky) process.exitCode = 1;
 }
 
+// Not a check: whether a new line asks for a test is judgement (a guard against the impossible does not), so it only lists.
+function untested(base) {
+  let lines;
+  if (!existsSync(join(OUT, 'istanbul.json'))) lines = 'No coverage report to read (the run before did not leave one).';
+  else if (!base) lines = 'No base to compare with (not a pull request): skipped.';
+  else {
+    const diff = execFileSync('git', ['diff', '--unified=0', base, 'HEAD', '--', 'site/js', 'worker', 'supabase'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    lines = untestedText(untestedLines(diff, JSON.parse(readFileSync(join(OUT, 'istanbul.json'), 'utf8')), ROOT));
+  }
+  console.log(lines);
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, '### New code no test runs\n\n' + lines + '\n');
+}
+
 async function main(command, ...args) {
+  if (command === 'untested') return untested(args[0]);
   if (command === 'node') return nodeTests();
   if (command === 'sweep') return sweep(resolve(args.find(a => !a.startsWith('--')) || SWEEP_DIR), args.includes('--write'));
   if (command === 'save') {

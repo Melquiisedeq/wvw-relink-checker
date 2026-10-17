@@ -89,6 +89,8 @@ jobs:
         working-directory: .github/e2e
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2 # a pull request's HEAD is the merge commit; depth 2 brings its first parent, the base
 
       - name: Install the test dependencies from the lockfile
         run: npm ci --ignore-scripts
@@ -118,6 +120,15 @@ jobs:
         run: |
           node support/coverage.mjs node
           node support/coverage.mjs check
+
+      # What the pull request added in site/js, worker and supabase that no test ran, in the
+      # summary. It lists and never fails: whether a new line asks for a test is judgement.
+      # HEAD^1 is the base the merge commit was made on, so the diff is the pull request's (a line changed
+      # inside a multi-line statement counts only where the statement starts). continue-on-error: it never fails the job.
+      - name: New code no test runs (summary only)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: node support/coverage.mjs untested "$(git rev-parse HEAD^1)"
 
       # Traces of what failed, kept three days; nothing on a green run.
       - name: Keep the traces
