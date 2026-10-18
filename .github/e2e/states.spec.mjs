@@ -292,6 +292,35 @@ test.describe('the tick of an open map', () => {
     expect(asked, 'terrain pictures asked after the map was closed').toEqual([]);
   });
 
+  test('a map left open and still warms the other tabs\' pictures: lite ones, one at a time, in tab order', async ({ page, wvw }) => {
+    const release = await opening(page, wvw, true);
+    const tabs = await page.locator(`${POP} .wvw-tab[data-type]`).evaluateAll(els => els.map(e => e.dataset.type));
+    const active = await page.locator(`${POP} .wvw-tab.is-active`).getAttribute('data-type');
+    const file = { Center: 'ebg', RedHome: 'rbl', BlueHome: 'bbl', GreenHome: 'gbl' };
+    const want = tabs.filter(t => t !== active).map(t => `map-${file[t]}-1280.webp`);
+    expect(want.length, 'the other tabs of the map').toBe(3);
+    const held = [];
+    const seen = [];
+    await page.route(/\/assets\/map-\w+-1280\.webp$/, route => {
+      const name = route.request().url().split('/').pop();
+      seen.push(name);
+      held.push(route);
+    });
+    await page.clock.runFor(5000);
+    for (let i = 0; i < want.length; i++) {
+      await expect.poll(() => seen.length, `pictures asked, step ${i}`).toBe(i + 1);
+      // The one asked is not answered yet: the next must not have been asked beside it.
+      await page.waitForTimeout(300);
+      expect(seen.length, `a second picture asked while the first was still out (step ${i})`).toBe(i + 1);
+      await held.shift().fallback();
+    }
+    await expect.poll(() => seen.length).toBe(3);
+    await page.waitForTimeout(300);
+    expect(seen, 'lite pictures of the tabs not in view, in tab order, each once').toEqual(want);
+    release();
+    await wvw.settle();
+  });
+
   test('once marked it judges the swords and the corners together: the swords leave, the data turns amber', async ({ page, wvw }) => {
     await opening(page, wvw, false);
     await expect(swords(page), 'swords on the busiest tab').toHaveCount(1);
