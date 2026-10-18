@@ -136,6 +136,9 @@ test('the Relink bar: from the lockout to NA landing, EU done first, then gone',
   // EU has landed, NA has not: EU says done, NA still counts.
   await page.clock.fastForward(1 * DAY + 17 * HOUR);
   await expect(banner(page).locator('.relink-stat-value')).toHaveText('NA 7h 0m · EU done');
+  // The refresh the jump started must answer before the next jump: its 10 s
+  // limit is a page timer, and a slow answer would fall to the unrecorded fallback.
+  await wvw.settle();
   // NA lands: the bar is the ordinary one again.
   await page.clock.fastForward(7 * HOUR + 5 * MIN);
   await expect(banner(page)).not.toHaveClass(/is-rebuild/);
@@ -165,6 +168,7 @@ for (const failing of ['NA', 'EU']) {
     await fail(page, wvw, /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches\?ids=all$/);
     const region = await fail(page, wvw, failing === 'NA' ? /matches\?ids=1-/ : /matches\?ids=2-/);
     for (const left of ['4h 54m', '4h 48m']) {
+      await wvw.settle();   // what the last jump started (a retry's reads included) answers before this one
       const had = region.reads;
       await page.clock.fastForward(5 * MIN);
       await expect.poll(() => region.reads, { message: `the refresh reading ${failing}'s matches` }).toBeGreaterThan(had);
