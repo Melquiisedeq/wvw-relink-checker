@@ -102,6 +102,24 @@ test.describe('a group behind the game', () => {
   });
 });
 
+// The page opened with /api/latest down, so its first ask got nothing. Five
+// minutes on the game's server group answers a body 10 minutes behind (the page
+// keeps the further-along one it has, and sees nothing rise) while /api/latest is
+// back with the newest: asked again after 90 s of that, the score arrives by it.
+test.describe('a game body that stands still while /api/latest is ahead', () => {
+  test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().latestStatus(503).advance(5).latestStatus(null).olderPool(10) });
+
+  test('the newer score arrives from /api/latest', async ({ page, wvw }) => {
+    await opened(page, wvw);
+    const t = 17 * MIN;
+    const newest = sum(wvw.timeline.body(FOCUS, t)), shown = sum(wvw.timeline.body(FOCUS, 12 * MIN));
+    expect(newest, 'a timeline whose newest body is ahead of the one on show').toBeGreaterThan(shown);
+    expect(await scoreOf(page, FOCUS), 'the score the page opened with').toBe(shown);
+    await wvw.skew(5 * MIN);
+    expect(await settledScore(page, FOCUS, newest), 'the score after 5 min of a body that stood still').toBe(newest);
+  });
+});
+
 // Down or hung, the page is as it was without the read.
 test.describe('/api/latest down', () => {
   test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().latestStatus(503) });
