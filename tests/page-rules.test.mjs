@@ -233,6 +233,182 @@ test('killView: a catch-up step after a long stall lights nothing (js/maps.js)',
   assert.equal(p.call('killView', m, TYPES).hot, null);
 });
 
+test('matchIsLive: only a readable end_time in the future is live (js/config.js)', () => {
+  const p = fresh();
+  const now = p.clock.now;
+  const live = (end) => p.call('matchIsLive', { end_time: end });
+  assert.equal(live(new Date(now + MIN).toISOString()), true);
+  assert.equal(live(new Date(now + 1).toISOString()), true);
+  assert.equal(live(new Date(now).toISOString()), false, 'ending this very moment is over');
+  assert.equal(live(new Date(now - MIN).toISOString()), false);
+  for (const bad of ['garbage', '', null, undefined, 'NaN', {}, [], '2026-13-45T99:00:00Z']) {
+    assert.equal(live(bad), false, `end_time ${JSON.stringify(bad)} is not live`);
+  }
+  for (const body of [null, undefined, {}, 'x', 5]) assert.equal(p.call('matchIsLive', body), false);
+});
+
+test('killView: a match whose end_time cannot be read is neutral, like one that is over (js/maps.js)', () => {
+  const p = fresh();
+  const base = matches[0];
+  const now = p.clock.now;
+  sheetOf(p, base.id, [10, 5, 0].map((back) => ({
+    at: now - back * MIN, n: { Center: 1000 - back * 12, RedHome: 10, BlueHome: 10, GreenHome: 10 } })));
+  for (const bad of ['garbage', null, undefined, '']) {
+    const m = liveWith(base, { Center: 1000, RedHome: 10, BlueHome: 10, GreenHome: 10 });
+    if (bad === undefined) delete m.end_time; else m.end_time = bad;
+    p.call('keepNewestMatch', m);
+    const v = p.call('killView', m, TYPES);
+    assert.equal(v.hot, null, `end_time ${JSON.stringify(bad)} lit the swords`);
+    assert.equal(v.rates, null);
+    assert.equal(v.clock, 0);
+  }
+});
+
+// The week memory, driven through weekStoreOffer: what it keeps of a tier is read back.
+function weekBody(base, id, startAt, endAt) {
+  const m = clone(base);
+  m.id = id;
+  m.start_time = new Date(startAt).toISOString();
+  m.end_time = new Date(endAt).toISOString();
+  return m;
+}
+const stored = (p, id) => {
+  const v = p.run(`weekStoreRead().get(${JSON.stringify(id)})`);
+  return v ? { s: v.s, e: v.e } : null;
+};
+
+test('weekStoreOffer: a body of an earlier week does not erase a later one for two hours from its start (js/api.js)', () => {
+  const HOLD = 2 * 60 * MIN;
+  const day = 24 * 60 * MIN;
+  for (const [after, kept] of [[-30 * MIN, true], [0, true], [HOLD - 1, true], [HOLD, false], [HOLD + MIN, false]]) {
+    const p = fresh();
+    const newStart = p.clock.now - after;   // `after` past the later week's start (negative: not begun yet)
+    const fresher = weekBody(matches[0], '1-1', newStart, newStart + 7 * day);
+    const older = weekBody(matches[0], '1-1', newStart - 7 * day, newStart + 12 * 60 * MIN);
+    p.call('weekStoreOffer', fresher);
+    assert.equal(stored(p, '1-1').s, newStart, `the later week is written (${after} ms in)`);
+    p.call('weekStoreOffer', older);
+    const had = stored(p, '1-1');
+    assert.equal(had.s, kept ? newStart : newStart - 7 * day,
+      `${after} ms after the later week began: the older body ${kept ? 'must not overwrite' : 'is allowed to overwrite'} it`);
+  }
+});
+
+test('weekStoreOffer: a later week always replaces an earlier one; an earlier body wins once the later week is old (js/api.js)', () => {
+  const day = 24 * 60 * MIN;
+  const p = fresh();
+  const t = p.clock.now;
+  const a = weekBody(matches[0], '1-2', t - 3 * day, t + 4 * day);
+  const b = weekBody(matches[0], '1-2', t - day, t + 6 * day);
+  p.call('weekStoreOffer', a);
+  assert.equal(stored(p, '1-2').s, t - 3 * day);
+  p.call('weekStoreOffer', b);
+  assert.equal(stored(p, '1-2').s, t - day, 'a later start replaces, however long ago the earlier began');
+  p.call('weekStoreOffer', a);
+  assert.equal(stored(p, '1-2').s, t - 3 * day, 'the memory of a week begun a day ago no longer holds against an earlier body');
+});
+
+test('fightSamples: a reading older than three hours, or from before the match began, is no baseline (js/maps.js)', () => {
+  const day = 24 * 60 * MIN;
+  const row = (at) => ({ at, n: { Center: 100, RedHome: 0, BlueHome: 0, GreenHome: 0 } });
+  const run = (rows, startBack = 6 * day) => {
+    const p = fresh();
+    const now = p.clock.now;
+    const base = matches[2];
+    const m = liveWith(base, { Center: 400 });
+    m.start_time = new Date(now - startBack).toISOString();
+    m.end_time = new Date(now + day).toISOString();
+    sheetOf(p, base.id, rows.map((back) => row(now - back)));
+    p.call('keepNewestMatch', m);
+    return p.call('killView', m, TYPES);
+  };
+  // Only readings from three days back, and nothing recent: no window, no rates, no swords.
+  const old = run([3 * day + 10 * MIN, 3 * day + 5 * MIN, 3 * day]);
+  assert.equal(old.hot, null);
+  assert.equal(old.rates, null, 'a rate was measured off readings three days old');
+  assert.equal(old.noWindow, 'data');
+  assert.equal(run([4 * 60 * MIN]).rates, null, 'a reading four hours old');
+  assert.notEqual(run([3 * 60 * MIN - MIN]).rates, null, 'a reading just under three hours old is a baseline');
+  assert.equal(run([3 * 60 * MIN + MIN]).rates, null, 'a reading just over three hours old is not');
+  // Kills restart at the reset: a line from before this match began is last week's.
+  assert.equal(run([2 * 60 * MIN], 60 * MIN).rates, null, 'a reading from before the match began');
+  assert.notEqual(run([30 * MIN], 60 * MIN).rates, null, 'a reading after it began');
+});
+
+// A fight at `perMin` kills per minute on one map that stopped `stopped` ms ago, the score of the
+// match still being offered every 30 s, so the body is not the frozen one.
+function stoppedFight(perMin, stopped) {
+  const p = fresh();
+  const base = matches[1];
+  const now = p.clock.now;
+  const top = 1000;
+  const rows = [];
+  for (let back = stopped + 20 * MIN; back >= stopped; back -= 5 * MIN) {
+    rows.push({ at: now - back, n: { Center: top - Math.round(perMin * (back - stopped) / MIN), RedHome: 0, BlueHome: 0, GreenHome: 0 } });
+  }
+  sheetOf(p, base.id, rows);
+  const m = liveWith(base, { Center: top });
+  const start = now - 30 * MIN;
+  for (let t = start, i = 0; t <= now; t += 30000, i++) {
+    p.clock.now = t;
+    const step = clone(m);
+    step.scores.red += i;
+    p.call('keepNewestMatch', step);
+  }
+  p.clock.now = now;
+  return p.call('killView', m, TYPES, now);
+}
+
+test('killView: a fight that stops puts the swords out between the 5.5-minute quiet and 10 minutes, whatever the score does (js/maps.js)', () => {
+  // The silence the kills may keep is 5.5 min plus the time to make 15 kills at the fight's own pace.
+  for (const pace of [5, 8, 12]) {
+    const limit = 5.5 * MIN + (15 / pace) * MIN;
+    const early = stoppedFight(pace, Math.floor(limit - 30000));
+    assert.equal(early.frozen, false, 'the score was still offered');
+    assert.equal(early.hot, 'Center', `pace ${pace}: swords must stay ${Math.round((limit - 30000) / 1000)} s into the silence`);
+    const late = stoppedFight(pace, Math.ceil(limit + 30000));
+    assert.equal(late.frozen, false);
+    assert.equal(late.hot, null, `pace ${pace}: swords must be out ${Math.round((limit + 30000) / 1000)} s into the silence`);
+  }
+  for (const stopped of [10 * MIN + 1000, 12 * MIN, 14 * MIN, 15 * MIN]) {
+    const v = stoppedFight(5, stopped);
+    assert.equal(v.hot, null, `${stopped / MIN} min of silence`);
+    assert.equal(v.frozen, false);
+  }
+});
+
+// Kills flat at 100 for `prevRun`, then the body jumps by `jump` all at once on the one map.
+function catchUp(prevRun, jump) {
+  const p = fresh();
+  const base = matches[3];
+  const now = p.clock.now;
+  const flat = { Center: 100, RedHome: 0, BlueHome: 0, GreenHome: 0 };
+  const rows = [{ at: now - prevRun, n: flat }];
+  if (prevRun > 10 * MIN) rows.push({ at: now - 10 * MIN, n: flat });
+  sheetOf(p, base.id, rows);
+  const m = liveWith(base, { Center: 100 + jump });
+  p.call('keepNewestMatch', m);
+  return p.call('killView', m, TYPES);
+}
+
+test('killView: a jump after a stall of 10-20 minutes counts spread over the stall; under 10 whole, over 20 not at all (js/maps.js)', () => {
+  // Up to 10 min of still kills is no stall: the jump counts whole.
+  assert.equal(catchUp(9 * MIN, 55).hot, 'Center');
+  assert.equal(catchUp(10 * MIN, 55).hot, 'Center', 'exactly 10 min is not a catch-up');
+  assert.equal(catchUp(9 * MIN, 40).hot, null, 'below the floor whole');
+  // 10-20 min: the kills are spread over the stall, so a small jump falls below the floor...
+  assert.equal(catchUp(15 * MIN, 60).hot, null, '60 kills over 15 min are 40 per 10');
+  assert.equal(catchUp(11 * MIN, 54).hot, null, '54 over 11 min are 49 per 10');
+  // ...and a big one still lights it.
+  assert.equal(catchUp(15 * MIN, 80).hot, 'Center', '80 over 15 min are 53 per 10');
+  assert.equal(catchUp(11 * MIN, 56).hot, 'Center', '56 over 11 min are 51 per 10');
+  assert.equal(catchUp(20 * MIN, 100).hot, 'Center', 'exactly 20 min still counts');
+  assert.equal(catchUp(20 * MIN, 90).hot, null, '90 over 20 min are 45 per 10');
+  // Past 20 min the step is the source catching up, however big.
+  assert.equal(catchUp(20 * MIN + 1000, 5000).hot, null);
+  assert.equal(catchUp(60 * MIN, 5000).hot, null);
+});
+
 test('killView: invariants hold on mutated bodies and histories (js/maps.js)', () => {
   const rnd = prng(3);
   let hot = 0;
