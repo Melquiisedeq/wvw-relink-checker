@@ -15,6 +15,16 @@ on:
     # everything twice - once for the push, once for the pull request.
     branches: [main]
 
+# A new push to a pull request cancels that pull request's older run; a push to
+# main never cancels or is cancelled. A group keeps one pending run and a third
+# arrival replaces it even without cancel-in-progress, so outside a pull request
+# the group is the run id: unique, nothing to replace. In a pull request
+# github.ref is refs/pull/N/merge, stable per PR. The workflow name stays in the
+# group because groups are global to the repository.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # The jobs only read the checked-out tree. Nothing here needs a token that
 # can write, so nothing here gets one.
 permissions:
