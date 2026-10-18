@@ -323,3 +323,85 @@ test('the daily cleanup deletes kills older than 14 days and nothing newer', asy
   const left = sql.prepare('SELECT at FROM kills').all().map((r) => Math.round((now - r.at) / 86400e3));
   assert.deepEqual(left.sort((a, b) => a - b), [0, 1, 13]);
 });
+
+test('a signed message with a wrong shape is 422 and writes nothing, whatever the field', async (sub) => {
+  const w = setup();
+  const now = w.now;
+  const t0 = { t: Math.floor(now / 1000) };
+  const row = (over = {}) => {
+    const r = [now, '1-1', 1, 2, 3, 4, now - 1e6];
+    for (const [i, v] of Object.entries(over)) r[i] = v;
+    return r;
+  };
+  const cases = [
+    ['kills: JSON null', () => w.post('kills', 'null', t0), 422],
+    ['kills: a list, not an object', () => w.post('kills', '[1]', t0), 422],
+    ['kills: rows not a list', () => w.post('kills', { rows: 'x' }, t0), 422],
+    ['kills: an empty list of rows', () => w.post('kills', { rows: [] }, t0), 422],
+    ['kills: a null row', () => w.post('kills', { rows: [null] }, t0), 422],
+    ['kills: a row of six', () => w.post('kills', { rows: [row().slice(0, 6)] }, t0), 422],
+    ['kills: a row of nine', () => w.post('kills', { rows: [[...row(), 1, 2]] }, t0), 422],
+    ['kills: start after the row\'s own time', () => w.post('kills', { rows: [row({ 6: now + 1 })] }, t0), 422],
+    ['kills: start more than 8 days before', () => w.post('kills', { rows: [row({ 6: now - 8 * 86400e3 - 1 })] }, t0), 422],
+    ['kills: a fractional count', () => w.post('kills', { rows: [row({ 3: 1.5 })] }, t0), 422],
+    ['kills: a count past 1e7', () => w.post('kills', { rows: [row({ 4: 1e7 + 1 })] }, t0), 422],
+    ['kills: a score past 3e7', () => w.post('kills', { rows: [[...row(), 3e7 + 1]] }, t0), 422],
+    ['kills: a negative score', () => w.post('kills', { rows: [[...row(), -1]] }, t0), 422],
+    ['kills: a row from the future', () => w.post('kills', { rows: [row({ 0: now + 61e3 })] }, t0), 422],
+    ['relink: JSON null', () => w.post('relink', 'null', t0), 422],
+    ['relink: a list', () => w.post('relink', '[]', t0), 422],
+    ['relink: negative fails', () => w.post('relink', w.relink({ fails: -1 }), t0), 422],
+    ['relink: fails past 1e6', () => w.post('relink', w.relink({ fails: 1e6 + 1 }), t0), 422],
+    ['relink: fails as text', () => w.post('relink', w.relink({ fails: '0' }), t0), 422],
+    ['relink: window below 1.7e9', () => w.post('relink', w.relink({ window: 1.7e9 - 1 }), t0), 422],
+    ['relink: window above 4.1e9', () => w.post('relink', w.relink({ window: 4.1e9 + 1 }), t0), 422],
+    ['relink: window with a fraction', () => w.post('relink', w.relink({ window: 1790992800.5 }), t0), 422],
+    ['relink: published in the future', () => w.post('relink', w.relink({ published: Math.floor(now / 1000) + 61 }), t0), 422],
+    ['relink: negative published', () => w.post('relink', w.relink({ published: -1 }), t0), 422],
+    ['relink: window null, published not', () => w.post('relink', w.relink({ window: null, published: 5 }), t0), 422],
+    ['relink: beat an hour and a second old', () => w.post('relink', w.relink({ beat: Math.floor(now / 1000) - 3601 }), t0), 422],
+    ['relink: beat a minute and a second ahead', () => w.post('relink', w.relink({ beat: Math.floor(now / 1000) + 61 }), t0), 422]
+  ];
+  for (const [name, send, want] of cases) await sub.test(name, async () => assert.equal(await send(), want));
+  assert.equal(w.sql.prepare('SELECT count(*) n FROM kills').get().n, 0);
+  assert.equal(w.sql.prepare('SELECT count(*) n FROM relink').get().n, 0);
+});
+
+test('the limits of a signed message are inclusive on the side they say, and a relink with no window is kept as none', async () => {
+  const w = setup();
+  const now = w.now;
+  const sec = Math.floor(now / 1000);
+  let k = 0;
+  const at = () => ({ t: sec + ++k });
+  for (const [window, fails] of [[1.7e9, 0], [4.1e9, 1e6]]) {
+    assert.equal(await w.post('relink', w.relink({ window, fails }), at()), 200, `window ${window}`);
+    assert.deepEqual({ ...w.sql.prepare('SELECT window_at, fails FROM relink').get() }, { window_at: window, fails });
+  }
+  const t1 = at();
+  assert.equal(await w.post('relink', w.relink({ published: t1.t + 60, beat: t1.t - 3600 }), t1), 200, 'the oldest beat and the furthest published');
+  assert.equal(await w.post('relink', w.relink({ window: null, published: null }), at()), 200);
+  assert.deepEqual({ ...w.sql.prepare('SELECT window_at, published FROM relink').get() }, { window_at: null, published: null });
+  assert.equal((await w.get('/api/relink')).status, 503, 'a sheet that did not parse is no answer');
+  const t2 = at();
+  const tms = t2.t * 1000;
+  assert.equal(await w.post('kills', { rows: [[tms + 60e3, '1-1', 0, 0, 0, 0, tms - 8 * 86400e3 + 60e3]] }, t2), 200, 'the farthest ahead row, the oldest start');
+  const t3 = at();
+  const old = t3.t * 1000 - 45 * 60e3;
+  assert.equal(await w.post('kills', { rows: [[old, '1-2', 1e7, 0, 0, 0, old, 3e7]] }, t3), 200, 'the oldest row, the biggest count and score');
+});
+
+test('a signed POST with no body at all is refused: 401 unsigned, 400 when the empty body is what was signed', async () => {
+  const w = setup();
+  const send = async (path, headers) => {
+    const real = Date.now;
+    Date.now = () => w.now;
+    try { return (await worker.fetch(new Request('https://wvwrelink.com' + path, { method: 'POST', headers }), w.env)).status; }
+    finally { Date.now = real; }
+  };
+  const t = String(Math.floor(w.now / 1000));
+  assert.equal(await send('/api/ingest/kills', { 'x-wvw-time': t, 'x-wvw-sig': 'a'.repeat(64) }), 401);
+  assert.equal(await send('/api/ingest/kills', {}), 401);
+  assert.equal(await send('/api/ingest/relink', { 'x-wvw-time': t, 'x-wvw-sig': 'a'.repeat(64) }), 401);
+  assert.equal(await send('/api/ingest/kills', w.signed('/api/ingest/kills', '', { t: Number(t) })), 400);
+  assert.equal(w.sql.prepare('SELECT count(*) n FROM kills').get().n, 0);
+});

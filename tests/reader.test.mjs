@@ -243,3 +243,178 @@ test('the function fails with a generic answer when the game API is wrong', asyn
     console.log = log;
   }
 });
+
+// ---- What the function does with each thing the outside can get wrong.
+const LOCK = 'k'.repeat(128);
+const GAME = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
+
+// Runs one call of the function in the US region with the network stubbed:
+// `answers` maps a URL start to a Response (or a function giving one, or an Error to throw).
+async function callReader(answers, env = {}) {
+  const handler = loadHandler({ SB_REGION: 'us-east-1', READER_KEY: LOCK, INGEST_LATEST_SUPA_US: SECRET['us-east-1'], ...env });
+  const realFetch = globalThis.fetch;
+  const realNow = Date.now;
+  const log = console.log;
+  const asked = [];
+  const lines = [];
+  Date.now = () => NOW;
+  console.log = (s) => lines.push(String(s));
+  globalThis.fetch = async (url, init = {}) => {
+    asked.push({ url: String(url), init });
+    const key = Object.keys(answers).find((k) => String(url).startsWith(k));
+    let a = key === undefined ? new Response('unexpected', { status: 500 }) : answers[key];
+    if (typeof a === 'function') a = a(init);
+    if (a instanceof Error) throw a;
+    return a;
+  };
+  try {
+    const r = await handler(new Request('https://x.supabase.co/', { method: 'POST', headers: { 'x-wvw-key': LOCK, 'x-region': 'us-east-1' } }));
+    return { status: r.status, text: await r.text(), asked, lines };
+  } finally {
+    globalThis.fetch = realFetch;
+    Date.now = realNow;
+    console.log = log;
+  }
+}
+const SUMMARY = 'https://wvwrelink.com/api/latest/summary';
+const INGEST = 'https://wvwrelink.com/api/ingest/latest-supa-us';
+const json = (x, init) => new Response(JSON.stringify(x), init);
+const empty = () => json({});
+
+test('the function: a game API that fails, lies or is too big gives a generic 502 and sends nothing', async () => {
+  const ok = [apiMatch('1-1')];
+  // A valid list padded with spaces to an exact size; a Response from a string carries no content-length.
+  const padded = (bytes) => { const s = JSON.stringify(ok); return s + ' '.repeat(bytes - s.length); };
+  const chunked = (bytes) => new Response(new ReadableStream({
+    start(c) { const enc = new TextEncoder().encode(padded(bytes)); for (let i = 0; i < enc.length; i += 65536) c.enqueue(enc.subarray(i, i + 65536)); c.close(); }
+  }));
+  const cases = {
+    'HTTP 503': [new Response('x', { status: 503 }), 502],
+    'declared length past the cap': [new Response(JSON.stringify(ok), { headers: { 'content-length': String(1024 * 1024 + 1) } }), 502],
+    'a stream one byte past the cap, no length': [chunked(1024 * 1024 + 1), 502],
+    'a stream exactly at the cap is read': [chunked(1024 * 1024), 200],
+    'JSON that is not a list': [json({ id: '1-1' }), 502],
+    'an empty list': [json([]), 502],
+    'nineteen entries': [json(new Array(19).fill(apiMatch('1-1'))), 502],
+    'nothing the checks accept': [json([apiMatch('1-1', { scores: [-1, 0, 0] })]), 200]
+  };
+  for (const [what, [answer, want]] of Object.entries(cases)) {
+    const r = await callReader({ [GAME]: answer, [SUMMARY]: empty, [INGEST]: () => json({ applied: [] }) });
+    assert.equal(r.status, want, what);
+    assert.equal(r.text, '{"ok":false}\n', what);
+    if (want !== 200) assert.ok(!r.asked.some((a) => a.url === INGEST), what + ': nothing pushed');
+  }
+  const net = await callReader({ [GAME]: new Error('boom') });
+  assert.equal(net.status, 500);
+  assert.ok(net.lines.every((l) => !l.includes('boom')), 'the error text is not logged');
+});
+
+test('the function: the Worker\'s summary that fails, is too big or is the wrong shape gives 502 before any push', async () => {
+  const game = json([apiMatch('1-1')]);
+  const body = JSON.stringify({ '1-1': { start: 1, score: 1 } });
+  const big = body + ' '.repeat(64 * 1024 + 1 - body.length);
+  const cases = {
+    'HTTP 500': new Response('x', { status: 500 }),
+    'a summary over 64 KiB': new Response(big),
+    'a summary that is a list': json([]),
+    'an id that is no match': json({ 'x-1': { start: 1, score: 1 } }),
+    'a score that is no integer': json({ '1-1': { start: 1, score: 'a' } }),
+    'JSON null': new Response('null')
+  };
+  // Exactly 64 KiB of a valid summary is still read.
+  const exact = await callReader({ [GAME]: () => game.clone(), [SUMMARY]: new Response(big.slice(0, -1)), [INGEST]: () => json({}) });
+  assert.equal(exact.status, 200);
+  for (const [what, answer] of Object.entries(cases)) {
+    const r = await callReader({ [GAME]: () => game.clone(), [SUMMARY]: answer });
+    assert.equal(r.status, 502, what);
+    assert.ok(!r.asked.some((a) => a.url === INGEST), what);
+  }
+});
+
+test('the function: nothing new is the normal quiet answer, 200 and no push, with the counts logged', async () => {
+  const have = { '1-1': { start: Date.parse(NA_START), score: 6000 } };
+  const r = await callReader({ [GAME]: json([apiMatch('1-1'), apiMatch('1-2', { scores: [-1, 0, 0] })]), [SUMMARY]: json(have) });
+  assert.equal(r.status, 200);
+  assert.ok(!r.asked.some((a) => a.url === INGEST));
+  assert.deepEqual(JSON.parse(r.lines[0]), { region: 'us-east-1', sent: 0, dropped: 1 });
+});
+
+test('the function: the Worker refusing the push is a 502, accepting it a 200, and the push is signed for the reader\'s own door', async () => {
+  const send = async (status) => {
+    let pushed;
+    const r = await callReader({
+      [GAME]: json([apiMatch('1-1'), apiMatch('1-2')]), [SUMMARY]: empty,
+      [INGEST]: (init) => { pushed = init; return new Response('{}', { status }); }
+    });
+    return { r, pushed };
+  };
+  for (const status of [400, 401, 409, 413, 422, 500]) assert.equal((await send(status)).r.status, 502, 'worker said ' + status);
+  const good = await send(200);
+  assert.equal(good.r.status, 200);
+  assert.deepEqual(JSON.parse(good.r.lines.at(-1)), { region: 'us-east-1', sent: 2, dropped: 0, status: 200 });
+  const t = good.pushed.headers['x-wvw-time'];
+  assert.equal(good.pushed.headers['x-wvw-sig'], await sign(SECRET['us-east-1'], t, '/api/ingest/latest-supa-us', good.pushed.body));
+  assert.ok(good.r.lines.every((l) => !l.includes(SECRET['us-east-1']) && !l.includes(LOCK)));
+});
+
+test('the function: a signing secret that is missing or short is a 500 before the game API is asked', async () => {
+  for (const [what, secret] of [['missing', undefined], ['empty', ''], ['63 characters', 'a'.repeat(63)]]) {
+    const r = await callReader({ [GAME]: json([apiMatch('1-1')]) }, { INGEST_LATEST_SUPA_US: secret });
+    assert.equal(r.status, 500, what);
+    assert.equal(r.text, '{"ok":false}\n', what);
+    assert.deepEqual(r.asked, [], what);
+  }
+  // 64 is enough; the lock itself must be 64 too, or the function does not exist.
+  assert.equal((await callReader({ [GAME]: json([]) }, { INGEST_LATEST_SUPA_US: 'a'.repeat(64) })).status, 502);
+  const short = await callReader({ [GAME]: json([]) }, { READER_KEY: 'k'.repeat(63) });
+  assert.equal(short.status, 404);
+  assert.deepEqual(short.asked, []);
+});
+
+test('a match out of shape or too big is left out alone, the rest of the read goes on', async () => {
+  const a = apiMatch('1-1');
+  const edit = (f) => { const m = apiMatch('1-1'); f(m); return m; };
+  // Values counted as the reader counts them: the match, every key's value, every array item.
+  const count = (x) => (x !== null && typeof x === 'object' ? 1 + Object.values(x).reduce((n, v) => n + count(v), 0) : 1);
+  const valuesTo20000 = 20000 - count({ ...a, pad: [] });
+  const bad = {
+    'world id as a string': edit((m) => { m.worlds.red = '1001'; }),
+    'null where a count goes': edit((m) => { m.kills.red = null; }),
+    'boolean where a count goes': edit((m) => { m.deaths.blue = true; }),
+    'start_time with milliseconds': edit((m) => { m.start_time = '2026-10-03T02:00:00.000Z'; }),
+    'start_time with minutes': edit((m) => { m.start_time = '2026-10-03T02:30:00Z'; }),
+    'all_worlds missing': edit((m) => { delete m.all_worlds; }),
+    'all_worlds with an empty side': edit((m) => { m.all_worlds.green = []; }),
+    'all_worlds with five ids': edit((m) => { m.all_worlds.red = [1001, 1002, 1003, 1004, 1005]; }),
+    'a map without kills': edit((m) => { delete m.maps[2].kills; }),
+    'two maps of one type': edit((m) => { m.maps[1] = { ...m.maps[0] }; }),
+    'nested 9 levels': edit((m) => { let o = m; for (let i = 0; i < 9; i++) o = o.n = {}; }),
+    'one value past 20000': edit((m) => { m.pad = new Array(valuesTo20000 + 1).fill(1); }),
+    'raw text past 256 KiB': edit((m) => { m.pad = Array.from({ length: 6000 }, (_, i) => 'a'.repeat(60) + i); })
+  };
+  for (const [what, m] of Object.entries(bad)) assert.equal(checkMatch(m, NOW), null, what);
+  // The edges the other way: these still pass.
+  const fine = {
+    'nested 8 levels': edit((m) => { let o = m; for (let i = 0; i < 8; i++) o = o.n = {}; }),
+    'four ids on a side': edit((m) => { m.all_worlds.red = [1001, 1002, 1003, 11001]; }),
+    'exactly 20000 values': edit((m) => { m.pad = new Array(valuesTo20000).fill(1); })
+  };
+  for (const [what, m] of Object.entries(fine)) assert.ok(checkMatch(m, NOW), what);
+  const r = checkRead([a, ...Object.values(bad).slice(0, 3), apiMatch('1-2')], NOW);
+  assert.deepEqual(r.matches.map((m) => m.id), ['1-1', '1-2']);
+  assert.equal(r.dropped, 3);
+});
+
+test('a match too big once gzipped is not sent, the others are', async () => {
+  const noisy = apiMatch('1-2');
+  let seed = 1;
+  // About 18000 integers of nine digits: under the 20000 values and 256 KiB the checks allow, past the 16 KiB a slice may take.
+  noisy.pad = Array.from({ length: 18000 }, () => (seed = (seed * 48271) % 2147483647) % 1e9);
+  const read = checkRead([apiMatch('1-1'), noisy], NOW);
+  assert.equal(read.matches.length, 2);
+  const built = await buildBody(read.matches);
+  assert.equal(built.count, 1);
+  const head = JSON.parse(new TextDecoder().decode(built.body.subarray(0, built.body.indexOf(10))));
+  assert.deepEqual(head.matches.map((m) => m.id), ['1-1']);
+  assert.equal(await buildBody([read.matches[1]]), null);
+});
