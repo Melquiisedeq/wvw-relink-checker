@@ -203,7 +203,7 @@ function layFlame(x, y, angle, len, cls, life) {
 function shedSmoke(x, y, heat) {
   const puff = document.createElement('div');
   puff.className = 'trail-smoke';
-  const size = Math.round(15 * (heat || 1));
+  const size = Math.round(15 * heat);
   puff.style.width = puff.style.height = `${size}px`;
   puff.style.margin = `${-size / 2}px 0 0 ${-size / 2}px`;
   puff.style.left = `${x}px`;
@@ -220,7 +220,7 @@ function shedSpark(x, y, heat) {
   spark.style.left = `${x}px`;
   spark.style.top = `${y}px`;
   const angle = Math.random() * Math.PI * 2;
-  const distance = (14 + Math.random() * 40) * (heat || 1);
+  const distance = (14 + Math.random() * 40) * heat;
   spark.style.setProperty('--sx', `${Math.round(Math.cos(angle) * distance)}px`);
   spark.style.setProperty('--sy', `${Math.round(Math.sin(angle) * distance)}px`);
   spark.style.animationDelay = `${(Math.random() * 0.08).toFixed(2)}s`;

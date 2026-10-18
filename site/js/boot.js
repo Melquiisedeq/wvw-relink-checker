@@ -161,7 +161,6 @@ const emberField = (function () {
         const err = ((ax * t + bx) * t + cx) * t - p;
         if (Math.abs(err) < 1e-4) break;
         const slope = (3 * ax * t + 2 * bx) * t + cx;
-        if (Math.abs(slope) < 1e-6) break;
         t -= err / slope;
       }
       return ((ay * t + by) * t + cy) * t;

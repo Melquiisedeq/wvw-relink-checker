@@ -230,8 +230,7 @@ async function toggleGuildsPopover(teamName, triggerEl) {
 // accessibility tree, and the reader stopped at it, losing the rest of the
 // sentence.
 function serverGuildsShield(size) {
-  const w = size || 17;
-  return `<svg width="${w}" height="${Math.round(w * 19 / 17)}" viewBox="0 0 24 27" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">`
+  return `<svg width="${size}" height="${Math.round(size * 19 / 17)}" viewBox="0 0 24 27" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">`
     + '<path d="M12 2 L21 4.5 V13 C21 19 17 23.5 12 25.5 C7 23.5 3 19 3 13 V4.5 Z" '
     + 'fill="currentColor" fill-opacity=".18" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>'
     + '<circle cx="12" cy="9.5" r="1.6" fill="currentColor"/>'

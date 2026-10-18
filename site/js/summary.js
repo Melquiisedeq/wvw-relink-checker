@@ -69,7 +69,6 @@ function buildCompactCommunityBlock(label, data) {
   const lines = [];
   if (data.alliances.length) lines.push(`Alliances: ${formatTagRow(data.alliances)}`);
   if (data.solo.length) lines.push(`Solo: ${formatTagRow(data.solo)}`);
-  if (lines.length === 0) return null;
   return `${label}\n${lines.join('\n')}`;
 }
 
@@ -94,7 +93,6 @@ function buildDetailedCommunityBlock(label, data) {
       lines.push(`  ${solo.tag ? `[${solo.tag}] ${solo.name}` : solo.name}`);
     }
   }
-  if (lines.length === 0) return null;
   return `${label}\n${lines.join('\n')}`;
 }
 

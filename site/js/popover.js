@@ -62,9 +62,9 @@ function openPopover(triggerEl, label, render, extraClass) {
   triggerEl.setAttribute('aria-expanded', 'true');
 
   const popover = document.createElement('div');
-  popover.className = extraClass ? `info-popover ${extraClass}` : 'info-popover';
+  popover.className = `info-popover ${extraClass}`;
   popover.setAttribute('role', 'dialog');
-  if (label) popover.setAttribute('aria-label', label);
+  popover.setAttribute('aria-label', label);
   popover.tabIndex = -1;
   document.body.appendChild(popover);
   activePopover = popover;

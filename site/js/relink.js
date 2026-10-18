@@ -31,7 +31,7 @@ const WARN_ICON =
 function buildRelinkStat(title, value, isPrimary, tooltip, warn) {
   const stat = document.createElement('div');
   stat.className = isPrimary ? 'relink-stat relink-stat--primary' : 'relink-stat';
-  if (tooltip) stat.title = tooltip;
+  stat.title = tooltip;
   const titleEl = document.createElement('div');
   titleEl.className = 'relink-stat-title';
   titleEl.textContent = title;
@@ -195,7 +195,7 @@ async function fetchTimers() {
 // published the new week and then went back. Whichever tier is furthest
 // ahead is the one that has seen the relink.
 function latestOf(matches, field) {
-  const times = (matches || [])
+  const times = matches
     .map((m) => Date.parse(m && m[field]))
     .filter(Number.isFinite);
   return times.length ? Math.max(...times) : null;

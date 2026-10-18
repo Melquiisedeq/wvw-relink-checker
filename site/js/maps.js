@@ -148,17 +148,13 @@ function staticPack() {
 // baked copy. Whatever comes back is what the NEXT opening uses - this
 // never repaints under someone's cursor, and a map half from one
 // catalogue and half from another is not a state worth having.
-let catalogueRefreshed = false;
-
 function refreshCatalogueSoon() {
-  if (catalogueRefreshed) return;
-  catalogueRefreshed = true;
   fetchJsonCached(`${API_BASE}/wvw/objectives?ids=all`).then((list) => {
     if (!Array.isArray(list) || !list.length) return;
     const byId = new Map();
     for (const o of list) byId.set(o.id, o);
     objectiveCatalogue = byId;
-  }).catch(() => { catalogueRefreshed = false; });
+  }).catch(() => { /* the baked copy stands */ });
 }
 
 async function getObjectiveCatalogue() {
@@ -501,20 +497,16 @@ function guildEmblem(guildId) {
   return emblemPending.get(guildId);
 }
 
-const sectorsRefreshed = new Set();
-
 // Same deal as the catalogue: the drawing already happened, this is for
 // the next one.
 function refreshSectorsSoon(mapId) {
-  if (sectorsRefreshed.has(mapId)) return;
-  sectorsRefreshed.add(mapId);
   fetchJsonCached(
     `${API_BASE}/continents/2/floors/3/regions/7/maps/${encodeURIComponent(mapId)}/sectors?ids=all`)
     .then((list) => {
       const arr = (Array.isArray(list) ? list : []).filter((x) => Array.isArray(x.bounds));
       if (arr.length) sectorCache.set(mapId, arr);
     })
-    .catch(() => { sectorsRefreshed.delete(mapId); });
+    .catch(() => { /* the baked copy stands */ });
 }
 
 async function getSectors(mapId) {
@@ -613,7 +605,7 @@ function waypointChat(poiId) {
 // guaranteed.
 function copyChatLink(text) {
   const legacy = () => {
-    try { return typeof legacyCopy === 'function' ? legacyCopy(text) : false; }
+    try { return legacyCopy(text); }
     catch { return false; }
   };
   if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -826,7 +818,7 @@ function recordFightSamples(matches, asked) {
   const log = readFightLog();
   const now = Date.now();
   const seen = new Set();
-  for (const match of matches || []) {
+  for (const match of matches) {
     if (!match || typeof match.id !== 'string' || !Array.isArray(match.maps)) continue;
     seen.add(match.id);
     // Ageing counts from the real now, not from `asked`.
@@ -867,7 +859,6 @@ let killSheetInFlight = null;
 const HISTORY_LIVE_MS = 10 * 60 * 1000;
 
 function ageFromHistory(byMatch) {
-  if (!(byMatch instanceof Map)) return;
   ageBehindHistory(byMatch, fightTotals);
   const now = Date.now();
   let alive = false;
@@ -1951,7 +1942,7 @@ function buildScoreBar(mapData, isLive) {
     seg.style.width = `${(vals[i] / total) * 100}%`;
     bar.appendChild(seg);
   });
-  return bar.childElementCount ? bar : null;
+  return bar;
 }
 
 // ---- the map scoreboard ---------------------------------------------
@@ -2010,7 +2001,6 @@ document.addEventListener('keydown', (e) => {
 
 // owner is lower case ('blue'), type the API's ('Tower').
 function focusMatches(spec, id, owner, type) {
-  if (!spec) return false;
   if (spec.ids) return spec.ids.includes(id);
   return (!spec.color || owner === spec.color) && (!spec.type || type === spec.type);
 }
@@ -2199,7 +2189,7 @@ function paintMapBoard(board, match, isLive) {
     const ppt = document.createElement('span');
     ppt.className = 'wvw-board-ppt';
     ppt.textContent = `+${r.ppt}`;
-    ppt.title = `${getTeamName(matchTeamId(match, r.color)) || r.color}`
+    ppt.title = `${getTeamName(matchTeamId(match, r.color))}`
       + ` earns ${r.ppt} points per tick, every map added up`;
     line.appendChild(ppt);
 
@@ -3331,7 +3321,6 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     if (sectorsByType.get(type)) pick(); else pendingSectors.get(type).then(pick);
   };
   const paintNote = () => {
-    if (activeTrigger !== triggerEl) return;
     paintMissed({ matchId: match.id, side, tabs: tabByType, type: current, goTo, spot: spotlight, repaint: paintNote });
     paintPane();
     if (plotWrap) plotWrap.ringChanged();
@@ -3376,7 +3365,6 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     if (side.style.getPropertyValue('--pane-h') !== `${h}px`) side.style.setProperty('--pane-h', `${h}px`);
   };
   const paintPane = () => {
-    if (activeTrigger !== triggerEl) return;
     // Nothing picked (a map tab change throws the pick away): back to the board.
     if (paneOn === 'objective' && !selected) paneOn = 'board';
     const items = recentCaptures(liveMatch);
@@ -3463,7 +3451,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     for (const m of fresh.maps) if (byType.has(m.type)) byType.set(m.type, m);
     liveMatch = fresh;
     // Outlives the popover, so reopening starts from here.
-    if (freshRecall) freshRecall.data = fresh;
+    freshRecall.data = fresh;
     hotFresh = true;
     recordFightSamples([fresh], asked);
     markHotTab(liveMatch);
@@ -3506,20 +3494,17 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   // skips the tick, and mapCatchUp pulls the moment it is shown again.
   clearInterval(mapPollTimer);
   mapPollTimer = setInterval(() => {
-    if (activeTrigger !== triggerEl) { clearInterval(mapPollTimer); return; }
     if (document.visibilityState === 'hidden') return;
     // A catch-up just ran; this tick would ask again seconds later.
     if (Date.now() - pulledAt < MAP_REFRESH_MS / 2) return;
     pullFresh();
   }, MAP_REFRESH_MS);
   mapCatchUp = () => {
-    if (activeTrigger !== triggerEl) return;
     if (Date.now() - pulledAt >= MAP_REFRESH_MS) pullFresh();
   };
 
   clearInterval(mapTickTimer);
   mapTickTimer = setInterval(() => {
-    if (activeTrigger !== triggerEl) { clearInterval(mapTickTimer); return; }
     tickRi(stage);
     // The kills' silence grows by the second as the score's age does: the
     // swords, the badge and the corner are judged again together.
@@ -3728,7 +3713,6 @@ function newestBodyOf(match) {
 
 function paintMapBadge(btn) {
   const info = tierMapButtons.get(btn);
-  if (!info) return;
   const { regionName, tierNum } = info;
   const match = newestBodyOf(info.match);
   const types = MAP_PANEL_ORDER.filter((t) => (match.maps || []).some((m) => m.type === t));

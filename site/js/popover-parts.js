@@ -37,7 +37,7 @@ function popSection(title, cells) {
   const el = document.createElement('div');
   el.className = 'pop-section';
   el.appendChild(popCell('pop-section-title', title));
-  for (const cell of cells || []) el.appendChild(cell);
+  for (const cell of cells) el.appendChild(cell);
   return el;
 }
 
@@ -67,7 +67,7 @@ function popBarRow(label, labelClass, fraction, value, pct, fillClass) {
   const track = document.createElement('span');
   track.className = 'pop-bar-track';
   const fill = document.createElement('span');
-  fill.className = `pop-bar-fill ${fillClass || ''}`.trim();
+  fill.className = `pop-bar-fill ${fillClass}`;
   fill.style.width = `${Math.max(0, Math.min(1, fraction)) * 100}%`;
   track.appendChild(fill);
   const v = document.createElement('span');
@@ -76,12 +76,10 @@ function popBarRow(label, labelClass, fraction, value, pct, fillClass) {
   row.appendChild(l);
   row.appendChild(track);
   row.appendChild(v);
-  if (pct !== undefined) {
-    const pc = document.createElement('span');
-    pc.className = 'pop-bar-pct';
-    pc.textContent = pct;
-    row.appendChild(pc);
-  }
+  const pc = document.createElement('span');
+  pc.className = 'pop-bar-pct';
+  pc.textContent = pct;
+  row.appendChild(pc);
   return row;
 }
 
