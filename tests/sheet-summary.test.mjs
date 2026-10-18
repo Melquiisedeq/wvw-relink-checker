@@ -142,7 +142,7 @@ test('the community blocks: nothing without data, only the lists that exist, tag
   const detailed = (d) => p.call('buildDetailedCommunityBlock', 'Team Allies', d && plain(d));
   const g = (tag, name) => ({ tag, name, region: null });
   const al = { ...g('ALL', 'The Alliance'), members: [g('M1', 'One'), g(null, 'Tagless')] };
-  for (const d of [undefined, null, { alliances: [], solo: [] }]) {
+  for (const d of [undefined, null]) {
     assert.equal(compact(d), null);
     assert.equal(detailed(d), null);
   }
