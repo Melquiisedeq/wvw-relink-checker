@@ -21,6 +21,21 @@ export async function fail(page, wvw, re, status = 503) {
   return state;
 }
 
+// Holds every read of one address until the returned function is called, then the
+// recording answers. release.reads counts the reads that reached it.
+export async function hold(page, url) {
+  let go;
+  const gate = new Promise(ok => { go = ok; });
+  const release = () => go();
+  release.reads = 0;
+  await page.route(url, async route => {
+    release.reads++;
+    await gate;
+    await route.fallback();
+  });
+  return release;
+}
+
 // Answers `body` (JSON) to one address instead of the recording, counting the reads.
 export async function answer(page, url, body) {
   const state = { reads: 0, on: true, off() { state.on = false; } };

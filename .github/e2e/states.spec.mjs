@@ -4,7 +4,7 @@
 // page there with the clock (page.clock) or with a read it holds, and asserts
 // what a visitor sees at the end, not that the code was passed.
 import { test, expect } from './support/fixtures.mjs';
-import { answer } from './support/faults.mjs';
+import { answer, hold } from './support/faults.mjs';
 import { check, firstTier, frame, keptMatch, later, load, openMap, search } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
@@ -238,14 +238,13 @@ test.describe('the tick of an open map', () => {
 
   // The map of a tier whose button wears the swords, opened a couple of minutes after the page
   // (a body that fresh would mark the swords on opening).
-  async function opening(page, wvw, hold) {
+  async function opening(page, wvw, holding) {
     await load(page, wvw);
     const tier = await firstTier(page, page.locator('.tier-map-btn:has(.tier-map-badge)').first());
     await page.clock.setSystemTime(await wvw.now() + 2 * 60 * 1000);
     let release = () => {};
-    if (hold) {
-      const held = new Promise(r => { release = r; });
-      await page.route(tier.url, async route => { await held; await route.fallback(); });
+    if (holding) {
+      release = await hold(page, tier.url);
       await pause(page, wvw);
     }
     await tier.button.click();
