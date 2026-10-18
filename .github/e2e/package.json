@@ -4,6 +4,7 @@
   "description": "Browser tests for the page in site/. The site itself has no dependencies; this folder is the only one.",
   "scripts": {
     "test": "playwright test",
+    "test:10x": "playwright test --repeat-each=10",
     "coverage": "node support/coverage.mjs run",
     "coverage:write": "node support/coverage.mjs run-write",
     "coverage:sweep": "node support/coverage.mjs sweep-run"
