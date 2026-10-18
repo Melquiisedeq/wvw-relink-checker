@@ -7,16 +7,43 @@
 //
 //   const down = fail(page, wvw, /^https:\/\/api\.guildwars2\.com\//);
 //   ... down.reads; down.off();
-export async function fail(page, wvw, re, status = 503) {
+// Options: retryAfter, the header's value (default '1', which a page on another
+// origin cannot read; given, the answer also exposes it, as a server that wants it
+// read would); first, how many reads of each address fail before the recording
+// answers (default: all, until off()).
+export async function fail(page, wvw, re, status = 503, { retryAfter, first = Infinity } = {}) {
   const state = { reads: 0, on: true, off() { state.on = false; } };
+  const seen = new Map();
   if (re instanceof RegExp) wvw.allowLog(re);
   await page.route(re, async route => {
     if (!state.on || route.request().method() !== 'GET') return route.fallback();
+    const url = route.request().url(), n = seen.get(url) || 0;
+    if (n >= first) return route.fallback();
+    seen.set(url, n + 1);
     state.reads++;
     await route.fulfill({
       status, body: '{"error":"on purpose"}',
-      headers: { 'Content-Type': 'application/json', 'Retry-After': '1', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' },
+      headers: { 'Content-Type': 'application/json', 'Retry-After': retryAfter ?? '1', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store',
+        ...(retryAfter === undefined ? {} : { 'Access-Control-Expose-Headers': 'Retry-After' }) },
     });
+  });
+  return state;
+}
+
+// The network dropping: every GET whose address matches is cut off without an
+// answer (the browser's "failed to fetch"), `first` of each address or all
+// until off(). The address is the test's own RegExp, its log declared expected.
+export async function abort(page, wvw, re, { first = Infinity } = {}) {
+  const state = { reads: 0, on: true, off() { state.on = false; } };
+  const seen = new Map();
+  wvw.allowLog(re);
+  await page.route(re, async route => {
+    if (!state.on || route.request().method() !== 'GET') return route.fallback();
+    const url = route.request().url(), n = seen.get(url) || 0;
+    if (n >= first) return route.fallback();
+    seen.set(url, n + 1);
+    state.reads++;
+    await route.abort('failed');
   });
   return state;
 }

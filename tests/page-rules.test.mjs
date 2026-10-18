@@ -476,3 +476,22 @@ test('fetchTimers: a lockout date that does not parse is no lockout (js/relink.j
   await page.run('fetchTimers()');
   assert.equal(page.run('lockoutTime'), null);
 });
+
+test('retryAfterMs: seconds, an HTTP date, the cap, and anything unusable (js/api.js)', () => {
+  const page = fresh();
+  const ms = (header) => page.call('retryAfterMs', header);
+  const FALLBACK = 1500, CAP = 30000;
+  assert.equal(ms('7'), 7000, 'seconds');
+  assert.equal(ms('2.5'), 2500, 'fractions of a second');
+  assert.equal(ms('30'), CAP, 'exactly the cap');
+  assert.equal(ms('3600'), CAP, 'a delay nobody sits through');
+  // An HTTP date has whole seconds: the delay is the date minus the page's clock.
+  const whole = Math.floor(recordedAt / 1000) * 1000;
+  const at = (offset) => new Date(whole + offset).toUTCString();
+  assert.equal(ms(at(12000)), whole + 12000 - recordedAt, 'an HTTP date, against the page clock');
+  assert.equal(ms(at(10 * 60000)), CAP, 'a date far ahead');
+  assert.equal(ms(at(-5000)), FALLBACK, 'a date in the past');
+  for (const bad of [null, undefined, '', ' ', '0', '-3', 'soon', 'Infinity', 'NaN', '1e999', 'Thu, 99 Foo 2026']) {
+    assert.equal(ms(bad), FALLBACK, `${JSON.stringify(bad)} is no delay`);
+  }
+});
