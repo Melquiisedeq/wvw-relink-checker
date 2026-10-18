@@ -671,3 +671,41 @@ test('retryAfterMs: seconds, an HTTP date, the cap, and anything unusable (js/ap
     assert.equal(ms(bad), FALLBACK, `${JSON.stringify(bad)} is no delay`);
   }
 });
+
+test('missedSpan: a suffix shared by both times is written once, different ones twice, none in 24 h (js/maps.js)', () => {
+  const page = fresh();
+  // The clock face is the test's: the time is the number of minutes, written
+  // the way each locale writes it, so the machine's locale decides nothing.
+  const face = (kind) => `Date.prototype.toLocaleTimeString = function () {
+    const m = Math.floor(this.getTime() / 60000) % 1440, h = Math.floor(m / 60), mm = String(m % 60).padStart(2, '0');
+    if (${JSON.stringify(kind)} === '24') return String(h).padStart(2, '0') + ':' + mm;
+    return String(h % 12 || 12).padStart(2, '0') + ':' + mm + (h < 12 ? ' AM' : ' PM');
+  }`;
+  const at = (h, m) => (h * 60 + m) * MIN;
+  const span = (a, b) => page.call('missedSpan', a, b);
+  page.run(face('12'));
+  assert.equal(span(at(17, 3), at(17, 33)), '05:03–05:33 PM', 'both PM');
+  assert.equal(span(at(9, 3), at(9, 33)), '09:03–09:33 AM', 'both AM');
+  assert.equal(span(at(11, 50), at(12, 10)), '11:50 AM–12:10 PM', 'AM to PM');
+  assert.equal(span(at(23, 50), at(0, 10)), '11:50 PM–12:10 AM', 'PM to AM');
+  page.run(face('24'));
+  assert.equal(span(at(17, 3), at(17, 33)), '17:03–17:33', '24 h, no suffix');
+});
+
+test('missedShortName: the chip name of an objective (js/maps.js)', () => {
+  const page = fresh();
+  const named = (name) => {
+    page.set('objectiveCatalogue', new Map([['1-1', { name }]]));
+    return page.call('missedShortName', '1-1');
+  };
+  assert.equal(named('Stonemist Castle'), 'SM');
+  assert.equal(named('Overgrown Fairground Bay'), 'Bay');
+  assert.equal(named("Wildcreek Hills"), 'Hills');
+  assert.equal(named('Garrison'), 'Garrison');
+  assert.equal(named('Short Name'), 'Short Name', 'twelve characters or fewer stay whole');
+  assert.equal(named('Temple of Lost Prayers'), 'Temple of', 'Temple keeps two words');
+  assert.equal(named('The Godsword Fortress Keep'), 'The Godsword', 'The keeps two words');
+  assert.equal(named('Rampart Bridgehead Outpost'), 'Rampart', 'otherwise the first word');
+  page.set('objectiveCatalogue', new Map());
+  assert.equal(page.call('missedShortName', '9-9'), '9-9', 'an id the catalogue lacks stands for itself');
+});

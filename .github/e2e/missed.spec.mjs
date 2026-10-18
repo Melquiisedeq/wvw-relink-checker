@@ -13,7 +13,7 @@
 // another) and a known number of kills more.
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
-import { phone, load, firstTier, openMap, later, keptMatch } from './support/steps.mjs';
+import { phone, load, firstTier, openMap, later, keptMatch, iso } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
 
@@ -353,5 +353,103 @@ test.describe('what happened', () => {
     await page.waitForTimeout(1500); // the popover's one-second repaint
     expect(await page.evaluate(([sel, id]) => !!document.querySelector(sel) || missedNotes.has(id), [BLOCK, g.tier.id]),
       'a body with only the score up raised the block').toBe(false);
+  });
+});
+
+// ---- The block, other shapes ------------------------------------------------
+// The same gap as above, made of what the test says: `flips` objectives taken
+// on the open map (the first one from nobody when `fromNeutral`), `kills` more
+// kills on it. The flips are stamped 60 s after the match began, or 31 s from now with
+// `stampNow` (the page then sees them as just made); `noHistory` clears the kept readings
+// of the old total before the new body is served.
+async function scene(page, wvw, { flips = 1, kills = 0, fromNeutral = false, stampNow = false, noHistory = false }) {
+  await load(page, wvw);
+  const tier = await firstTier(page);
+  const before = await keptMatch(page, tier.id);
+  await openMap(page, wvw, tier.button);
+  const here = await page.locator('.info-popover .wvw-tab.is-active').getAttribute('data-type');
+  const drawn = await page.evaluate(() => [...document.querySelectorAll('.info-popover .wvw-marker')].map(g => g.dataset.obj));
+  const held = (before.maps.find(m => m.type === here).objectives)
+    .filter(o => ['Camp', 'Tower', 'Keep'].includes(o.type) && OWNERS.includes(o.owner) && /^\d+-\d+$/.test(o.id) && drawn.includes(o.id));
+  expect(held.length, `objectives held and drawn on ${here}`).toBeGreaterThanOrEqual(flips);
+  const taken = held.slice(0, flips).map(o => o.id);
+  if (fromNeutral) for (const o of before.maps.find(m => m.type === here).objectives) if (o.id === taken[0]) o.owner = 'Neutral';
+  const same = await answer(page, tier.url, before);
+  for (let i = 0; i < 4; i++) await later(page, wvw, 100000);
+  const after = JSON.parse(JSON.stringify(before));
+  const at = stampNow ? iso(await wvw.now() + 31000) : iso(Date.parse(before.start_time) + 60000);
+  const map = after.maps.find(m => m.type === here);
+  for (const o of map.objectives) if (taken.includes(o.id)) {
+    o.owner = fromNeutral && o.id === taken[0] ? 'Red' : OWNERS[(OWNERS.indexOf(o.owner) + 1) % 3];
+    o.last_flipped = at;
+  }
+  if (kills) { map.kills.red += kills; after.kills.red += kills; }
+  after.scores.red += 1;
+  same.off();
+  // No reading of the old total kept: the period's start can only be bounded.
+  if (noHistory) await page.evaluate(() => { localStorage.removeItem(FIGHT_KEY); killSheet = null; });
+  await answer(page, tier.url, after);
+  await later(page, wvw, 31000);
+  await expect(page.locator(BLOCK)).toBeAttached();
+  return { here, taken, tier };
+}
+
+test.describe('what happened, other shapes', () => {
+  const kills = page => page.locator(`${BLOCK} .wvw-missed-kills`);
+
+  test('objectives taken and no kills: the block shows the chip and no kills line', async ({ page, wvw }) => {
+    const s = await scene(page, wvw, { flips: 1 });
+    await expect(page.locator(`${BLOCK} .wvw-chip[data-obj="${s.taken[0]}"]`)).toBeAttached();
+    await expect(kills(page)).toHaveCount(0);
+    await expect(page.locator(`${BLOCK} .wvw-missed-count`)).toHaveText('1');
+    await expect(page.locator(`${BLOCK} .wvw-missed-count`)).toHaveAttribute('aria-label', '1 objective changed hands');
+  });
+
+  test('one kill and nothing taken: the block says "1 kill", singular', async ({ page, wvw }) => {
+    await scene(page, wvw, { flips: 0, kills: 1 });
+    await expect(kills(page)).toHaveCount(1);
+    await expect(kills(page)).toHaveText('1 kill');
+    await expect(kills(page)).toHaveAttribute('aria-label', /^1 kill on /);
+    await expect(page.locator(`${BLOCK} .wvw-chip`)).toHaveCount(0);
+    await expect(page.locator(`${BLOCK} .wvw-missed-count`)).toHaveCount(0);
+  });
+
+  test('two kills: "2 kills", plural', async ({ page, wvw }) => {
+    await scene(page, wvw, { flips: 1, kills: 2 });
+    await expect(kills(page)).toHaveText('2 kills');
+    await expect(kills(page)).toHaveAttribute('aria-label', /^2 kills on /);
+  });
+
+  for (const [flips, shown, more] of [[4, 4, 0], [5, 4, 1], [6, 4, 2]]) {
+    test(`${flips} objectives taken on one map: ${shown} chips${more ? `, a +${more} button` : ', no button'}`, async ({ page, wvw }) => {
+      await scene(page, wvw, { flips });
+      await expect(page.locator(`${BLOCK} .wvw-chip[data-obj]`)).toHaveCount(shown);
+      const button = page.locator(`${BLOCK} .wvw-chip-more`);
+      if (!more) { await expect(button).toHaveCount(0); return; }
+      await expect(button).toHaveText(`+${more}`);
+      await expect(button).toHaveAttribute('aria-label', new RegExp(`^Show ${more} more on `));
+      await button.click();
+      await expect(page.locator(`${BLOCK} .wvw-chip[data-obj]`)).toHaveCount(flips);
+      await expect(button).toHaveCount(0);
+    });
+  }
+
+  test('taken from nobody: the chip names Neutral as who held it', async ({ page, wvw }) => {
+    const s = await scene(page, wvw, { flips: 2, fromNeutral: true });
+    const chip = page.locator(`${BLOCK} .wvw-chip[data-obj="${s.taken[0]}"]`);
+    await expect(chip).toHaveAttribute('title', /: taken by .+ from Neutral$/);
+    await expect(chip).toHaveAttribute('aria-label', /from Neutral$/);
+    await expect(page.locator(`${BLOCK} .wvw-chip[data-obj="${s.taken[1]}"]`)).not.toHaveAttribute('title', /from Neutral$/);
+  });
+
+  test('flips only just made, no reading of the old total kept: "since before HH:MM"', async ({ page, wvw }) => {
+    await scene(page, wvw, { flips: 1, kills: 5, stampNow: true, noHistory: true });
+    await expect(page.locator(`${BLOCK} .wvw-missed-time`)).toHaveText(/^since before \d{1,2}:\d{2}/);
+  });
+
+  test('flips from before the gap: the period is a range, never "since before"', async ({ page, wvw }) => {
+    await scene(page, wvw, { flips: 1, kills: 5 });
+    const time = await page.locator(`${BLOCK} .wvw-missed-time`).textContent();
+    expect(time, 'the period').toMatch(/^\d{1,2}:\d{2}.*–.*\d{1,2}:\d{2}/);
   });
 });
