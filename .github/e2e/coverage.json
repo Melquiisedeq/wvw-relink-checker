@@ -1,7 +1,7 @@
 {
   "site/js/api.js": {
-    "lines": 86.8,
-    "branches": 85.7
+    "lines": 88.6,
+    "branches": 87.7
   },
   "site/js/boot.js": {
     "lines": 90.7,
@@ -28,8 +28,8 @@
     "branches": 82.3
   },
   "site/js/panels.js": {
-    "lines": 92.4,
-    "branches": 80.3
+    "lines": 92.7,
+    "branches": 81.1
   },
   "site/js/popover-parts.js": {
     "lines": 98,
@@ -44,20 +44,20 @@
     "branches": 75
   },
   "site/js/relink.js": {
-    "lines": 86.5,
-    "branches": 85.3
+    "lines": 95.2,
+    "branches": 94.6
   },
   "site/js/run.js": {
     "lines": 70.5,
     "branches": 59.1
   },
   "site/js/sheet.js": {
-    "lines": 84.1,
-    "branches": 79.7
+    "lines": 86.7,
+    "branches": 81.3
   },
   "site/js/standings.js": {
-    "lines": 87.8,
-    "branches": 78.8
+    "lines": 93.2,
+    "branches": 85
   },
   "site/js/stat-popovers.js": {
     "lines": 93,
