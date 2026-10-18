@@ -829,6 +829,10 @@ function renderStandingSide(match, color, rankByColor, leaders, leaderScore) {
   const statsLine = buildStandingStats(match, color,
     { kills, deaths, kd, skirmish, serverName, leaders }, 'standing-side-stats');
 
+  row.appendChild(top);
+  row.appendChild(statsLine);
+
+  // Flashed only now: the pulse looks for the card its number sits in.
   // Skirmish is always the first stat when it exists, so its value
   // element is the first .stat-value in the line.
   if (prev) {
@@ -837,9 +841,6 @@ function renderStandingSide(match, color, rankByColor, leaders, leaderScore) {
       flashValue(statsLine.querySelector('.stat-value'), skirmish - prev.skirmish);
     }
   }
-
-  row.appendChild(top);
-  row.appendChild(statsLine);
 
   if (skirmish !== null && leaderScore !== null) {
     row.appendChild(buildSkirmishBar(color, skirmish, leaderScore, prev ? prev.pct : null));

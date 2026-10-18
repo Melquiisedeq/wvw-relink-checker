@@ -5,6 +5,7 @@
 // what a visitor sees at the end, not that the code was passed.
 import { test, expect } from './support/fixtures.mjs';
 import { answer, hold } from './support/faults.mjs';
+import { FOCUS, playing } from './support/scenarios.mjs';
 import { check, firstTier, frame, keptMatch, later, load, openMap, search } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
@@ -301,5 +302,36 @@ test.describe('the tick of an open map', () => {
     await expect(ago(page)).toHaveClass(/is-stale/);
     await expect(page.locator(`${POP} .wvw-hud-l`)).toContainText('⚠ data up to');
     await wvw.settle();
+  });
+});
+
+// A refresh that moves one side's VP pulses the edge of that side's card and no
+// other. Nothing removes the class (js/standings.js), so it is read right after
+// the refresh, with no clock to race. The match is the playing one:
+// the recording's own week is over, and its cards show last week's line-up.
+test.describe('a side\'s VP moves on a refresh', () => {
+  test.use({ timeline: playing(10) });
+  test('that side\'s card pulses and the others do not', async ({ page, wvw }) => {
+    await page.goto(wvw.url);
+    const sides = page.locator(`.standing-match[data-match-id="${FOCUS}"] .standing-side`);
+    await expect(sides).toHaveCount(3);
+    await wvw.settle();
+    const pulsing = () => sides.evaluateAll(els => els.filter(e => e.classList.contains('side-pulse'))
+      .map(e => ['red', 'blue', 'green'].find(c => e.classList.contains('side-' + c))));
+    const url = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
+    const list = await page.evaluate(async u => (await fetch(u)).json(), url);
+    const mine = list.find(m => m.id === FOCUS);
+    mine.victory_points.red += 7;
+    await page.route(/^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches\?ids=/, route => {
+      const want = new URL(route.request().url()).searchParams.get('ids');
+      const ids = want === 'all' ? null : want.split(',');
+      return route.fulfill({ status: 200, json: list.filter(m => !ids || ids.includes(m.id)),
+        headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } });
+    });
+    expect(await pulsing(), 'cards pulsing before the refresh').toEqual([]);
+    await page.evaluate(() => loadStandings());
+    await expect(page.locator(`.standing-match[data-match-id="${FOCUS}"] .side-red .standing-vp .stat-value`),
+      'red VP after the refresh').toHaveText(mine.victory_points.red.toLocaleString('en-US'));
+    expect(await pulsing(), 'the sides whose card pulsed after red VP moved').toEqual(['red']);
   });
 });
