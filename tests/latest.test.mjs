@@ -169,6 +169,13 @@ test('a bad summary refuses the whole message, and not even the claim is written
     ['fractional scores', () => bad({ scores: [1.5, 2, 3] }), 422],
     ['raw over 256 KB', () => bad({ raw: 256 * 1024 + 1 }), 422],
     ['a slice over 16 KB (a gzip bomb has to be small)', () => body([m('1-1', { gz: Buffer.alloc(16 * 1024 + 1) })]), 422],
+    ['a null match', () => body([good], { matches: [null] }), 422],
+    ['a start with a millisecond', () => bad({ start: NA_START + 1 }), 422],
+    ['scores of two', () => bad({ scores: [1, 2] }), 422],
+    ['a negative kill count', () => bad({ kills: [-1, 0, 0, 0] }), 422],
+    ['raw of zero', () => bad({ raw: 0 }), 422],
+    ['a sha256 in capitals', () => bad({ sha256: good.entry.sha256.toUpperCase() }), 422],
+    ['a sha256 one character short', () => bad({ sha256: good.entry.sha256.slice(1) }), 422],
     ['bytes below a gzip header', () => bad({ bytes: 17 }), 422],
     ['bytes that do not add up', () => bad({ bytes: good.entry.bytes + 1 }), 422],
     ['a sha256 that does not match: body swapped, summary kept', () => {
