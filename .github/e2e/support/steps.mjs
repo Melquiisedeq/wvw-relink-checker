@@ -131,3 +131,23 @@ export const frame = page => page.evaluate(() => new Promise(r => requestAnimati
 
 // An ISO time without a trailing .000; other milliseconds stay (support/gw2.mjs has the game's whole-second form).
 export const iso = t => new Date(t).toISOString().replace('.000Z', 'Z');
+
+// Tab from where focus is until `selector` holds the focus: a person's way there.
+export async function tabTo(page, selector, what) {
+  for (let i = 0; i < 80; i++) {
+    if (await page.evaluate(sel => !!document.activeElement?.matches(sel), selector)) return;
+    await page.keyboard.press('Tab');
+  }
+  throw new Error(`Tab never reached ${what}`);
+}
+
+// The first tier's map open at `width` (a phone's screen under 600), its board drawn and the page quiet; returns the tier.
+export async function boardOpen(page, wvw, width = 1280) {
+  await load(page, wvw);
+  if (width < 600) await phone(page, width);
+  const tier = await firstTier(page);
+  await openMap(page, wvw, tier.button);
+  await expect(page.locator('.info-popover .wvw-board-row[data-focus-color]').first()).toBeAttached();
+  await wvw.settle();
+  return tier;
+}
