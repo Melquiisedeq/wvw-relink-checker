@@ -135,7 +135,6 @@ const GUILD_STORE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GUILD_STORE_MAX = 400;
 
 let guildStore = null;
-let guildStoreDirty = false;
 let guildStoreTimer = null;
 
 function guildStoreRead() {
@@ -160,8 +159,6 @@ function guildStoreFlush() {
   if (guildStoreTimer) return;
   guildStoreTimer = setTimeout(() => {
     guildStoreTimer = null;
-    if (!guildStoreDirty || !guildStore) return;
-    guildStoreDirty = false;
     try {
       // Newest first, so a trim drops whatever has gone longest unseen.
       const rows = [...guildStore.entries()].sort((a, b) => b[1].at - a[1].at);
@@ -200,7 +197,6 @@ async function getGuildInfo(guildId, allowStored = false) {
     guildNameCache.set(guildId, { ok: true, data: result });
     guildStoreRead().set(guildId,
       { n: result.name, t: result.tag, e: result.emblem, at: Date.now() });
-    guildStoreDirty = true;
     guildStoreFlush();
     return result;
   } catch (err) {
@@ -437,7 +433,7 @@ function weekHeldIds(region) {
 // True when this browser saw a later week of the match than `body`. An
 // unreadable start_time cannot be judged, and the body is taken.
 function weekAhead(body) {
-  const v = isMatchBody(body) ? weekHeld(body.id) : null;
+  const v = weekHeld(body.id);
   const start = v ? Date.parse(body.start_time) : NaN;
   return Number.isFinite(start) && start < v.s;
 }
@@ -472,7 +468,6 @@ function weekLineupOfTeam(teamId) {
 // `byMatch`: Map matchId -> samples [{at}] oldest first. Returns how many
 // changed.
 function ageFirstSightFromHistory(byMatch, staleMs) {
-  if (!(byMatch instanceof Map)) return 0;
   const now = Date.now();
   let n = 0;
   for (const [id, kept] of newestMatches) {
@@ -495,7 +490,6 @@ function ageFirstSightFromHistory(byMatch, staleMs) {
 // no live history, unlike the above: the line proves it on its own.
 // `totalsOf(match)`: kills per map type, the keys of the lines' `n`.
 function ageBehindHistory(byMatch, totalsOf) {
-  if (!(byMatch instanceof Map)) return 0;
   let n = 0;
   for (const [id, kept] of newestMatches) {
     if (kept.rose) continue;

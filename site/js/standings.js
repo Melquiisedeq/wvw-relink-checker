@@ -146,7 +146,7 @@ function buildStandingsStale(match, yoursByColor) {
 // Flashes a number that just changed and floats the delta above it, so a
 // refresh reads as movement rather than a silent swap.
 function flashValue(el, delta) {
-  if (!el || !Number.isFinite(delta) || delta === 0) return;
+  if (!Number.isFinite(delta)) return;
 
   el.classList.remove('value-changed');
   void el.offsetWidth; // restart the animation from zero
@@ -352,7 +352,7 @@ function bannerHalves() {
     if (el.classList.contains('region')) {
       region = el.textContent.trim();
       if (region === 'NA' || region === 'EU') out.set(region, el);
-    } else if (region === 'NA' || region === 'EU') {
+    } else {
       out.set(region + ' time', el);
     }
   }
@@ -370,7 +370,7 @@ function swapRails(btn) {
   try { localStorage.setItem(RAIL_FIRST_KEY, next); } catch {}
   placeRails();
   updateRelinkBanner();
-  if (btn) btn.focus({ preventScroll: true });
+  btn.focus({ preventScroll: true });
 
   for (const r of rails) {
     const was = railsWere.get(r);
@@ -462,8 +462,7 @@ function retryAlertOf(statusEl) {
   return statusEl.closest('.standings-card').querySelector('.standings-alert');
 }
 function clearRetryAlert(statusEl) {
-  const box = retryAlertOf(statusEl);
-  if (box) box.textContent = '';
+  retryAlertOf(statusEl).textContent = '';
 }
 
 function paintRetryStatus(statusEl, spoken, visible, busy) {
@@ -725,7 +724,7 @@ async function refreshStandings() {
 // value bright. Used by both the standings rails and the match panel.
 function buildStatsLine(pairs, className) {
   const container = document.createElement('span');
-  if (className) container.className = className;
+  container.className = className;
 
   pairs.forEach(([label, value], i) => {
     if (i > 0) {
@@ -764,8 +763,7 @@ function buildStandingStats(match, color, stats, className) {
   const values = statsLine.querySelectorAll('.stat-value');
 
   if (skirmishIndex !== -1) {
-    const trendBtn = buildSkirmishTrendButton(serverName, match, color);
-    if (trendBtn) values[skirmishIndex].appendChild(trendBtn);
+    values[skirmishIndex].appendChild(buildSkirmishTrendButton(serverName, match, color));
     if (leaders.skirmish === color) markStatLeader(values[skirmishIndex]);
   }
   if (leaders.activity === color) markStatLeader(values[activityIndex]);

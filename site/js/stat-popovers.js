@@ -441,12 +441,6 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
 // Trend icon on the Skirmish stat, opening the score-over-time chart we
 // already built.
 function buildSkirmishTrendButton(serverName, match, color) {
-  const series = getSkirmishSeries(match, color);
-  // One block is enough to open this. The chart inside needs two that
-  // have finished, but it is one panel of several, and the block being
-  // played is the part worth reading in the first hours of a week.
-  if (!series.length) return null;
-
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'icon-btn activity-btn';
