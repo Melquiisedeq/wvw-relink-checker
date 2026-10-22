@@ -173,6 +173,8 @@ test.describe('corners by the data clock', () => {
   const scenarios = {
     nine: { top: 20e3, base: 9 * 60e3, add: 70, rose: 0 },
     twenty: { top: 20e3, base: 20 * 60e3, add: 200, rose: 0 },
+    stall19: { top: 20e3, rows: [[19, 0], [7, 360], [0, 570]], rose: 0 },
+    stall25: { top: 20e3, rows: [[25, 0], [7, 540], [0, 750]], rose: 0 },
     gap: { top: 20e3, base: 65 * 60e3, add: 700, rose: 0 },
     gapLate: { top: 40 * 60e3, base: 65 * 60e3, add: 700, rose: 40 * 60e3 },
     gapQuiet: { top: 8 * 60e3, base: 65 * 60e3, add: 30, rose: 0 },
@@ -194,7 +196,10 @@ test.describe('corners by the data clock', () => {
       const T = fightTotals(k.match);
       const row = (age, bonus) => ({ at: now - age, n: Object.fromEntries(KILLS_MAP_ORDER.map(ty => [ty, (T[ty] || 0) + (ty === 'Center' ? bonus : 0)])) });
       const list = [];
-      if (!sc.none) {
+      if (sc.rows) {
+        // A fight of 30 kills a minute with the API silent for the stretch between two rows: [minutes before the newest reading, kills added].
+        for (const [mins, bonus] of sc.rows) list.push(row(sc.top + mins * 60e3, bonus));
+      } else if (!sc.none) {
         list.push(row(sc.top + sc.base, 0));
         if (sc.still) list.push(row(sc.top + sc.still, 0));
         list.push(row(sc.top, sc.add));
@@ -249,17 +254,27 @@ test.describe('corners by the data clock', () => {
         expect(tip, 'the right balloon').toMatch(/^Checked \d+ (s|min) ago: this page asks the game's API every 30 s\. Data from /);
         expect(tip).toContain(`Data from ${want}:`);
       }
-      // No reading 8 to 15 min back: the newest one at least 10 min back, the real span in two lines, no swords.
-      if (['twenty', 'gap', 'gapLate', 'gapQuiet'].includes(name)) {
-        const mins = name === 'twenty' ? 20 : 65;
+      // No reading 8 to 15 min back: the newest one at least 10 min back, the real span in two lines; past 20 min, no swords.
+      if (['stall25', 'gap', 'gapLate', 'gapQuiet'].includes(name)) {
+        const mins = name === 'stall25' ? 25 : 65;
         const late = name === 'gapLate';
         const lead = name === 'gapQuiet' ? 'no new kills since' : 'data up to';
         bad(num && c.small === `kills in ${mins} min` && c.two && c.dim === late
           && new RegExp(`^${late ? '\\u26a0\\s' : ''}${lead} \\S+( \\S+)?$`).test(c.line2),
         `a base ${mins} min back should take two lines, "kills in ${mins} min" over "${late ? '⚠ ' : ''}${lead} HH:MM"`);
-        bad(!c.swords, 'a window over 15 min should light no swords');
+        bad(!c.swords, 'a window over 20 min should light no swords');
         expect(await balloon(page, 'l'), "the long window's balloon")
           .toMatch(/ The window is longer than 10 minutes because the game's API stopped sending data between \S+( \S+)? and \S+( \S+)?\./);
+      }
+      // Up to 20 min the API's gap does not hide the fight: the swords go by the pace per 10 min and the
+      // second line names the gap, the balloon says the same.
+      if (name === 'twenty' || name === 'stall19') {
+        const mins = name === 'twenty' ? 20 : 19;
+        bad(num && c.small === `kills in ${mins} min` && c.two && !c.dim && /^API gap .+–.+$/.test(c.line2),
+          `a window of ${mins} min should take two lines, "kills in ${mins} min" over "API gap HH:MM–HH:MM"`);
+        bad(c.swords, `a fight in a ${mins} min window should light the swords`);
+        expect(await balloon(page, 'l'), "the gap window's balloon")
+          .toMatch(/ The window is longer than 10 minutes because the game's API stopped sending data between \S+( \S+)? and \S+( \S+)?\. The swords count the pace per 10 minutes\.$/);
       }
       if (name === 'late') {
         bad(num && c.small === 'kills in 10 min' && c.two && c.dim && /^⚠\sdata up to \S+( \S+)?$/.test(c.line2), 'stalled data should take two lines, "kills in 10 min" over "⚠ data up to HH:MM", dimmed');

@@ -1007,7 +1007,7 @@ const HOT_FLOOR = 50;      // kills per ten minutes: a real fight, not API noise
 
 function killView(match, types, now = Date.now()) {
   const view = { clock: 0, atLeast: false, silence: 0, prevRun: Infinity, rates: null, pace: 0,
-    strange: false, frozen: false, hot: null, noWindow: 'data', long: false, gap: null };
+    strange: false, frozen: false, hot: null, noWindow: 'data', long: false, longOk: false, gap: null };
   // Nothing is claimed on a match that is not running: between the reset
   // and the API publishing the new one, the rest of the popover is neutral.
   if (!match || !matchIsLive(match)) return view;
@@ -1055,6 +1055,8 @@ function killView(match, types, now = Date.now()) {
   } else {
     const span = view.clock - base.at;
     view.long = span > WINDOW_MAX_MS;
+    // A long window still counts for the swords up to the catch-up limit: the rates are per 10 min.
+    view.longOk = view.long && span <= KILLS_CATCHUP_MAX_MS;
     const next = list.find((s) => s.at > base.at);
     view.gap = { from: base.at, to: next ? Math.min(next.at, view.clock) : view.clock };
     const per = new Map();
@@ -1075,7 +1077,7 @@ function killView(match, types, now = Date.now()) {
   }
 
   const catching = view.prevRun > KILLS_CATCHUP_MS;
-  if (view.rates && !view.long && !view.strange && !view.frozen && view.silence <= HOT_WANT_MS
+  if (view.rates && (!view.long || view.longOk) && !view.strange && !view.frozen && view.silence <= HOT_WANT_MS
     && (!catching || view.prevRun <= KILLS_CATCHUP_MAX_MS)) {
     // After a stall the kills are spread over all of it, the window or the stall, whichever is longer.
     const spread = catching ? view.rates.span / Math.max(view.rates.span, view.prevRun) : 1;
@@ -1246,6 +1248,7 @@ function buildMapCorners(wrap, matchId) {
     const old = !!line && !!view.clock && (odd || view.silence > KILLS_QUIET_MS);
     // A window over 15 min takes two lines too: the API sent nothing for a while.
     const two = old || (!!line && view.long);
+    const hole = !!line && view.longOk && !old;
     put(big, line ? String(line.kills) : '–');
     smallTail.hidden = !line;
     left.classList.toggle('is-dim', odd);
@@ -1255,9 +1258,12 @@ function buildMapCorners(wrap, matchId) {
     put(smallMins, line ? String(line.mins) : '');
     put(smallLong, line ? ' min' : '');
     put(smallShort, line ? 'm' : '');
-    put(lead, two ? (old && !odd ? 'no new kills since ' : 'data up to ') : '');
+    put(lead, hole ? 'API gap ' : two ? (old && !odd ? 'no new kills since ' : 'data up to ') : '');
     put(smallMark, odd ? '\u26a0\u00a0' : '');
-    if (two) {
+    if (hole) {
+      put(smallTime, `${hhmm(view.gap.from)}\u2013${hhmm(view.gap.to)}`);
+      smallTime.removeAttribute('datetime');
+    } else if (two) {
       put(smallTime, hhmm(view.clock));
       smallTime.dateTime = new Date(view.clock).toISOString();
     } else {
@@ -1274,6 +1280,7 @@ function buildMapCorners(wrap, matchId) {
         ? ` The last jump came after the game's API sent nothing for ${Math.round(view.prevRun / 60000)} min, so when those kills happened is unknown; it lights no swords.` : '';
       if (view.long) {
         text = `${line.kills} kills in the ${line.mins} min up to ${t}. The window is longer than 10 minutes because the game's API stopped sending data between ${hhmm(view.gap.from)} and ${hhmm(view.gap.to)}.`
+          + (hole ? ' The swords count the pace per 10 minutes.' : '')
           + (odd ? ` The game's API has been behind since ${t}, so this is not now.` : old ? ` No new kills since ${t}, as on a quiet map.` : '') + tail;
       } else if (odd) {
         text = `${line.kills} kills in the ${line.mins} min up to ${t}. The game's API has been behind since ${t}, so this is not now.${tail}`;
