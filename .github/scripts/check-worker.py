@@ -93,11 +93,25 @@ def is_int(n):
 kills_age = [None]
 
 
+game_down = []
+
+
 def game_api_down():
     """True when the game's own API does not answer (retried); asked only once
-    a source is already late, since kills.gs has nothing to write without it."""
-    data, why = get_json(GAME_MATCHES)
-    return why is not None or not isinstance(data, list) or not data
+    a source is already late, since neither kills.gs nor the Supabase readers
+    have anything to write without it."""
+    if not game_down:
+        data, why = get_json(GAME_MATCHES)
+        game_down.append(why is not None or not isinstance(data, list) or not data)
+    return game_down[0]
+
+
+def supabase_late(what, otherwise):
+    """`what` plus its cause: the game API when it is down, else `otherwise`."""
+    if game_api_down():
+        return (what + ' The game API is not answering, so the Supabase readers '
+                'have nothing to deliver. This clears when the game API is back.')
+    return what + ' ' + otherwise
 
 
 def check_feeds(problems, notes):
@@ -139,10 +153,10 @@ def check_latest_feeds(data, now, problems, notes):
             problems.append('/api/health has never heard from %s. Check the '
                             'Supabase reader and its secret.' % source)
         elif now - at > LATEST_STALE:
-            problems.append(
-                '%s last delivered %d minutes ago (limit %d). Check the '
-                'Supabase reader; a frozen game API passes on its own.'
-                % (source, (now - at) // 60, LATEST_STALE // 60))
+            problems.append(supabase_late(
+                '%s last delivered %d minutes ago (limit %d).'
+                % (source, (now - at) // 60, LATEST_STALE // 60),
+                'Check the Supabase reader; a frozen game API passes on its own.'))
         else:
             notes.append('%-34s %d min ago' % (source + ' last delivered', (now - at) // 60))
 
@@ -189,9 +203,10 @@ def check_latest(problems, notes):
         '%s %d' % kv for kv in sorted(counts.items()))))
     age = now - max(v['at'] for v in data.values())
     if age > LATEST_STALE:
-        problems.append('/api/latest/summary: newest match is %d minutes old '
-                        '(limit %d). Check the Supabase readers.'
-                        % (age // 60, LATEST_STALE // 60))
+        problems.append(supabase_late(
+            '/api/latest/summary: newest match is %d minutes old (limit %d).'
+            % (age // 60, LATEST_STALE // 60),
+            'Check the Supabase readers.'))
     game = game_scores()
     if game is None:
         notes.append('game API unreadable: the secret-theft alarm did not run')
