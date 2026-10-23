@@ -3,6 +3,7 @@
 //   state                                  how
 //   API frozen 40 min, then back           frozen(40), the map opened four times
 //   two server groups alternating          twoPools(10, 30)
+//   reload, one group behind               firstReadBehind(10, 30) and twoPools(10, 30), reload()
 //   tab hidden 2 h, then back              missed(120, 6), hidden() / visible()
 //   laptop waking after 30 min             playing(40), wake(): every due timer once
 //   map open while the API is down         apiDown(12), the map never closed
@@ -19,7 +20,7 @@
 // holds every flip, its count is the flips', its kills are the timeline's.
 import { test, expect } from './support/fixtures.mjs';
 import { gw2 } from './support/gw2.mjs';
-import { FOCUS, HOUR, MIN, apiDown, frozen, hidden, missed, playing, twoPools, visible, wake } from './support/scenarios.mjs';
+import { FOCUS, HOUR, MIN, apiDown, firstReadBehind, frozen, hidden, missed, playing, twoPools, visible, wake } from './support/scenarios.mjs';
 
 const STALE_MS = 6 * MIN;
 // How long the page may take to read the API again: the open map asks every
@@ -162,6 +163,19 @@ function rower(page, wvw) {
       await expect(page.locator(`.standing-match[data-match-id="${FOCUS}"] .standing-side`)).toHaveCount(3);
       await r.check('opened');
     },
+    // F5 a few seconds into the next odd minute, where the older server group
+    // answers (support/gw2.mjs, olderPool); the jump fires no timer, so the
+    // first match read of that minute is the reloaded page's. `check`: false
+    // when the test reads the page itself.
+    async reload(check = true) {
+      const t = await wvw.now() - wvw.recordedAt;
+      const odd = (Math.floor(t / MIN) | 1) + (Math.floor(t / MIN) % 2 ? 2 : 0);
+      await wvw.skew(odd * MIN + 3000 - t);
+      await page.reload();
+      await expect(page.locator(`.standing-match[data-match-id="${FOCUS}"] .standing-side`)).toHaveCount(3);
+      if (check) await r.check('reloaded');
+      else await wvw.settle();
+    },
   };
   return r;
 }
@@ -192,6 +206,51 @@ test.describe('two server groups alternating', () => {
     await r.pass(30, 5, 'alternating');
     const seen = await r.peek('alternating 30 min');
     expect(seen.map.tabs.some(b => b.hot && b.active), 'the state: swords on the open tab').toBe(true);
+  });
+});
+
+// A reload forgets the bodies the page held; this browser's fight log does
+// not. The first read after it lands on the older group, 10 min behind.
+test.describe('reload while one server group is behind', () => {
+  test.describe('a re-read reaches the newer group', () => {
+    test.use({ timeline: firstReadBehind(10, 30) });
+    test('nothing goes back', async ({ page, wvw }) => {
+      const r = rower(page, wvw);
+      await r.load();
+      await r.pass(8, 4, 'alternating');
+      await r.peek('before 8 min');
+      await r.pass(8, 4, 'alternating');
+      await r.peek('before 16 min');
+      await r.reload();
+      const t = await wvw.now() - wvw.recordedAt;
+      expect(Math.floor(t / MIN) % 2, 'the state: the older group answering').toBe(1);
+      await r.peek('reloaded, map opened');
+    });
+  });
+
+  test.describe('every read reaches the older group', () => {
+    test.use({ timeline: twoPools(10, 30) });
+    test('the corner gives the older time, with its warning', async ({ page, wvw }) => {
+      const r = rower(page, wvw);
+      await r.load();
+      await r.pass(8, 4, 'alternating');
+      await r.peek('before 8 min');
+      await r.pass(8, 4, 'alternating');
+      const before = await r.peek('before 16 min');
+      await r.reload(false);
+      await r.open();
+      await wvw.settle();
+      await page.clock.fastForward(1000);
+      const seen = await look(page);
+      const t = seen.now - wvw.recordedAt;
+      expect(Math.floor(t / MIN) % 2, 'the state: the older group answering').toBe(1);
+      const served = wvw.timeline.changedAt(FOCUS, t - 10 * MIN);
+      expect(seen.map.ago, 'the corner after the reload').toMatch(/^⚠/);
+      expect(seen.map.stale, 'the corner marked old').toBe(true);
+      expect(seen.map.at, '"data from" before the time it had before the reload').toBeLessThan(before.map.at);
+      expect(seen.map.at, '"data from" over 6 min back').toBeLessThanOrEqual(seen.now - STALE_MS);
+      expect(seen.map.at, '"data from" not before the body').toBeGreaterThanOrEqual(served);
+    });
   });
 });
 

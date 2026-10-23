@@ -807,6 +807,33 @@ function readFightLog() {
   } catch { return {}; }
 }
 
+// The earliest reading this browser logged for the match's week, under
+// FIGHT_KEEP_MS old, with more kills on some map than `match`: the body is
+// from before it. A reload forgets newestMatches but not this log, so it
+// lets fetchMatches catch a first body from the group behind (js/api.js,
+// matchesToReread). 0 when there is none. The log is text anything on this
+// origin can write: whatever is malformed counts as no reading.
+function fightLogAheadAt(match) {
+  if (!match || typeof match.id !== 'string' || !matchIsLive(match)) return 0;
+  const log = readFightLog();
+  const list = Object.prototype.hasOwnProperty.call(log, match.id) ? log[match.id] : null;
+  if (!Array.isArray(list)) return 0;
+  const week = Date.parse(match.start_time);
+  if (!Number.isFinite(week)) return 0;
+  const now = Date.now();
+  const have = fightTotals(match);
+  let first = 0;
+  for (const s of list.slice(-FIGHT_MAX_SAMPLES)) {
+    const at = s && typeof s === 'object' ? Number(s.at) : NaN;
+    // Before the week began: last week's kills, or another match's after a relink.
+    if (!Number.isFinite(at) || at < week || at > now || now - at > FIGHT_KEEP_MS) continue;
+    const n = s.n && typeof s.n === 'object' ? s.n : null;
+    if (!n || !Object.keys(have).some((t) => { const v = Number(n[t]); return Number.isFinite(v) && v > have[t]; })) continue;
+    if (!first || at < first) first = at;
+  }
+  return first;
+}
+
 // Called by whoever holds fresh match data, with `asked`: when the request
 // went out. A body is stamped with that, not with the moment it is written
 // - a slow answer or a sleeping computer would otherwise carry the time of
