@@ -2643,7 +2643,18 @@ function missedMakeNote(before, after, since, back, kind, endAt = back) {
     .filter((m) => m.n > 0 && typeof m.type === 'string')
     .sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
   const period = missedPeriod(before, after, since, endAt, changes);
-  missedNotes.set(after.id, { kind, since: period.start, end: period.end, sure: period.sure, back,
+  // The body is kept only after this call: until then the end is the period's,
+  // then the time the kept body's data is from, which the history may still
+  // move earlier. A later body resets that time to now, so the earliest end
+  // seen stands (missedMatchOffered reads it before keepNewestMatch writes).
+  const newest = Math.max(period.start, ...changes.map((c) => (c.flipped <= endAt ? c.flipped : -Infinity)));
+  let earliest = period.end;
+  const end = () => {
+    const kept = newestMatches.get(after.id);
+    if (kept && !missedBodyChanged(kept.match, after)) earliest = Math.min(earliest, kept.at);
+    return Math.max(earliest, newest);
+  };
+  missedNotes.set(after.id, { kind, since: period.start, get end() { return end(); }, sure: period.sure, back,
     before, rawSince: since, after,
     until: back + MISSED_SHOW_MS, changes, kills, perMap,
     open: false, wideOpen: true, moreMaps: new Set() });
@@ -2669,6 +2680,9 @@ function missedMatchOffered(match, kept) {
   const now = Date.now();
   const lastOffer = missedLastOffer.get(match.id) || 0;
   missedLastOffer.set(match.id, now);
+  const standing = missedNotes.get(match.id);
+  // Reading the end fixes it before keepNewestMatch moves `at` to now.
+  if (standing) void standing.end;
   if (!kept || matchIsBehind(match, kept.match)) return;
   if (match.start_time !== kept.match.start_time || !matchIsLive(match)) return;
   if (missedReturn && now - missedReturn.back > MISSED_RETURN_WAIT_MS) missedReturn = null;
@@ -3511,7 +3525,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     // not read since before the gap: once, then killSheetAt passes gapFrom.
     const gapFrom = (newestMatches.get(match.id) || {}).gapFrom;
     if (gapFrom && killSheetAt < gapFrom) {
-      getKillSheet().then(() => { if (activeTrigger === triggerEl) paintCorners(); });
+      getKillSheet().then(() => { if (activeTrigger === triggerEl) { paintCorners(); paintNote(); } });
     }
   };
 

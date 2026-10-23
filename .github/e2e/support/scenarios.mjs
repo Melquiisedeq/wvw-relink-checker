@@ -38,6 +38,10 @@ export const apiDown = (min = 10, code = 503, id) =>
 // the page opens: what a tab away for that long comes back to.
 export const missed = (min = 5, flips = 3, id) => opened(id).advance(min, { flips });
 
+// The same, with the API answering the same body for the last `stopped` minutes
+// of the absence: the body a tab comes back to is that old.
+export const missedStopped = (min = 67, flips = 6, stopped = 23, id) => missed(min, flips, id).freeze(stopped);
+
 // The world as of an absolute instant (`iso`, UTC) instead of minutes after the
 // recording: the recorded weeks rolled over to the one that holds it, twelve
 // minutes of a fight ending at most a minute before it. The fixture installs
