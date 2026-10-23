@@ -5,7 +5,7 @@
 //   POST /api/ingest/latest-supa-us, latest-supa-eu
 //                              the outside readers of the game API, the newest match bodies
 //   GET  /api/health            when each last reported; nothing else
-//   GET  /api/kills            the last 30 minutes of kills plus each match's newest older row (up to 3 h back), for the map swords
+//   GET  /api/kills            the last 30 minutes of kills, each match's newest older row (up to 3 h back) and its kills' last move, for the map corner and swords
 //   GET  /api/relink           relink!A1 as numbers, for the teams notice
 //   GET  /api/latest            each match's newest body, as the readers pushed it
 //   GET  /api/latest/summary     the same without the bodies: id, start, score, at, by
@@ -66,6 +66,12 @@ const BASE_MS = 3 * 3600e3;
 // The page's kills window: it counts from a reading this much older than the
 // match's clock, so a stopped match also needs one that far behind its newest.
 const KILLS_WINDOW_MS = 10 * 60e3;
+// How far back the kills' last move is sent. The page drops a reading over
+// 3 hours old (FIGHT_STALE_MS in js/maps.js), and the first to go is the
+// base, up to 15 minutes older than the move; the body is up to 5
+// minutes old when read and the page keeps it 6 more. 26 minutes, so 30: a
+// move further back is sent as the first row within this, still.
+const MOVE_MS = 2.5 * 3600e3;
 // Past these a source counts as stopped, and the reads answer 503 so the
 // page goes to the sheet rather than show a copy that stopped moving. Kills
 // ticks every 5 minutes, relink every 15.
@@ -303,41 +309,161 @@ function toBase64(bytes) {
 // query over the kills table itself costs ~60, and 100,000 of those a day -
 // the Worker's own limit - would pass it and stop every query, writes
 // included, until midnight UTC.
-// It holds the last RECENT_MS plus, per match, the newest row before that
-// window (at most BASE_MS back, same start as the match's newest row, so the
-// same week), so a frozen match keeps a base. And one row more when the match's
-// newest row is not in that window's reach: the newest row at least
-// KILLS_WINDOW_MS older than its newest, so a match stopped for over 30 minutes
-// still has a reading to count kills from. Driven by the list of matches,
-// each lookup bounds `at` as well as the match: a correlated `k.at = (...)`
-// would walk every row of each match. A test checks the plan for it. The
-// fake D1 does not count rows read, so no figure here.
-function rebuildRecent(db, now) {
-  const n = MATCHES.length;
-  const keys = MATCHES.map((_, i) => '?' + (i + 4)).join(', ');
-  const ids = MATCHES.map((_, i) => '(?' + (i + 4) + ')').join(', ');
-  const cut = now * 1000 - RECENT_MS;
-  return db.prepare(
-    'INSERT INTO recent (id, at, rows) ' +
-    'WITH ids(m) AS (VALUES ' + ids + '), ' +
-    'top AS (SELECT m, ' +
-      '(SELECT at FROM kills WHERE match = ids.m AND at > ?3 ORDER BY at DESC LIMIT 1) AS tat, ' +
-      '(SELECT start FROM kills WHERE match = ids.m AND at > ?3 ORDER BY at DESC LIMIT 1) AS st FROM ids), ' +
-    'base AS (SELECT m, st, ' +
-      '(SELECT at FROM kills WHERE match = top.m AND at <= ?2 AND at > ?3 ORDER BY at DESC LIMIT 1) AS bat, ' +
-      '(SELECT at FROM kills WHERE match = top.m AND at <= min(?2, top.tat - ?' + (n + 4) + ') AND at > ?3 ORDER BY at DESC LIMIT 1) AS oat ' +
-      'FROM top) ' +
-    'SELECT 1, ?1, json_group_array(json_array(at, match, center, red, blue, green)) ' +
-    'FROM (' +
-      'SELECT * FROM kills WHERE match IN (' + keys + ') AND at > ?2 ' +
-      'UNION ALL ' +
-      'SELECT k.* FROM base JOIN kills k ON k.match = base.m AND k.at = base.bat WHERE k.start = base.st ' +
-      'UNION ALL ' +
-      'SELECT k.* FROM base JOIN kills k ON k.match = base.m AND k.at = base.oat WHERE k.start = base.st AND base.oat IS NOT base.bat ' +
-      'ORDER BY at) WHERE true ' +
-    'ON CONFLICT (id) DO UPDATE SET at = excluded.at, rows = excluded.rows'
-  ).bind(now, cut, cut - BASE_MS, ...MATCHES, KILLS_WINDOW_MS).run();
+// Per match, of its newest week: the last RECENT_MS; the newest row before
+// that (at most BASE_MS back), so a frozen match keeps a base; and, so a match
+// whose score keeps rising while its kills stand still has something to count
+// from, the first row with the newest total (the kills' last move), the row
+// before it, and the newest at least KILLS_WINDOW_MS before the move. When
+// the row before the move is past MOVE_MS, the first row within MOVE_MS instead.
+// The move is not looked for in kills on every tick: the walk back over a
+// still stretch reads every row of it, and a rebuild runs on every write. The
+// last body already holds the move as it stood, so it is carried forward, and
+// the walk (walkSql) runs only when there is no last body to carry from, it
+// does not join up with this one (a gap of over RECENT_MS), or it holds no
+// move where kills shows one (a body built before the move was carried), or a
+// late batch reached behind this window (kills.gs down while the readers are
+// up). Each time, at worst every row of MOVE_MS for each match it walks.
+// Every query reads kills by its key, `at` bounded as well as the match; a
+// test checks their plans and the rows they hand back.
+async function rebuildRecent(db, now) {
+  const nowMs = now * 1000;
+  const cut = nowMs - RECENT_MS;
+  const floor = cut - BASE_MS;
+  const reach = nowMs - MOVE_MS;
+  const last = await db.prepare('SELECT at, rows FROM recent WHERE id = 1').first();
+  // The last body joins up when its window reaches this one's: every row since
+  // its window began is then in one of the two, or came late (kills.gs sends a
+  // batch up to 45 minutes back, killsStatement). A late row is newer than the
+  // match's newest when it entered, so if one is older than this window, the
+  // newest row before the window is one the last body did not hold: then
+  // the match is walked. A row of the week before is dropped from the body by
+  // design, so it is no sign of a late batch.
+  const carried = last && last.at * 1000 >= cut ? JSON.parse(last.rows) : null;
+  const held = new Set(carried ? carried.map((r) => r[1] + ' ' + r[0]) : []);
+  const { results } = await db.prepare(windowSql).bind(cut, floor, ...MATCHES).all();
+  const plan = new Map();
+  for (const m of MATCHES) {
+    const own = results.filter((r) => r.match === m);
+    if (!own.length) continue;
+    const top = own[own.length - 1];
+    // The base must be of the week of the match's newest row; the window is taken whole.
+    const rows = own.filter((r) => r.at > cut || r.start === top.start).map(rowOf);
+    const p = { m, st: top.start, tot: sum(top), top: top.at, rows, move: null, before: null, base: null, first: false };
+    // A row of another week is no reading of this one: at the week's start or after.
+    const seen = new Map(p.rows.map((r) => [r[0], r]));
+    if (carried) {
+      for (const r of carried) if (r[1] === m && r[0] >= p.st && r[0] > floor && !seen.has(r[0])) seen.set(r[0], r);
+    }
+    p.known = [...seen.values()].sort((a, b) => a[0] - b[0]);
+    p.bat = own.find((r) => r.at <= cut) || null;
+    p.late = !!p.bat && p.bat.start === p.st && !held.has(m + ' ' + p.bat.at);
+    plan.set(m, p);
+  }
+
+  const walk = [], lookBase = [];
+  for (const p of plan.values()) {
+    if (!carried || p.late) { walk.push(p); continue; }
+    const before = p.known.findLast((r) => sum(r) < p.tot);
+    const move = before && p.known.find((r) => r[0] > before[0]);
+    if (move && before[0] > reach) {
+      p.before = before;
+      p.move = move;
+      // A move new since the last body whose base lies behind the newest row
+      // before this window: the rows there were dropped, so it is looked up.
+      if (!held.has(p.m + ' ' + move[0]) && p.bat && move[0] - KILLS_WINDOW_MS < p.bat.at) lookBase.push(p);
+      else p.base = p.known.findLast((r) => r[0] <= move[0] - KILLS_WINDOW_MS) || null;
+    } else {
+      p.first = true;
+    }
+  }
+  const looked = await rowsAt(db, lookBase.map((p) => [p.m, p.move[0] - KILLS_WINDOW_MS, 'le']), floor);
+  for (const p of lookBase) p.base = looked.get(p.m) || null;
+  // Still since before MOVE_MS (or the move not known): the first row within it.
+  await firstWithin(db, [...plan.values()].filter((p) => p.first), reach, walk);
+
+  if (walk.length) {
+    const { results: walked } = await db.prepare(walkSql).bind(JSON.stringify(walk.map((p) => [p.m, p.st, p.tot, p.top])), reach).all();
+    const back = new Map(walked.map((w) => [w.m, w.pat]));
+    const before = await rowsAt(db, walk.filter((p) => back.get(p.m) != null).map((p) => [p.m, back.get(p.m), 'le']), floor);
+    const moves = await rowsAt(db, walk.map((p) => [p.m, back.get(p.m) ?? Math.max(reach, p.st - 1), 'gt']), floor);
+    for (const p of walk) {
+      p.before = before.get(p.m) || null;
+      p.move = moves.get(p.m) || null;
+      if (p.move && sum(p.move) !== p.tot) p.move = null;
+    }
+    const bases = await rowsAt(db, walk.filter((p) => p.before && p.move).map((p) => [p.m, p.move[0] - KILLS_WINDOW_MS, 'le']), floor);
+    for (const p of walk) p.base = bases.get(p.m) || null;
+  }
+
+  const out = [];
+  for (const p of plan.values()) {
+    const add = new Map(p.rows.map((r) => [r[0], r]));
+    for (const r of [p.base, p.before, p.move]) {
+      if (r && r[0] >= p.st && !add.has(r[0])) add.set(r[0], r);
+    }
+    out.push(...add.values());
+  }
+  out.sort((a, b) => a[0] - b[0]);
+  // A rebuild that started earlier writes nothing over a later one.
+  await db.prepare(
+    'INSERT INTO recent (id, at, rows) VALUES (1, ?1, ?2) ' +
+    'ON CONFLICT (id) DO UPDATE SET at = excluded.at, rows = excluded.rows WHERE excluded.at >= recent.at'
+  ).bind(now, JSON.stringify(out)).run();
 }
+
+function sum(r) {
+  return Array.isArray(r) ? r[2] + r[3] + r[4] + r[5] : r.center + r.red + r.blue + r.green;
+}
+
+function rowOf(r) {
+  return [r.at, r.match, r.center, r.red, r.blue, r.green];
+}
+
+// p.first: the first row of the week within MOVE_MS. If it is below the newest
+// total, the kills moved inside MOVE_MS and the last body did not say where:
+// the match goes to the walk.
+async function firstWithin(db, list, reach, walk) {
+  if (!list.length) return;
+  const got = await rowsAt(db, list.map((p) => [p.m, Math.max(reach, p.st - 1), 'gt']), reach);
+  for (const p of list) {
+    const r = got.get(p.m);
+    if (r && sum(r) < p.tot) walk.push(p);
+    else if (r && sum(r) === p.tot) p.move = r;
+  }
+}
+
+// One row per ask [match, at, 'le' | 'gt']: the newest at or before `at` (and
+// after `floor`), or the first after it.
+async function rowsAt(db, asks, floor) {
+  const got = new Map();
+  if (!asks.length) return got;
+  const { results } = await db.prepare(rowsAtSql).bind(JSON.stringify(asks), floor).all();
+  for (const r of results) got.set(r.match, rowOf(r));
+  return got;
+}
+
+// The window, and each match's newest row before it.
+const windowSql = 'WITH ids(m) AS (VALUES ' + MATCHES.map((_, i) => '(?' + (i + 3) + ')').join(', ') + ') ' +
+  'SELECT at, match, center, red, blue, green, start FROM (' +
+    'SELECT k.* FROM kills k WHERE k.match IN (' + MATCHES.map((_, i) => '?' + (i + 3)).join(', ') + ') AND k.at > ?1 ' +
+    'UNION ALL ' +
+    'SELECT k.* FROM ids JOIN kills k ON k.match = ids.m AND k.at = ' +
+      '(SELECT at FROM kills WHERE match = ids.m AND at <= ?1 AND at > ?2 ORDER BY at DESC LIMIT 1)' +
+  ') ORDER BY at';
+
+const ask = (i) => "json_extract(j.value, '$[" + i + "]')";
+const rowsAtSql = 'WITH a(m, t, op) AS (SELECT ' + ask(0) + ', ' + ask(1) + ', ' + ask(2) + ' FROM json_each(?1) j), ' +
+  'p(m, at) AS (SELECT m, CASE op WHEN \'le\' THEN ' +
+    '(SELECT at FROM kills WHERE match = a.m AND at <= a.t AND at > ?2 ORDER BY at DESC LIMIT 1) ELSE ' +
+    '(SELECT at FROM kills WHERE match = a.m AND at > a.t ORDER BY at LIMIT 1) END FROM a) ' +
+  'SELECT k.at, k.match, k.center, k.red, k.blue, k.green FROM p JOIN kills k ON k.match = p.m AND k.at = p.at';
+
+// Per [match, start, newest total, newest at]: the newest row of the week
+// within MOVE_MS below that total, the row before the move. It reads every row
+// of the still stretch, so only when nothing can be carried.
+const walkSql = 'SELECT ' + ask(0) + ' AS m, ' +
+  '(SELECT at FROM kills WHERE match = ' + ask(0) + ' AND at < ' + ask(3) + ' AND at > ?2 AND start = ' + ask(1) + ' ' +
+    'AND center + red + blue + green < ' + ask(2) + ' ORDER BY at DESC LIMIT 1) AS pat FROM json_each(?1) j';
 
 // Reads at most max bytes and gives up past that, so a chunked body with no
 // content-length cannot make the Worker hold a hundred megabytes. null = over.
