@@ -124,7 +124,7 @@ jobs:
           exit "$code"
 
       # Coverage (support/coverage.mjs says how): the node tests run again here, with
-      # V8 coverage on (about 6 s), so the `rules` job and `page` keep their names
+      # V8 coverage on, so the `rules` job and `page` keep their names
       # and rule. A file falling more than 0.5 point fails this job, so `page`.
       - name: Coverage per file, and it may not fall
         run: |
