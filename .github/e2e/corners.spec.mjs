@@ -12,6 +12,9 @@ import { answer, fail } from './support/faults.mjs';
 import { phone, recordedJson, load, firstTier, openMap, later } from './support/steps.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { FOCUS } from './support/scenarios.mjs';
+import { createHmac } from 'node:crypto';
+import worker from '../../worker/index.mjs';
+import { fakeD1 } from '../../tests/fake-d1.mjs';
 
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
 
@@ -342,6 +345,118 @@ test.describe('corners by the data clock', () => {
       }
     });
   }
+});
+
+// The score rising, the kills still: what the Worker keeps of the history is
+// what decides the corner. The rows go into the real Worker over a SQLite
+// table, the newest through its signed entrance, and its /api/kills answer is
+// what the page reads. `ages`: the rows before the newest, in ms before now;
+// `bonus(ago)`: how many kills fewer than the kept body's a row has on Center.
+test.describe('kills that stood still, through the Worker', () => {
+  test.use({ timezoneId: 'America/Sao_Paulo' });
+  const KEY = 'k'.repeat(128);
+  const MIN = 60e3;
+  const workerKills = async (id, now, week, ages, kills, newest) => {
+    const { sql, DB } = fakeD1();
+    const env = { DB, INGEST_KILLS: KEY, INGEST_RELINK: 'r'.repeat(128) };
+    const row = ago => [now - ago, id, ...kills(ago), week];
+    const ins = sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,?,?,?,?,?)');
+    for (const ago of ages) ins.run(id, now - ago, ...kills(ago), week);
+    const real = Date.now, log = console.log;
+    Date.now = () => now;
+    // The Worker's own log line, not the test's.
+    console.log = () => {};
+    try {
+      const body = JSON.stringify({ rows: [row(newest)] });
+      const t = Math.floor(now / 1000);
+      const sig = createHmac('sha256', KEY).update(t + '\n/api/ingest/kills\n' + body).digest('hex');
+      const sent = await worker.fetch(new Request('https://wvwrelink.com/api/ingest/kills',
+        { method: 'POST', body, headers: { 'x-wvw-time': String(t), 'x-wvw-sig': sig } }), env);
+      expect(sent.status, 'the Worker took the newest row').toBe(200);
+      const read = await worker.fetch(new Request('https://wvwrelink.com/api/kills'), env);
+      expect(read.status).toBe(200);
+      return await read.json();
+    } finally {
+      Date.now = real;
+      console.log = log;
+    }
+  };
+  // The match's score fresh and its week four days old; the kept body served back.
+  // `rose`: how long ago the score last rose, and the newest row with it.
+  const open = async (page, wvw, ages, bonus, rose = 0) => {
+    await load(page, wvw);
+    const tier = await firstTier(page);
+    const { now, week, T, match } = await page.evaluate(([id, rose]) => {
+      localStorage.removeItem('wvw-fight-v1');
+      const now = Date.now();
+      const k = newestMatches.get(id);
+      k.rose = true;
+      k.at = now - rose;
+      k.match.start_time = new Date(now - 4 * 86400e3).toISOString();
+      const T = fightTotals(k.match);
+      return { now, week: Date.parse(k.match.start_time), T: KILLS_MAP_ORDER.map(ty => T[ty] || 0), match: k.match };
+    }, [tier.id, rose]);
+    const kills = ago => T.map((n, i) => (i === 0 ? n - bonus(ago) : n));
+    await answer(page, wvw.url + 'api/kills', await workerKills(tier.id, now, week, ages, kills, rose));
+    await answer(page, GAME + tier.id, match);
+    await page.evaluate(async () => { killSheetAt = 0; await getKillSheet(); });
+    await openMap(page, wvw, tier.button);
+    await page.locator('.info-popover .wvw-tab[data-type="Center"]').click();
+    await expect(page.locator(hud('.wvw-hud-l'))).toBeVisible();
+    return { at: ago => page.evaluate(t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), now - ago) };
+  };
+  const corner = page => page.evaluate(() => {
+    const q = s => document.querySelector('.info-popover .wvw-plot-wrap ' + s);
+    const s2 = q('.wvw-hud-small2');
+    return { big: q('.wvw-hud-big')?.textContent || '', small: q('.wvw-hud-small').innerText,
+      line2: s2?.hidden === false ? s2.textContent.replace(/\s+/g, ' ') : '', dim: !!q('.wvw-hud-l.is-dim'),
+      swords: !!document.querySelector('.info-popover .wvw-tab.is-hot') };
+  });
+
+  test('still for 40 min, a row a minute: the quiet corner, with the time of the last kill', async ({ page, wvw }) => {
+    const ages = Array.from({ length: 70 }, (_, i) => (i + 1) * MIN);
+    // 3 kills in 10 min on Center until 40 min ago: a slow map, so the silence since is not the API late.
+    const s = await open(page, wvw, ages, ago => Math.ceil(0.3 * Math.max(0, Math.round(ago / MIN) - 40)));
+    const c = await corner(page);
+    const last = await s.at(40 * MIN);
+    expect(c, 'the corner of a match whose kills stopped 40 min ago').toEqual(
+      { big: '3', small: 'kills in 10 min', line2: `no new kills since ${last}`, dim: false, swords: false });
+    expect(await balloon(page, 'l')).toBe(`No new kills since ${last}, as on a quiet map. 3 kills in the 10 min up to then.`);
+  });
+
+  test('still for over 3 h: none in 10 min, the last kill before the history', async ({ page, wvw }) => {
+    // A row every five minutes, off the Worker's 2.5 h edge.
+    const ages = Array.from({ length: 48 }, (_, i) => (i * 5 + 2) * MIN);
+    const s = await open(page, wvw, ages, () => 0);
+    const c = await corner(page);
+    // The oldest row the Worker sends: the first of the last 2.5 h.
+    const oldest = await s.at(147 * MIN);
+    expect(c, 'the corner of a match still for 4 h').toEqual(
+      { big: '0', small: 'kills in 10 min', line2: `no new kills since before ${oldest}`, dim: false, swords: false });
+    expect(await balloon(page, 'l')).toBe(`No new kills since before ${oldest}, as on an empty map: the kill history goes back to ${oldest} and the count has not moved in it. 0 kills in the last 10 min.`);
+    for (const width of [390, 320]) {
+      const cdp = await phone(page, width, { exact: false });
+      await wvw.settle();
+      const room = await page.evaluate(() => {
+        const r = s => { const e = document.querySelector('.info-popover .wvw-plot-wrap ' + s); return e && e.offsetParent ? e.getBoundingClientRect() : null; };
+        const l = r('.wvw-hud-l .wvw-hud-btn'), bar = r('.wvw-scorebar');
+        return { left: l && bar ? Math.round(l.right - bar.left) : null, page: document.documentElement.scrollWidth - innerWidth };
+      });
+      expect(room.left !== null && room.left <= 0 && room.page <= 0,
+        `${width} px: the kills corner reaches ${room.left}px into the score bar, the page spills ${room.page}px`).toBe(true);
+      await cdp.send('Emulation.clearDeviceMetricsOverride');
+    }
+  });
+
+  test('still for over 3 h, then the score stuck for 10 min: "data up to" the newest reading, not the oldest', async ({ page, wvw }) => {
+    const ages = Array.from({ length: 46 }, (_, i) => (i * 5 + 12) * MIN);
+    const s = await open(page, wvw, ages, () => 0, 10 * MIN);
+    const c = await corner(page);
+    const upTo = await s.at(10 * MIN);
+    expect(c, 'the corner of a match still for 4 h whose score stopped 10 min ago').toEqual(
+      { big: '0', small: 'kills in 10 min', line2: `\u26a0 data up to ${upTo}`, dim: true, swords: false });
+    expect(await balloon(page, 'l')).toBe(`The kill count has not moved from ${await s.at(147 * MIN)}, the oldest reading, to ${upTo}. The game's API has been behind since ${upTo}, so this is not now.`);
+  });
 });
 
 // Both the Worker's history and the sheet down.

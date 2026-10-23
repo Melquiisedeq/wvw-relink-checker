@@ -1008,7 +1008,7 @@ const HOT_FLOOR = 50;      // kills per ten minutes: a real fight, not API noise
 
 function killView(match, types, now = Date.now()) {
   const view = { clock: 0, atLeast: false, silence: 0, prevRun: Infinity, rates: null, pace: 0,
-    strange: false, frozen: false, hot: null, noWindow: 'data', counting: null, long: false, longOk: false, gap: null };
+    strange: false, frozen: false, hot: null, noWindow: 'data', counting: null, long: false, longOk: false, gap: null, still: false, upTo: 0 };
   // Nothing is claimed on a match that is not running: between the reset
   // and the API publishing the new one, the rest of the popover is neutral.
   if (!match || !matchIsLive(match)) return view;
@@ -1053,7 +1053,14 @@ function killView(match, types, now = Date.now()) {
     const start = Date.parse(match.start_time);
     // Right after the reset or a relink there is nothing earlier to count from.
     if (Number.isFinite(start) && view.clock - start < WINDOW_MAX_MS + HOT_WANT_MS) view.noWindow = 'reset';
-    else {
+    else if (view.atLeast && list.length && list[list.length - 1].at - view.clock >= HOT_WANT_MS) {
+      // Every reading holds the newest total, over 10 minutes or more: none in
+      // them, and the last kill came before the oldest, when is unknown.
+      killCountingSince.delete(match.id);
+      view.still = true;
+      view.upTo = series[series.length - 1].at;
+      view.rates = { per: new Map(Object.keys(body).map((type) => [type, 0])), span: HOT_WANT_MS };
+    } else {
       // Mid-week with no history to lean on: this page's own readings fill in.
       if (!killCountingSince.has(match.id)) killCountingSince.set(match.id, now);
       const since = Math.min(killCountingSince.get(match.id), list.length ? list[0].at : now);
@@ -1266,14 +1273,16 @@ function buildMapCorners(wrap, matchId) {
     put(smallMins, line ? String(line.mins) : '');
     put(smallLong, line ? ' min' : '');
     put(smallShort, line ? 'm' : '');
-    put(lead, hole ? 'API gap ' : two ? (old && !odd ? 'no new kills since ' : 'data up to ') : '');
+    put(lead, hole ? 'API gap ' : two ? (old && !odd ? (view.still ? 'no new kills since before ' : 'no new kills since ') : 'data up to ') : '');
     put(smallMark, odd ? '\u26a0\u00a0' : '');
     if (hole) {
       put(smallTime, `${hhmm(view.gap.from)}\u2013${hhmm(view.gap.to)}`);
       smallTime.removeAttribute('datetime');
     } else if (two) {
-      put(smallTime, hhmm(view.clock));
-      smallTime.dateTime = new Date(view.clock).toISOString();
+      // Still all along, the oldest reading is not where the data stops.
+      const at = odd && view.still ? view.upTo : view.clock;
+      put(smallTime, hhmm(at));
+      smallTime.dateTime = new Date(at).toISOString();
     } else {
       put(smallTime, '');
       smallTime.removeAttribute('datetime');
@@ -1294,8 +1303,12 @@ function buildMapCorners(wrap, matchId) {
         text = `${line.kills} kills in the ${line.mins} min up to ${t}. The window is longer than 10 minutes because the game's API stopped sending data between ${hhmm(view.gap.from)} and ${hhmm(view.gap.to)}.`
           + (hole ? ' The swords count the pace per 10 minutes.' : '')
           + (odd ? ` The game's API has been behind since ${t}, so this is not now.` : old ? ` No new kills since ${t}, as on a quiet map.` : '') + tail;
+      } else if (odd && view.still) {
+        text = `The kill count has not moved from ${t}, the oldest reading, to ${hhmm(view.upTo)}. The game's API has been behind since ${hhmm(view.upTo)}, so this is not now.`;
       } else if (odd) {
         text = `${line.kills} kills in the ${line.mins} min up to ${t}. The game's API has been behind since ${t}, so this is not now.${tail}`;
+      } else if (old && view.still) {
+        text = `No new kills since before ${t}, as on an empty map: the kill history goes back to ${t} and the count has not moved in it. ${line.kills} kills in the last ${line.mins} min.`;
       } else if (old) {
         text = `No new kills since ${t}, as on a quiet map. ${line.kills} kills in the ${line.mins} min up to then.${tail}`;
       } else {
