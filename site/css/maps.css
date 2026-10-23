@@ -340,15 +340,14 @@
   border-radius:10px;overflow:hidden;
   background:radial-gradient(circle at 50% 42%, #18202a, #0c0f14 78%);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.06), inset 0 -1px 0 rgba(0,0,0,.5);
-  cursor:grab;
   /* Whole map in view: nothing to drag, so a vertical swipe scrolls what holds
      the map - the popover, on a phone (touch-action:none here swallowed it). */
   touch-action:pan-y;
 }
 /* Zoomed (class set from the viewBox in js/maps.js): the drag moves the map, so
    the browser must not also scroll or it cancels the pointer stream. */
-.wvw-plot-wrap.is-zoomed{touch-action:none;}
-.wvw-plot-wrap.is-panning{cursor:grabbing;}
+.wvw-plot-wrap.is-zoomed{touch-action:none;cursor:grab;}
+.wvw-plot-wrap.is-zoomed.is-panning{cursor:grabbing;}
 .wvw-plot-wrap{container:plot / inline-size;}
 /* While a map has no owners yet. Ground, sectors and positions are all
    already right - only the colours are late - so this explains rather

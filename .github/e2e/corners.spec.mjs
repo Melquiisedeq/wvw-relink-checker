@@ -112,6 +112,26 @@ test.describe('map corners', () => {
     await expect(page.locator(hud('.wvw-hud-r')), 'corners back after "home"').toBeVisible();
     expect(await touchAction(page)).toBe('pan-y');
   });
+
+  test('the cursor is the hand only while zoomed; an objective keeps the pointing hand', async ({ page, wvw }) => {
+    await load(page, wvw);
+    await openMap(page, wvw, page.locator('.tier-map-btn').first());
+    const cursor = sel => page.evaluate(s => getComputedStyle(document.querySelector(s)).cursor, sel);
+    const wrap = '.info-popover .wvw-plot-wrap';
+    expect(await cursor(wrap), 'the whole map: nothing to drag').toBe('auto');
+    expect(await cursor(`${wrap} .wvw-marker`), 'an objective').toBe('pointer');
+    await page.locator('.info-popover .wvw-zoom button').first().click();
+    await expect(page.locator(wrap)).toHaveClass(/is-zoomed/);
+    expect(await cursor(wrap), 'the zoomed map: the drag moves it').toBe('grab');
+    expect(await cursor(`${wrap} .wvw-marker`), 'an objective, zoomed').toBe('pointer');
+    const box = await page.locator(wrap).boundingBox();
+    await page.mouse.move(box.x + 6, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 30, box.y + box.height / 2, { steps: 4 });
+    expect(await cursor(wrap), 'dragging').toBe('grabbing');
+    await page.mouse.up();
+    expect(await cursor(wrap), 'after the drag').toBe('grab');
+  });
 });
 
 // The kill history says a match stopped before this page ever saw it move:
