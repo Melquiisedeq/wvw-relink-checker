@@ -8,14 +8,24 @@
 // recording answers one by one in any order (support/recordings.mjs). A read it
 // cannot answer fails the test, naming the address.
 import { test, expect } from './support/fixtures.mjs';
-import { answer } from './support/faults.mjs';
+import { answer, fail } from './support/faults.mjs';
 import { phone, recordedJson, load, firstTier, openMap, later } from './support/steps.mjs';
+import { gw2 } from './support/gw2.mjs';
+import { FOCUS } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
 
 const GAME = 'https://api.guildwars2.com/v2/wvw/matches?id=';
 const hud = sel => `.info-popover .wvw-plot-wrap ${sel}`;
 
+// The balloon of a corner, opened by a tap and closed again.
+const balloon = async (page, side) => {
+  const btn = page.locator(`.info-popover .wvw-hud-${side} .wvw-hud-btn`);
+  await btn.click();
+  const said = await page.locator('.info-popover .wvw-hud-note').textContent();
+  await btn.click();
+  return said;
+};
 const touchAction = page => page.evaluate(() => getComputedStyle(document.querySelector('.info-popover .wvw-plot-wrap')).touchAction);
 
 test.describe('map corners', () => {
@@ -242,14 +252,6 @@ test.describe('corners by the data clock', () => {
       swords: !!document.querySelector('.info-popover .wvw-tab.is-hot'), right: q('.wvw-hud-ago')?.textContent || '',
       when: q('.wvw-hud-ago')?.dateTime || '' };
   });
-  // The balloon of a corner, opened by a tap and closed again.
-  const balloon = async (page, side) => {
-    const btn = page.locator(`.info-popover .wvw-hud-${side} .wvw-hud-btn`);
-    await btn.click();
-    const said = await page.locator('.info-popover .wvw-hud-note').textContent();
-    await btn.click();
-    return said;
-  };
 
   for (const name of Object.keys(scenarios)) {
     test(name, async ({ page, wvw }) => {
@@ -318,7 +320,8 @@ test.describe('corners by the data clock', () => {
         bad(c.big === '–' && c.small === 'kills', 'no reading should give a dash');
         const tip = await balloon(page, 'l');
         if (name === 'reset') expect(tip).toMatch(/^Counting starts about 10 minutes after the reset: /);
-        else expect(tip).toBe('Not enough kill data to count 10 minutes.');
+        else expect(tip, 'a mid-week match with no history says the page counts it itself')
+          .toMatch(/^Counting since \S+( \S+)?, ready about \S+( \S+)?: the kill history does not reach 10 minutes back yet\.$/);
       }
       // The same states on a phone: nothing past the corners' room either side of the score bar.
       if (['late', 'quiet', 'nine', 'gap'].includes(name)) {
@@ -339,6 +342,28 @@ test.describe('corners by the data clock', () => {
       }
     });
   }
+});
+
+// Both the Worker's history and the sheet down.
+test.describe('no kill history mid-week', () => {
+  test.use({ timezoneId: 'America/Sao_Paulo', timeline: gw2.match(FOCUS).advance(12).pageOpens().advance(30) });
+  test('the page counts itself: a dash with its tip, then a number', async ({ page, wvw }) => {
+    await fail(page, wvw, /\/api\/kills$/);
+    await fail(page, wvw, /^https:\/\/docs\.google\.com\//);
+    await load(page, wvw);
+    const tier = await firstTier(page);
+    await openMap(page, wvw, tier.button);
+    await page.locator('.info-popover .wvw-tab[data-type="Center"]').click();
+    const big = page.locator(hud('.wvw-hud-big'));
+    await expect(big, 'no reading yet').toHaveText('–');
+    const opened = await page.evaluate(() => Date.now());
+    const clock = ms => page.evaluate(t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), ms);
+    expect(await balloon(page, 'l'), 'the tip names the start and the end of the count')
+      .toBe(`Counting since ${await clock(opened)}, ready about ${await clock(opened + 10 * 60e3)}: the kill history does not reach 10 minutes back yet.`);
+    for (let i = 0; i < 12; i++) await later(page, wvw, 60e3);
+    await expect(big, 'the page measured the window by itself').toHaveText(/^\d+$/);
+    expect(await balloon(page, 'l')).toMatch(/^Player kills on this map in the last \d+ minutes\./);
+  });
 });
 
 // The skirmish trend when the clock is a block ahead of the body. Built from a
