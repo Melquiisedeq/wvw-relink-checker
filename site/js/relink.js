@@ -19,6 +19,32 @@ function formatCountdown(msRemaining) {
   return `${minutes}m`;
 }
 
+// Each region's weekly reset, in UTC: [day of week, hour]. The same hours
+// as RESET in worker/index.mjs and supabase/reader.mjs: change all three.
+const RESET_SCHEDULE = { NA: [6, 2], EU: [5, 18] };
+const RESET_ARRIVAL_MS = 15 * 60 * 1000;
+
+function lastResetOf(region, now) {
+  const [day, hour] = RESET_SCHEDULE[region];
+  const d = new Date(now);
+  const back = (d.getUTCDay() - day + 7) % 7;
+  let t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - back, hour);
+  if (t > now) t -= RELINK_WEEK_MS;
+  return t;
+}
+
+function regionResetting(region, now) {
+  const last = lastResetOf(region, now);
+  if (now - last >= RESET_ARRIVAL_MS) return false;
+  const start = region === 'NA' ? resetNA : resetEU;
+  return !(start !== null && start >= last - RESET_ARRIVAL_MS);
+}
+
+function countdownText(ms, resetting) {
+  if (resetting && (ms === null || ms <= 0)) return 'resetting';
+  return formatCountdown(ms);
+}
+
 // Feather's alert-triangle, at the weight the other glyphs on the page
 // are drawn. Used in two places - the stat's own label and the line
 // underneath - so it lives here rather than being typed twice.
@@ -102,14 +128,14 @@ function swordsIcon() {
 
 // Dims the region labels (NA/EU) and emphasizes the countdown values,
 // since the time is what the person actually came to read.
-function buildRelinkValue(naMs, euMs, naNow, euNow) {
+function buildRelinkValue(naMs, euMs, naNow, euNow, naResetting, euResetting) {
   const frag = document.createDocumentFragment();
   const naRegion = document.createElement('span');
   naRegion.className = naNow ? 'region is-now' : 'region';
   naRegion.textContent = 'NA ';
   const naTime = document.createElement('span');
   naTime.className = naNow ? 'time is-now' : 'time';
-  naTime.textContent = formatCountdown(naMs);
+  naTime.textContent = countdownText(naMs, naResetting);
   // The dot is its own element so that it never lights: folded into
   // ' . EU ' as it used to be, the separator would carry EU's is-now and
   // brighten along with the region it does not belong to.
@@ -121,7 +147,7 @@ function buildRelinkValue(naMs, euMs, naNow, euNow) {
   euRegion.textContent = 'EU ';
   const euTime = document.createElement('span');
   euTime.className = euNow ? 'time is-now' : 'time';
-  euTime.textContent = formatCountdown(euMs);
+  euTime.textContent = countdownText(euMs, euResetting);
   if (railFirst() === 'eu') frag.append(euRegion, euTime, sep, naRegion, naTime);
   else frag.append(naRegion, naTime, sep, euRegion, euTime);
   return frag;
@@ -625,7 +651,8 @@ function updateRelinkBanner() {
     // them, which is the whole point of the state.
     const stat = buildRelinkStat(
       relinkWeek ? 'Next Relink' : 'Next Reset',
-      buildRelinkValue(naLeft, euLeft, naUrgent, euUrgent),
+      buildRelinkValue(naLeft, euLeft, naUrgent, euUrgent,
+        regionResetting('NA', now), regionResetting('EU', now)),
       false,
       relinkWeek
         ? 'The last reset of the season. At this one the teams themselves are rebuilt, not just the matchups.'
