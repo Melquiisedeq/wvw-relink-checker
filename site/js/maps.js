@@ -969,6 +969,7 @@ function fightSamples(match) {
 // same answer, so it is one clock per match. The body counts as a reading
 // from when this page first saw its total, not from every repaint.
 const killFirstSeen = new Map(); // match id -> { total, at }
+const killCountingSince = new Map(); // match id -> when killView first found no window for it
 
 // Silence that is still ordinary: the API's kills move up to about five
 // minutes after a score tick, plus half a minute.
@@ -1007,7 +1008,7 @@ const HOT_FLOOR = 50;      // kills per ten minutes: a real fight, not API noise
 
 function killView(match, types, now = Date.now()) {
   const view = { clock: 0, atLeast: false, silence: 0, prevRun: Infinity, rates: null, pace: 0,
-    strange: false, frozen: false, hot: null, noWindow: 'data', long: false, longOk: false, gap: null };
+    strange: false, frozen: false, hot: null, noWindow: 'data', counting: null, long: false, longOk: false, gap: null };
   // Nothing is claimed on a match that is not running: between the reset
   // and the API publishing the new one, the rest of the popover is neutral.
   if (!match || !matchIsLive(match)) return view;
@@ -1052,7 +1053,14 @@ function killView(match, types, now = Date.now()) {
     const start = Date.parse(match.start_time);
     // Right after the reset or a relink there is nothing earlier to count from.
     if (Number.isFinite(start) && view.clock - start < WINDOW_MAX_MS + HOT_WANT_MS) view.noWindow = 'reset';
+    else {
+      // Mid-week with no history to lean on: this page's own readings fill in.
+      if (!killCountingSince.has(match.id)) killCountingSince.set(match.id, now);
+      const since = Math.min(killCountingSince.get(match.id), list.length ? list[0].at : now);
+      view.counting = { since, ready: since + HOT_WANT_MS };
+    }
   } else {
+    killCountingSince.delete(match.id);
     const span = view.clock - base.at;
     view.long = span > WINDOW_MAX_MS;
     // A long window still counts for the swords up to the catch-up limit: the rates are per 10 min.
@@ -1272,7 +1280,11 @@ function buildMapCorners(wrap, matchId) {
     }
     let text;
     if (!line) {
-      text = view && view.noWindow === 'reset' ? HUD_RESET_TIP : HUD_NO_WINDOW_TIP;
+      const wait = view && view.counting;
+      text = view && view.noWindow === 'reset' ? HUD_RESET_TIP
+        : wait && wait.ready > Date.now()
+          ? `Counting since ${hhmm(wait.since)}, ready about ${hhmm(wait.ready)}: the kill history does not reach 10 minutes back yet.`
+          : HUD_NO_WINDOW_TIP;
     } else {
       const t = hhmm(view.clock);
       // A step that came after the API sent nothing, and lit no swords, says why.
