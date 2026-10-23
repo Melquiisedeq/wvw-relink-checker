@@ -532,19 +532,42 @@ const rereadMatches = async (url, timeoutMs) => (await Promise.allSettled(
   Array.from({ length: MATCH_REREADS }, () => fetchJson(url, 0, 'no-store', timeoutMs))))
   .flatMap((r) => (r.status !== 'fulfilled' ? [] : Array.isArray(r.value) ? r.value : [r.value]));
 
+// The time of this browser's fight log reading a body is behind (js/maps.js,
+// loaded after this file), else 0. A fault there costs only the check.
+function loggedAheadAt(match) {
+  if (typeof fightLogAheadAt !== 'function') return 0;
+  try { return fightLogAheadAt(match) || 0; } catch { return 0; }
+}
+
+// A first-sight body still behind the fight log after the re-reads is from
+// before the log's reading, so "Updated" starts there, never later. Only
+// the `ids` matchesToReread named for the log: a body this visit watched rise
+// keeps its own time.
+function ageBehindLog(ids) {
+  for (const id of ids) {
+    const kept = newestMatches.get(id);
+    if (!kept || kept.rose) continue;
+    const at = loggedAheadAt(kept.match);
+    if (at && at < kept.at) kept.at = at;
+  }
+}
+
 // Which ids of a list answer to read again: a body behind the kept one or
-// behind the week this browser remembers, a body whose week is over. `regions` ('1' NA, '2' EU) says the URL lists
+// behind the week this browser remembers, a first sight behind this
+// browser's fight log (what a reload forgot), a body whose week is over. `regions` ('1' NA, '2' EU) says the URL lists
 // whole regions, and then also a tier this page holds that the answer left
 // out, and a gap in the tiers (1-2 and 1-3 without 1-1). Relink nights serve
 // partial lists and tiers from both weeks (03/10/2026). `holes`: the gaps,
-// tiers that certainly exist.
+// tiers that certainly exist. `logged`: the ids named for the fight log.
 function matchesToReread(list, regions) {
   const got = new Set(list.filter(isMatchBody).map((m) => m.id));
   const need = new Set();
   const holes = [];
+  const logged = [];
   for (const m of list) {
     if (!isMatchBody(m)) continue;
     const kept = newestMatches.get(m.id);
+    if (!kept && loggedAheadAt(m)) { need.add(m.id); logged.push(m.id); }
     if ((kept && matchIsBehind(m, kept.match)) || !matchIsLive(m) || weekAhead(m)) need.add(m.id);
   }
   for (const region of regions) {
@@ -561,31 +584,40 @@ function matchesToReread(list, regions) {
       if (!got.has(`${region}-${t}`)) { need.add(`${region}-${t}`); holes.push(`${region}-${t}`); }
     }
   }
-  return { need: [...need].sort(byId), holes };
+  return { need: [...need].sort(byId), holes, logged };
 }
 
 // A single body behind the kept one: the URL is read twice more at once and
 // the furthest along wins. A list: only the ids matchesToReread names are
 // read again, twice at once, and the answer is the union by id, the newest
 // body of each, in id order; a gap still missing gets the last body seen,
-// if any. Nothing to read again, nothing more is asked.
+// if any. Nothing to read again, nothing more is asked. A first sight
+// behind the fight log is read again the same way, once, with /api/latest
+// asked too if it was not in the last LATEST_GAP_MS.
 async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
   // The first read of a visit, and a single match gone quiet (the maps
   // popover's poll), ask /api/latest beside the game, not after it.
   const one = new URL(url).searchParams.get('id');
   const early = regions.length ? (latestAsked ? null : startLatest())
     : (one && latestWanted([one]) ? startLatest() : null);
+  const latestFor = (logged) => early
+    || (logged && Date.now() - latestAskedAt >= LATEST_GAP_MS ? startLatest() : null);
   const raw = await fetchJson(url, 0, 'no-store', timeoutMs);
   if (!Array.isArray(raw)) {
-    if (isMatchBody(raw) && newestMatches.has(raw.id) && matchIsBehind(raw, newestMatches.get(raw.id).match)) {
+    const known = isMatchBody(raw) && newestMatches.has(raw.id);
+    const logged = isMatchBody(raw) && !known && loggedAheadAt(raw) > 0;
+    const reading = latestFor(logged);
+    if (logged || (known && matchIsBehind(raw, newestMatches.get(raw.id).match))) {
       for (const m of await rereadMatches(url, timeoutMs)) keepNewestMatch(m);
     }
-    const kept = keepNewestMatch(raw);
-    if (!early) return kept;
-    if (!isMatchBody(kept)) { early.then(offerLatest); return kept; }
-    return (await mergeLatest([kept], early))[0];
+    let kept = keepNewestMatch(raw);
+    if (reading && !isMatchBody(kept)) reading.then(offerLatest);
+    else if (reading) kept = (await mergeLatest([kept], reading))[0];
+    if (logged) ageBehindLog([raw.id]);
+    return kept;
   }
-  const { need, holes } = matchesToReread(raw, regions);
+  const { need, holes, logged } = matchesToReread(raw, regions);
+  const reading = latestFor(logged.length > 0);
   let list;
   if (need.length === 0) list = raw.map(keepNewestMatch);
   else {
@@ -596,7 +628,8 @@ async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
     for (const id of holes) if (!out.has(id) && newestMatches.has(id)) out.set(id, newestMatches.get(id).match);
     list = [...out.values()].sort((a, b) => byId(a.id, b.id));
   }
-  if (regions.length) list = await mergeLatest(list, early);
+  if (regions.length || reading) list = await mergeLatest(list, reading);
+  ageBehindLog(logged);
   for (const region of regions) weekStoreRegion(region, list);
   return list;
 }

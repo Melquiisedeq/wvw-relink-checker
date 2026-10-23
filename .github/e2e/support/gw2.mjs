@@ -8,6 +8,7 @@
 //     .advance(12, { kills: { Center: 30 } })   // 12 min of play, one state a minute
 //     .pageOpens()                        // the page's clock starts here
 //     .olderPool(10).advance(20).olderPool(0)   // a server group 10 min behind
+//     .olderPool(10, { first: true })     // the same, for the first read of its minutes only
 //     .freeze(40)                         // 40 min, nothing new from the API
 //     .status(503).advance(8).status(null)      // the game moves, the API is down
 //     .latestStatus(503)                  // /api/latest down (or 'hang': never answers)
@@ -143,8 +144,10 @@ class Timeline {
   // From here on, a server group `min` minutes behind answers every match URL
   // in every second minute (reads in a row come back from the same server:
   // 24 of 28, 02/10/2026, js/api.js:498); 0 ends it.
-  olderPool(min) {
-    return this.#with([{ kind: 'pool', at: this.#cursor, lag: Math.max(0, min) * MIN }]);
+  // `first`: only the first match URL read in each of those minutes; the reads
+  // after it get the newer group. A page whose first read lands on the older one.
+  olderPool(min, { first = false } = {}) {
+    return this.#with([{ kind: 'pool', at: this.#cursor, lag: Math.max(0, min) * MIN, first }]);
   }
 
   // From here on, every match URL answers `code` (503, 429) or never ('hang');
@@ -293,6 +296,12 @@ class Timeline {
   lagAt(t) {
     const w = this.#windowAt(this.#compile().pools, t);
     return w ? w.lag : 0;
+  }
+
+  // Whether the older group answers only the first read of its minutes at t.
+  firstOnlyAt(t) {
+    const w = this.#windowAt(this.#compile().pools, t);
+    return !!(w && w.first);
   }
 
   // The newest body of a match at t (ms after the recording), as a new object.
@@ -446,7 +455,7 @@ function broken(b, now, prev) {
 const json = (status, value) => ({ status, type: 'application/json; charset=utf-8', body: Buffer.from(JSON.stringify(value)) });
 
 class Server {
-  #tl; #problem; #newest = new Map(); #planted = new Set(); #cache = new Map();
+  #tl; #problem; #newest = new Map(); #planted = new Set(); #cache = new Map(); #olderIn = null;
 
   constructor(timeline, problem) {
     this.#tl = timeline;
@@ -476,7 +485,13 @@ class Server {
   // one is behind.
   #at(t) {
     const lag = this.#tl.lagAt(t);
-    return lag && Math.floor(t / MIN) % 2 === 1 ? { t: t - lag, older: true } : { t, older: false };
+    const minute = Math.floor(t / MIN);
+    if (!lag || minute % 2 !== 1) return { t, older: false };
+    if (this.#tl.firstOnlyAt(t)) {
+      if (this.#olderIn === minute) return { t, older: false };
+      this.#olderIn = minute;
+    }
+    return { t: t - lag, older: true };
   }
 
   answer(url, pageNow) {

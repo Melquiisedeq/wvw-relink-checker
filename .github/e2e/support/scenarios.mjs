@@ -29,6 +29,12 @@ export const frozen = (min = 40, id) => opened(id).advance(4).freeze(min).advanc
 // (keepNewestMatch) stands between the older group and the screen.
 export const twoPools = (lag = 10, min = 30, id) => opened(id).latestStatus(503).olderPool(lag).advance(min);
 
+// The same, with the older group answering only the first match read of its
+// minutes: a page opened (or reloaded) in one of them gets a body `lag`
+// minutes behind first and the newest on a re-read.
+export const firstReadBehind = (lag = 10, min = 30, id) =>
+  opened(id).latestStatus(503).olderPool(lag, { first: true }).advance(min);
+
 // The game goes on while its API answers `code` for `min` minutes, after 4 of
 // play, then 12 more with the API back.
 export const apiDown = (min = 10, code = 503, id) =>
