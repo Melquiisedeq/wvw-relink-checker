@@ -14,6 +14,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
 import { phone, load, firstTier, openMap, later, keptMatch, iso } from './support/steps.mjs';
+import { FOCUS, MIN, hidden, missedStopped, visible } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
 
@@ -451,5 +452,85 @@ test.describe('what happened, other shapes', () => {
     await scene(page, wvw, { flips: 1, kills: 5 });
     const time = await page.locator(`${BLOCK} .wvw-missed-time`).textContent();
     expect(time, 'the period').toMatch(/^\d{1,2}:\d{2}.*–.*\d{1,2}:\d{2}/);
+  });
+});
+
+// ---- The period's end -------------------------------------------------------
+// The tab hidden 90 min, the API stopped for the last 23: the body it comes back
+// to is 23 min old, and the title ends where the data does, not where the tab did.
+
+test.describe('what you missed, the API stopped at the end of the absence', () => {
+  test.use({ timeline: missedStopped() });
+  test('the period ends at the data, not at the return', async ({ page, wvw }) => {
+    test.slow();
+    await load(page, wvw);
+    const openedAt = await wvw.now();
+    await hidden(page, wvw, 90 * MIN);
+    await visible(page);
+    await openMap(page, wvw, page.locator(`.tier-map-btn[aria-label*="NA Tier ${FOCUS.split('-')[1]}"]`));
+    await expect(page.locator(BLOCK)).toBeAttached();
+    const title = () => page.locator(`${BLOCK} .wvw-missed-title`).textContent();
+    const hhmm = t => new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+    // The kill history dates the body a moment after the block shows; the title
+    // settles on the data's end, and the return's time never comes back.
+    await expect.poll(title, { message: 'the title names the end of the data', timeout: 60000 }).toContain(`–${hhmm(openedAt + 67 * MIN)}`);
+    expect(await title()).not.toContain(hhmm(openedAt + 90 * MIN));
+  });
+});
+
+// The same absence, the API back with a higher score and nothing else new, and
+// the same absence with the map already open when the tab comes back: the title
+// reads the data's end as soon as it is painted and keeps it.
+test.describe('what you missed, the end once the data is dated', () => {
+  const TIER_BUTTON = page => page.locator(`.tier-map-btn[aria-label*="NA Tier ${FOCUS.split('-')[1]}"]`);
+  const hhmm = t => new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+  const titleOf = page => page.locator(`${BLOCK} .wvw-missed-title`).textContent();
+
+  test.describe('the score rises after the return', () => {
+    test.use({ timeline: missedStopped().advance(5, { kills: {} }) });
+    test('the end does not move later', async ({ page, wvw }) => {
+    test.slow();
+      await load(page, wvw);
+      const openedAt = await wvw.now();
+      await hidden(page, wvw, 90 * MIN);
+      await visible(page);
+      await openMap(page, wvw, TIER_BUTTON(page));
+      await expect(page.locator(BLOCK)).toBeAttached();
+      await expect.poll(() => titleOf(page), { message: 'the title at the return', timeout: 60000 }).toContain(`–${hhmm(openedAt + 67 * MIN)}`);
+      await later(page, wvw, 4 * MIN);
+      await page.waitForTimeout(1500);
+      expect(await page.evaluate(() => matchScoreRoseAt('1-1')), 'the state: the score rose after the return').toBeGreaterThan(openedAt + 90 * MIN);
+      expect(await titleOf(page), 'the title after the score rose').toContain(`–${hhmm(openedAt + 67 * MIN)}`);
+    });
+  });
+
+  test.describe('the map is open at the return', () => {
+    test.use({ timeline: missedStopped() });
+    test('the title is the data\'s end the moment the kill history lands', async ({ page, wvw }) => {
+    test.slow();
+      await load(page, wvw);
+      const openedAt = await wvw.now();
+      await openMap(page, wvw, TIER_BUTTON(page));
+      // Read the title right after the page's own handlers on each kill-history
+      // read, whenever the read lands: not a time the test chooses.
+      await page.evaluate(() => {
+        const read = getKillSheet;
+        window.__titles = [];
+        getKillSheet = () => {
+          const p = read().then(v => v);
+          p.then(() => queueMicrotask(() => queueMicrotask(() => {
+            const t = document.querySelector('.info-popover .wvw-missed:not(.is-leaving) .wvw-missed-title');
+            window.__titles.push(t ? t.textContent : null);
+          })));
+          return p;
+        };
+      });
+      await hidden(page, wvw, 90 * MIN);
+      await visible(page);
+      await later(page, wvw, 0);
+      await page.waitForFunction(() => window.__titles.some(t => t), null, { timeout: 20000 });
+      const titles = (await page.evaluate(() => window.__titles)).filter(Boolean);
+      expect(titles[0], 'the title when the history landed').toContain(`–${hhmm(openedAt + 67 * MIN)}`);
+    });
   });
 });
