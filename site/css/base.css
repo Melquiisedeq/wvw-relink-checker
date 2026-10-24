@@ -11,23 +11,20 @@
   /* Not cyan - cyan means "you can touch it" here. This is the ember
      orange already drifting behind the header. */
   --warn:#ffb765;
-  /* Not the same value as --red below, and the difference is
-     load-bearing: this one carries the "Guild not found" line on a card
-     over the photo, where #e15c5c measured 4.27:1 at the photo's
-     brightest point - under the 4.5 AA floor. Two steps of lightness,
-     same hue and saturation, put it at 4.58. */
+  /* Not the same value as --red below, and the difference is load-bearing: this
+     one carries the "Guild not found" line on a card over the photo, where
+     #e15c5c is 4.27:1 at the photo's brightest point, under the 4.5 AA floor.
+     Two steps lighter, same hue and saturation, is 4.58. */
   --err:#e36565;
   --blue:#5b8ff0;
   --green:#4caf7d;
   --red:#e15c5c;
-  /* The same two colours again, for the job the pair above cannot do. A
-     fill may be dark - there is nothing in a dot or a bar to read - but
-     --red as small text measures 3.49:1, and on a dark surface every
-     legible red is a lighter one. So shapes keep --red and --green, and
-     letters take these. Saturation, not lightness, is what keeps a
-     lighter red reading as red rather than as salmon: this one clears
-     4.5 by a tenth where the K/D figure actually sits, and a step darker
-     is 4.09 and fails. css/maps.css has its own lighter pair. */
+  /* The same two colours for letters: a fill may be dark, but --red as small text
+     is 3.49:1, and on a dark surface every legible red is a lighter one. Shapes
+     keep --red and --green. Saturation, not lightness, keeps a lighter red
+     reading as red rather than salmon: this one clears 4.5 by a tenth where the
+     K/D figure sits, and a step darker is 4.09 and fails. css/maps.css has its
+     own lighter pair. */
   --red-ink:#fb6a68;
   --green-ink:#3fbd83;
 }
@@ -42,26 +39,20 @@ body{
   color:var(--text);
   font-family:'Segoe UI', system-ui, -apple-system, sans-serif;
 }
-/* ==========================================================
-   BACKGROUND EFFECTS
-   Fixed layer stack behind the page, in its own div so layers can
-   be added without fighting over ::before/::after.
-   ========================================================== */
+/* ---- Background effects: fixed layer stack behind the page, in its own div. ---- */
 .fx{
-  /* Not `inset:0`. On mobile Chromium a fixed element is sized by the
-     visual viewport, which changes height as the URL bar hides, and
-     `cover` rescales every time - so the photo zoomed in and out while
-     scrolling. lvh is the one height the URL bar cannot move. */
+  /* Not `inset:0`: on mobile Chromium a fixed element is sized by the visual
+     viewport, which changes as the URL bar hides, and `cover` would rescale the
+     photo while scrolling. lvh is the one height the URL bar cannot move. */
   position:fixed;left:0;top:0;width:100%;
   height:100vh;   /* Chromium already reads vh as the large viewport... */
   height:100lvh;  /* ...and this says so by spec rather than by habit. */
   pointer-events:none;z-index:0;overflow:hidden;
   /* Own stacking context, so the blend below cannot reach the page. */
   isolation:isolate;
-  /* Nothing in here affects anything outside it, and saying so keeps a
-     moving ember from invalidating the page above. paint is what
-     overflow:hidden already does; this just makes it a promise the
-     compositor can act on. */
+  /* Nothing in here affects anything outside it, so a moving ember does not
+     invalidate the page above. paint is what overflow:hidden already does; this
+     makes it a promise the compositor can act on. */
   contain:layout paint style;
 }
 .fx-l{position:absolute;inset:0;}
@@ -69,10 +60,10 @@ body{
 /* The page's own colour, as the surface the photo blends into. */
 .fx-ground{background:radial-gradient(circle at top, #1a1f27, #0f1216 60%);}
 
-/* mix-blend-mode:luminosity keeps only the light and dark of the
-   screenshot and takes hue and saturation from the layer under it, so
-   the photo comes back in the site's slate. That is why one this busy
-   can sit behind text, and why swapping it needs no colour grading. */
+/* mix-blend-mode:luminosity keeps only the light and dark of the screenshot and
+   takes hue and saturation from the layer under it, so the photo comes back in
+   the site's slate: a busy one can sit behind text, and swapping it needs no
+   colour grading. */
 .fx-photo{
   /* Left of centre: the castle is in the left third, and `center`
      cropped it away on a tall window. */
@@ -80,10 +71,9 @@ body{
   filter:brightness(.72) contrast(1.04) blur(1.5px);
   mix-blend-mode:luminosity;
   opacity:.58;
-  /* Its own layer. A full-viewport blur under a blend mode is the most
-     expensive thing on the page, and the embers moving in the same box
-     were dirtying it. transform, not filter: naming filter here would
-     say the blur is about to change. */
+  /* Its own layer: a full-viewport blur under a blend mode is the most expensive
+     thing on the page and must not be dirtied by the embers. transform, not
+     filter: naming filter would say the blur is about to change. */
   will-change:transform;
 }
 
@@ -97,13 +87,11 @@ body{
       rgba(15,18,22,.55), transparent 28%, transparent 70%, rgba(15,18,22,.66));
 }
 
-/* The canvas the ember field is drawn into, deliberately a sibling of
-   .fx and not a layer inside it. .fx is an isolated group with a
-   full-viewport mix-blend-mode layer, and a blend has to re-read its
-   backdrop: while the embers lived in there, anything moving meant
-   composing the group again - photo, blur and blend - 144 times a
-   second. Out here nothing carries a blend mode and it lands on the same
-   pixels. Everything drawn inside is in js/boot.js. */
+/* The canvas the ember field is drawn into, deliberately a sibling of .fx and not
+   a layer inside it: .fx is an isolated group with a full-viewport blend layer
+   that re-reads its backdrop, so anything moving inside would recompose photo,
+   blur and blend every frame. Out here nothing carries a blend mode. Everything
+   drawn inside is in js/boot.js. */
 .fx-embers{
   position:fixed;left:0;top:0;width:100%;
   height:100vh;   /* lvh for the same reason as .fx above. */
@@ -120,33 +108,27 @@ body{
   7%{filter:brightness(2.5) saturate(1.3);transform:translateY(-12px);}
   100%{filter:brightness(1);transform:translateY(0);}
 }
-/* Nothing loops while the window is not being watched. `*` rather than a
-   list of the looping animations, because a list misses whatever gets
-   added next - it already missed the first-place sheen. Paused, not
-   disabled, so coming back is instant. Set in idleWhenUnwatched,
-   js/boot.js. The exceptions are the animations that run once and are
-   supposed to end: freezing those is a stuck frame, not a pause. */
+/* Nothing loops while the window is not being watched. `*` rather than a list of
+   the looping animations, because a list misses whatever gets added next. Paused,
+   not disabled, so coming back is instant. Set in idleWhenUnwatched, js/boot.js.
+   The exceptions are the animations that run once and are supposed to end:
+   freezing those is a stuck frame, not a pause. */
 .is-idle *:not(.value-changed):not(.delta):not(.match-panel),
 .is-idle *::before,
 .is-idle *:not(.side-pulse)::after{animation-play-state:paused !important;}
 
-/* ==========================================================
-   SCROLLBARS
-   The popovers and the map's detail column. -webkit- pseudo-elements
-   and not scrollbar-width/scrollbar-color: declaring those in
-   Chromium 121+ turns these rules off entirely. Firefox keeps its
-   own scrollbar, which is the trade.
-   ========================================================== */
+/* ---- Scrollbars: the popovers and the map's detail column. -webkit-
+   pseudo-elements, not scrollbar-width/scrollbar-color: declaring those in
+   Chromium 121+ turns these rules off entirely. Firefox keeps its own. ---- */
 .info-popover::-webkit-scrollbar,
 .wvw-detail::-webkit-scrollbar{width:9px;}
 
 .info-popover::-webkit-scrollbar-track,
 .wvw-detail::-webkit-scrollbar-track{background:transparent;}
 
-/* Not ::-webkit-resizer. When an element is resizable AND scrolls,
-   Chromium reserves a square below the scrollbar for the grip and
-   paints it here, opaque near-white. Styling the track and the thumb
-   never reached it. */
+/* When an element is resizable AND scrolls, Chromium reserves a square below the
+   scrollbar for the grip and paints it opaque near-white; the track and thumb
+   rules do not reach it. */
 .info-popover::-webkit-scrollbar-corner,
 .wvw-detail::-webkit-scrollbar-corner{background:transparent;}
 
@@ -164,10 +146,8 @@ body{
   background-color:rgba(127,214,242,.55);
 }
 
-/* Firefox, which has none of the above. It cannot go outside this
-   @supports: declaring scrollbar-width in Chromium turns every -webkit-
-   rule above off, and Firefox does not know ::-webkit-scrollbar, so it
-   is the only engine that gets here. */
+/* Firefox, which has none of the above. It must stay inside this @supports:
+   scrollbar-width in Chromium turns every -webkit- rule above off. */
 @supports not selector(::-webkit-scrollbar) {
   .info-popover,
   .wvw-detail{
@@ -176,17 +156,13 @@ body{
   }
 }
 
-/* ==========================================================
-   THE REST OF THE BROWSER'S OWN CHROME
-   Four things the user agent still paints in the OS palette. Bare
-   selectors on purpose: scoping them to today's elements means the
-   next input quietly gets the white one back.
-   ========================================================== */
+/* ---- The browser's own chrome the user agent still paints in the OS palette.
+   Bare selectors on purpose: scoping them means the next input gets the white
+   one back. ---- */
 
-/* The resize grip, and the one rule here that is scoped: `resize` is on
-   two unalike elements. The textarea is a solid sunken field and keeps
-   the browser's grip. On the popover the narrowed scrollbar leaves that
-   corner 9px wide, where anything drawn reads as a smudge. */
+/* The resize grip, the one rule here that is scoped: `resize` is on two unalike
+   elements. The textarea keeps the browser's grip; on the popover the narrowed
+   scrollbar leaves that corner 9px wide, where anything drawn is a smudge. */
 .info-popover--guilds::-webkit-resizer{background:none;}
 
 /* Background only, never a colour: a colour means a team on this page
@@ -198,12 +174,11 @@ body{
    4.99:1. */
 ::placeholder{color:#79838f;opacity:1;}
 
-/* Keyboard focus. On the element types and not the classes: there are
-   thirteen kinds of button here, and listing them means the fourteenth
-   gets Chromium's white ring back. Outline, never box-shadow - the
-   buttons carry their relief in stacked box-shadows and a focus rule
-   that set one would wipe it. The offset puts the ring on the dark card
-   behind the button. .wvw-marker opts out in maps.css. */
+/* Keyboard focus. On the element types, not the classes: a list of the button
+   kinds misses the next one, which gets Chromium's white ring. Outline, never
+   box-shadow: the buttons carry their relief in stacked box-shadows. The offset
+   puts the ring on the dark card behind the button. .wvw-marker opts out in
+   maps.css. */
 button:focus-visible,
 a:focus-visible{
   outline:2px solid var(--accent-bright);

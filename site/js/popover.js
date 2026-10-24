@@ -1,9 +1,5 @@
 'use strict';
-// ---------------------------------------------------------------------
-// Popover system
-// One popover at a time, positioned near its trigger, closed on Escape,
-// on outside click and on scroll. Shared by every popover on the page.
-// ---------------------------------------------------------------------
+// Popover system: one popover at a time, near its trigger, closed on Escape, outside click and scroll.
 
 let activePopover = null;
 let activeTrigger = null;
@@ -11,10 +7,9 @@ let activeBackdrop = null;
 // Used by maps.js, declared here because closePopover runs on Escape and on
 // a resize before maps.js has loaded.
 let mapPollTimer = null;
-// Set while a tier's maps are open: pulls at once if the last pull is a
-// poll interval old. A tab hidden for half an hour otherwise came back
-// showing the map it left, for up to thirty more seconds, with the
-// capture clocks still counting as if it were current.
+// Set while a tier's maps are open: pulls at once if the last pull is a poll
+// interval old, so a tab that was hidden does not come back showing a stale map
+// with its capture clocks still counting.
 let mapCatchUp = null;
 // Separate from the poll on purpose: this one only rewrites the RI
 // clocks, so it can run every second without touching the refresh
@@ -48,9 +43,8 @@ function closePopover() {
   if (trigger) peekSoon();
 }
 
-// Every icon opened its popover with the same twelve lines of bookkeeping,
-// and all four skipped the parts keyboard users need: a role, a reachable
-// focus target, and a way back to the trigger. One place to get it right.
+// The one place that gives every popover what keyboard users need: a role, a
+// reachable focus target, and a way back to the trigger.
 // `render` receives the empty popover element. Returns null when the call
 // merely toggled an already-open popover shut.
 function openPopover(triggerEl, label, render, extraClass) {
@@ -147,9 +141,8 @@ function closeUnlessExpanded() {
   }
   closePopover();
 }
-// Page scroll never reaches visualViewport's scroll event, so an
-// anchored popover used to sit frozen while the icon it belongs to
-// scrolled away. Deliberately not wired to closeUnlessExpanded: that
+// Page scroll never reaches visualViewport's scroll event, so this follows it.
+// Deliberately not wired to closeUnlessExpanded: that
 // re-runs layoutAllianceGrid, which would reshuffle the alliance columns
 // on every scroll tick. Scrolling changes no widths.
 function repositionOnScroll() {

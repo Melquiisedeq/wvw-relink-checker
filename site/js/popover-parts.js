@@ -1,9 +1,5 @@
 'use strict';
-// ---------------------------------------------------------------------
-// Popover building blocks
-// Figure cards, section headings, bar rows and notes. These exist so
-// the data popovers cannot drift into three different looks.
-// ---------------------------------------------------------------------
+// Popover building blocks (figure cards, headings, bar rows, notes): the data popovers share one look.
 
 const MAP_LABELS = Object.freeze({
   Center: 'EBG', RedHome: 'RBL', BlueHome: 'BBL', GreenHome: 'GBL'
@@ -28,11 +24,10 @@ function popFigure(label, value, tone) {
   return box;
 }
 
-// A section heading, and on the same line the words that name the
-// columns of the rows under it. On two lines they left a band of empty
-// space the width of the popover between the heading and the data. The
-// heading runs along the left, over the label and the bar; each column
-// word keeps its own column's width, so it lands on what it names.
+// A section heading, and on the same line the words that name the columns of the
+// rows under it (on two lines they leave a band of empty space). The heading runs
+// along the left, over the label and the bar; each column word keeps its own
+// column's width, so it lands on what it names.
 function popSection(title, cells) {
   const el = document.createElement('div');
   el.className = 'pop-section';

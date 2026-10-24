@@ -1,16 +1,10 @@
 'use strict';
-// ---------------------------------------------------------------------
-// GW2 API
-// Every request to api.guildwars2.com goes through fetchJson: timeout,
-// retry on 429, and the caches that keep a run from asking twice.
-// ---------------------------------------------------------------------
+// GW2 API: every request to api.guildwars2.com goes through fetchJson (timeout, retry on 429) and the caches that keep a run from asking twice.
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Retry-After comes as either a number of seconds or an HTTP date, and a
-// server is free to name a delay longer than anyone will sit through.
-// Both forms are read; the wait is capped, because past half a minute
-// the honest thing is to fail and let the next background refresh try.
+// Retry-After is either a number of seconds or an HTTP date. Both are read; the
+// wait is capped, because past half a minute the next background refresh retries.
 const RETRY_AFTER_FALLBACK_MS = 1500;
 const RETRY_AFTER_MAX_MS = 30000;
 
@@ -78,17 +72,13 @@ async function fetchOwnApi(url) {
 }
 
 // The static catalogues - objectives, upgrades, sectors, tactics, emblem
-// foregrounds - are served with max-age=3600, and the blanket 'no-store'
-// threw all of it away on every page load. These go through 'default' so
-// the browser's own cache can answer for the hour the API says it may.
-// Live match data keeps 'no-store'; wvw/matches is served max-age=1.
+// foregrounds - are served with max-age=3600, so they go through 'default' and
+// the browser's own cache answers for the hour. Live match data keeps 'no-store'.
 const fetchJsonCached = (url) => fetchJson(url, 0, 'default');
 
-// Guild-to-team assignment only changes at the monthly relink, so this is
-// far less volatile than the cache it sits behind. Harmless
-// over-fetching, kept simple by reusing the same timer interval instead
-// of tracking that date. A table kept from before the teams notice went up
-// (teamsNoticeUpAt, js/relink.js) is the old month's, whatever its age.
+// Guild-to-team assignment only changes at the monthly relink; the same timer
+// interval is reused rather than tracking that date. A table kept from before
+// the teams notice went up (teamsNoticeUpAt, js/relink.js) is the old month's, whatever its age.
 async function getWvwMaps() {
   if (wvwMapCache && wvwMapCachedAt >= teamsNoticeUpAt
     && Date.now() - wvwMapCachedAt < TIMERS_REFRESH_MS) return wvwMapCache;
@@ -121,17 +111,12 @@ async function resolveGuildId(rawName) {
   return ids[0];
 }
 
-// Guild name, tag and emblem, kept between visits. About as static as
-// this API gets, and the maps ask for a great many at once: measured on
-// a real session, opening the popover and walking the four tabs made 42
-// lookups at a median of 294ms - 14.2 seconds of summed waiting, three
-// quarters of everything that popover asked for. The API sends them
-// no-store, so the browser's own cache never keeps one. This does.
+// Guild name, tag and emblem, kept between visits. About as static as this API
+// gets, and the maps ask for dozens at once. The API sends them no-store, so the
+// browser's own cache never keeps one; this does.
 const GUILD_STORE_KEY = 'wvw-guilds-v1';
 const GUILD_STORE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-// Enough for a season of WvW without the entry growing without bound:
-// 42 guilds in one sitting, and a guild seen once and never again is
-// dropped by the trim below before it costs anything.
+// Enough for a season of WvW without unbounded growth: a guild seen once and never again is dropped by the trim below.
 const GUILD_STORE_MAX = 400;
 
 let guildStore = null;
@@ -143,9 +128,8 @@ function guildStoreRead() {
   try {
     const cut = Date.now() - GUILD_STORE_TTL_MS;
     for (const [id, v] of Object.entries(JSON.parse(localStorage.getItem(GUILD_STORE_KEY)) || {})) {
-      // Shape-checked on the way in. What comes out of storage was
-      // written by an older version of this file, or by anything else
-      // with the same origin.
+      // Shape-checked on the way in: storage may hold what an older version, or
+      // anything else on this origin, wrote.
       if (v && typeof v.n === 'string' && typeof v.t === 'string'
         && typeof v.at === 'number' && v.at > cut) guildStore.set(id, v);
     }
@@ -153,8 +137,7 @@ function guildStoreRead() {
   return guildStore;
 }
 
-// One write per burst, not one per guild: those 42 lookups land within
-// a second of each other and each would serialise the whole store.
+// One write per burst, not one per guild: each write serialises the whole store.
 function guildStoreFlush() {
   if (guildStoreTimer) return;
   guildStoreTimer = setTimeout(() => {
@@ -175,11 +158,10 @@ async function getGuildInfo(guildId, allowStored = false) {
     throw new Error(cached.error);
   }
 
-  // Only for callers that said so - the maps, which want the emblem. The
-  // relink checker is not one: it resolves a name the user typed into an
-  // id and prints the name back, and a guild that renamed last week
-  // would have it printed as it was a month ago. A hit here deliberately
-  // does not fill guildNameCache.
+  // Only for callers that said so - the maps, which want the emblem. The relink
+  // checker is not one: it prints back a name resolved from what the user typed,
+  // and a renamed guild would show its old name. A hit here deliberately does not
+  // fill guildNameCache.
   if (allowStored) {
     const kept = guildStoreRead().get(guildId);
     if (kept) return { name: kept.n, tag: kept.t, emblem: kept.e || null };
@@ -190,9 +172,7 @@ async function getGuildInfo(guildId, allowStored = false) {
     if (!info || typeof info.tag !== 'string' || typeof info.name !== 'string') {
       throw new Error('Unexpected guild data from API');
     }
-    // emblem comes along for the ride: the WvW maps draw it on claimed
-    // objectives, and this is the same lookup and the same cache the
-    // guild checker already uses, so it costs nothing extra.
+    // The emblem comes along: the WvW maps draw it on claimed objectives.
     const result = { name: info.name, tag: info.tag, emblem: info.emblem || null };
     guildNameCache.set(guildId, { ok: true, data: result });
     guildStoreRead().set(guildId,
@@ -200,10 +180,9 @@ async function getGuildInfo(guildId, allowStored = false) {
     guildStoreFlush();
     return result;
   } catch (err) {
-    // Only a definite answer is worth remembering. A timeout, a dropped
-    // connection or a 429 says nothing about the guild, and caching those
-    // meant a single bad moment kept it failing until the page was reloaded -
-    // pressing Check again just replayed the cached error.
+    // Only a definite answer is remembered: a timeout, a dropped connection or a
+    // 429 says nothing about the guild, and caching it would replay the error on
+    // every Check until reload.
     if (err.status === 404) {
       guildNameCache.set(guildId, { ok: false, error: err.message || 'Guild lookup failed' });
     }
@@ -224,16 +203,15 @@ function findLink(guildId, maps) {
 }
 
 // ---- The newest body per match ---------------------------------------
-// Some of the API's servers answer wvw/matches with a body frozen in the
-// past (measured 02/10/2026 over 2207 reads: ~35% of answers for 1-1,
-// ~60% for 2-1, one stuck over 67 min; no header tells the servers
-// apart). Painted, it walks the maps, the scores and the kill rate
-// backwards. Every reader of a match goes through fetchMatches, which
-// never hands out a body behind one already seen.
-// matchId -> { match, at }; `at` is when this page last saw the match's
-// score go up. A frozen server repeats the same body, so the time of an
-// answer says nothing about the data's age; the score sum of a live match
-// rises every 20-40 s and jumps at each 5-min tick (measured 02-03/10/2026).
+// Some of the API's servers answer wvw/matches with a body frozen in the past,
+// for minutes to over an hour, and no header tells the servers apart. Painted,
+// it walks the maps, the scores and the kill rate backwards. Every reader of a
+// match goes through fetchMatches, which never hands out a body behind one
+// already seen.
+// matchId -> { match, at }; `at` is when this page last saw the match's score go
+// up. A frozen server repeats the same body, so the time of an answer says
+// nothing about the data's age; the score sum of a live match rises every
+// 20-40 s and jumps at each 5-min tick.
 const newestMatches = new Map();
 // When this page last got an answer for each match, any body, a frozen repeat
 // included (newestMatches keeps only when the score rose): the map's "checked".
@@ -312,14 +290,14 @@ function keepNewestMatch(match) {
 
 // ---- The week's line-up between loads --------------------------------
 // On a relink night the API can serve a tier's new week and then last week's
-// again for about an hour (03/10/2026); a reload would forget the new one.
+// again for about an hour; a reload would forget the new one.
 // Kept per match: start, end, the three team ids, when written - not the body.
 // Threat model: only this origin writes it (a script of ours, or the user's own extension).
 // Nothing in it becomes text: only team ids that exist in TEAM_NAMES, which supplies the names.
 // Worst case: a wrong line-up for up to WEEK_HOLD_MS, in this browser only.
 const WEEK_STORE_KEY = 'wvw-weeks-v1';
 // The memory overrules the API only this long after its week began, and only
-// over a body of an earlier week. The window measured on 03/10/2026: 1 h 04.
+// over a body of an earlier week. 2 h covers the hour or so the API serves last week's body again.
 const WEEK_HOLD_MS = 2 * 60 * 60 * 1000;
 const WEEK_MAX_MS = 8 * 24 * 60 * 60 * 1000;
 const WEEK_CLOCK_SLACK_MS = 5 * 60 * 1000;
@@ -517,8 +495,8 @@ function matchScoreRoseAt(matchId) {
 }
 
 // fetchJson for any wvw/matches URL that returns match bodies, one or a
-// list, same shape back. In parallel, not in turn: reads in a row come back
-// from the same server (24 of 28 identical, 02/10/2026).
+// list, same shape back. In parallel, not in turn: reads in a row come back from
+// the same server.
 const MATCH_REREADS = 2;
 
 const isMatchBody = (m) => !!m && typeof m.id === 'string';
@@ -557,7 +535,7 @@ function ageBehindLog(ids) {
 // browser's fight log (what a reload forgot), a body whose week is over. `regions` ('1' NA, '2' EU) says the URL lists
 // whole regions, and then also a tier this page holds that the answer left
 // out, and a gap in the tiers (1-2 and 1-3 without 1-1). Relink nights serve
-// partial lists and tiers from both weeks (03/10/2026). `holes`: the gaps,
+// partial lists and tiers from both weeks. `holes`: the gaps,
 // tiers that certainly exist. `logged`: the ids named for the fight log.
 function matchesToReread(list, regions) {
   const got = new Set(list.filter(isMatchBody).map((m) => m.id));
@@ -639,8 +617,8 @@ async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
 // /api/latest holds the same match bodies as the game gave them, gzipped and
 // base64, taken by our own scripts. Asked on the visit's first read and
 // whenever any live match read has not risen here for LATEST_QUIET_MS, at most
-// once per LATEST_GAP_MS. Asking only when all nine stood still meant asking
-// once a visit: one of nine almost always rose (09/10/2026). Each body goes
+// once per LATEST_GAP_MS (any one match, not all nine: one of nine almost always
+// rises, so asking only when all stood still would be once a visit). Each body goes
 // through keepNewestMatch like any other, so it wins only by being further
 // along. Threat model: anyone able to answer on this origin can hand us a
 // body, so: only ids the game already gave this visit, id and start must
@@ -821,21 +799,19 @@ function colorForTeam(match, teamId) {
 // its work, so the run does not count and the next tick or focus tries again.
 function schedulePeriodicRefresh(fn, intervalMs) {
   let inFlight = false;
-  // Seeded with "now" because callers do an initial load right before
-  // scheduling; without it, tabbing away and back a second later would
-  // fire a duplicate refresh of data that just arrived.
+  // Seeded with "now": callers load right before scheduling, and without it a quick
+  // tab away and back would duplicate that refresh.
   let lastRun = Date.now();
 
   const run = async () => {
     if (inFlight || document.visibilityState === 'hidden') return;
-    // The slack: a tick that ran a few ms late leaves the next one a few ms
-    // short of the interval, and without it the guard dropped that one.
+    // The slack: a tick that ran a few ms late leaves the next one a few ms short
+    // of the interval, and the guard would drop it.
     if (Date.now() - lastRun < intervalMs - 1000) return;
     inFlight = true;
-    // Stamped before the work, not after. setInterval fires on exact
-    // multiples of intervalMs, so stamping at the end pushes the next
-    // tick just under the guard above and drops every other one - which
-    // silently turned a 3-minute refresh into a 6-minute one.
+    // Stamped before the work, not after: setInterval fires on exact multiples of
+    // intervalMs, so stamping at the end puts the next tick just under the guard
+    // above and drops every other one.
     const before = lastRun;
     lastRun = Date.now();
     try {

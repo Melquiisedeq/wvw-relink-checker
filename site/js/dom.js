@@ -1,9 +1,5 @@
 'use strict';
-// ---------------------------------------------------------------------
-// DOM handles and caches
-// The elements the rest of the code talks to, looked up once, plus the
-// in-memory caches shared across requests.
-// ---------------------------------------------------------------------
+// DOM handles looked up once, plus the in-memory caches shared across requests.
 
 const guildInput  = document.getElementById('guildInput');
 const runBtn      = document.getElementById('runBtn');
@@ -20,8 +16,7 @@ const copyDiscordBtn = document.getElementById('copyDiscordBtn');
 const copyFeedback = document.getElementById('copyFeedback');
 const standingsGridNA   = document.getElementById('standingsGridNA');
 const standingsGridEU   = document.getElementById('standingsGridEU');
-// 'eu' when EU's column is on the left, set by js/region.js and the swap
-// button. Whatever lists the two regions side by side follows it.
+// 'eu' when EU's column is on the left (js/region.js and the swap button).
 const railFirst = () => (document.documentElement.dataset.railFirst === 'eu' ? 'eu' : 'na');
 const standingsStatusNA = document.getElementById('standingsStatusNA');
 const standingsStatusEU = document.getElementById('standingsStatusEU');

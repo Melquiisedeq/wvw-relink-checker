@@ -7,23 +7,19 @@
 <!-- The Content Security Policy is a response header, set in _headers. -->
 <meta name="referrer" content="no-referrer">
 <!--
-  The API host is reached at load, by the preloads below; the emblem host
-  on a click. Measured cold, DNS+TCP+TLS to the API is ~575ms of a ~780ms
-  first call; these hints move the handshake to page load. crossorigin
-  on one and not the other is not a slip - fetch() lands in the
-  anonymous connection pool while emblems are plain <image> loads that
-  are not CORS, and a hint in the wrong pool opens a socket nothing
-  reuses.
+  The API host is reached at load, by the preloads below; the emblem host on a
+  click. These hints move the handshake to page load (cold, DNS+TCP+TLS is most
+  of the first call to the API). crossorigin on one and not the other is not a slip: fetch() lands in the
+  anonymous connection pool while emblems are plain <image> loads that are not
+  CORS, and a hint in the wrong pool opens a socket nothing reuses.
 -->
 <link rel="preconnect" href="https://api.guildwars2.com" crossorigin>
 <link rel="preconnect" href="https://render.guildwars2.com">
 <!--
-  The first requests - the standings and the two timers the relink bar
-  waits for - started while this is still being read instead of after the
-  scripts: they land about when the scripts do. The URL, the mode and the
-  credentials have to match the fetches in js/standings.js
-  (fetchAllMatches) and js/relink.js (fetchTimers) exactly, or the browser
-  fetches twice.
+  The first requests - the standings and the two timers the relink bar waits for
+  - start while this is still being read. The URL, the mode and the credentials
+  have to match the fetches in js/standings.js (fetchAllMatches) and js/relink.js
+  (fetchTimers) exactly, or the browser fetches twice.
 -->
 <link rel="preload" as="fetch" crossorigin href="https://api.guildwars2.com/v2/wvw/matches?ids=all">
 <link rel="preload" as="fetch" crossorigin href="https://api.guildwars2.com/v2/wvw/timers/lockout">
@@ -36,12 +32,9 @@
   crest, title and domain stay inside the middle 630px.
 -->
 <!--
-  One address for this page, named in the page itself. Cloudflare
-  already redirects plain http and www here, so this is
-  for a crawler still holding an older one - not hypothetical, since the
-  result Google shows still carries a title this site dropped several
-  commits ago. js/count.js reads the same tag to normalise the path it
-  reports.
+  One address for this page, named in the page itself. Cloudflare already
+  redirects plain http and www here, so this is for a crawler still holding an
+  older one. js/count.js reads the same tag to normalise the path it reports.
 -->
 <link rel="canonical" href="https://wvwrelink.com/">
 <meta name="description" content="Guild Wars 2 WvW relink checker. Paste your guild names, see which team each landed on after the relink, and watch live maps that show where the fighting is.">
@@ -57,11 +50,10 @@
 <meta property="og:image:alt" content="WvW Relink Checker - find out which WvW team your alliance landed on, in one paste.">
 <meta name="twitter:card" content="summary_large_image">
 <!--
-  Renders nothing. It tells a search engine, in its own vocabulary, what
-  this page is and which game it covers. application/ld+json is a data
-  block, so script-src never evaluates it. No FAQPage on purpose: Google
-  requires that markup to match question-and-answer text visible on the
-  page, and claiming it earns a manual action rather than a rich result.
+  Renders nothing: tells a search engine what this page is and which game it
+  covers. application/ld+json is a data block, so script-src never evaluates it.
+  No FAQPage on purpose: Google requires that markup to match question-and-answer
+  text visible on the page, and claiming it earns a manual action.
 -->
 <script type="application/ld+json">
 {
@@ -118,24 +110,19 @@
 
 <body>
 
-<!-- The teams notice. First element in the document, and not for tidiness:
-     this is a sticky bar, and sticky measures from where an element sits
-     rather than from where it is painted. Moved down under the scenery it
-     would not be at the top of a freshly loaded page - it would pin only
-     once you had scrolled past where it lives. Moved inside anything with
-     overflow set it would not pin at all. Both failures are silent, so
-     check-structure.py asserts the position. Empty and display:none except
-     in the days between the new teams being published and the relink
-     landing.
+<!-- The teams notice. First element in the document, and not for tidiness: it is a
+     sticky bar, and sticky measures from where an element sits, not where it is
+     painted. Moved down under the scenery it would pin only once you had scrolled
+     past where it lives; inside anything with overflow set it would not pin at
+     all. Both failures are silent, so check-structure.py asserts the position.
+     Empty and display:none except between the new teams being published and the
+     relink landing.
 
-     role="status" is what makes a screen reader read the bar out when it
-     appears, and it brings polite announcement and aria-atomic with it, so
-     the whole sentence is read rather than fragments. The relink banner
-     below deliberately has none: updateRelinkBanner rebuilds it every sixty
-     seconds to tick the countdown, so a live region there would read the
-     same numbers out every minute forever. This bar is built once per
-     window and guarded against redraw, which is what makes announcing it
-     safe. -->
+     role="status" makes a screen reader read the bar out when it appears, whole
+     (polite, aria-atomic). The relink banner below deliberately has none:
+     updateRelinkBanner rebuilds it every sixty seconds, so a live region there
+     would read the same numbers out every minute. This bar is built once per
+     window and guarded against redraw, which makes announcing it safe. -->
 <div class="teams-notice" id="teamsNotice" role="status"></div>
 
 <div class="fx" aria-hidden="true">
@@ -157,11 +144,10 @@
 
 <div class="relink-banner" id="relinkBanner"></div>
 <div class="page" id="page">
-<!-- The central column comes first on purpose: it is what the page is
-     for, so it is where Tab and a screen reader should start, and the
-     h1 has to precede the rails' h2s. The rails are put back around it
-     by `order` in css/layout.css, which is also what flexbox paints by -
-     so nothing about the layout depends on this order. -->
+<!-- The central column comes first on purpose: Tab and a screen reader should
+     start where the page is for, and the h1 has to precede the rails' h2s. The
+     rails are put back around it by `order` in css/layout.css, so the layout does
+     not depend on this order. -->
 <main class="wrap">
 
   <div class="title-row">
@@ -292,10 +278,8 @@ One More Guild Name"></textarea>
 </aside>
 </div>
 
-<!-- The one place the page ends. Brand left, links right, collapsing
-     to a centred stack below 560px. The crest is the same mark as the
-     title row and reuses its gradients by id, the way the impact
-     overlay does - they are document-scoped. -->
+<!-- The one place the page ends. Brand left, links right, a centred stack below
+     560px. The crest reuses the title row's gradients by id (document-scoped). -->
 <footer class="gw2-band">
   <div class="gw2-band-inner">
     <div class="gw2-band-brand">
@@ -330,9 +314,8 @@ One More Guild Name"></textarea>
 </footer>
 
 <div class="impact-overlay" id="impactOverlay" aria-hidden="true">
-  <!-- Reuses the five #crest* gradients and the clip path defined in the
-       title icon's <defs> above - ids are document-scoped, so they are
-       declared once and pointed at from here, the footer and both halves. -->
+  <!-- Reuses the five #crest* gradients and the clip path defined in the title
+       icon's <defs> above, declared once (ids are document-scoped). -->
   <div class="impact-ring"></div>
   <div class="impact-ring impact-ring--slow"></div>
   <div class="impact-stack">
@@ -380,9 +363,8 @@ One More Guild Name"></textarea>
   </div>
 </div>
 
-<!-- Plain scripts, no build step, works straight off disk. Order
-     matters: config and dom first because everything reads them, boot
-     last because it starts the page. -->
+<!-- Plain scripts, no build step. Order matters: config and dom first because
+     everything reads them, boot last because it starts the page. -->
 <script src="js/config.js"></script>
 <script src="js/dom.js"></script>
 <script src="js/api.js"></script>
@@ -401,21 +383,19 @@ One More Guild Name"></textarea>
 <script src="js/trebuchet.js"></script>
 <script src="js/boot.js"></script>
 
-<!-- Page views only: no cookies, no fingerprint, nothing that identifies
-     a visitor between one request and the next. count.js is served from
-     this repo rather than gc.zgo.at, so script-src needs no host for it. Opt out
-     with localStorage.skipgc = 't'. Told not to count off wvwrelink.com when
-     js/boot.js runs first, which this async script does not guarantee: see
-     the end of js/boot.js. -->
+<!-- Page views only: no cookies, no fingerprint. count.js is served from this repo
+     rather than gc.zgo.at, so script-src needs no host for it. Opt out with
+     localStorage.skipgc = 't'. Told not to count off wvwrelink.com when js/boot.js
+     runs first, which this async script does not guarantee: see the end of
+     js/boot.js. -->
 <script data-goatcounter="https://melquiisedeq.goatcounter.com/count"
         async src="js/count.js"></script>
 
-<!-- Cloudflare Web Analytics: visits and real visitors' page speed, no
-     cookies. Loaded from Cloudflare, which already serves every byte of
-     this site, and without integrity because Cloudflare does not version
-     the file (developers.cloudflare.com/web-analytics/faq/). Cloudflare
-     counts only wvwrelink.com and its subdomains, so a preview or a
-     local copy adds nothing. -->
+<!-- Cloudflare Web Analytics: visits and real visitors' page speed, no cookies.
+     Loaded from Cloudflare, which already serves every byte of this site, and
+     without integrity because Cloudflare does not version the file
+     (developers.cloudflare.com/web-analytics/faq/). It counts only wvwrelink.com
+     and its subdomains, so a preview or a local copy adds nothing. -->
 <script type="module" async src="https://static.cloudflareinsights.com/beacon.min.js"
         data-cf-beacon='{"token": "de8b6c5ab92746a2815175bdd8979b54"}'></script>
 </body>

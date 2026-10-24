@@ -19,17 +19,15 @@
   8%{opacity:1;}
   100%{opacity:1;transform:translateX(var(--dx,0));}
 }
-/* A real parabola, sampled, rather than an ease pretending to be one:
+/* A real parabola, sampled, not an ease pretending to be one (an ease starts the
+   vertical motion slowly, the opposite of a throw):
 
      y(t) = dy*t - rise*4t(1-t)
 
-   Every eased version started the vertical motion slowly, which is the
-   opposite of what a throw does. X stays linear: nothing pushes the
-   stone sideways once it is in the air. The hump is a height in pixels
-   that is zero at both ends, so it arcs over the top wherever the target
-   sits - the earlier form scaled dy itself, which meant "12% further
-   DOWN" whenever the target was below the launch point, and the round
-   dipped under it and climbed back. */
+   X stays linear: nothing pushes the stone sideways once it is in the air. The
+   hump is a height in pixels that is zero at both ends, so it arcs over the top
+   wherever the target sits; scaling dy itself would dip under a target below
+   the launch point. */
 @keyframes shot-y{
   0%{transform:translateY(0) scale(0.700);}
   10%{transform:translateY(calc(var(--dy,0px) * 0.1 - var(--rise,0px) * 0.36)) scale(0.755);}
@@ -44,11 +42,10 @@
   100%{transform:translateY(var(--dy,0)) scale(1.250);}
 }
 
-/* One short segment per frame, from where the round was to where it is
-   now. A single wedge re-aimed every frame can only point back the way
-   the round came, so on a curve it cuts the corner and looks detached.
-   Here the path itself is the flame, and each segment fades on its own
-   clock, which is what tapers it. */
+/* One short segment per frame, from where the round was to where it is now. A
+   single re-aimed wedge can only point back the way the round came, so on a curve
+   it cuts the corner and looks detached. Here the path itself is the flame, and
+   each segment fades on its own clock, which tapers it. */
 .flame-seg{
   position:fixed;left:0;top:0;z-index:38;pointer-events:none;
   height:12px;margin-top:-6px;transform-origin:0 50%;
@@ -89,9 +86,7 @@
 }
 .flame-head--big{width:104px;height:104px;margin:-52px 0 0 -52px;}
 
-/* What the flame leaves behind. The wedge alone is a clean streak that
-   vanishes the instant the round passes; these say something was burning.
-   Both are dropped at the round's live position and then abandoned, so
+/* Smoke and sparks, so something reads as burning after the streak passes. Both are dropped at the round's live position and then abandoned, so
    they fall behind on their own. */
 .trail-smoke{
   position:fixed;z-index:36;pointer-events:none;
@@ -116,10 +111,8 @@
   100%{opacity:0;transform:translate(var(--sx,0px), var(--sy,0px)) scale(.3);}
 }
 
-/* The round going off where it lands - with the marker gone, this is the
-   whole click feedback. Same construction as the shield blast, a size
-   down. The perfect ring that used to sit behind it is gone: it was the
-   shape doing most of the work to make this read as a lamp. */
+/* The round going off where it lands: the whole click feedback. Same construction as the shield blast, a size down. No perfect ring
+   behind it: that shape makes it read as a lamp. */
 .shot-bloom{
   position:fixed;z-index:41;pointer-events:none;
   width:52px;height:52px;margin:-26px 0 0 -26px;

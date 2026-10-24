@@ -1,8 +1,4 @@
-/* ==========================================================
-   CARD GEOMETRY
-   The rank badge is already a hexagon; this carries that faceted
-   language into the cards themselves.
-   ========================================================== */
+/* ---- Card geometry: the rank badge is already a hexagon; the cards carry that faceted language. ---- */
 .standing-side,.team-col{
   --notch:10px;
   --rail:3px;
@@ -17,18 +13,14 @@
 .team-col{padding:11px;}
 .standing-side::after,.team-col::after{
   content:'';position:absolute;z-index:0;
-  /* Held back by the rail's width on the left, by the 1px edge
-     everywhere else. Back when this was a 6% wash the rail showed
-     straight through it and still shows faintly at 60%, so the rail
-     is drawn at its real width anyway. */
+  /* Held back by the rail's width on the left, by the 1px edge everywhere else; the
+     rail shows faintly through the fill, so it is drawn at its real width. */
   inset:1px 1px 1px var(--rail);
-  /* Mostly opaque. A 6% wash let the 45% edge layer underneath flood the
-     interior with near-full-strength team colour and washed out the
-     numbers; 60% is where it reads as a hint instead. */
-  /* Flat fill first. color-mix is the only use of it in the project,
-     and where it is not supported the whole gradient line is dropped -
-     which would leave this layer with no background at all and put the
-     thin grey numbers straight onto the photograph. */
+  /* Mostly opaque: a thin wash lets the 45% edge layer underneath flood the interior
+     with team colour and wash out the numbers; 60% reads as a hint. */
+  /* Flat fill first: where color-mix is unsupported the whole gradient line is
+     dropped, which would leave no background and put the thin grey numbers
+     straight onto the photograph. */
   background:var(--side-fill);
   background:linear-gradient(180deg,
     color-mix(in srgb, #ffffff 7%, var(--side-fill)), var(--side-fill));
@@ -56,9 +48,8 @@
   clip-path:polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
 }
 
-/* First-place badge only. A 4.5s cycle whose sweep occupies the last
-   28% of it. If this ever looks frantic the badges are being rebuilt and
-   restarting the animation - the fault is upstream. */
+/* First-place badge only. A 4.5s cycle whose sweep occupies the last 28% of it.
+   If it looks frantic, the badges are being rebuilt and restarting the animation. */
 .rank-1::after{
   content:'';position:absolute;inset:0;
   background:linear-gradient(115deg, transparent 38%, rgba(255,255,255,.8) 50%, transparent 62%);
@@ -67,17 +58,14 @@
 }
 @keyframes sheen{0%,72%{transform:translateX(-130%);}100%{transform:translateX(130%);}}
 
-/* ==========================================================
-   LIVE DATA
-   ========================================================== */
+/* ---- Live data ---- */
 @keyframes value-flash{
   0%{background:rgba(127,214,242,.5);box-shadow:0 0 14px rgba(127,214,242,.55);}
   100%{background:transparent;box-shadow:0 0 0 rgba(127,214,242,0);}
 }
 .value-changed{animation:value-flash 1.5s ease-out;border-radius:3px;padding:0 2px;margin:0 -2px;}
-/* Fixed, and parked on <body>, because the cards are clipped by their
-   own chamfer - a delta rising inside one would be sheared off at the
-   card's top edge. */
+/* Fixed, and parked on <body>: the cards are clipped by their own chamfer, which
+   would shear a delta rising inside one. */
 .delta{
   position:fixed;z-index:45;transform:translateX(-50%);
   font-size:.64rem;font-weight:800;white-space:nowrap;pointer-events:none;
@@ -106,10 +94,9 @@
 @keyframes skel-sweep{0%{background-position:120% 0;}100%{background-position:-40% 0;}}
 .skel-title{height:9px;width:46px;margin-bottom:9px;}
 .skel-row{height:34px;margin:5px 0;border-radius:8px;}
-/* A team on a tier between weeks: a name and its guild list, and
-   deliberately none of the furniture a standing carries. No chamfer, no
-   team tint, no rank - the row has to read as a list of servers rather
-   than as an order they finished in, because that order is not known. */
+/* A team on a tier between weeks: a name and its guild list, none of the furniture
+   of a standing (no chamfer, tint or rank): the row reads as a list of servers,
+   not an order they finished in, which is not known. */
 .standing-stale{
   display:flex;align-items:center;gap:7px;
   margin:4px 0;padding:7px 9px;
@@ -133,11 +120,10 @@
   font-size:.68rem;color:#8d97a6;font-style:italic;
 }
 
-/* Relink inside two hours: the banner starts breathing. The outline
-   moves, not a halo behind it - the bar already has a cyan border and a
-   lit cyan top edge, so a glow landed on more of the same. The spread is
-   -2px because a larger negative one shrinks the glow back inside the
-   shape. Quieter than the lockout below, which beats it on hue. */
+/* Relink inside two hours: the banner starts breathing. The outline moves, not a
+   halo: the bar already has a cyan border and a lit cyan top edge. The spread is
+   -2px because a larger negative one shrinks the glow back inside the shape.
+   Quieter than the lockout below, which beats it on hue. */
 .relink-banner.is-urgent{
   border-color:rgba(127,214,242,.32);
   animation:urgent-pulse 2.6s ease-in-out infinite;
@@ -162,37 +148,29 @@
       0 0 22px -2px rgba(127,214,242,.55);
   }
 }
-/* The region that lights has to be the one running out, which is what
-   .is-now marks. This was every .time span, so the one with four days
-   left lit up beside the one with minutes. */
+/* The region that lights has to be the one running out, which .is-now marks; not every .time span. */
 .relink-banner.is-urgent .relink-stat:not(.relink-stat--primary) .relink-stat-value .time.is-now{
   color:var(--accent-bright);
-  /* Lit, not just recoloured. #f2f6fa to #66f5ff is a hue step at
-     almost the same lightness, so on its own it barely registers; the
-     halo is what makes the number read as switched on. */
+  /* Lit, not just recoloured: #f2f6fa to #66f5ff is a hue step at almost the same
+     lightness and barely registers; the halo makes the number read as switched on. */
   text-shadow:0 1px 2px rgba(0,0,0,.6), 0 0 12px rgba(102,245,255,.55);
 }
-/* The label lifts with its number, or NA and EU read the same while one
-   of them is the whole point. White, not the accent: in the accent it
-   read as a hyperlink, which is what the accent means everywhere else. */
+/* The label lifts with its number, or NA and EU read the same. White, not the
+   accent: the accent reads as a hyperlink everywhere else. */
 .relink-banner.is-urgent .relink-stat:not(.relink-stat--primary) .relink-stat-value .region.is-now{
-  /* Weight, and only a nudge of tone. Every hue on this line is already
-     somebody's - grey the other region label, white the other number,
-     cyan the number two characters away - so this stays in its grey, one
-     step brighter, and separates by weight instead. 400 against 600. */
+  /* Weight, and only a nudge of tone: every hue on this line is already taken (grey
+     the other region label, white the other number, cyan the number beside it),
+     so this stays in its grey, one step brighter, and separates by weight. */
   color:#a8b3c0;font-weight:600;
 }
-/* A rule under the word. At .66rem with .1em of tracking there is not
-   enough letter to work with: a halo smudged it, a text-stroke closed
-   its counters, a chip put a box round it. As text-decoration rather
-   than a border it adds no height, so the bar does not jump. */
+/* A rule under the word. At .66rem with .1em of tracking there is not enough
+   letter for a halo (smudges), a text-stroke (closes counters) or a chip. As
+   text-decoration rather than a border it adds no height. */
 .relink-banner.is-urgent .relink-stat:not(.relink-stat--primary) .relink-stat-title{
-  /* A tinted white, and neither of the two colours already spoken for:
-     #f2f6fa is what the numbers wear and the accent is the lockout's
-     title. This sits in the cyan family the bar is pulsing in, which is
-     what says which alarm is running. The tracking opens up as well -
-     widening small caps is a change of shape, and shape is what survives
-     being seen out of the corner of the eye. */
+  /* A tinted white, neither of the colours already spoken for (#f2f6fa is the
+     numbers', the accent is the lockout's title). It sits in the cyan family the
+     bar is pulsing in, which says which alarm is running. The tracking opens up
+     too: shape survives being seen out of the corner of the eye. */
   color:#bfe9f7;
   letter-spacing:.14em;
   text-decoration:underline;
@@ -204,11 +182,10 @@
 
 
 /* ---- Season lockout inside three days --------------------------- */
-/* Amber, not cyan. Cyan here means something you can touch or something
-   happening now, and a deadline is neither. Louder than the relink pulse
-   on every axis, and that ordering is the feature: a relink costs you a
-   week of not knowing who you fight, this costs a month on a different
-   team from your guild. */
+/* Amber, not cyan: cyan means something you can touch or something happening now,
+   and a deadline is neither. Louder than the relink pulse on every axis, on
+   purpose: a relink costs a week of not knowing who you fight, this costs a month
+   on a different team from your guild. */
 .relink-banner.is-lockout{
   border-color:rgba(255,183,101,.5);
   animation:lockout-pulse 2.1s ease-in-out infinite;
@@ -241,9 +218,8 @@
   color:var(--warn);
   text-shadow:0 1px 2px rgba(0,0,0,.7), 0 0 16px rgba(255,183,101,.45);
 }
-/* What to do about it, which is the half a countdown cannot say. Sits
-   under a hairline so it reads as a consequence of the number above
-   rather than as a third stat beside it. */
+/* What to do about it, the half a countdown cannot say. Under a hairline, so it
+   reads as a consequence of the number above, not a third stat. */
 .relink-alert{
   display:flex;align-items:center;justify-content:center;gap:7px;
   margin-top:7px;padding-top:7px;
@@ -253,9 +229,8 @@
 .relink-alert svg{flex-shrink:0;color:var(--warn);}
 
 /* ---- The game's crossed swords ---------------------------------- */
-/* The file is a flat alpha silhouette, so it is a mask over
-   currentColor rather than an <img>: one asset serves every state's
-   colour at every size, and nothing has to be recut by hand. */
+/* A flat alpha silhouette, so a mask over currentColor rather than an <img>: one
+   asset serves every state's colour at every size. */
 .swords-icon{
   display:inline-block;width:1em;height:1em;flex-shrink:0;
   vertical-align:-.17em;
@@ -267,10 +242,9 @@
 .relink-alert--relink .swords-icon{color:var(--accent-bright);}
 
 /* ---- The last week of the season -------------------------------- */
-/* Red, blue and green are the three teams, and this is the one state on
-   the page that is about the teams changing - so it is the one that
-   gets to wear them. Still, though, where the lockout moves: that is
-   what keeps it underneath without having to be dimmed into nothing. */
+/* Red, blue and green are the three teams, and this is the one state about the
+   teams changing, so it wears them. Still, where the lockout moves, which keeps it
+   underneath without dimming it into nothing. */
 .relink-banner .relink-week .relink-stat-title{
   color:#dfe7f0;letter-spacing:.15em;
   display:inline-flex;align-items:center;gap:6px;padding-bottom:5px;
@@ -278,10 +252,9 @@
 }
 .relink-banner .relink-week .relink-stat-title .swords-icon{color:var(--accent-bright);}
 .relink-banner .relink-week .relink-stat-value .time{color:#eef4fa;}
-/* With the lockout up it keeps the mark and loses the volume. Removing
-   it outright would take away the only notice that the final week has
-   started; leaving it lit would split the eye with the one alarm that
-   can still be acted on. */
+/* With the lockout up it keeps the mark and loses the volume: removing it takes
+   away the only notice that the final week has started, leaving it lit splits
+   the eye with the alarm that can still be acted on. */
 .relink-banner.is-lockout .relink-week .relink-stat-title{
   color:#aab4c1;background:none;padding-bottom:0;
 }
@@ -289,22 +262,19 @@
 .relink-banner.is-lockout .relink-week .relink-stat-value .time{color:#eaf0f6;}
 
 /* ---- The relink itself ------------------------------------------ */
-/* The loudest thing the page can do, and the only state here that is
-   not one hue. It keeps the lockout's 2.1s heartbeat and changes colour
-   on each beat - red, blue, green, the three teams being redrawn. So it
-   reads as the same family rather than as a new widget, and nothing
-   else on the page changes hue, so it cannot be mistaken for anything.
-   It never has to out-shout the amber either: the lockout is over
-   before this exists, and the two are never on screen together. */
+/* The loudest thing the page does, and the only state that is not one hue. It
+   keeps the lockout's 2.1s heartbeat and changes colour on each beat - red, blue,
+   green, the three teams being redrawn - so it reads as the same family, and
+   nothing else changes hue. It never out-shouts the amber: the lockout is over
+   before this exists. */
 .relink-banner.is-rebuild{
   padding:9px 26px;
   border-color:rgba(190,170,200,.34);
 }
-/* The beat is three still layers - one per team, each with its border and
-   halo already drawn - and only their opacity moves, so it runs on the
-   compositor. Animating the banner's own border-color and box-shadow, as
-   it did, repainted the bar on every frame for as long as the window was
-   open. The layers sit a third of the cycle apart: red, blue, green. */
+/* The beat is three still layers, one per team with its border and halo already
+   drawn, and only their opacity moves, so it runs on the compositor (animating
+   border-color and box-shadow repaints the bar every frame). The layers sit a
+   third of the cycle apart: red, blue, green. */
 .relink-banner.is-rebuild::before,
 .relink-banner.is-rebuild::after,
 .relink-banner.is-rebuild .relink-inner::before{
@@ -326,10 +296,9 @@
 }
 @keyframes rebuild-beat{0%,33.3%,100%{opacity:0;}16.6%{opacity:1;}}
 .relink-banner.is-rebuild .relink-stat{cursor:default;gap:4px;align-self:stretch;}
-/* Serif, where the whole page is not. One hero moment a month earns a
-   face of its own, and destoning is the point rather than an accident.
-   The trailing letter-space is padded back on the left or the word
-   drifts off centre by half a space. */
+/* Serif, where the page is not: one hero moment a month earns a face of its own.
+   The trailing letter-space is padded back on the left or the word drifts off
+   centre by half a space. */
 .relink-word{
   display:flex;align-items:center;justify-content:center;gap:18px;width:100%;
   font-family:Georgia,'Times New Roman',serif;
@@ -348,10 +317,8 @@
 .relink-banner.is-rebuild .relink-stat-value{font-size:1.1rem;font-weight:700;letter-spacing:.3px;}
 .relink-banner.is-rebuild .relink-stat-value .time{color:#e9f0f7;text-shadow:0 1px 2px rgba(0,0,0,.75);}
 .relink-banner.is-rebuild .relink-stat-value .region{color:#8d97a6;}
-/* Cyan is the one colour not in the cycle, so the region inside two
-   hours stands out by not belonging - and cyan already means "now"
-   everywhere else on the page. Everything here is white or team
-   coloured, so a brighter white had nowhere to go. */
+/* Cyan is the one colour not in the cycle, so the region inside two hours stands
+   out by not belonging, and cyan already means "now" elsewhere. */
 .relink-banner.is-rebuild .time.is-now{
   color:var(--accent-bright);
   animation:rebuild-now 1.5s ease-in-out infinite;
@@ -370,26 +337,22 @@
   .relink-banner.is-rebuild .relink-stat-value{font-size:1.02rem;}
 }
 
-/* The relink's own. Quieter than the lockout's amber on every axis, the
-   same ordering the two pulses already keep. */
+/* The relink's own: quieter than the lockout's amber on every axis, like the two pulses. */
 .relink-alert--relink{
   border-top-color:rgba(127,214,242,.16);
   color:#cfe8f4;
   gap:5px;
 }
-/* Bigger than the lockout's triangle and closer to its text: this one
-   is a silhouette rather than a symbol, and it needs the room to read
-   as two blades instead of a cross. */
+/* Bigger than the lockout's triangle: a silhouette needs the room to read as two
+   blades instead of a cross. */
 .relink-alert--relink svg{
   width:1.35em;height:1.35em;color:var(--accent-bright);
   filter:drop-shadow(0 0 6px rgba(102,245,255,.55));
 }
 
-/* ==========================================================
-   TYPOGRAPHY
-   ========================================================== */
-/* Fixed-width digits: the countdown reflows every minute and the VP
-   numbers change under it. Without this they visibly jitter. */
+/* ---- Typography ---- */
+/* Fixed-width digits: the countdown reflows every minute and the VP numbers
+   change under it. */
 .stat-value,.relink-stat-value,.skirmish-bar-pct{
   font-variant-numeric:tabular-nums;
 }
@@ -398,12 +361,8 @@
    instead of tracing their edges. */
 h1{filter:drop-shadow(0 1px 0 rgba(0,0,0,.9)) drop-shadow(0 0 16px rgba(127,214,242,.3));}
 
-/* ==========================================================
-   SIEGE IMPACT
-   The crest, plus what a trebuchet round actually does: a shockwave,
-   a second slower ring, and debris thrown outward. The blast itself,
-   the crest breaking and the screen shake live in impact.css.
-   ========================================================== */
+/* ---- Siege impact: the crest, a shockwave, a second slower ring and debris. The
+   blast, the crest breaking and the screen shake are in impact.css. ---- */
 .impact-ring{
   position:absolute;left:50%;top:50%;
   width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;

@@ -1,9 +1,5 @@
 'use strict';
-// ---------------------------------------------------------------------
-// Server guild lists
-// The alliance grid and solo list shown from a standings row, and the
-// button that opens it.
-// ---------------------------------------------------------------------
+// Server guild lists: the alliance grid and solo list shown from a standings row, and the button that opens it.
 
 const EXPAND_ICON_EXPAND = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
   '<path d="M15 4H20V9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
@@ -27,9 +23,8 @@ function buildAllianceCard(alliance) {
   return block;
 }
 
-// Compact mode: plain stacked list. Expanded mode: columns bin-packed
-// by measured card height (largest first, into the shortest column),
-// so columns stay even even when alliance sizes vary a lot.
+// Compact mode: plain stacked list. Expanded mode: columns bin-packed by real
+// card height (largest first, into the shortest column), so they stay even.
 function layoutAllianceGrid(grid, alliances, expanded) {
   grid.textContent = '';
   if (!expanded) {
@@ -216,19 +211,16 @@ async function toggleGuildsPopover(teamName, triggerEl) {
   positionPopover(popover, triggerEl);
 }
 
-// The shield with an info mark inside: this page's sign for "there is a
-// guild list behind this". It sits next to NA team names, and the teams
-// notice in js/relink.js draws the same one - called rather than copied,
-// and safe across the load order even though relink.js is parsed first,
-// because nothing calls this until a click or a countdown tick.
+// The shield with an info mark inside: this page's sign for "there is a guild
+// list behind this". The teams notice in js/relink.js draws the same one, called
+// rather than copied; safe across the load order because nothing calls this until
+// a click or a countdown tick.
 //
-// aria-hidden for both callers. Next to the button below, the button's own
-// aria-label says what it opens; inside the notice's sentence the word is
-// supplied as text beside the icon - see buildTeamsNotice in js/relink.js.
-// role="img" with a label was tried there instead and was worse, tested
-// with Narrator on 28/09/2026: role="img" makes the icon an OBJECT in the
-// accessibility tree, and the reader stopped at it, losing the rest of the
-// sentence.
+// aria-hidden for both callers: the button's own aria-label says what it opens,
+// and inside the notice's sentence the word is supplied as text beside the icon
+// (buildTeamsNotice in js/relink.js). Not role="img": that makes the icon an
+// OBJECT in the accessibility tree and the screen reader stops at it, losing the
+// rest of the sentence.
 function serverGuildsShield(size) {
   return `<svg width="${size}" height="${Math.round(size * 19 / 17)}" viewBox="0 0 24 27" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">`
     + '<path d="M12 2 L21 4.5 V13 C21 19 17 23.5 12 25.5 C7 23.5 3 19 3 13 V4.5 Z" '

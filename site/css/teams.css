@@ -12,7 +12,7 @@
 .side-blue,.col-blue{--side-edge:rgba(91,143,240,.45);--side-fill:rgba(31,41,56,.62);--side-rail:var(--blue);--side-glow:rgba(160,195,255,.9);}
 .side-green,.col-green{--side-edge:rgba(76,175,125,.45);--side-fill:rgba(29,45,44,.62);--side-rail:var(--green);--side-glow:rgba(150,235,195,.9);}
 
-/* Weight, not colour. This used to go cyan, which on this page means
-   something you can touch, and a team name is not a control. The pin
-   badge already names the guild that put you in this column. */
+/* Weight, not colour: cyan on this page means something you can touch, and a team
+   name is not a control. The pin badge already names the guild that put you in
+   this column. */
 .team-col.is-yours .team-name{font-weight:800;}

@@ -1,5 +1,4 @@
-/* First thing anyone reads here, and it was the dimmest text on the
-   page. */
+/* First thing anyone reads here: must not be the dimmest text on the page. */
 #resultsPlaceholder{text-shadow:0 1px 2px rgba(0,0,0,.6);}
 #resultsPlaceholder .muted{color:#aab4c2;margin:0;}
 .hint{color:#8d97a6;font-size:.8rem;margin-top:6px;}
@@ -49,9 +48,9 @@ a{color:var(--accent);}
 }
 @keyframes spin{to{transform:rotate(360deg);}}
 
-/* The only footer on the page. Brand left, links right, so it carries
-   a name and still fits on one screen - stacking it was what turned a
-   one-page tool into something you scroll past. */
+/* The only footer on the page. Brand left, links right: it carries a name and
+   still fits on one screen (stacked, a one-page tool becomes something you
+   scroll past). */
 .gw2-band{
   position:relative;z-index:1;
   margin-top:6px;padding:11px 16px 13px;
@@ -92,9 +91,9 @@ a{color:var(--accent);}
   background:rgba(154,164,178,.22);
 }
 .gw2-band-links a:hover{color:var(--accent-bright);}
-/* Provenance and trademarks, at the quietest weight on the page - but
-   not quieter than the floor. #737c88 measured 4.41:1 against the band
-   over the photo, just under AA; this is the same grey one step up. */
+/* Provenance and trademarks, at the quietest weight on the page but not under
+   the floor: #737c88 is 4.41:1 against the band over the photo, just under AA;
+   this is the same grey one step up. */
 .gw2-band-fine{
   max-width:900px;margin:9px auto 0;padding-top:8px;
   border-top:1px solid rgba(255,255,255,.05);
