@@ -53,6 +53,10 @@ MENTIONED = {
     'lucide.dev': 'a comment crediting an icon',
 }
 
+# Storage keys the README table leaves out: GoatCounter's own opt-out flag,
+# explained in the README's prose about the visit counter.
+EXEMPT_KEYS = {'skipgc'}
+
 
 def read(rel):
     with io.open(os.path.join(SITE, rel), encoding='utf-8') as fh:
@@ -277,25 +281,10 @@ def check_notice_position(problems):
 def check_sitemap(problems):
     """Is sitemap.xml's lastmod a date at all, and not in the future?
 
-    Deliberately not "is it current", and the reason is what the field means.
-    lastmod is the last *significant change to the page's content* - what a
-    reader would see differently - and Google only uses it at all while it is
-    consistently accurate, ignoring the field entirely on sites that stamp the
-    current date on every build. Which makes "is it current" a judgement about
-    whether a change mattered, and that judgement is human: a refactor, a colour
-    tweak and a corrected comment all change these files and none of them change
-    the page.
-
-    A first version of this check asked git when index.html, js/ or css/ last
-    changed and demanded the date keep up. It was wrong, in the worst direction
-    - it would have demanded a new date for comment fixes, training exactly the
-    every-commit stamping that gets the field discounted. Automating the easy
-    half of a judgement guarantees the wrong answer.
-
-    So what is left is the part that needs no judgement, and it is worth having:
-    a lastmod that is malformed or in the future is not a weak signal, it is a
-    sitemap a crawler may drop outright, and it fails as quietly as everything
-    else in this file.
+    Not "is it current": lastmod means a significant change to the content,
+    and whether a change was significant is a human call.
+    What needs no judgement is a lastmod that is malformed or in the future,
+    which a crawler may drop outright.
     """
     found = re.search(r'<lastmod>([^<]+)</lastmod>', read('sitemap.xml'))
     if not found:
@@ -319,6 +308,107 @@ def check_sitemap(problems):
             'believable, which is how the field stops counting.' % stamp)
 
 
+def readme_table(header):
+    """First-column cells of the README table whose header row starts with
+    `header`, as the text inside each backtick pair."""
+    with io.open(os.path.join(ROOT, 'README.md'), encoding='utf-8') as fh:
+        lines = fh.read().splitlines()
+    cells = []
+    for i, line in enumerate(lines):
+        if line.startswith('| ' + header + ' |'):
+            for row in lines[i + 2:]:
+                if not row.startswith('|'):
+                    break
+                cells.append(re.findall(r'`([^`]+)`', row.split('|')[1]))
+            break
+    return cells
+
+
+def storage_keys(problems):
+    """Keys js/ passes to localStorage or sessionStorage, constants resolved.
+
+    A key that does not resolve to a fixed text is a problem of its own: the
+    README table could not be compared against it.
+    """
+    bodies = dict((n, read('js/' + n)) for n in files_in('js', '.js'))
+    keys = {'written': set(), 'read': set()}
+
+    def fixed(arg):
+        arg = arg.strip()
+        quoted = re.fullmatch(r"""(['"`])([^'"`$\\]+)\1""", arg)
+        if quoted:
+            return quoted.group(2)
+        if re.fullmatch(r'[A-Za-z_$][\w$]*', arg):
+            for body in bodies.values():
+                const = re.search(r'\b' + re.escape(arg)
+                                  + r"""\s*=\s*(['"`])([^'"`$\\]+)\1\s*[;,\n]""",
+                                  body)
+                if const:
+                    return const.group(2)
+        return None
+
+    uses = (
+        (r'\b(?:local|session)Storage\s*\.\s*(get|set|remove)Item\(\s*'
+         r'([^,)]*)', None),
+        (r'\b(?:local|session)Storage\s*\[\s*([^\]]*)\]\s*(=(?!=))?', 'index'),
+    )
+    for name, body in sorted(bodies.items()):
+        for m in re.finditer(uses[0][0], body):
+            note(keys, problems, name, m.group(2), m.group(1) == 'set', fixed)
+        for m in re.finditer(uses[1][0], body):
+            note(keys, problems, name, m.group(1), m.group(2) is not None, fixed)
+        for m in re.finditer(r'\b(?:local|session)Storage\.(?!(?:get|set|remove)'
+                             r'Item\b|clear\b|key\b|length\b)\w+\s*=(?!=)', body):
+            problems.append(
+                'js/%s assigns a storage key by property (%s). Use setItem '
+                'with a fixed key so the README key table can be compared.'
+                % (name, m.group(0)))
+    return keys
+
+
+def note(keys, problems, name, arg, writes, fixed):
+    key = fixed(arg)
+    if key is None:
+        problems.append(
+            'js/%s passes %r as a storage key and this check cannot read it '
+            'as a fixed text. Use a quoted string or a const with one, so '
+            'the README key table can be compared.' % (name, arg.strip()))
+        return
+    if key in EXEMPT_KEYS:
+        return
+    keys['read'].add(key)
+    if writes:
+        keys['written'].add(key)
+
+
+def check_readme(problems):
+    """The Privacy tables in README.md name every fetched host and every key.
+
+    A host in FETCHED must be in the host table, a key js/ writes must be in
+    the key table, and the key table may name nothing js/ does not use.
+    """
+    listed = set()
+    for cells in readme_table('Host'):
+        for cell in cells:
+            listed.add(cell.split('/')[0])
+    for host in sorted(set(FETCHED) - listed):
+        problems.append(
+            'README.md Privacy host table does not list %s, which the page '
+            'fetches (%s). The table is the promise to visitors.'
+            % (host, FETCHED[host]))
+
+    named = set(c for cells in readme_table('Key') for c in cells)
+    keys = storage_keys(problems)
+    for key in sorted(keys['written'] - named):
+        problems.append(
+            'js/ writes the localStorage key %s but the README.md Privacy key '
+            'table does not list it.' % key)
+    for key in sorted(named - keys['read'] - keys['written']):
+        problems.append(
+            'The README.md Privacy key table lists %s, which no file in js/ '
+            'uses.' % key)
+
+
 def sitemap_note():
     """What the sitemap says, for the summary - so a silent check leaves proof.
 
@@ -337,7 +427,7 @@ def sitemap_note():
 def main():
     problems = []
     for check in (check_hosts, check_scripts, check_styles, check_demo_hatch,
-                  check_notice_position, check_sitemap):
+                  check_notice_position, check_sitemap, check_readme):
         check(problems)
 
     if problems:

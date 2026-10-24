@@ -31,7 +31,8 @@ site/          everything the browser downloads; Cloudflare serves it as it is
 worker/        wvwrelink.com/api: takes each script's signed results into a
                Cloudflare D1 database, says when each last reported
                (/api/health), and serves the page its reads (/api/kills,
-               /api/relink, /api/latest)
+               /api/relink, /api/latest,
+               /api/latest/summary)
 apps-script/   the two Google Apps Script projects behind the spreadsheets:
                the teams notice and the kills history; the copies they are
                pasted from
