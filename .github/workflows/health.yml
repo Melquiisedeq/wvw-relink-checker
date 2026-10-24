@@ -1,15 +1,12 @@
 # Everything this page shows comes from somewhere else: ArenaNet's API, three
-# Google Sheets, and Cloudflare, where this project's own /api lives. None of them owes this project a warning
-# before changing, and none of the ways they break is loud. A renamed column
-# reads the wrong column. A file that fails to deploy 404s into a console
-# nobody is watching. A stopped Apps Script trigger just stops.
+# Google Sheets, and Cloudflare, where this project's own /api lives. None of
+# them warns before changing, and none of the ways they break is loud: a
+# renamed column reads the wrong column, a stopped Apps Script trigger just
+# stops.
 #
 # So this asks, four times a day, whether the world outside is still the shape
-# the code assumes. It is the counterpart to checks.yml, which asks the same
-# question about the repository itself.
-#
-# A job per kind of thing rather than one script, so the failure email already
-# names which of them moved without opening anything.
+# the code assumes: the counterpart to checks.yml. A job per kind of thing, so
+# the failure email already names which of them moved.
 name: Health
 
 on:
@@ -44,11 +41,10 @@ jobs:
       - name: The keys and types the page reads, against the live API and the recording
         run: python3 .github/scripts/check-contract.py
 
-  # Moved here from its own workflow. The API has no endpoint that resolves a
-  # 5-digit WvW Team ID to a name, so js/config.js carries a hand-maintained
-  # TEAM_NAMES table. When ArenaNet adds a team, the page quietly renders
-  # "Unknown team (ID 11013)" until somebody happens to notice. This notices
-  # instead.
+  # The API has no endpoint that resolves a 5-digit WvW Team ID to a name, so
+  # js/config.js carries a hand-maintained TEAM_NAMES table. When ArenaNet adds
+  # a team, the page renders "Unknown team (ID 11013)" until somebody notices;
+  # this notices instead.
   team-names:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -113,12 +109,10 @@ jobs:
       - name: Both sources pushing, the reads answering, the entrance shut
         run: python3 .github/scripts/check-worker.py
 
-  # The teams notice is meant to appear every month. A month where it did not is
-  # a bug, and the only way anybody finds out is this asking - the Apps Script
-  # trigger that feeds it stops as silently as the kills one does, which is why
-  # check-sheets.py exists too. Its own job, so the failure email says
-  # "relink-notice" and not "site": nothing is wrong with the site when this
-  # fails.
+  # The teams notice is meant to appear every month, and the Apps Script
+  # trigger that feeds it stops as silently as the kills one does (see also
+  # check-sheets.py). Its own job, so the failure email says "relink-notice"
+  # and not "site".
   relink-notice:
     runs-on: ubuntu-latest
     timeout-minutes: 5

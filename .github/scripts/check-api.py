@@ -112,8 +112,8 @@ def check_match_detail(problems, notes):
     still empty out a panel.
 
     Every match, not a sample. There is no representative one: ArenaNet
-    republishes the tiers one at a time and not always forwards - at the relink
-    of 26/09 tier 4 was already on the new week while 1, 2 and 3 were on the
+    republishes the tiers one at a time and not always forwards - at a relink
+    tier 4 was already on the new week while 1, 2 and 3 were on the
     old, and tier 2 published the new week and then went back. js/config.js
     carries matchIsLive for exactly that.
 
@@ -181,11 +181,8 @@ def check_guild_pipeline(problems, notes):
         return
 
     # The table gives team ids as strings ("11009") while all_worlds gives them
-    # as numbers. The page does not care: matchTeamId and colorForTeam both put
-    # String() around each side, and an object lookup coerces a key anyway. So
-    # neither type is asserted here - only that the value still reads as a
-    # 5-digit team id. Demanding a string would fail on a change that breaks
-    # nothing, which is the definition of a false alarm.
+    # as numbers. The page (matchTeamId, colorForTeam) puts String() around each side, so neither type is
+    # asserted here - only that the value still reads as a 5-digit team id.
     guid = sorted(table)[0]
     team = table[guid]
     if not str(team).isdigit() or int(team) < 10000:

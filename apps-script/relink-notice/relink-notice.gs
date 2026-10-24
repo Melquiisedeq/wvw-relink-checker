@@ -3,34 +3,29 @@
  *
  * Teams notice - the counting half, for wvwrelink.com
  * ---------------------------------------------------------------------------
- * That annotation is load-bearing, and it is the first line for a reason.
- * Apps Script works out its scopes by READING THE SOURCE, and one call that
- * opens a spreadsheet by id anywhere in the file makes it request every
- * spreadsheet in the account. @OnlyCurrentDoc limits the grant to the one
- * document this script lives in, and it is enforced at runtime. (No comment
- * below spells such a call out either: the scan reads the file, not the
- * syntax tree.)
+ * The annotation above is load-bearing and stays the first line. Apps Script
+ * works out its scopes by READING THE SOURCE, and one call that opens a
+ * spreadsheet by id anywhere in the file makes it request every spreadsheet
+ * in the account. No comment below spells such a call out either: the scan
+ * reads the file, not the syntax tree.
  *
- * A hand-written oauthScopes in appsscript.json overrides both it and the
- * scan, so the manifest is pinned too and kept beside this file as
- * appsscript.json: two scopes, currentonly and external requests. If the
- * authorisation screen ever asks for all your Google Sheets files again, read
- * the manifest before the code.
+ * A hand-written oauthScopes in appsscript.json overrides the annotation and the scan, so the
+ * manifest beside this file is pinned too: two scopes, currentonly and
+ * external requests.
  * ---------------------------------------------------------------------------
- * This is BOUND to the relink spreadsheet (created from it through Extensions
- * > Apps Script), with a time-driven trigger on relinkTick() every 15
- * minutes. A standalone script would have to reach the sheet by id, which is
- * the broad grant above.
+ * BOUND to the relink spreadsheet (Extensions > Apps Script), with a
+ * time-driven trigger on relinkTick() every 15 minutes. A standalone script
+ * would have to reach the sheet by id, which is the broad grant above.
  *
- * It is a project of its own, not added to the kills script, because an Apps
- * Script project shares ONE global scope across all of its files: a `var API`
- * here against a `const API` there is a SyntaxError that stops the whole
- * project, and two functions with the same name are NOT an error - the last
- * one declared wins, silently. The 90 minutes a day of trigger time is a
- * per-ACCOUNT quota, so separating the projects buys isolation, not headroom.
+ * A project of its own, not added to the kills script: an Apps Script project
+ * shares ONE global scope across all of its files, so a `var API` here
+ * against a `const API` there is a SyntaxError that stops the whole project,
+ * and two functions with the same name are NOT an error - the last one
+ * declared wins, silently. The 90 minutes a day of trigger time is a
+ * per-ACCOUNT quota, shared with the kills trigger.
  *
- * The closure below is kept even so. Exactly four names are global, and three
- * of those only because they are run by name:
+ * Hence the closure. Exactly four names are global, three only because they
+ * are run by name:
  *
  *   relinkTick    the function the trigger calls
  *   relinkSetup   the function you run once, by hand
@@ -41,8 +36,7 @@
  * What it is for. ArenaNet republishes /v2/wvw/guilds/{na,eu} with everyone's
  * new team and announces it nowhere: no timestamp, no ETag. The only signal is
  * the table itself moving, and seeing that means holding a copy of it and
- * comparing - half a megabyte - which the visitors' browsers must not do. So
- * it happens here, and the answer is two integers in a cell.
+ * comparing - half a megabyte - which the visitors' browsers must not do.
  *
  * What it writes. Two cells in the relink tab, both as text.
  *
@@ -59,30 +53,25 @@
  * a comma-separated file.
  *
  * relink!A2, one epoch integer - the heartbeat, which the site never reads. It
- * answers whether this script ran, so it is written FIRST, before anything that
- * can throw, on every tick in and out of the window. A tick that fails is
- * already loud (Apps Script emails the owner, and fail() turns a streak into
- * that), but a trigger that never runs makes no sound anywhere.
- * check-notice.py reads it and fails on a stale one.
+ * is written FIRST, before anything that can throw, on every tick in and out
+ * of the window: a tick that fails is already loud, but a trigger that never
+ * runs makes no sound anywhere. check-notice.py reads it and fails on a stale
+ * one.
  *
  * After every tick both cells also go to wvwrelink.com/api, signed - see
  * push(). The cells stay the one source: what is sent is read back from them.
  *
  * Cost. Outside the window it reads two small timers and returns; inside it
- * (about four days a month) it also reads the two tables, the only expensive
- * part, within the 90 minutes a day it shares with the kills trigger.
+ * (about four days a month) it also reads the two tables, the expensive part.
  */
 
 /**
  * The function the trigger calls. Every 15 minutes.
  *
- * Locked, for the same reason the kills script locks: triggers are not queued,
- * so a tick that runs long is overlapped by the next one rather than waited
- * for. Here that matters more than there - a second run landing in the middle
- * of the baseline being cleared and rewritten would leave a half-written table,
- * and a half-written table reads as every guild having moved. Gives up rather
- * than waits; the next tick is fifteen minutes away and nothing here is urgent
- * to the minute.
+ * Locked: triggers are not queued, so a tick that runs long is overlapped by
+ * the next one, and a second run in the middle of the baseline being cleared
+ * and rewritten would leave a half-written table, which reads as every guild
+ * having moved. Gives up rather than waits.
  */
 function relinkTick() {
   var lock = LockService.getScriptLock();
@@ -98,11 +87,8 @@ function relinkTick() {
 /**
  * Run this once by hand, from the editor, before the first relink.
  *
- * It takes the first baseline and writes a dark state, which is everything the
- * feature needs to be ready. Nothing moves in the table between now and the
- * assignment being published, so today is as good a moment as any - and having
- * run it once by hand is also the only way to know the authorisation prompts
- * are out of the way before the night it matters.
+ * Takes the first baseline and writes a dark state. Also the only way to get
+ * the authorisation prompts out of the way before the night it matters.
  */
 function relinkSetup() {
   RelinkNotice_.setup();
@@ -124,76 +110,51 @@ var RelinkNotice_ = (function () {
 
   // Must match the tab named in RELINK_SHEET_URL in js/config.js. If this tab
   // is missing, the CSV export quietly serves the *first* sheet instead of
-  // failing, so the name matters more than it looks - setup() renames the
-  // default sheet to this rather than leaving an empty one in front of it.
+  // failing; setup() renames the default sheet to this rather than leaving an
+  // empty one in front of it.
   //
-  // There is no spreadsheet id here, and that is the point of being a
-  // container-bound script. Bound, the only spreadsheet it can touch is the one
-  // it lives in, and the authorisation screen says so: "the spreadsheet this
-  // application is linked to" instead of "all your Google Sheets files". A
-  // standalone script reaching the same sheet by id has to be granted
-  // every spreadsheet in the account, the kills history included - the same
-  // access, asked for far more widely than it is used. It also means the id
-  // exists in exactly one place, js/config.js, with nothing to keep in step.
+  // No spreadsheet id here: bound, the only spreadsheet this script can touch
+  // is the one it lives in. The id exists only in js/config.js.
   //
-  // THE ONE THING THAT MUST BE RIGHT ABOUT THE DOCUMENT: share it as "anyone
-  // with the link, VIEWER". Never Editor. The cell below decides what the page
-  // tells people about their teams, so whoever can write it can make the page
-  // say the new teams are out when they are not.
+  // The document must be shared as "anyone with the link, VIEWER", never
+  // Editor: whoever can write the cell below can make the page say the new
+  // teams are out when they are not.
   var TAB = 'relink';
 
   var API = 'https://api.guildwars2.com/v2';
   var REGIONS = ['na', 'eu'];
 
   // One percent of the table: about 45 guilds in NA, 55 in EU. The signal is
-  // bimodal - outside a relink no guild changes team at all, measured in both
-  // regions ten hours apart, and a relink moves about 92% of the table - so
-  // this has three orders of magnitude of clearance on both sides. It is not a
-  // tuning knob. Permutation figures against the real tables: 0.9% moved stays
-  // dark, 1.1% fires, a real relink reads 4145 of 4527 in NA and 5224 of 5599
-  // in EU.
+  // bimodal - outside a relink no guild changes team, a relink moves most
+  // of the table - so this is not a tuning knob.
   var THRESHOLD_FRACTION = 0.01;
 
-  // The baseline is rolling: whenever the table is seen to have moved, the
-  // table that moved becomes the new baseline, written in the same pass. So it
-  // is always "the last thing that was true", which is what this month's
-  // reading has to be compared against, and next month it is already correct
-  // without anything resetting it. Any moment is a fine time to take the first
-  // one, because nothing moves in between.
+  // Rolling: whenever the table is seen to have moved, the table that moved
+  // becomes the new baseline, in the same pass, so it is always "the last
+  // thing that was true".
   //
-  // In tabs of the same spreadsheet, and that is a deliberate second choice.
-  // Drive files worked, but they cost an OAuth scope over the whole of the
-  // owner's Drive - for two files this script created itself - and they left two
-  // objects outside the spreadsheet that nobody must delete. Tabs mean the
-  // script asks for spreadsheets and external requests and NOTHING else, and
-  // the entire feature is one document. The rows are public like everything
-  // else here, and they are public API data.
+  // In tabs of the same spreadsheet, not Drive files: Drive would cost an
+  // OAuth scope over the owner's whole Drive.
   //
   // Layout of each tab: A1 'takenAt', B1 the epoch integer, then one row per
   // guild from row 2 - guid in A, team in B.
   var BASELINE_TAB = { na: 'baseline-na', eu: 'baseline-eu' };
 
   // One relink cycle is a month. A baseline older than this means a whole
-  // window was missed - the trigger stopped, the account was locked - and it
-  // has come back two relinks behind, which reads as a relink the moment the
-  // lockout closes. Refuse, retake, and be right again next month. Must agree
-  // with MAX_GAP_SECONDS in .github/scripts/check-notice.py.
+  // window was missed and the table has come back two relinks behind, which
+  // reads as a relink. Refuse, retake. Must agree with MAX_GAP_SECONDS in
+  // .github/scripts/check-notice.py.
   var BASELINE_MAX_AGE_SECONDS = 45 * 24 * 60 * 60;
 
   var GUID_RE = /^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$/;
   var TEAM_RE = /^[0-9]{5}$/;
   var STATE_RE = /^(\d{1,12}):(\d{1,12})$/;
 
-  // Quiet for a hiccup, loud for a real outage, and never loud on every tick.
-  // The reasoning is the kills script's, and it is not about taste: Apps Script
-  // emails on every uncaught exception, and a trigger that throws for hours on
-  // end is a trigger Google may disable - which would take the notice away
-  // silently and for good, the exact failure this feature exists to avoid.
-  //
-  // At fifteen minutes a tick, four is about an hour before the first word and
-  // twenty-four is about six hours between reminders after that. The window is
-  // days long, so an hour of silence costs nothing and an hour of noise would
-  // cost the trigger.
+  // Quiet for a hiccup, loud for a real outage, never loud on every tick:
+  // Apps Script emails on every uncaught exception, and a trigger that throws
+  // for hours is one Google may disable, which would take the notice away
+  // silently. At fifteen minutes a tick, the first email comes after about an
+  // hour (4 ticks), then a reminder about every six hours (24).
   var ALARM_AFTER = 4;
   var ALARM_EVERY = 24;
 
@@ -212,10 +173,8 @@ var RelinkNotice_ = (function () {
 
   /**
    * Records a failure, and throws only at the thresholds above.
-   *
-   * Throwing is the only way this script can reach anybody: there is nobody
-   * watching the execution log. So the counter is what turns "the API blinked"
-   * into silence and "something is actually broken" into an email.
+   * Throwing is the only way this script can reach anybody: nobody watches the
+   * execution log.
    */
   function fail(message) {
     var props = PropertiesService.getScriptProperties();
@@ -244,11 +203,9 @@ var RelinkNotice_ = (function () {
    * in it fails below HTTP - a timeout, a dropped connection - so a throw
    * counts against all of them.
    *
-   * The timeout is what bounds a tick. Without it a request that hangs waits
-   * the 360 s default, which is the whole execution: that is how the first
-   * window ended in "Exceeded maximum execution time" (29/09/2026). With it the
-   * worst case is 3 x 20 s + 2 x 5 s per call, two calls a tick. A table takes
-   * under a second.
+   * The timeout bounds a tick: without it a hung request waits the 360 s
+   * default, the whole execution. Worst case is 3 x 20 s + 2 x 5 s per call,
+   * two calls a tick.
    */
   function getAll(urls) {
     var bodies = urls.map(function () { return null; });
@@ -343,10 +300,8 @@ var RelinkNotice_ = (function () {
   /**
    * How many guilds sit on a different team than they do in the baseline.
    *
-   * Only this counts. A guild that appeared since the baseline moves nobody:
-   * its members stay on the team they are already on and follow the guild at
-   * the *next* relink, so everyone's allies and enemies are unaffected. Same
-   * for one that vanished.
+   * Only this counts: a guild that appeared or vanished since the baseline
+   * moves nobody, its members follow it at the next relink.
    */
   function countChanged(before, after) {
     var changed = 0;
@@ -377,19 +332,13 @@ var RelinkNotice_ = (function () {
 
 
   /**
-   * The cell the site reads, creating the tab if it is not there.
+   * The cell the site reads, creating the tab if it is not there. Created
+   * rather than failed on; check-notice.py watches either way.
    *
-   * Created rather than failed on, because the cost of failing is a whole month
-   * with no notice and the cost of creating is nothing - and check-notice.py is
-   * watching either way.
-   *
-   * A brand new spreadsheet arrives with one empty sheet whose name depends on
-   * the account's language - "Sheet1", "Página1" - and the CSV export does not
-   * fail on a tab name it cannot find: it serves the FIRST sheet instead. An
-   * empty sheet in front of this one would therefore answer the site with
-   * nothing at all, forever, and look like no answer rather than like a
-   * misconfiguration. So the default sheet is renamed rather than left there,
-   * and any tab created later goes at the end.
+   * A new spreadsheet's one empty sheet is named by the account's language,
+   * and the CSV export serves the FIRST sheet when it cannot find the tab
+   * name, so an empty sheet in front of this one would answer the site with
+   * nothing. The default sheet is renamed instead; later tabs go at the end.
    */
   function stateTab() {
     var doc = book();
@@ -414,12 +363,10 @@ var RelinkNotice_ = (function () {
   /**
    * Stamps the heartbeat, and never lets its own failure end the tick.
    *
-   * Swallowed on purpose. A write that fails here means the document is
-   * unreachable, which the work below is about to discover and report properly
-   * through fail(); throwing from the very first line would replace that report
-   * with this one and lose which cell was the problem. A missed stamp is also
-   * the correct outcome in that case - check-notice.py should see a stale
-   * heartbeat when the sheet cannot be written.
+   * A failed write means the document is unreachable, which the work below
+   * discovers and reports through fail(); throwing here would replace that
+   * report. A missed stamp is also the right outcome: check-notice.py should
+   * see a stale heartbeat when the sheet cannot be written.
    */
   function beat(now) {
     try {
@@ -442,10 +389,7 @@ var RelinkNotice_ = (function () {
 
   /**
    * Writes the cell the site reads, and nothing but two integers into it.
-   *
-   * Both arguments were computed here - one parsed from a timestamp, one from
-   * the clock - and the guard is belt and braces on top of that. Nothing that
-   * came back from the API has a path into this cell.
+   * Nothing from the API has a path into this cell.
    */
   function writeState(window, published) {
     window = Math.floor(Number(window));
@@ -458,8 +402,6 @@ var RelinkNotice_ = (function () {
       throw new Error('generated relink state did not read back as itself');
     }
     var target = cell();
-    // Plain text, so the CSV export cannot reformat it into something with a
-    // comma in it.
     target.setNumberFormat('@');
     target.setValue(text);
   }
@@ -483,8 +425,7 @@ var RelinkNotice_ = (function () {
       return null;
     }
     // Row 1 is the timestamp, and at least a hundred guilds have to follow it
-    // or this is not a baseline - the same floor readTable uses, for the same
-    // reason: a nearly empty one would make everything look like it moved.
+    // or this is not a baseline - the same floor as readTable.
     if (!rows || rows.length < 101 || String(rows[0][0]) !== 'takenAt') {
       return null;
     }
@@ -514,11 +455,8 @@ var RelinkNotice_ = (function () {
     tab.clear();
 
     // getRange does not grow the sheet, and a new spreadsheet has a thousand
-    // rows against the ten thousand this needs - so without this the very first
-    // write throws, and every later one would too. The kills script learnt this
-    // the other way round, by deleting rows until the sheet was too small; same
-    // trap, same fix, and the spare hundred is so a table that gains a few
-    // guilds next month does not need a second call.
+    // rows against the ten thousand this needs, so without this the first write
+    // throws. The spare hundred saves a second call when the table gains guilds.
     var need = rows.length - tab.getMaxRows();
     if (need > 0) tab.insertRowsAfter(tab.getMaxRows(), need + 100);
 
@@ -533,9 +471,8 @@ var RelinkNotice_ = (function () {
   function tick() {
     var now = Math.floor(Date.now() / 1000);
 
-    // Before the timers, before the window test, before anything that can
-    // return or throw. This is the one line that proves the trigger is alive on
-    // the twenty-six days a month when a working tick does nothing else at all.
+    // Before anything that can return or throw: the one line that proves the
+    // trigger is alive on the days a working tick does nothing else.
     beat(now);
 
     var t = timers();
@@ -546,10 +483,8 @@ var RelinkNotice_ = (function () {
       return;
     }
 
-    // The same window the banner draws, and deliberately the same test as
-    // `rebuilding` in js/relink.js: it opens when the lockout closes and closes
-    // when NA - the later region - lands. Anything else and the page and this
-    // would disagree about which days they are talking about.
+    // Same window as `rebuilding` in js/relink.js: it opens when the lockout
+    // closes and closes when NA - the later region - lands.
     if (lockout > now || assignNa <= now) {
       healthy();
       Logger.log('outside the window; nothing to do');
@@ -560,8 +495,7 @@ var RelinkNotice_ = (function () {
     for (var i = 0; i < REGIONS.length; i++) {
       if (tables[REGIONS[i]] === null) {
         // A garbled read looks exactly like every guild having moved, so it is
-        // never compared against. Nothing is written and the next tick tries
-        // again.
+        // never compared against.
         fail(REGIONS[i] + ': the guild table came back a shape this does not '
           + 'recognise');
         return;
@@ -594,20 +528,17 @@ var RelinkNotice_ = (function () {
     }
 
     if (now - oldest > BASELINE_MAX_AGE_SECONDS) {
-      // Two relinks behind, which happens when a whole window was missed. It
-      // would read this month's ordinary table as thousands of guilds having
-      // moved and light the notice the moment the lockout closed, so: retake
-      // and stay dark. A quiet month is the direction this is meant to fail in.
+      // Two relinks behind: this month's ordinary table would read as
+      // thousands of guilds having moved and light the notice. Retake and stay
+      // dark.
       var days = Math.floor((now - oldest) / 86400);
       for (var k = 0; k < REGIONS.length; k++) {
         writeBaseline(REGIONS[k], now, tables[REGIONS[k]]);
       }
       writeState(assignNa, 0);
-      // Repaired first, then reported - so the throw cannot leave it broken,
-      // and the next tick finds a baseline minutes old and carries on. Thrown
-      // rather than logged because this costs a month of the feature and
-      // somebody has to know why: once, not every tick, since the repair above
-      // means the next tick does not come back here.
+      // Repaired first, then reported, so the throw cannot leave it broken.
+      // Thrown rather than logged because this costs a month of the feature
+      // and somebody has to know why.
       throw new Error('teams notice: the baseline was ' + days + ' days old, '
         + 'more than one relink cycle, so a whole window was missed. A fresh '
         + 'one has been taken: there will be no notice this month and the next '
@@ -615,14 +546,11 @@ var RelinkNotice_ = (function () {
     }
 
     if (!moved) {
-      // Both regions or neither. The notice speaks for the whole page, and
-      // somebody whose guild is in the region that has not moved yet would
-      // follow it straight to the old answer.
+      // Both regions or neither: somebody whose guild is in the region that
+      // has not moved yet would follow the notice to the old answer.
       //
-      // Written only when it would actually change something. Rewriting the
-      // same value every fifteen minutes for four days costs nothing that
-      // matters, but it fills the document's revision history with noise and
-      // makes the one write that counts harder to find later.
+      // Written only when it would change something, to keep the document's
+      // revision history free of noise.
       if (!state || state.window !== assignNa || state.published !== 0) {
         writeState(assignNa, 0);
       }
@@ -666,9 +594,9 @@ var RelinkNotice_ = (function () {
    * Sends A1 and A2, as they stand after the tick, with the failure streak.
    *
    * Runs after every tick, including one that threw, and never throws itself:
-   * the tick's exception is the one worth an email, and a push that fails is
-   * simply sent again fifteen minutes later with newer values. Whoever watches
-   * for pushes stopping is outside this script - the Worker's health route.
+   * the tick's exception is the one worth an email, and a failed push is sent
+   * again fifteen minutes later with newer values. Whoever watches for pushes
+   * stopping is outside this script: the Worker's health route.
    */
   function push() {
     try {

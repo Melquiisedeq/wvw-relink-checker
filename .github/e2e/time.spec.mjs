@@ -31,7 +31,7 @@ const READ_CLOSED_MS = 5 * MIN;
 const TIER = `NA Tier ${FOCUS.split('-')[1]}`;
 
 // A row walks up to 2 h of page time in seconds: 2-9 s each alone, 4-16 s
-// three side by side (measured 11/10/2026, cloud container).
+// three side by side.
 test.describe.configure({ timeout: 60 * 1000 });
 test.use({ clock: 'playwright', timezoneId: 'UTC', locale: 'en-US', viewport: { width: 1280, height: 900 } });
 
@@ -328,7 +328,7 @@ const stoppedBeforeBack = gw2.match(FOCUS).advance(12).pageOpens().advance(10).f
 // after the match and /api/latest answer (js/maps.js pullFresh, up to
 // LATEST_WAIT_MS later): until it lands the corner says the time of the read.
 // settle() alone can find the network quiet before it is asked, on a busy
-// machine 12 looks in 120 (16/10/2026, four workers).
+// machine now and then.
 const historyRead = page => page.waitForResponse(q => new URL(q.url()).pathname === '/api/kills', { timeout: 15000 })
   .catch(() => { throw new Error('the page never read /api/kills after waking'); });
 

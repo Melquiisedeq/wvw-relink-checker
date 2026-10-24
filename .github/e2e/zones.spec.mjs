@@ -4,14 +4,14 @@
 // Zones: Berlin and Los Angeles, which change the clock (the two changes of
 // autumn 2026), and Sao Paulo, which does not. Languages: en-US and pt-BR.
 //
-//   static    three instants - 16/10 18:00Z (the EU reset), 17/10 02:00Z (the
-//             NA reset), 17/10 03:20Z (80 min into the NA week) - each written
+//   static    three instants - the EU reset, the NA reset, and 80 min into the
+//             NA week - each written
 //             as the zone and language say, never "Invalid Date"/"NaN", and the
 //             skirmish block the same everywhere (it counts from the match's
 //             start in UTC, not from the zone's midnight).
-//   crossing  the page open while the zone changes its clock - Berlin 25/10
-//             00:59:50Z, 02:59:50 CEST then 02:00:00 CET; Los Angeles 01/11
-//             08:59:50Z, 01:59:50 PDT then 01:00:00 PST - the map's hours still
+//   crossing  the page open while the zone changes its clock - Berlin's
+//             change (10 s before it: 02:59:50 CEST then 02:00:00 CET) and Los
+//             Angeles' (01:59:50 PDT then 01:00:00 PST) - the map's hours still
 //             those of the zone, "Synced" rewritten after the change on the
 //             new offset, once.
 // What an hour must read is worked out here with Intl, in Node, from the
@@ -33,8 +33,7 @@ const DAY = 24 * HOUR;
 // Resets: the first Friday 18:00Z (EU) and Saturday 02:00Z (NA) at least 13
 // days on, so that the recorded weeks have rolled over twice. A change of the
 // clock: the first hour after the recording at which the zone's offset differs
-// from the hour before, found with Intl. With the recording of 02/10/2026:
-// 16/10 18:00Z, 17/10 02:00Z, 25/10 00:59:50Z (Berlin), 01/11 08:59:50Z (Los Angeles).
+// from the hour before, found with Intl.
 const FROM = recording().recordedAt;
 const resetAfter = (from, day, hour) => {
   const d = new Date(from);

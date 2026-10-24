@@ -12,7 +12,7 @@
  *
  * A match's row is written only when its score has risen since its last
  * written row. The GW2 API serves old answers for stretches (a whole match
- * frozen up to ~60 min, seen 02-03/10/2026), and a row stamped with the tick's
+ * frozen for up to an hour), and a row stamped with the tick's
  * time over frozen numbers reads as "no kills". The clock is the sum of the
  * match's scores - it rises every few seconds in a live match and by about one
  * tick's points every 5 minutes. The kills in the row come from the same body
@@ -34,12 +34,10 @@ const ALARM_EVERY = 72;                   // then a reminder every ~6 h
 const API         = 'https://api.guildwars2.com/v2/wvw/matches';
 // The whole match body, read twice at once: score, kills and start_time come
 // from one node in one body, so they agree. The small routes (stats, overview,
-// scores) are served by different nodes and disagreed in 71 of 360 reads
-// (03/10/2026), which wrote old kills under a new time. ~382 KB a body,
-// uncompressed (measured 03/10/2026). One read had the freshest body 57% of
-// the time, the best of 3 in parallel 74% (03/10/2026); two is the cost
-// compromise against the Apps Script quota (90 min/day for both scripts, so
-// under ~14 s an execution on average).
+// scores) are served by different nodes and disagree, which would write old kills
+// under a new time. ~382 KB a body, uncompressed. A second read raises the
+// odds of a fresh body; two is the compromise against the Apps Script quota
+// (90 min/day for both scripts, so under ~14 s an execution on average).
 const ROUTES      = [API + '?ids=all', API + '?ids=all'];
 // Without this a hung request waits 360 s, the whole execution, and spends
 // the daily trigger quota this script shares with the relink one.
@@ -301,12 +299,9 @@ function rowFor_(m, prevRow, now, score) {
   const st = Date.parse(m.start_time) || 0;
   const pst = prevRow ? num_(prevRow[2 + MAPS.length]) : 0;
 
-  // A lagging node serves last week's start_time. That is how it gives
-  // itself away. Dropping the whole tick is safer than letting the running
-  // maximum pin last week's total over the new one, early on Saturday. With
-  // kills and start_time coming from separate routes, only one of the two may
-  // lag at the reset: the next tick corrects it, because the big drop is
-  // treated as a reset just below.
+  // A lagging node serves last week's start_time, which gives it away.
+  // Dropping the whole tick is safer than letting the running maximum pin
+  // last week's total over the new one, early on Saturday.
   if (st && pst && st < pst) return null;
 
   const newWeek = !!(st && pst && st > pst);

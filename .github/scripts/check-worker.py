@@ -39,19 +39,19 @@ TIMEOUT_SECONDS = 30
 # The Worker's own STALE_KILLS_S and STALE_RELINK_S: kills ticks every 5
 # minutes, relink every 15. Past these the reads already answer 503.
 # Kills is the exception for the report: kills.gs pushes only when a match's
-# score rose, and the GW2 API has served frozen data for up to ~60 min (seen
-# 02-03/10/2026), so a silent kills source is reported only past 90 minutes.
+# score rose, and the GW2 API has served frozen data for about an hour, so a
+# silent kills source is reported only past 90 minutes.
 # Between 20 and 90 the Worker's 503 is the honest answer and is not a failure.
 STALE = {'kills': 90 * 60, 'relink': 45 * 60}
 KILLS_WORKER_STALE = 20 * 60
 MATCH_RE = re.compile(r'^[12]-[1-9]$')
-# The readers deliver only when something is newer, so a frozen game API (~65
-# min seen) silences them with no fault of ours: same 90 minutes as kills.
+# The readers deliver only when something is newer, so a frozen game API
+# silences them with no fault of ours: same 90 minutes as kills.
 LATEST_REQUIRED = ('latest-supa-us', 'latest-supa-eu')
 LATEST_STALE = 90 * 60
 # The summary may lead a stale read of the game's API by at most 600 points a
-# minute for the 70 minutes the API has been seen to lag; past it, a score the
-# game never had, which only a stolen signing secret could send.
+# minute for the 70 minutes the API can lag; past it, a score the game never
+# had, which only a stolen signing secret could send.
 SCORE_LEAD_MAX = 600 * 70
 
 

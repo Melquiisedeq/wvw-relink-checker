@@ -9,7 +9,7 @@ import { HOUR, MIN } from './support/scenarios.mjs';
 
 const GAME = 'https://api.guildwars2.com/v2/';
 const DAY = 24 * HOUR;
-// Past each whole minute (the page runs on while a test works, up to ~7 s measured), so the page's clock running on while the test works
+// Past each whole minute, so the page's clock running on while a test works
 // does not tip a countdown over into the minute below.
 const S = 45 * 1000;
 

@@ -5,13 +5,13 @@
 // coverage.json holds the committed numbers; a file that falls more than
 // TOLERANCE points, in lines or branches, fails the job. There is no absolute
 // target on purpose: a number to reach is met with a test that asserts nothing.
-// Two runs of one commit differed by up to 0.5 point in a few files (16/10/2026): page
-// timers that did or did not fire before a test ended (the sweep, 17/10/2026), now taken
-// to each state on purpose by states.spec.mjs. A new timer can bring that back, so the
-// committed number is the minimum per file over several runs (`sweep --write`), a fall
+// Two runs of one commit differ by up to 0.5 point in a few files: page timers
+// that do or do not fire before a test ends (states.spec.mjs takes them to
+// each state on purpose). A new timer can bring that back, so the committed
+// number is the minimum per file over several runs (`sweep --write`), a fall
 // is only reported past TOLERANCE and a rise only past it too.
-// CI is the referee: its Google Chrome measured api.js 2.2 points lower than a
-// local Chromium, the same in two runs (16/10/2026), so CI's runs are among them.
+// CI is the referee: its Google Chrome measures api.js about 2 points lower
+// than a local Chromium, so CI's runs are among them.
 //
 //   npm run coverage            everything, locally (node, then the browser), prints the table
 //   npm run coverage:write      the same, then rewrites coverage.json (a PR that raises it commits it)

@@ -142,8 +142,8 @@ class Timeline {
   }
 
   // From here on, a server group `min` minutes behind answers every match URL
-  // in every second minute (reads in a row come back from the same server:
-  // 24 of 28, 02/10/2026, js/api.js:498); 0 ends it.
+  // in every second minute (reads in a row come back from the same server,
+  // js/api.js:498); 0 ends it.
   // `first`: only the first match URL read in each of those minutes; the reads
   // after it get the newer group. A page whose first read lands on the older one.
   olderPool(min, { first = false } = {}) {
