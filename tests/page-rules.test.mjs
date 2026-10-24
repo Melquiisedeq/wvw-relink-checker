@@ -709,3 +709,32 @@ test('missedShortName: the chip name of an objective (js/maps.js)', () => {
   page.set('objectiveCatalogue', new Map());
   assert.equal(page.call('missedShortName', '9-9'), '9-9', 'an id the catalogue lacks stands for itself');
 });
+
+test('hasWaypoint: a keep held by its spawn team has one at tier 0; any other needs the upgrade (js/maps.js)', () => {
+  const p = fresh();
+  const keep = (id, owner) => ({ id, type: 'Keep', owner });
+  const built = { tier: 3, tiers: [{ upgrades: [] }, { upgrades: [{ name: 'Build Waypoint' }] }, { upgrades: [] }] };
+  const bare = { tier: 0, tiers: [] };
+  const has = (ob, info) => p.call('hasWaypoint', ob, info);
+  assert.equal(has(keep('1099-106', 'Green'), bare), true);
+  assert.equal(has(keep('95-33', 'Green'), bare), false);
+  assert.equal(has(keep('95-32', 'Green'), bare), false);
+  assert.equal(has(keep('95-37', 'Green'), bare), true);
+  assert.equal(has(keep('96-33', 'Blue'), built), true);
+  assert.equal(has(keep('96-33', 'Blue'), bare), false);
+  assert.equal(has(keep('38-9', 'Red'), bare), false);
+});
+
+test('KEEP_SPAWN_TEAM: every borderland and EBG keep of the recording has an entry (js/maps.js)', () => {
+  const p = fresh();
+  const table = p.run('KEEP_SPAWN_TEAM');
+  const missing = new Set();
+  for (const m of matches) {
+    for (const mp of m.maps) {
+      for (const o of mp.objectives) {
+        if (o.type === 'Keep' && !(o.id in table)) missing.add(o.id);
+      }
+    }
+  }
+  assert.deepEqual([...missing], []);
+});

@@ -635,29 +635,28 @@ const WAYPOINT_NUDGE = Object.freeze({
   '38-9': [-0.86, 0.78],
 });
 
-// Whose map is this. A borderland says so in its own name; Eternal
-// Battlegrounds does not, and nothing the API publishes ties its three
-// keeps to a colour, so they are listed - they have not moved since
-// 2012. The wiki names the sectors Red, Blue and Green World, and across
-// nine live matchups each keep was held by that colour 9/9, 9/9 and 8/9,
-// while Stonemist split 5/2/2 the way a keep nobody owns by default
-// does.
-const BL_HOME_COLOR = Object.freeze({ RedHome: 'red', BlueHome: 'blue', GreenHome: 'green' });
-const EBG_HOME_KEEP = Object.freeze({ '38-1': 'red', '38-2': 'blue', '38-3': 'green' });
+// The team whose spawn a keep belongs to: a garrison to its map's home
+// team, a side keep to the invader whose spawn lies just south of it,
+// each Eternal Battlegrounds keep to its own colour. No API field names
+// it. A keep missing here has only its upgrade.
+const KEEP_SPAWN_TEAM = Object.freeze({
+  '38-1': 'red', '38-2': 'blue', '38-3': 'green',
+  '1099-113': 'red', '1099-106': 'green', '1099-114': 'blue',
+  '96-37': 'blue', '96-33': 'red', '96-32': 'green',
+  '95-37': 'green', '95-33': 'blue', '95-32': 'red',
+});
 
 // Does this objective have a waypoint? Not a field the API publishes,
-// and - this is the trap - not something the upgrade catalogue still
-// gets right either: it says "Build Waypoint" is a Fortified upgrade,
-// which stopped being true with the 24/02/2026 notes. A home team's own
-// keep now has one at any tier, tier 0 included, and the catalogue only
-// answers for the other two cases - a keep an enemy took, and Stonemist.
+// and the upgrade catalogue is not the whole answer: a keep held by its
+// spawn team has one at any tier, tier 0 included. Any other keep, and
+// Stonemist, has one only once the catalogue's waypoint upgrade is built.
 //
 // It says the waypoint EXISTS, not that you can use it: one that is
 // contested is not published at all.
-function hasWaypoint(mapType, ob, tierInfo) {
+function hasWaypoint(ob, tierInfo) {
   if (ob && ob.type === 'Keep') {
-    const home = BL_HOME_COLOR[mapType] || EBG_HOME_KEEP[ob.id];
-    if (home && String(ob.owner || '').toLowerCase() === home) return true;
+    const team = KEEP_SPAWN_TEAM[ob.id];
+    if (team && String(ob.owner || '').toLowerCase() === team) return true;
   }
   if (!tierInfo || !tierInfo.tier) return false;
   for (let i = 0; i < tierInfo.tier; i++) {
@@ -1655,7 +1654,7 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
   const markerKey = (p) => {
     const tierInfo = objectiveTier(p.meta, p.ob);
     return JSON.stringify(p.ob) + '|' + (tierInfo ? tierInfo.tier : '-')
-      + '|' + hasWaypoint(mapData.type, p.ob, tierInfo);
+      + '|' + hasWaypoint(p.ob, tierInfo);
   };
   const paintMarker = (g, p) => {
     drawnFrom.set(g, markerKey(p));
@@ -1684,7 +1683,7 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
       icon.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', markerSrc);
       g.appendChild(icon);
     }
-    const wp = hasWaypoint(mapData.type, p.ob, tierInfo);
+    const wp = hasWaypoint(p.ob, tierInfo);
     if (wp) g.appendChild(waypointBadge(r, p));
     if (p.ob.claimed_by) g.appendChild(claimBadge(r, p.ob.claimed_by, emblemFilter));
     // Last, so the shields sit over the claim badge instead of being
