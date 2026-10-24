@@ -117,8 +117,7 @@ test('the load stays inside the budget, and 20 cycles leak nothing', async ({ pa
     series.push(await counters(cdp));
   }
   console.log('e2e budget cycles: ' + series.map(s => `${s.nodes}/${s.listeners}`).join(' '));
-  // A count may jump for one cycle and come back (measured 16/10/2026: nodes
-  // 3311, now and then 3499, never two in a row); a leak raises the floor. So the
+  // A count may jump for one cycle and come back; a leak raises the floor. So the
   // lowest count of cycles 16-20 is held against the lowest of cycles 2-6.
   for (const k of ['nodes', 'listeners']) {
     const floor = (from, to) => Math.min(...series.slice(from - 1, to).map(s => s[k]));

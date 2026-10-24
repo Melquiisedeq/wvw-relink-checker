@@ -93,8 +93,8 @@ export const test = base.extend({
     // waiting on the network, and Chrome holds its end back.
     const inFlight = new Set();
     // A navigation cancels what the old document still had in flight, and
-    // Playwright does not always report those as failed (CI, 11/10/2026: a test
-    // opening the page six times waited on the last document's favicon and sheet).
+    // Playwright does not always report those as failed, so the test would
+    // wait on them.
     // Each new main document starts the count again.
     page.on('framenavigated', f => { if (f === page.mainFrame()) inFlight.clear(); });
     page.on('request', r => inFlight.add(r));

@@ -43,7 +43,7 @@ export function regionFor(sbRegion, xRegion) {
   return REGIONS[sbRegion];
 }
 
-export const MAX_API_BYTES = 1024 * 1024; // the whole read is ~500 KB (04/10/2026)
+export const MAX_API_BYTES = 1024 * 1024; // the whole read is ~500 KB
 const MAX_SLICE = 16 * 1024;
 const MAX_RAW = 256 * 1024;
 const MAX_SCORE_PER_MIN = 1000;
@@ -54,7 +54,7 @@ const RESET = { 1: { day: 6, hour: 2 }, 2: { day: 5, hour: 18 } };
 
 const isInt = (x) => Number.isInteger(x) && x >= 0 && x <= 1e7;
 
-// Team ids seen in the API on 04/10/2026: NA 1001-1024 and 11001-11012, EU 2001-2301 and 12001-12015.
+// Team ids in the API: NA 1001-1024 and 11001-11012, EU 2001-2301 and 12001-12015.
 function isWorld(x, region) {
   if (!Number.isInteger(x)) return false;
   return region === '1' ? (x >= 1001 && x <= 1099) || (x >= 11001 && x <= 11099)

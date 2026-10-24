@@ -121,7 +121,7 @@ for (const width of [1280, 360]) {
       expect(st.tabs.map(x => x.text.replace(/ \(\d+\)$/, '')).join(), 'the tabs').toBe('Board,Captures,Objective');
       expect(activeText(st) === 'Board' && st.tabs[2].off && !st.tabs[0].off && !st.tabs[1].off, `on opening ${JSON.stringify(st.tabs)}`).toBe(true);
       expect(st.tabs[1].text, 'the Captures tab').toBe(`Captures (${want.length})`);
-      // Standing still: the board measured once, never again (it grew 2 px a second when it was).
+      // Standing still: the page sizes the board once; sized again, it grows.
       const boardH = await samples(page, 6, 1000, x => `${x.board}/${x.pop.height}`);
       expect(new Set(boardH).size, `the board (height/popover) moved over 6 s: ${boardH.join(' ')}`).toBe(1);
       st = await state(page);

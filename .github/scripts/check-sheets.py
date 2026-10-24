@@ -40,14 +40,9 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# The spreadsheet ids are read out of js/config.js, never written here. Same
-# reasoning as fallbacks_in_code() below and as check-notice.py: a second copy
-# of an id is a second thing that can drift, and this one drifts in the worst
-# possible direction. Change an id in the page and leave a copy here, and this
-# check goes on reading the old sheet - finds every column where it expects it,
-# finds the kills history fresh, and passes, while the page reads the new one and
-# is broken. A check that verifies the wrong thing is worse than no check,
-# because it buys confidence without delivering any.
+# The spreadsheet ids are read out of js/config.js, never written here: a copy
+# that drifted would keep this check reading the old sheet and passing while
+# the page reads the new one and is broken.
 CONFIG_ID = {'community': 'SHEET_ID', 'kills': 'KILLS_SHEET_ID'}
 
 GAME_MATCHES = 'https://api.guildwars2.com/v2/wvw/matches?ids=all'
@@ -56,9 +51,9 @@ PAUSE_SECONDS = 5
 TIMEOUT_SECONDS = 30
 
 # kills.gs writes a match's row only when its score rose, and the GW2 API has
-# served frozen data for up to ~60 min (seen 02-03/10/2026), so the whole sheet
-# can honestly sit still that long. 90 keeps a frozen API from being reported
-# as a stopped trigger; a stopped trigger is still caught.
+# served frozen data for about an hour, so the whole sheet can honestly sit
+# still that long. 90 keeps a frozen API from being reported as a stopped
+# trigger; a stopped trigger is still caught.
 KILLS_STALE_MINUTES = 90
 
 # The columns js/sheet.js looks for, in the order it looks for them, and the

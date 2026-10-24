@@ -19,23 +19,22 @@
 // not open the other.
 //
 // The latest entrance never opens a match body (the free plan gives 10 ms of CPU
-// a request and unpacking 484 KB costs ~17): it decides by the signed summary
+// a request, and unpacking 484 KB does not fit): it decides by the signed summary
 // that comes before the bodies and by the match's score, never by a reader's clock.
 
 const MAX_BYTES = 64 * 1024;      // kills sends at most 30 min of rows, ~4 KB
 const MAX_BYTES_LATEST = 256 * 1024; // up to 18 gzipped match bodies
 const MAX_SKEW_S = 300;
-// One match body is ~28 KB, ~4.5 KB gzipped (9 matches, 04/10/2026). The Worker
-// never opens a slice, so these bound what a page may be handed to unpack: a
-// gzip bomb of 16 KB still unpacks to ~16 MB, and the page stops at raw.
+// One match body is ~28 KB, ~4.5 KB gzipped. The Worker never opens a slice,
+// so these bound what a page may be handed to unpack: a gzip bomb of 16 KB
+// still unpacks to ~16 MB, and the page stops at raw.
 const MAX_SLICE = 16 * 1024;
 const MAX_RAW = 256 * 1024;
 const SOURCES = {
   kills: 'INGEST_KILLS', relink: 'INGEST_RELINK',
   'latest-supa-us': 'INGEST_LATEST_SUPA_US', 'latest-supa-eu': 'INGEST_LATEST_SUPA_EU'
 };
-// When a region's weekly match starts, UTC (day 0 = Sunday), checked against the
-// live API on 04/10/2026: 2-x 2026-10-02T18:00Z, 1-x 2026-10-03T02:00Z.
+// When a region's weekly match starts, UTC (day 0 = Sunday).
 const RESET = { 1: { day: 6, hour: 2 }, 2: { day: 5, hour: 18 } };
 // Past this a match has had no update and its tier is gone; /api/latest drops it.
 const LATEST_KEEP_S = 2 * 3600;
@@ -53,24 +52,23 @@ const SUMMARY_MAX_AGE = 15;
 // The scripts make 128 hex characters. Anything much shorter was pasted in
 // half, and a weak secret that works is worse than one that fails loudly.
 const MIN_SECRET = 64;
-// The running match and the one before it (the owner, 30/09/2026). Raising it
-// keeps more from then on; what was already deleted does not come back.
+// The running match and the one before it. Raising it keeps more from then on;
+// what was already deleted does not come back.
 const KEEP_DAYS = 14;
 // What GET /api/kills carries in full. The page wants the newest reading at
 // least ten minutes old, which with a tick every five is 10-15 minutes back;
 // the rest is room for a late tick. But kills.gs writes a match only when its
-// score rose and the GW2 API froze one for up to ~65 minutes (03/10/2026), so
-// each match also carries its newest older row, up to BASE_MS back.
+// score rose and the GW2 API can freeze one for about an hour, so each match
+// also carries its newest older row, up to BASE_MS back.
 const RECENT_MS = 30 * 60e3;
 const BASE_MS = 3 * 3600e3;
 // The page's kills window: it counts from a reading this much older than the
 // match's clock, so a stopped match also needs one that far behind its newest.
 const KILLS_WINDOW_MS = 10 * 60e3;
 // How far back the kills' last move is sent. The page drops a reading over
-// 3 hours old (FIGHT_STALE_MS in js/maps.js), and the first to go is the
-// base, up to 15 minutes older than the move; the body is up to 5
-// minutes old when read and the page keeps it 6 more. 26 minutes, so 30: a
-// move further back is sent as the first row within this, still.
+// 3 hours old (FIGHT_STALE_MS in js/maps.js) and the base goes first, up to 15
+// minutes before the move; 2.5 hours leaves room for the body's 5 minutes of
+// age and the 6 the page keeps it.
 const MOVE_MS = 2.5 * 3600e3;
 // Past these a source counts as stopped, and the reads answer 503 so the
 // page goes to the sheet rather than show a copy that stopped moving. Kills
@@ -306,25 +304,22 @@ function toBase64(bytes) {
 
 // The one row GET /api/kills reads. Built here, once per tick, so a read
 // costs one row of D1's 5 million a day however many there are: the cheapest
-// query over the kills table itself costs ~60, and 100,000 of those a day -
-// the Worker's own limit - would pass it and stop every query, writes
-// included, until midnight UTC.
+// query over the kills table itself costs ~60, and the Worker's own limit of
+// 100,000 requests a day would pass it and stop every query, writes included,
+// until midnight UTC.
 // Per match, of its newest week: the last RECENT_MS; the newest row before
 // that (at most BASE_MS back), so a frozen match keeps a base; and, so a match
 // whose score keeps rising while its kills stand still has something to count
 // from, the first row with the newest total (the kills' last move), the row
 // before it, and the newest at least KILLS_WINDOW_MS before the move. When
 // the row before the move is past MOVE_MS, the first row within MOVE_MS instead.
-// The move is not looked for in kills on every tick: the walk back over a
-// still stretch reads every row of it, and a rebuild runs on every write. The
-// last body already holds the move as it stood, so it is carried forward, and
-// the walk (walkSql) runs only when there is no last body to carry from, it
-// does not join up with this one (a gap of over RECENT_MS), or it holds no
-// move where kills shows one (a body built before the move was carried), or a
-// late batch reached behind this window (kills.gs down while the readers are
-// up). Each time, at worst every row of MOVE_MS for each match it walks.
-// Every query reads kills by its key, `at` bounded as well as the match; a
-// test checks their plans and the rows they hand back.
+// The move is carried forward from the last body, not looked for on every
+// tick: the walk back over a still stretch reads every row of it. The walk
+// (walkSql) runs only when there is no last body to carry from, it does not
+// join up with this one (a gap of over RECENT_MS), it holds no move where kills
+// shows one, or a late batch reached behind this window (kills.gs down while
+// the readers are up). Every query reads kills by its key, `at` bounded as
+// well as the match; a test checks their plans and the rows they hand back.
 async function rebuildRecent(db, now) {
   const nowMs = now * 1000;
   const cut = nowMs - RECENT_MS;
@@ -612,9 +607,8 @@ async function cached(ctx, key, maxAge, make) {
   if (cache) {
     const hit = await cache.match(key);
     if (hit) {
-      // A hit comes back with max-age=14400, measured 09/10/2026 with curl on
-      // cf-cache-status HIT. That is probably the zone's Browser Cache TTL; the
-      // docs do not say so. The route's own max-age is put back here.
+      // A hit comes back with max-age=14400, probably the zone's Browser Cache
+      // TTL (the docs do not say so). The route's own max-age is put back here.
       const out = new Response(hit.body, { status: hit.status, statusText: hit.statusText, headers: hit.headers });
       out.headers.set('cache-control', 'public, max-age=' + maxAge);
       return out;

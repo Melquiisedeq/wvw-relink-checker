@@ -61,9 +61,8 @@ export const at = (iso, id = FOCUS) => {
 };
 
 // ---- the tab ---------------------------------------------------------
-// A hidden tab cannot be had for real in a test browser (measured, 10/10/2026:
-// headless, Xvfb, another tab on top, setWebLifecycleState frozen - the timers
-// went on). What the page reads is simulated: document.visibilityState and
+// A hidden tab cannot be had for real in a test browser (headless, Xvfb,
+// another tab on top, setWebLifecycleState frozen: the timers go on). What the page reads is simulated: document.visibilityState and
 // .hidden, the visibilitychange event, and the clock jumping the time away.
 async function setVisibility(page, state) {
   await page.evaluate(s => {

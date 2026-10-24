@@ -19,10 +19,7 @@ export default defineConfig({
   outputDir: 'test-results',
   fullyParallel: true,
   forbidOnly: CI,
-  // Three. Measured 10/10/2026, 4-core cloud container, Chromium 141, the two
-  // smoke tests, three runs each of `npx playwright test`: 2 workers 3.7-4.0 s,
-  // 3 workers 3.7-3.9 s, 4 workers 4.0-4.1 s - noise, since two tests never
-  // fill more than two. Re-measure when the suite grows.
+  // Three. Re-measure when the suite grows.
   // One when recording: the live reads happen once, in order (support/record.mjs).
   workers: process.env.RECORD ? 1 : 3,
   globalSetup: './support/record.mjs',

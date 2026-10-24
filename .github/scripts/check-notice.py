@@ -65,52 +65,39 @@ TIMEOUT_SECONDS = 30
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Read out of js/config.js rather than repeated here. The page and this check
-# have to be looking at the same cell, and a second copy of the URL is a second
-# thing to keep in step.
+# Read out of js/config.js rather than repeated: the page and this check have
+# to be looking at the same cell.
 SHEET_URL_LINE = re.compile(
     r'const RELINK_SHEET_URL\s*=\s*\n?\s*`([^`]+)`', re.M)
 # Must match RELINK_STATE_RE in js/relink.js: what the page will accept is what
 # counts as the notice having fired.
 STATE_CELL = re.compile(r'^"?(\d{1,12}):(\d{1,12})"?$')
 
-# One relink cycle is a month, so one is about thirty days and two about sixty.
-# Forty-five sits between them with room on both sides.
+# One relink cycle is a month, so one is about thirty days and two about sixty;
+# forty-five sits between them.
 MAX_GAP_SECONDS = 45 * 24 * 60 * 60
 
 # The heartbeat: one epoch integer in A2, written by the trigger every 15
-# minutes. Must match the strictness of the state cell for the same reason - the
-# sheet is world-readable and anything else in there is not a timestamp.
+# minutes. As strict as the state cell, for the same reason: the sheet is
+# world-readable.
 HEARTBEAT_CELL = re.compile(r'^"?(\d{1,12})"?$')
 
-# Twelve missed ticks. Deliberately not tighter, and the reason is that tighter
-# buys nothing: this check runs every six hours, so what decides how fast a dead
-# trigger is caught is that schedule and not this number. Under six hours they
-# detect the same fault at the same moment - all a tight threshold adds is
-# failing on ordinary Apps Script jitter and the occasional tick Google skips
-# under quota. So: loose enough to never cry wolf, which is what makes the email
-# worth opening.
+# Twelve missed ticks. Not tighter: this check runs every six hours, so that
+# schedule, not this number, decides how fast a dead trigger is caught; a
+# tighter threshold only fails on Apps Script jitter and ticks Google skips
+# under quota.
 MAX_SILENCE_SECONDS = 3 * 60 * 60
 
 # How long a missed window keeps failing this check after the relink it lost.
 #
-# The fault is only *visible* once the relink has gone by - up to that moment
-# "the table has not moved yet" is also the normal state of a healthy window. So
-# it cannot be reported while it is still fixable, and once it can be reported
-# there is nothing left to do about it: that month's notice is gone. What is
-# left is telling somebody, and telling somebody does not improve with
-# repetition.
+# The fault is only visible once the relink has gone by, and by then that
+# month's notice is gone: only telling somebody is left, and repeating does not
+# help. Unbounded it would fail every six hours for about 27 days. Twelve hours
+# is two runs of this workflow, two so that a single run failing for an
+# unrelated reason does not swallow the only notification.
 #
-# Left unbounded it would fail every six hours until the next window opens -
-# about 27 days, 108 emails, all of them the same sentence about a month that
-# ended. Twelve hours is two runs of this workflow: two, rather than one, so a
-# single run that fails for an unrelated reason does not swallow the only
-# notification there will be. After that the line stays in the log and the check
-# goes quiet.
-#
-# It does not make anything silent that can still be acted on. A trigger that is
-# actually dead keeps failing this check for as long as it is dead, through the
-# heartbeat above, which is the part somebody can go and fix.
+# A trigger that is actually dead keeps failing this check through the
+# heartbeat above, which is the part somebody can fix.
 MISSED_ALARM_SECONDS = 12 * 60 * 60
 
 
@@ -279,12 +266,9 @@ def main():
         print('::error::The relink tab of the sheet did not answer (%s). The '
               'page reads that same cell, so while this is true the notice '
               'cannot appear at all.' % error)
-        # 401 and 403 are not "the sheet is broken", they are "the sheet is not
-        # published", and that is worth saying out loud: the Apps Script that
-        # writes the cell runs as the sheet's owner and works perfectly either
-        # way, so this is a failure only the reader ever sees. Which is to say:
-        # it looks like nothing is wrong right up until the notice does not
-        # appear.
+        # 401 and 403 mean the sheet is not published, not that it is broken.
+        # The Apps Script that writes the cell runs as the owner and works
+        # either way, so only the reader ever sees this failure.
         if 'HTTP 401' in error or 'HTTP 403' in error:
             print('::error::That is an authorisation failure, not a missing '
                   'cell: the spreadsheet is not shared. Set it to "anyone with '
@@ -300,9 +284,8 @@ def main():
               'a colon. It holds: %s. The page refuses anything else, so while '
               'this is true the notice cannot appear.' % shown)
         # The gviz export does not 404 a tab that is not there - it serves the
-        # first sheet instead. So the likeliest cause looks like data rather
-        # than like an error, and it is worth naming before anybody goes
-        # hunting through the Apps Script.
+        # first sheet instead. The likeliest cause looks like data, not like an
+        # error, so it is named before anybody hunts through the Apps Script.
         print('::error::If that looks like the kills history, the tab named in '
               'RELINK_SHEET_URL does not exist under that name: the CSV export '
               'answers with the first sheet rather than failing. Otherwise '
@@ -323,11 +306,11 @@ def main():
     # dead trigger is named before the month it is about to cost.
     beat_bad = check_heartbeat(url, now)
 
-    # Nothing has fired yet, which is the honest state of a freshly shipped
-    # feature. There is no earlier timestamp to measure from, so the only thing
-    # that can be said is whether a relink has gone by: `window` is written by
-    # the trigger the first time it runs inside a window, so a zero published
-    # with a window already in the past means that window produced nothing.
+    # Nothing has fired yet. There is no earlier timestamp to measure from, so
+    # the only thing that can be said is whether a relink has gone by: `window`
+    # is written by the trigger the first time it runs inside a window, so a
+    # zero published with a window already in the past means that window
+    # produced nothing.
     if not published:
         if window and window < now:
             missed_for = now - window
@@ -340,9 +323,8 @@ def main():
                       'window it watches. Check the Apps Script executions for '
                       'that account.' % iso(window))
                 return 1
-            # Past the alarm window. Said plainly and without failing: the month
-            # is gone, nothing about it is actionable now, and the next window
-            # rewrites this cell and starts the feature over. See
+            # Past the alarm window: said plainly and without failing, since
+            # the month is gone and the next window rewrites this cell. See
             # MISSED_ALARM_SECONDS.
             print('')
             print('The relink of %s went by with no notice, %d days ago - '
@@ -351,11 +333,9 @@ def main():
                   % (iso(window), missed_for // 86400))
             return 1 if beat_bad else 0
         print('')
-        # Deliberately not "the notice has never fired". The cell only ever holds
-        # the window it is currently about, so once a new window opens the
-        # trigger resets published to 0 and every earlier month is gone from it.
-        # Saying "never" would therefore be wrong from the second month onward,
-        # every month, for the four days a window is open.
+        # Deliberately not "the notice has never fired": the cell only ever
+        # holds the window it is currently about, so "never" would be wrong
+        # from the second month onward.
         if window:
             print('Nothing published for the relink of %s yet, which is the '
                   'normal state until the table moves. No relink has gone by '
