@@ -16,6 +16,7 @@ const LAB_ITEMS = [
   { type: 'check', key: 'embersStill', label: 'Embers still (diagnostic)', on: false },
   { type: 'check', key: 'scanStill', label: 'Title scan still (diagnostic)', on: false, cls: true },
   { type: 'check', key: 'noGlass', label: 'No frosted glass (diagnostic)', on: false, cls: true },
+  { type: 'check', key: 'cssStill', label: 'CSS animations still, embers running (diagnostic)', on: false, cls: true },
   { type: 'check', key: 'allStill', label: 'Everything still, as when not in focus (diagnostic)', on: false, cls: true },
   { type: 'check', key: 'blank', label: 'Blank page, only this panel (diagnostic)', on: false, cls: true },
   { type: 'note', label: 'Diagnostic switches are for finding the cause only; the fix is the baked photo.' },
@@ -137,31 +138,38 @@ function labPaintPanel() {
 // answers that contradict each other. The panel walks through the same states on a
 // clock and logs when each began; a counter in the video's own window logs the
 // stutters with the same clock, and the two logs are compared afterwards.
-const LAB_STEPS = ['normal', 'blank', 'still'];
-const LAB_ROUNDS = 3;
-const LAB_STEP_MS = 90000;
+// Each still -> normal switch of round 3 cost the video 59-86 frames in the next
+// 10 s; steady states cost almost none. This round splits that switch in two (CSS
+// animations resuming, embers restarting) and then watches the site as it is,
+// logging what the site itself does, to find which of its own changes hit the video.
+const LAB_PLAN = [
+  ...[1, 2, 3].flatMap(() => [['css', 45000], ['normal', 45000]]),
+  ...[1, 2, 3].flatMap(() => [['embers', 45000], ['normal', 45000]]),
+  ['watch', 360000],
+];
 let labRun = null;
 let labRunLog = [];
 const labClock = () => new Date().toTimeString().slice(0, 8);
 
 function labSetStep(name) {
-  Object.assign(labPrefs, { photo: 'a', embersStill: false, scanStill: false, noGlass: false,
-    allStill: name === 'still', blank: name === 'blank' });
+  Object.assign(labPrefs, { photo: 'a', scanStill: false, noGlass: false, allStill: false, blank: false,
+    cssStill: name === 'css', embersStill: name === 'embers' });
   labChanged();
 }
 function labNextStep() {
-  if (labRun.i >= LAB_STEPS.length * LAB_ROUNDS) { labStopRun('done'); return; }
-  labRun.name = LAB_STEPS[labRun.i % LAB_STEPS.length];
-  labRun.until = Date.now() + LAB_STEP_MS;
+  if (labRun.i >= LAB_PLAN.length) { labStopRun('done'); return; }
+  const [name, ms] = LAB_PLAN[labRun.i];
+  labRun.name = name;
+  labRun.until = Date.now() + ms;
   labRun.i++;
-  labRun.log.push(`${labClock()} ${labRun.name}`);
-  labSetStep(labRun.name);
-  labRun.timer = setTimeout(labNextStep, LAB_STEP_MS);
+  labRun.log.push(`${labClock()} ${name}`);
+  labSetStep(name);
+  labRun.timer = setTimeout(labNextStep, ms);
   labShowRun();
 }
 function labStartRun() {
   if (labRun) return;
-  labRun = { i: 0, log: [`${labClock()} start (${LAB_ROUNDS} rounds of ${LAB_STEPS.join(', ')}, ${LAB_STEP_MS / 1000} s each)`] };
+  labRun = { i: 0, log: [`${labClock()} start (round 4)`] };
   labRun.tick = setInterval(labShowRun, 1000);
   labNextStep();
 }
@@ -180,12 +188,37 @@ function labStopRun(why) {
 window.addEventListener('blur', () => { if (labRun) labRun.log.push(`${labClock()} focus lost`); });
 window.addEventListener('focus', () => { if (labRun) labRun.log.push(`${labClock()} focus back`); });
 
+// What the site does on its own during a run: requests, long frames, and how many
+// elements it adds or removes per second (each new animated element is a new layer).
+const labNote = (text) => { if (labRun) labRun.log.push(`${labClock()} · ${text}`); };
+try {
+  new PerformanceObserver((list) => {
+    for (const e of list.getEntries()) {
+      const u = new URL(e.name);
+      labNote(`net ${u.host === location.host ? '' : u.host}${u.pathname} ${Math.round(e.transferSize / 1024)} KB`);
+    }
+  }).observe({ type: 'resource' });
+} catch { /* unsupported */ }
+try {
+  new PerformanceObserver((list) => {
+    for (const e of list.getEntries()) if (e.duration > 100) labNote(`long frame ${Math.round(e.duration)} ms`);
+  }).observe({ type: 'long-animation-frame' });
+} catch { /* unsupported */ }
+let labNodes = 0;
+new MutationObserver((records) => {
+  for (const r of records) labNodes += r.addedNodes.length + r.removedNodes.length;
+}).observe(document.documentElement, { childList: true, subtree: true });
+setInterval(() => {
+  if (labNodes >= 20) labNote(`dom ${labNodes} nodes`);
+  labNodes = 0;
+}, 1000);
+
 let labRunEls = null;
 function labBuildRun() {
   const body = labPanel.querySelector('.lab-body');
   body.appendChild(labEl('div', 'lab-section', 'Timed test'));
   body.appendChild(labEl('p', 'lab-note',
-    `${LAB_STEPS.length * LAB_ROUNDS * LAB_STEP_MS / 60000} min. Keep this window in focus the whole time; watch the video, don't click it.`));
+    `${LAB_PLAN.reduce((t, [, ms]) => t + ms, 0) / 60000} min. Keep this window in focus the whole time; watch the video, don't click it.`));
   const start = labEl('button', 'lab-btn', 'Start');
   start.type = 'button';
   start.addEventListener('click', () => (labRun ? labStopRun('stopped') : labStartRun()));
@@ -209,7 +242,7 @@ function labShowRun() {
   start.textContent = labRun ? 'Stop' : 'Start';
   if (labRun) {
     const left = Math.max(0, Math.round((labRun.until - Date.now()) / 1000));
-    status.textContent = `Step ${labRun.i} of ${LAB_STEPS.length * LAB_ROUNDS}: ${labRun.name}, ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left`;
+    status.textContent = `Step ${labRun.i} of ${LAB_PLAN.length}: ${labRun.name}, ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left`;
   } else {
     status.textContent = labRunLog.length ? 'Finished. Copy the log and send it with the video counter\'s.' : '';
   }

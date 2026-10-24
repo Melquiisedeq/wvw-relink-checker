@@ -71,7 +71,10 @@ html.lab-noGlass *,html.lab-noGlass *::before,html.lab-noGlass *::after{
 /* Everything still: the same pause .is-idle applies when the window loses focus (css/base.css). */
 html.lab-allStill *,
 html.lab-allStill *::before,
-html.lab-allStill *::after{animation-play-state:paused !important;}
+html.lab-allStill *::after,
+html.lab-cssStill *,
+html.lab-cssStill *::before,
+html.lab-cssStill *::after{animation-play-state:paused !important;}
 /* Blank page: nothing of the site is drawn; only the lab panel stays. */
 html.lab-blank body > :not(.lab-panel){display:none !important;}
 html.lab-blank body{background:#0f1216;}
