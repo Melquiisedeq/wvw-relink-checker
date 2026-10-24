@@ -89,15 +89,15 @@
 }
 </script>
 <!--
-  Files at real addresses, where this used to be a data: URI - Google
-  will not show an icon it cannot crawl, and a data: URI gives it
-  nothing to fetch. Its formats are BMP, GIF, ICO, PNG, JPEG, PPM and
+  Files at real addresses, not a data: URI - Google will not show an icon
+  it cannot crawl. Its formats are BMP, GIF, ICO, PNG, JPEG, PPM and
   TIFF, not SVG, and the icon has to be square while the crest is
-  160x190 - so all three are that crest centred on a square.
+  160x190.
 
-  Every size is this crest rasterised, the 16 included. They sit at 68%
-  of the height of a solid #0f1216 square, so the crest fits inside the
-  circle Google crops the icon to.
+  favicon.ico (16, 32, 48) is for the tab: the whole crest on a
+  transparent ground. favicon-192.png is for Google's results, which
+  crop it to a circle: the crest smaller, on a solid #0f1216 square.
+  apple-touch-icon.png is made like the 192.
 -->
 <link rel="icon" type="image/png" sizes="192x192" href="assets/favicon-192.png">
 <link rel="icon" sizes="16x16 32x32 48x48" href="favicon.ico">
