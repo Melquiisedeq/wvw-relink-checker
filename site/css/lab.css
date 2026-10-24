@@ -75,3 +75,5 @@ html.lab-allStill *::after{animation-play-state:paused !important;}
 /* Blank page: nothing of the site is drawn; only the lab panel stays. */
 html.lab-blank body > :not(.lab-panel){display:none !important;}
 html.lab-blank body{background:#0f1216;}
+.lab-log{margin:4px 0 0;max-height:9em;overflow:auto;font-size:.68rem;line-height:1.35;color:var(--muted);white-space:pre-wrap;}
+.lab-log:empty{display:none;}
