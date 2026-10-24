@@ -1,22 +1,16 @@
 'use strict';
-// ---------------------------------------------------------------------
-// The siege engine
-// The trebuchet in the corner, the round it throws, and everything that
-// burns, sparks or shatters. Pure decoration.
+// The siege engine: the trebuchet in the corner, the round it throws, and
+// everything that burns, sparks or shatters. Pure decoration.
 //
-// Measured off the two cutouts rather than guessed: the frame's pivot
-// boss at (67,10) in its image, the beam's axle at (200,37) in its own,
-// and the sling head 178px along the beam from that axle. Everything
-// else is those three numbers plus trigonometry - see slingTip(), which
-// reads the launch point off the sling so the beam and the fireball
-// cannot drift apart.
-// ---------------------------------------------------------------------
+// Taken off the two cutouts: the frame's pivot boss at (67,10) in its image,
+// the beam's axle at (200,37) in its own, the sling head 178px along the beam
+// from that axle. Everything else is those numbers plus trigonometry; slingTip()
+// reads the launch point off the sling so beam and fireball cannot drift apart.
 const trebuchet = document.getElementById('trebuchet');
 const trebArm = document.getElementById('trebArm');
 
-// Beam angles. Negative puts the throwing head down and behind with the
-// counterweight raised, which is a trebuchet waiting to fire; +128 is
-// the end of the throw, beam over the top and pointing up-range.
+// Beam angles. Negative: throwing head down and behind, counterweight raised
+// (waiting to fire); +128: end of the throw, beam over the top pointing up-range.
 const ARM_REST = -34;
 const ARM_COCKED = -46;
 const ARM_RELEASED = 128;
@@ -31,10 +25,10 @@ function setArm(deg) {
   trebArm.style.transform = `rotate(${deg}deg)`;
 }
 
-// Where the sling is right now, in screen coordinates. Measured off the
+// Where the sling is right now, in screen coordinates. Read off the
 // marker rather than recomputed, so the frame's traverse and the beam's
-// rotation are both already in it. Falls back to the old fixed corner
-// when the machine is hidden, which it is on any narrow window.
+// rotation are both already in it. Falls back to a fixed corner when the
+// machine is hidden (any narrow window).
 function slingTip() {
   const r = trebSling.getBoundingClientRect();
   const box = trebuchet.getBoundingClientRect();
@@ -70,8 +64,8 @@ function applyAim() {
   const fx = Math.min(1, Math.max(0, aimX / w));
   const fy = Math.min(1, Math.max(0, aimY / h));
   trebuchet.style.setProperty('--yaw', `${(fx * 7 - 2).toFixed(1)}deg`);
-  // Higher in the window means more elevation, so the beam hauls back
-  // further. A shallow range: past a point it stops reading as aiming.
+  // Higher in the window means more elevation. A shallow range: past a point it
+  // stops reading as aiming.
   if (!trebuchet.classList.contains('cocking')) {
     setArm(ARM_REST - (1 - fy) * 9);
   }
@@ -115,22 +109,19 @@ function cockTrebuchet() {
 
 const SHOT_MS = 340;   // mirrored in click.css
 
-// How high the round arcs over the straight line to its target. Scaled
-// to the distance, so a flick across the corner is a short toss and a
-// shot across the window is a lob, and clamped at both ends so neither
-// extreme turns silly.
+// How high the round arcs over the straight line to its target: scaled to the
+// distance and clamped at both ends.
 function arcRise(dx, dy) {
   return Math.min(280, Math.max(60, Math.hypot(dx, dy) * 0.28));
 }
 
 // Lays the flame down along the path the round actually travels: one
 // segment per frame, from the previous position to the current one.
-// Position is measured off the live element rather than recomputed from
-// the curve, so the trail can never drift away from its own head.
+// Position is read off the live element, not recomputed from the curve, so
+// the trail cannot drift from its own head.
 function trailFrom(ball, untilMs, big, power) {
-  // How heavily it burns. The finale passes the size the round actually
-  // charged to, so a long wait does not just throw a bigger stone - it
-  // throws one that smokes and sheds in proportion.
+  // How heavily it burns. The finale passes the size the round charged to, so
+  // smoke and shedding scale with it.
   const heat = Math.max(1, power || 1);
   const size = big ? ' flame-seg--big' : '';
   // Roughly half the flight, so the tail trails the round instead of
@@ -145,9 +136,8 @@ function trailFrom(ball, untilMs, big, power) {
 
   const step = (now) => {
     if (now > stop || !ball.isConnected) {
-      // The head goes out, but the segments already on the page live out
-      // their own animations - which is what leaves the trail hanging in
-      // the air for a moment after the round is gone.
+      // The head goes out, but the segments already on the page live out their own
+      // animations, leaving the trail hanging for a moment.
       head.style.opacity = '0';
       setTimeout(() => head.remove(), 260);
       return;
@@ -164,15 +154,13 @@ function trailFrom(ball, untilMs, big, power) {
       const speed = Math.hypot(dx, dy);
       if (speed > 0.3) {
         const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-        // Overlapped a little past the gap, or the segments show their
-        // seams on the frames where the round moves fastest.
+        // Overlapped a little past the gap, or the seams show where the round moves fastest.
         const len = speed + (big ? 10 : 6);
         layFlame(px, py, angle, len, `flame-seg${size}`, life);
         layFlame(px, py, angle, len, `flame-seg flame-seg--hot${size}`, life);
 
-        // Shed roughly every other frame at rest, closer to every frame
-        // for a heavy round. One puff per frame is wasteful for a small
-        // one and too sparse for a large one, so the gap scales too.
+        // Shed roughly every other frame at rest, closer to every frame for a heavy
+        // round: the gap scales with the size.
         if (now - lastShed > Math.max(12, 26 / heat)) {
           lastShed = now;
           shedSmoke(x, y, heat);
@@ -197,9 +185,8 @@ function layFlame(x, y, angle, len, cls, life) {
   setTimeout(() => seg.remove(), life);
 }
 
-// Dropped at the round's position and then left alone: it drifts up and
-// out while the round carries on, which is what puts distance between
-// the flame and its own smoke.
+// Dropped at the round's position and then left alone: it drifts up and out
+// while the round carries on.
 function shedSmoke(x, y, heat) {
   const puff = document.createElement('div');
   puff.className = 'trail-smoke';
@@ -228,9 +215,8 @@ function shedSpark(x, y, heat) {
   setTimeout(() => spark.remove(), 760);
 }
 
-// The small version of the shield blast: same three parts, a size down
-// and a beat quicker, because this one has to be over before it starts
-// competing with whatever was actually clicked.
+// The small version of the shield blast: same three parts, a size down and
+// quicker, so it is over before it competes with whatever was clicked.
 function bloomAt(x, y) {
   const core = document.createElement('div');
   core.className = 'shot-bloom';
@@ -274,23 +260,18 @@ function bloomAt(x, y) {
 // Bound in boot.js, once emberField exists.
 function onPointerDown(e) {
   if (e.pointerType === 'touch') return;
-  // Check gets no round thrown at it. It is about to launch one of its
-  // own at the crest, and two rounds crossing over the same button in
-  // opposite directions reads as a mistake rather than an effect.
+  // Check gets no round thrown at it: it is about to launch its own at the crest,
+  // and two rounds crossing over the same button read as a mistake.
   if (e.target.closest && e.target.closest('#runBtn')) return;
-  // Nothing gets thrown while a popover is up. Reading a guild list or
-  // panning a map is work, and work should not have artillery going off
-  // over the top of it - and a click inside the popover would launch
-  // from behind it anyway.
+  // Nothing is thrown while a popover is up: reading is work, and a click inside
+  // the popover would launch from behind it anyway.
   if (activeTrigger) return;
 
   fireTrebuchet();
   const mx = e.clientX, my = e.clientY;
 
-  // Thrown when the beam gets over the top, not on the click, so the
-  // round leaves the sling instead of appearing beside it. The delay is
-  // the swing and nothing more - short enough that the click still
-  // reads as instant.
+  // Thrown when the beam gets over the top, not on the click, so the round leaves
+  // the sling. The delay is the swing and nothing more.
   setTimeout(() => {
     const from = slingTip();
     const shot = document.createElement('div');
@@ -306,15 +287,13 @@ function onPointerDown(e) {
     trailFrom(shot.firstChild, SHOT_MS);
     setTimeout(() => shot.remove(), SHOT_MS);
 
-    // Lands on impact, not on the throw, so the whole thing reads as one
-    // event: the round arrives, it goes off, the ground is marked.
+    // Lands on impact, not on the throw, so it reads as one event.
     setTimeout(() => bloomAt(mx, my), SHOT_MS);
   }, SWING_MS);
 }
 
-// Sparks off the Check button the moment a run starts. Immediate, small,
-// and over before the first request comes back - this is the receipt for
-// the click, not the payoff for the result.
+// Sparks off the Check button the moment a run starts: immediate, small, over
+// before the first request comes back.
 function sparkFromButton() {
   const r = runBtn.getBoundingClientRect();
   if (r.width === 0) return;
@@ -334,10 +313,9 @@ function sparkFromButton() {
 }
 
 // The finale, in four beats: the crest appears, a heavy round gathers in
-// the corner, it is lobbed into the crest, and the crest splits. The
-// wind-up happens here and not on the click, because a check takes an
-// unknown time and a round launched on the click would hang in the air
-// waiting for the API.
+// the corner, it is lobbed into the crest, and the crest splits. The wind-up is
+// here and not on the click: a check takes an unknown time and a round launched
+// on the click would hang in the air waiting for the API.
 const CHARGE_FORM_MS = 460;   // the round taking shape, mirrored in impact.css
 const CHARGE_SWELL_MS = 6000; // and then gathering, ditto
 const FLIGHT_MS = 560;        // sling to crest, ditto
@@ -346,9 +324,8 @@ let chargeBall = null;
 let chargeStartedAt = 0;
 let stopFollowing = null;
 
-// Called on the click, not on the answer. The round gathers for exactly
-// as long as the API takes, so the wait reads as the machine loading
-// rather than as the page doing nothing.
+// Called on the click, not on the answer: the round gathers for as long as the
+// API takes.
 function startCharge() {
   cancelCharge();
   const ball = document.createElement('div');
@@ -358,8 +335,7 @@ function startCharge() {
   chargeBall = ball;
   chargeStartedAt = performance.now();
   cockTrebuchet();
-  // It loads in the sling and rides the beam from there - including all
-  // the way round on the throw.
+  // It loads in the sling and rides the beam, all the way round on the throw.
   stopFollowing = followSling(ball);
 }
 
@@ -388,10 +364,9 @@ function launchCharge() {
     return;
   }
 
-  // How big the round got, on the same linear ramp the CSS swell uses.
-  // Computed rather than read back off the element: reading a running
-  // animation's matrix put the flight one frame behind the wind-up and
-  // the round visibly dropped a size at the moment it was thrown.
+  // How big the round got, on the same linear ramp the CSS swell uses. Computed,
+  // not read back off the element: a running animation's matrix is a frame behind
+  // and the round would drop a size when thrown.
   const swelled = performance.now() - chargeStartedAt - CHARGE_FORM_MS;
   const t = Math.min(1, Math.max(0, swelled / CHARGE_SWELL_MS));
   const grown = 1 + t * 1.4;
@@ -399,9 +374,7 @@ function launchCharge() {
 
   fireTrebuchet();
 
-  // Let go at the top of the swing. Until then the round is still in the
-  // sling and being carried round by followSling, which is the whole
-  // reason the throw reads as a throw.
+  // Let go at the top of the swing; until then followSling carries the round.
   setTimeout(() => {
     if (stopFollowing) { stopFollowing(); stopFollowing = null; }
     const from = slingTip();
@@ -432,9 +405,8 @@ function launchCharge() {
 
 function breakCrest() {
   impactOverlay.classList.add('broken');
-  // No bloomAt here any more: a clean disc of light on top of the blast
-  // was most of what made the impact look circular. The mouse click
-  // keeps it, because there it IS just a light.
+  // No bloomAt here: a clean disc of light on the blast makes the impact look
+  // circular. The mouse click keeps it, where it is just a light.
   spawnBlast();
   spawnImpactShards();
   spawnEmberBlast();

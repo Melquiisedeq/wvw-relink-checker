@@ -1,7 +1,6 @@
-/* Played after a check finishes. This used to jolt the whole viewport
-   sideways, which moved everything the reader was about to read. The
-   panels drop in instead, so the motion points at the results; the
-   shake survives only on the hit itself - see .page.struck below. */
+/* Played after a check finishes. The panels drop in, so the motion points at the
+   results; a viewport shake would move what the reader is about to read, so it
+   survives only on the hit itself - see .page.struck below. */
 .page.deploying .match-panel{
   animation:panel-deploy .46s cubic-bezier(.18,.86,.32,1) backwards;
 }
@@ -73,12 +72,10 @@
   100%{opacity:0;}
 }
 
-/* An explosion, not a light. Two perfectly round layers were what made
-   it read as a lamp switching on - a circle is the one shape a
-   detonation never makes. Three overlapping things replace it: a ragged
-   core, billows pushing out off-centre, and spikes thrown clear. Driven
-   by .broken, never .play: the glow used to ramp up during the flight,
-   which announced the impact before it happened. */
+/* An explosion, not a light: round layers read as a lamp switching on, a circle
+   being the one shape a detonation never makes. A ragged core, billows pushing
+   out off-centre, and spikes thrown clear. Driven by .broken, never .play: a
+   glow ramping up during the flight announces the impact before it happens. */
 .crest-blast{
   position:absolute;left:50%;top:50%;
   width:200px;height:200px;margin:-100px 0 0 -100px;
@@ -132,19 +129,17 @@
 }
 
 /* The round that breaks the crest: charged at the button, then lobbed.
-   The wind-up is what makes the hit read as heavy. Three layers, because
-   three things happen at once and each needs its own transform - the
-   outer carries X, the middle Y, and the ball itself size. Size had been
-   on the same element as Y, so the flight keyframes reset whatever the
-   round had grown to while it waited. */
+   The wind-up is what makes the hit read as heavy. Three layers, because each
+   needs its own transform: the outer carries X, the middle Y, the ball size.
+   Size on the Y element would let the flight keyframes reset whatever the round
+   grew to while it waited. */
 .siege-charge{position:fixed;z-index:44;pointer-events:none;width:0;height:0;}
 .siege-charge i{position:absolute;display:block;left:0;top:0;width:0;height:0;}
 .siege-charge b{
   position:absolute;display:block;
   left:-26px;top:-26px;width:52px;height:52px;border-radius:50%;
-  /* Blue fire: a small white-hot centre and a body that is properly
-     blue. The old mix was white out to two thirds of the radius, which
-     is what made it read as a light rather than a burning thing. */
+  /* Blue fire: a small white-hot centre and a properly blue body; white out to
+     two thirds of the radius reads as a light, not a burning thing. */
   background:radial-gradient(circle,
     #f0fbff 5%, #a5e6ff 17%, #4fb8ff 37%,
     rgba(45,130,255,.78) 60%, rgba(30,90,235,.28) 76%, transparent 86%);
@@ -196,9 +191,8 @@
   100%{transform:scale(calc(var(--grow,1) * 1.16));}
 }
 
-/* Back, and now it earns its keep. The shield being broken in half is
-   the one moment on this page big enough to justify moving the whole
-   viewport, and it fires on the hit rather than on "done". */
+/* The shield being broken in half is the one moment on this page big enough to
+   justify moving the whole viewport; it fires on the hit, not on "done". */
 .page.struck{animation:page-shake .5s ease-in-out;}
 @keyframes page-shake{
   0%,100%{transform:translate(0,0);}

@@ -1,4 +1,4 @@
-/* Wider than the default 880: the right column now holds the scoreboard.
+/* Wider than the default 880: the right column holds the scoreboard.
    Scoped here on purpose - the alliance grid is bin-packed in JS against
    the 880. */
 .info-popover--maps.info-popover--expanded{width:min(1028px,94vw);max-width:94vw;}
@@ -166,9 +166,9 @@
    is icon + gap + a number box two digits wide, left-aligned, whatever the
    digits are. */
 @media (max-width:620px){
-  /* 18 + 3 + the box. The box is 1.4em of the number (two digits at ~.7em,
-     measured: ch undersized the 8s), and the cell repeats it as 1.4 x .84rem,
-     since an em on the grid is not the number's em. */
+  /* 18 + 3 + the box. The box is 1.4em of the number (two digits at ~.7em; ch
+     undersizes the 8s), and the cell repeats it as 1.4 x .84rem, since an em on
+     the grid is not the number's em. */
   .wvw-board{--board-cell:calc(21px + 1.176rem);}
   .wvw-board-team{flex:1 1 0;max-width:none;}
   .wvw-board-counts{column-gap:4px;}
@@ -189,10 +189,10 @@
 }
 
 /* A bar across the top of the map, drawn after the game's: three
-   segments, each as wide as that side's share of this map's PPT. Over the plot and never
-   inside the SVG - the SVG is the camera, so anything in it would pan and
-   zoom away with the ground. The height follows the width at the game's
-   35:1 (318 x 9 measured off its bar, tips included), never under 4px. */
+   segments, each as wide as that side's share of this map's PPT. Over the plot and
+   never inside the SVG - the SVG is the camera, so anything in it would pan and
+   zoom away with the ground. The height follows the width at the game's 35:1,
+   never under 4px. */
 .wvw-scorebar{
   position:absolute;top:9px;left:50%;transform:translateX(-50%);
   display:flex;gap:2px;
@@ -207,8 +207,8 @@
    radial-gradient can only draw a perfect ellipse. The mask is flat across
    the middle out to t=0.24 - which is also what guarantees full-height
    cover behind a bar that ends at t=0.185 - then falls almost straight to
-   nothing at both tips, with no side ever taller than the middle. Its
-   width against the bar, 2.71x, is measured off the game. */
+   nothing at both tips, with no side ever taller than the middle. Its width
+   against the bar, 2.71x, is the game's. */
 .wvw-scorebar::before{
   content:'';position:absolute;z-index:0;
   left:50%;top:-9px;transform:translateX(-50%);
@@ -231,8 +231,8 @@
   position:relative;z-index:1;
   display:block;height:100%;min-width:0;
 }
-/* The game's own three, flat: measured on the game's bar, the core of its
-   rows. That green is not the emerald the markers use. */
+/* The game's own three, flat: the core of the colours on its bar. That green is
+   not the emerald the markers use. */
 .wvw-scorebar-seg.own-red{background:#e53325;}
 .wvw-scorebar-seg.own-blue{background:#279bba;}
 .wvw-scorebar-seg.own-green{background:#4e9416;}
@@ -409,7 +409,7 @@
 /* Righteous Indignation: crossed swords and a clock under a marker that
    just changed hands, for the five minutes its guards cannot be hurt. */
 /* Hoverable, so the clock can say what it is. The marker's own hit area
-   was cut back to the icon's disc to make room - see the note on .hit. */
+   is cut back to the icon's disc to make room - see the note on .hit. */
 .wvw-ri{pointer-events:auto;}
 .wvw-ri rect{fill:rgba(8,11,15,.88);stroke:rgba(0,0,0,.55);stroke-width:1.5;}
 .wvw-ri text{
@@ -500,8 +500,8 @@
 
 /* The two top corners of the map, either side of the score bar: kills on
    the left, the age of the last accepted answer on the right. A dark glass
-   chip under each: the borderlands run light terrain right up to the top
-   edge, where a shadow alone was unreadable. They go while zoomed. */
+   chip under each: the borderlands run light terrain right up to the top edge,
+   where a shadow alone is unreadable. They go while zoomed. */
 .wvw-hud{
   position:absolute;top:0;z-index:3;
   padding:6px;pointer-events:none;
@@ -581,10 +581,9 @@
   overflow-y:auto;max-height:62vh;
   overscroll-behavior:contain; /* without it a swipe at the end scrolls the page behind */
 }
-/* Stacked under the map it scrolls inside the pane, but hands a swipe at its
-   end on to the popover: contain there kept a swipe on a panel with nothing
-   to scroll from reaching the popover (seen on a phone, 09/10/2026). The
-   captures list the same. */
+/* Stacked under the map it scrolls inside the pane, but hands a swipe at its end
+   on to the popover: contain there would keep a swipe on a panel with nothing
+   to scroll from reaching the popover. The captures list the same. */
 @media (max-width:760px){ .wvw-detail,.wvw-caps{overscroll-behavior:auto;} }
 .wvw-detail-empty{color:#8d97a6;margin:0;}
 .wvw-detail-name{
@@ -613,18 +612,15 @@
      down a column. */
   font-variant-numeric:tabular-nums;
 }
-/* Whoever holds it, in their own colour - the first thing the eye looks
-   for, and the panel had it in the same white as everything else. */
+/* Whoever holds it, in their own colour - the first thing the eye looks for. */
 .wvw-row dd.wvw-owner.own-red{color:#ff8080;}
 .wvw-row dd.wvw-owner.own-blue{color:#8cb8ff;}
 .wvw-row dd.wvw-owner.own-green{color:#5fe89e;}
 
-/* One treatment for a section label, used by both. The panel had grown two,
-   saying the same kind of thing at three sizes, weights and colours. A
-   heading also has to outrank its rows, and the old one was dimmer as well
-   as smaller, at 4.4:1 under the 4.5 AA wants. Brightening alone walks into
-   the row labels, so the rule under the label is what separates the sections.
-   The rows themselves stay unruled: a line per row buried them. */
+/* One treatment for a section label, used by both. A heading has to outrank its
+   rows and clear the 4.5 AA floor; brightening alone walks into the row labels,
+   so the rule under the label separates the sections. The rows themselves stay
+   unruled: a line per row buries them. */
 .wvw-group,
 .wvw-upgrade-tier{
   margin:13px 0 5px;padding-bottom:3px;
@@ -672,10 +668,9 @@
   width:20px;height:20px;flex-shrink:0;border-radius:3px;
   box-shadow:0 1px 2px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.14);
 }
-/* Side by side rather than stacked, which left the right half of the panel
-   empty under a claimed keep. auto-fit needs no breakpoint: two columns
-   while both fit, one when they do not, and a list with no counterpart
-   spans the full width. */
+/* Side by side rather than stacked, which leaves the right half of the panel
+   empty. auto-fit needs no breakpoint: two columns while both fit, one when they
+   do not, and a list with no counterpart spans the full width. */
 .wvw-upgrade-cols{
   display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
   gap:0 14px;

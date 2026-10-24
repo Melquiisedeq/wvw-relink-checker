@@ -1,12 +1,7 @@
 'use strict';
-// ---------------------------------------------------------------------
-// Community guild sheet
-// The NA WvW Discord spreadsheet: CSV parsing and the per-team index
-// of alliances and solo guilds built from it.
-// ---------------------------------------------------------------------
+// Community guild sheet (NA WvW Discord): CSV parsing and the per-team index of alliances and solo guilds.
 
-// Community guild list (NA WvW Discord sheet).
-// Minimal CSV parser: handles quoted fields and embedded newlines.
+// Minimal CSV parser: quoted fields and embedded newlines.
 function parseCsv(text) {
   const rows = [];
   let row = [];
@@ -35,10 +30,9 @@ function parseCsv(text) {
   return rows;
 }
 
-// Splits "[TAG] Name (region)" into parts. Two simple anchored regexes
-// instead of one combined pattern, to avoid ReDoS on this untrusted
-// public-sheet text (a lazy match plus optional trailing group can
-// backtrack badly).
+// Splits "[TAG] Name (region)". Two simple anchored regexes, not one combined
+// pattern: a lazy match plus an optional trailing group backtracks badly (ReDoS)
+// on this untrusted text.
 const GUILD_TAG_RE = /^\[([^\]]+)\]/;
 const TRAILING_REGION_RE = /\(([^()]+)\)\s*$/;
 function parseGuildEntry(raw) {
@@ -59,10 +53,8 @@ function parseGuildEntry(raw) {
   };
 }
 
-// The sheet's columns shift whenever a maintainer inserts one, so they get
-// resolved by header name at parse time instead. These numbers are the
-// layout as last verified, kept only as a fallback so an unexpected header
-// rename degrades to the old behaviour rather than to an empty list.
+// Columns shift whenever a maintainer inserts one, so they are resolved by header
+// name at parse time. These numbers are only the fallback for an unexpected header rename.
 const SOLO_WORLD_FALLBACK = 21;
 const SOLO_MISMATCH_FALLBACK = 19;
 const ALLIANCE_MEMBERS_FALLBACK = 2;
@@ -126,12 +118,9 @@ async function loadCommunityGuilds() {
 
   const byTeam = new Map();
 
-  // A flagged guild is one the maintainers cannot place: it shows up on
-  // several teams, or it is repping something they have not identified.
-  // The row keeps whatever World it was last sorted into, but the sheet
-  // leaves it out of that team's own tab - so reading the column alone
-  // put guilds on a server the sheet itself does not put them on.
-  // Checked against the Mosswood tab: with this, the two lists match.
+  // A flagged guild is one the maintainers cannot place. The row keeps the World it
+  // was last sorted into, but the sheet leaves it out of that team's own tab, so the
+  // column alone would put guilds on a server the sheet does not.
   for (const row of soloRows.slice(1)) {
     const world = (row[soloWorldCol] || '').trim();
     const raw = (row[0] || '').trim();

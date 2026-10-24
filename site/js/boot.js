@@ -1,9 +1,5 @@
 'use strict';
-// ---------------------------------------------------------------------
-// Boot
-// Kicks off the first load, starts the background refreshes, runs the
-// ember field and idles the page when nobody is looking. Loads last.
-// ---------------------------------------------------------------------
+// Boot (loads last): the first load, the background refreshes, the ember field, and idling when nobody is looking.
 
 // Initial load, then keep both data sets fresh in the background for as
 // long as the tab stays open (see STANDINGS_REFRESH_MS / TIMERS_REFRESH_MS).
@@ -20,12 +16,11 @@ startPeeking(); // /api ahead of the board: load it now (js/standings.js)
 schedulePeriodicRefresh(refreshStandings, STANDINGS_REFRESH_MS);
 schedulePeriodicRefresh(fetchTimers, TIMERS_REFRESH_MS);
 
-// Embers drifting up the page: 46 of them, one in four cyan instead of
-// warm, each with its own column, duration and sideways drift so the
-// field never resolves into a visible loop. One canvas, not an element per
-// ember: each element is its own compositor layer and draw call. The cost:
-// the timing curves below are the CSS keyframes written out by hand, and
-// pausing while nobody is watching is this file's own job.
+// Embers drifting up the page: 46 of them, one in four cyan instead of warm, each
+// with its own column, duration and sideways drift. One canvas, not an element per
+// ember (each element is its own compositor layer and draw call). The cost: the
+// timing curves below are the CSS keyframes written out by hand, and pausing while
+// nobody is watching is this file's job.
 const emberField = (function () {
   const canvas = document.getElementById('fxEmbers');
   if (!canvas || !canvas.getContext) return { start() {}, stop() {}, blast() {} };
@@ -45,10 +40,9 @@ const emberField = (function () {
   // about a third of the way out.
   const WIND = { eddy: 220, churn: .08, push: 280, gust: 4, drag: .45 };
 
-  // Value noise: a lattice of hashed numbers with smooth interpolation
-  // between them. Not as good as Perlin and it does not need to be - all
-  // that matters is that neighbouring samples agree, so two embers in the
-  // same patch of air drift together. A sum of sines cannot fake that.
+  // Value noise: a lattice of hashed numbers with smooth interpolation. All that
+  // matters is that neighbouring samples agree, so two embers in the same patch of
+  // air drift together; a sum of sines cannot fake that.
   function hash(x, y, z) {
     let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 1274126177);
     h = Math.imul(h ^ (h >>> 13), 1274126177);
@@ -67,25 +61,21 @@ const emberField = (function () {
     return v;
   }
   const PAD = 14;   // room for the glow, which reaches 8px past the dot
-  // The sprite is built at the backing store's scale, so drawing it at
-  // rest is 1:1 and no resampling happens. Anything higher is not
-  // headroom, it is a shrink on every single draw. Set from resize().
+  // The sprite is built at the backing store's scale, so drawing it is 1:1.
+  // Anything higher is a shrink on every draw. Set from resize().
   let SS = 1;
 
-  // The halo, and only the halo, rasterised once per colour and size.
-  // The core is drawn live in put(): an ember is at two thirds of its
-  // size at the moment it is brightest, and a bitmap shrunk by a third
-  // loses exactly that peak.
+  // The halo, and only the halo, rasterised once per colour and size. The core is
+  // drawn live in put(): an ember is at two thirds of its size when brightest, and
+  // a bitmap shrunk by a third loses that peak.
   //
-  // blur(3.5px) and not 7: a box-shadow radius is twice the standard
-  // deviation, and ctx.filter is the CSS filter path, which takes the
-  // deviation. shadowBlur was the wrong tool - the spec leaves both the
+  // blur(3.5px) and not 7: a box-shadow radius is twice the standard deviation,
+  // and ctx.filter takes the deviation. Not shadowBlur: the spec leaves the
   // algorithm and the meaning of the number to the engine.
   //
-  // CAN_BLUR because Safari has never shipped ctx.filter, on the desktop
-  // or on iOS - which is every browser on an iPhone. The assignment
-  // fails silently there and the halo comes out a hard-edged disc, so it
-  // is set and read back rather than trusted.
+  // CAN_BLUR because Safari has never shipped ctx.filter (desktop or iOS). The
+  // assignment fails silently there and the halo is a hard-edged disc, so it is
+  // set and read back rather than trusted.
   const CAN_BLUR = (() => {
     const c = document.createElement('canvas').getContext('2d');
     c.filter = 'blur(4px)';
@@ -113,15 +103,12 @@ const emberField = (function () {
   }
   // The same halo, drawn instead of blurred.
   //
-  // A disc blurred by a Gaussian has no tidy formula, but when the disc
-  // is about as wide as the blur - 2.5px against 3.5 here - it comes out
-  // indistinguishable from a plain Gaussian blob carrying the disc's ink.
-  // Variances add, so the blob's width is sqrt(sigma^2 + r^2/4). Checked
-  // against the real convolution at every pixel of both ember sizes: the
-  // worst gap is .002 of an alpha, under one step of the 0-255 the canvas
-  // stores it in. The min() covers a disc much wider than the blur, which
-  // this file does not have. 17 stops because a gradient runs straight
-  // lines between them.
+  // When the disc is about as wide as the blur (2.5px against 3.5), a blurred disc
+  // is indistinguishable from a Gaussian blob carrying the disc's ink. Variances
+  // add, so the blob's width is sqrt(sigma^2 + r^2/4); the worst gap from the real
+  // convolution is under one step of the canvas's 0-255 alpha. The min() covers a
+  // disc much wider than the blur, which this file does not have. 17 stops because
+  // a gradient runs straight lines between them.
   function blob(c, m, r, colour) {
     const sd = Math.sqrt(GLOW.sigma * SS * (GLOW.sigma * SS) + r * r / 4);
     const peak = Math.min(GLOW.alpha, GLOW.alpha * r * r / (2 * sd * sd));
@@ -133,12 +120,9 @@ const emberField = (function () {
     }
     return g;
   }
-  // Three quarters of the dot's own radius, measured rather than chosen:
-  // rendering the real .ember beside this one, the CSS core falls to half
-  // brightness at .80, 1.00 and 1.40px across the three phases worth
-  // measuring, and .75 reproduces all three exactly. A full radius came
-  // out half again too wide. The same number serves the cold ones -
-  // different colours, same geometry.
+  // Three quarters of the dot's own radius: it matches the CSS .ember core's
+  // half-brightness points in all three phases (a full radius is half again too
+  // wide). The same number serves the cold ones.
   function look(colour, size) {
     return { halo: sprite(colour, size), core: colour.core,
              r: size / 2 * .75 };
@@ -173,8 +157,7 @@ const emberField = (function () {
     rising.push({
       x: Math.random(),                          // fraction of the width
       dur: 14 + Math.random() * 16,
-      // Was a negative animation-delay: it starts each one mid-flight, so
-      // the field is populated on load instead of rising all at once.
+      // Starts each one mid-flight, so the field is populated on load instead of rising all at once.
       phase: Math.random() * 26,
       drift: Math.round(Math.random() * 90 - 45),
       // Where the wind has carried it so far, and how fast it is being
@@ -191,11 +174,9 @@ const emberField = (function () {
   function resize() {
     W = canvas.clientWidth;
     H = canvas.clientHeight;
-    // No cap, and capping was never the saving it looked like. Zoom
-    // raises devicePixelRatio and shrinks the CSS viewport by the same
-    // factor, so clientWidth * ratio comes to the screen's own pixels
-    // whatever the zoom. A cap just hands back fewer pixels than the
-    // display has and lets the browser stretch the difference.
+    // No cap: zoom raises devicePixelRatio and shrinks the CSS viewport by the
+    // same factor, so clientWidth * ratio is the screen's own pixels whatever the
+    // zoom. A cap hands back fewer pixels than the display has.
     const scale = window.devicePixelRatio || 1;
     canvas.width = Math.round(W * scale);
     canvas.height = Math.round(H * scale);
@@ -208,16 +189,12 @@ const emberField = (function () {
   }
 
   // Only what was painted last frame gets cleared, never the viewport.
-  // Fifty sprites of about 30px against 3.7 million pixels is the whole
-  // difference between this being worth doing and not.
   function put(l, cx, cy, k, alpha) {
     const d = (l.halo.width / SS) * k;
     const x = cx - d / 2, y = cy - d / 2;
     ctx.globalAlpha = alpha;
     ctx.drawImage(l.halo, x, y, d, d);
-    // Drawn, not scaled from a bitmap. An ember is at .666 of its size at
-    // the moment it is brightest, and a bitmap shrunk by a third loses
-    // exactly the peak that makes a spark read as one.
+    // Drawn, not scaled from a bitmap: see the halo above.
     ctx.beginPath();
     ctx.arc(cx, cy, l.r * k, 0, Math.PI * 2);
     ctx.fillStyle = l.core;
@@ -248,10 +225,8 @@ const emberField = (function () {
         // the same gust go the same way. Force, not position: it has to
         // be got moving, and then keeps moving after the gust passes.
         const n = noise3((x + e.ox) / WIND.eddy, y / WIND.eddy, clock * WIND.churn);
-        // Not scaled by how far up it is: the ember is at its brightest
-        // barely off the bottom, and holding the wind back until later
-        // was keeping it calm exactly where it is most looked at. It
-        // starts from a standstill anyway, so nothing jumps.
+        // Not scaled by how far up it is: the ember is brightest barely off the
+        // bottom, where it is most looked at. It starts from a standstill, so nothing jumps.
         const f = n < 0 ? -Math.pow(-n, WIND.gust) : Math.pow(n, WIND.gust);
         e.vx += f * WIND.push * dt;
         e.vx *= Math.pow(WIND.drag, dt);
@@ -281,11 +256,10 @@ const emberField = (function () {
     }
   }
 
-  // The fastest ember climbs about 105px a second, under two pixels a
-  // frame at 60. Chromium drives frames at the rate of the fastest
-  // display attached, so a window on a 60Hz screen beside a 144Hz one is
-  // asked to draw 144 times a second and shown 60 (crbug 40386822). This
-  // draws every frame at 60Hz and every second frame at 144.
+  // The fastest ember climbs under two pixels a frame at 60. Chromium drives frames
+  // at the rate of the fastest display attached, so a window on a 60Hz screen
+  // beside a 144Hz one is asked to draw 144 times a second and shown 60 (crbug
+  // 40386822). This draws every frame at 60Hz and every second frame at 144.
   const MIN_FRAME_MS = 1000 / 85;
 
   let clock = 0, last = 0, running = false, frameId = 0;
@@ -300,10 +274,8 @@ const emberField = (function () {
 
   resize();
   draw();
-  // One per frame. Dragging a window edge fires resize continuously, and
-  // each call reallocates the whole backing store - some 14MB at 1440p -
-  // and rasterises the four sprites again, for frames the canvas never
-  // gets to show.
+  // One per frame: dragging a window edge fires resize continuously, and each call
+  // reallocates the whole backing store and rasterises the four sprites again.
   let resizeQueued = false;
   window.addEventListener('resize', () => {
     if (resizeQueued) return;
@@ -318,8 +290,7 @@ const emberField = (function () {
       last = performance.now();
       frameId = requestAnimationFrame(frame);
     },
-    // The clock stops with it, so coming back carries on from where it
-    // was rather than jumping forward by however long you were away.
+    // The clock stops with it, so coming back carries on instead of jumping forward.
     stop() { running = false; cancelAnimationFrame(frameId); },
     blast() {
       for (let i = 0; i < 12; i++) {
@@ -353,8 +324,7 @@ const emberField = (function () {
 
 // Bound here, last, so an early click or key press finds everything it calls.
 runBtn.addEventListener('click', run);
-// The button disables itself during a run, but the shortcut bypassed it and
-// could start a second run that wiped the first one's rows mid-flight.
+// The button disables itself during a run; the shortcut must not start a second one that wipes the first one's rows.
 guildInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.ctrlKey && !runBtn.disabled) run();
 });

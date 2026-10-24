@@ -1,9 +1,5 @@
 'use strict';
-// ---------------------------------------------------------------------
-// Result rows and match panels
-// The per-guild answer rows and the full match panel underneath them,
-// plus the small formatters they share.
-// ---------------------------------------------------------------------
+// Result rows and match panels: the per-guild answer rows, the match panel under them, and their formatters.
 
 function renderStandingsRegion(gridEl, matches) {
   gridEl.textContent = '';
@@ -55,11 +51,9 @@ function renderStandingsRegion(gridEl, matches) {
     label.appendChild(buildTierMapButton(match, regionName, tierNum || '?'));
     box.appendChild(label);
 
-    // Last week's score is not an answer to what is happening this week,
-    // and a stale one sat here looking exactly like a live one. The tier
-    // keeps its name and its maps button - the ground has not moved,
-    // only who holds it - and so do the team names and the guild lists
-    // hanging off them. Only the numbers wait.
+    // Last week's score is not an answer to this week, and a stale one looks
+    // exactly like a live one. The tier keeps its name, maps button, team names and
+    // guild lists; only the numbers wait.
     if (!matchIsLive(match)) {
       forgetSideStats(match.id);
       box.appendChild(buildStandingsStale(match));
@@ -192,7 +186,7 @@ function getSkirmishScore(match, color) {
   return null;
 }
 
-// Highest current-skirmish score among the three sides, used to size the
+// Highest current-skirmish score among the three sides; sizes the
 // score bar relative to whoever is leading right now.
 function getSkirmishLeaderScore(match) {
   const scores = COLORS.map((c) => getSkirmishScore(match, c)).filter((s) => s !== null);
@@ -207,9 +201,7 @@ function markStatLeader(valueEl) {
 // underlined. Independent per stat (a side can lead Activity but not
 // Skirmish).
 function getStatLeaders(match) {
-  // A tie is not a lead. Comparing with > alone kept the first colour
-  // checked, so two sides level on Activity quietly handed red the
-  // underline every time.
+  // A tie is not a lead: comparing with > alone would hand the underline to the first colour checked.
   const best = (values) => {
     let leader = null, max = -Infinity, tied = false;
     for (const [c, v] of values) {
@@ -244,10 +236,9 @@ function buildSkirmishBar(color, score, leaderScore, fromPct) {
   const pct = Math.max(4, rawPct);
   fill.className = `skirmish-bar-fill skirmish-bar-${color}`;
 
-  // The whole rail is rebuilt on every refresh, so a fresh element would
-  // simply appear at its final width and the CSS transition would never
-  // run. Starting it at the previous width gives the transition
-  // somewhere to travel from, and the bar visibly slides instead.
+  // The rail is rebuilt on every refresh, so a fresh element would appear at its
+  // final width and the CSS transition would never run. Starting at the previous
+  // width gives it somewhere to travel from.
   const shouldAnimate = typeof fromPct === 'number' && Math.abs(fromPct - rawPct) > 0.01;
   fill.style.width = `${shouldAnimate ? Math.max(4, fromPct) : pct}%`;
   if (shouldAnimate) {
@@ -265,10 +256,8 @@ function buildSkirmishBar(color, score, leaderScore, fromPct) {
 }
 
 // Ranks the three sides by victory points, the standing that decides the
-// tier. They tie often enough to matter, especially early in the week,
-// and sorting on VP alone left those two in COLORS order - arbitrary and,
-// worse, stable. War score is the natural second measure and is already
-// in the match object.
+// tier. They tie often, so VP alone would leave ties in COLORS order; war score
+// breaks them.
 function rankMatchByVictoryPoints(match) {
   const ranked = COLORS
     .map((color) => ({
@@ -298,12 +287,10 @@ function getMaxTierForRegion(regionCode) {
 
 const MOVEMENT_SYMBOLS = { up: '▲', down: '▼' };
 
-// Projects where a side lands after the next weekly reset from its rank
-// within the tier: 1st promotes, 2nd always stays, 3rd relegates, unless
-// there is nowhere further up or down to go. Reset, not relink: tiers
-// turn over every week at the end of the matchup, while the relink is
-// the monthly rebuild of the teams themselves and moves nobody between
-// tiers.
+// Projects where a side lands after the next weekly reset from its rank within
+// the tier: 1st promotes, 2nd always stays, 3rd relegates, unless there is
+// nowhere further up or down to go. Reset, not relink: the relink rebuilds the
+// teams and moves nobody between tiers.
 function getRelinkMovement(rank, tierNum, maxTierForRegion) {
   const tier = Number(tierNum);
   if (rank === 1) {
@@ -375,19 +362,15 @@ function renderMatchPanel(match, yourGuildsByColor) {
   const tierEl = document.createElement('span');
   tierEl.className = 'match-tier';
   tierEl.textContent = `Tier ${tierNum || '?'}`;
-  // The region and match id were never worth the space - you just asked
-  // for this match, so you know which one it is. The maps button earns
-  // it. What the text said lives on in the button's tooltip.
+  // The maps button takes the space of the region and match id; its tooltip carries what the text said.
   header.appendChild(tierEl);
   // A remembered line-up has no body of its own to draw.
   if (!match.fromMemory) header.appendChild(buildTierMapButton(match, regionName, tierNum || '?'));
   panel.appendChild(header);
 
-  // The same rule the standings rail follows, and the same answer: the
-  // three teams and their guild lists stay, everything that would read
-  // as a standing goes. The pin travels with it - the team comes from
-  // wvw/guilds, which turns over with the relink, so which of the three
-  // is yours is not in doubt.
+  // The same rule as the standings rail: the three teams and their guild lists
+  // stay, everything that reads as a standing goes. The pin stays: the team comes
+  // from wvw/guilds, which turns over with the relink.
   if (match.fromMemory || !matchIsLive(match)) {
     panel.appendChild(buildStandingsStale(match, yourGuildsByColor));
     return panel;

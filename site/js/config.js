@@ -1,12 +1,8 @@
-// ---------------------------------------------------------------------
-// Configuration
-// Team tables, API endpoints and every tunable number in one place.
-// Nothing here reads the DOM or the network; it is all constants.
-// ---------------------------------------------------------------------
+// Configuration: team tables, endpoints and every tunable number. Constants only.
 
 'use strict';
 
-// Team ID to name table from the official API wiki. Update manually for new teams.
+// Team ID to name, from the official API wiki. Updated by hand for new teams.
 const TEAM_NAMES = Object.freeze({
   "11001": "Moogooloo",
   "11002": "Rall's Rest",
@@ -37,16 +33,14 @@ const TEAM_NAMES = Object.freeze({
   "12015": "Bava Nisos"
 });
 
-// Looks up a team's display name. Uses hasOwnProperty so a lookup key like
-// "__proto__" can't resolve through the prototype chain instead of failing.
+// hasOwnProperty, so a key like "__proto__" cannot resolve through the prototype chain.
 function getTeamName(teamId) {
   if (Object.prototype.hasOwnProperty.call(TEAM_NAMES, teamId)) return TEAM_NAMES[teamId];
   return `Unknown team (ID ${teamId})`;
 }
 
 const REGION_NAMES = Object.freeze({ '1': 'NA', '2': 'EU' });
-// The three sides of every match, and the only spelling of them -
-// maps.js used to carry a Set and a literal saying the same thing.
+// The three sides of every match, and the only spelling of them.
 const COLORS = Object.freeze(['red', 'blue', 'green']);
 
 // "all_worlds" mixes legacy 4-digit world numbers with the modern 5-digit
@@ -58,11 +52,8 @@ function matchTeamId(match, color) {
   return teamId !== undefined ? String(teamId) : null;
 }
 
-// A match whose end_time has passed describes a week that is over: the
-// scores are final and the maps are last week's. ArenaNet republishes
-// the tiers one at a time and not always forwards - during the relink of
-// 26/09 tier 4 was on the new week while 1, 2 and 3 were still on the
-// old, and tier 2 published the new week and then went back. So this is
+// A match whose end_time has passed describes a week that is over. ArenaNet
+// republishes the tiers one at a time and not always forwards, so this is
 // asked of a single match, never of a region.
 function matchIsLive(match) {
   const end = Date.parse(match && match.end_time);
@@ -72,35 +63,30 @@ function matchIsLive(match) {
 const API_BASE = "https://api.guildwars2.com/v2";
 const GUID_RE = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i;
 
-// NA WvW Discord's community-maintained guild/alliance sheet. Covers NA
-// servers only. Read-only, via the gviz CSV export (no API key needed).
+// NA WvW Discord's community guild/alliance sheet (NA servers only), read through the gviz CSV export.
 const SHEET_ID = '1Txjpcet-9FDVek6uJ0N3OciwgbpE0cfWozUK7ATfWx4';
 const SHEET_URL = (tab) =>
   `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
-// The same sheet for a person to open, built from SHEET_ID rather than
-// kept as a bit.ly link: whoever owns a shortener can repoint it later,
-// and it hides where the link goes until after the click.
+// The same sheet for a person to open: built from SHEET_ID, not a shortener
+// whose owner could repoint it.
 const SHEET_HUMAN_URL =
   `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit?usp=sharing`;
 
 const MAX_ENTRIES = 20;        // hard cap so a pasted wall of text can't hammer a public API
 const MAX_NAME_LENGTH = 64;    // real guild names and GUIDs are well under this
 const REQUEST_TIMEOUT_MS = 10000;
-// A slow line can take 40 s to bring the standings (the whole ids=all body)
-// or the guild tables (77 KB gzip for NA alone); 10 s threw those answers
-// away. Only the first standings load and the guild search wait this long;
-// every refresh after that keeps the short deadline.
+// The whole ids=all standings body and the guild tables can take 40 s on a slow
+// line, so 10 s throws them away. Only the first standings load and the guild
+// search wait this long; every refresh keeps the short deadline.
 const SLOW_REQUEST_TIMEOUT_MS = 30000;
-// After a failed standings load: the window, in ms, of each extra try, full
-// jitter inside it (a random point, never a fixed step). Two tries, then
-// the ordinary 5-minute cycle takes over.
+// After a failed standings load: the window, in ms, of each extra try, with full
+// jitter (a random point inside it). Then the ordinary cycle takes over.
 const STANDINGS_RETRY_WINDOWS_MS = [[5000, 15000], [15000, 40000]];
 const THROTTLE_MS = 200;       // gap between sequential lookups, to stay well under rate limits
 const MAX_RETRIES = 2;         // for 429 / transient network errors
 
-// Match data updates unpredictably on ArenaNet's end; 5 min balances
-// freshness vs load. Lockout barely changes, so it's checked less often.
-// Both stay under the API rate limit and only run while the tab is visible.
+// Match data updates unpredictably; 5 min balances freshness and load. Lockout
+// barely changes, so it is checked less often. Both run only while the tab is visible.
 // The visitor's choice of which standings column goes left, 'na' or 'eu'.
 // js/region.js reads it by this same literal, before this file loads.
 const RAIL_FIRST_KEY = 'wvw-rail-first';
@@ -110,52 +96,40 @@ const TIMERS_REFRESH_MS = 10 * 60 * 1000;    // season lockout
 // Community sheet is edited by hand; re-fetched on click with a short TTL.
 const COMMUNITY_SHEET_TTL_MS = 5 * 60 * 1000;
 
-// Kills history: an Apps Script trigger appends a snapshot every five
-// minutes, trimmed to a rolling two hours, read through the gviz CSV
-// export. The shape below is this project's own: change it at the source,
-// not around it here.
-//
-// Columns, in this order and with no header row:
+// Kills history: an Apps Script snapshot every five minutes over a rolling two
+// hours. The shape is this project's own: change it at the source.
+// Columns, in this order, no header row:
 //   epoch ms | match id | Center | RedHome | BlueHome | GreenHome
-// The four numbers are player kills summed over all three sides - see
-// fightTotals in js/maps.js for why deaths are left out.
+// The four numbers are player kills summed over all three sides (fightTotals
+// in js/maps.js says why deaths are left out).
 const KILLS_SHEET_ID = '1Lh6dGhlYVvvKlXT_tofEUKZhYGW71Jij1IstbdPF2fg';
 const KILLS_SHEET_URL =
   `https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=kills`;
 const KILLS_SHEET_TTL_MS = 5 * 60 * 1000;
 
 // This project's own copy of the same two things, served by the wvwrelink-api
-// Worker from its database, which both Apps Scripts push to after every tick.
-// Tried first; any failure - quota, rate limit, a stale copy, a timeout - reads
-// the sheet as before, so the page is never worse off than without it. The
-// shorter deadline is what a failure costs before that fallback.
+// Worker. Tried first; any failure reads the sheet, so the page is never worse
+// off. The short deadline is what a failure costs before that fallback.
 const OWN_KILLS_URL = '/api/kills';
 const OWN_RELINK_URL = '/api/relink';
 const OWN_API_TIMEOUT_MS = 4000;
 // Must match the column order the Apps Script writes.
 const KILLS_MAP_ORDER = Object.freeze(['Center', 'RedHome', 'BlueHome', 'GreenHome']);
 
-// The teams notice. The API announces a new team assignment nowhere, so an
-// Apps Script trigger compares the guild-to-team table and leaves two
-// integers in one cell.
-//
+// The teams notice. The API announces a new team assignment nowhere, so an Apps
+// Script trigger compares the guild-to-team table and leaves two integers in one
+// cell (the counting cannot happen in the page).
 //   window     the NA teamAssignment these numbers are about, epoch seconds
 //   published  when the table was seen to have moved, epoch seconds, or 0
-//
-// Both are integers and nothing else is ever read out of that cell.
-// updateTeamsNotice in js/relink.js says what each of them decides.
-//
-// Its own spreadsheet, shared read-only: whoever could write that cell could
-// make this page announce a relink that has not happened.
+// Nothing else is read out of that cell; updateTeamsNotice in js/relink.js says
+// what each decides. Its own spreadsheet, shared read-only: whoever could write
+// that cell could make this page announce a relink that has not happened.
 const RELINK_SHEET_ID = '14kWfueHYO2-aLKGDVFgdkuO9pHkmYs1fghCO9eMIEl4';
-// `range=A1:A1` is load-bearing, not tidiness. A2 of the same tab holds the
-// trigger's heartbeat, and RELINK_STATE_RE anchors the WHOLE body - so a second
-// row in the export is a body the page refuses, which would take the notice away
-// entirely and look exactly like the sheet being down. Asking for the one cell
-// also means nothing added to that tab later can reach this read.
+// `range=A1:A1` is load-bearing. A2 of the same tab holds the trigger's
+// heartbeat and RELINK_STATE_RE anchors the WHOLE body: a second row is a body
+// the page refuses, which removes the notice and looks like the sheet being down.
 const RELINK_SHEET_URL =
   `https://docs.google.com/spreadsheets/d/${RELINK_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=relink&range=A1:A1`;
-// No point being fresher than the timers that decide the window, and the value
-// changes once a month. Once it says published there is nothing left to learn,
-// and the page stops asking entirely.
+// No point being fresher than the timers that decide the window; the value changes
+// once a month, and once it says published the page stops asking.
 const RELINK_SHEET_TTL_MS = 10 * 60 * 1000;

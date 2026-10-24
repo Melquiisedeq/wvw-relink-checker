@@ -1,9 +1,5 @@
 'use strict';
-// ---------------------------------------------------------------------
-// Copyable summary
-// Turning a finished run into the in-game chat block and the Discord
-// block, including the 199-character chat line wrapping.
-// ---------------------------------------------------------------------
+// Copyable summary: a finished run as the in-game chat block and the Discord block, with the 199-character chat wrapping.
 
 // { names, cut }: the first MAX_ENTRIES distinct names in pasted order, and
 // whether any more were left out.
@@ -29,15 +25,12 @@ function formatTagRow(entries) {
   return entries.filter((e) => e.tag).map((e) => `[${e.tag}]`).join(' ');
 }
 
-// The game truncates anything past 199 characters in a single chat
-// message, and a populated NA server's tag row blows past that on its
-// own. Each line of the chat block is pasted as one message, so every
-// line has to fit on its own.
+// The game truncates a chat message past 199 characters. Each line of the chat
+// block is pasted as one message, so every line has to fit on its own.
 const CHAT_LINE_LIMIT = 199;
 
-// Breaks on spaces so a tag never gets cut in half. A single token longer
-// than the limit can't be helped, so it goes out alone and the game
-// truncates that one.
+// Breaks on spaces so a tag is never cut in half. A single token over the limit
+// goes out alone and the game truncates it.
 function wrapChatLine(line) {
   if (line.length <= CHAT_LINE_LIMIT) return [line];
 
@@ -124,13 +117,10 @@ async function buildSummaryText(entries) {
       continue;
     }
 
-    // A week that has ended says nothing about the tier anyone is in
-    // now or who they are fighting, so both drop out of the block until
-    // the new one is published - during the relink of 26/09, five of the
-    // twelve NA teams had nothing else for the best part of an hour.
-    // Two things survive it: the team, which comes from wvw/guilds and
-    // turns over with the relink, and the community sheet, which is
-    // edited by hand and has no idea a reset happened.
+    // A week that has ended says nothing about the tier anyone is in now or who
+    // they are fighting, so both drop out of the block until the new one is
+    // published. Two things survive: the team, which comes from wvw/guilds and
+    // turns over with the relink, and the community sheet, which is edited by hand.
     const live = matchIsLive(match);
     const [regionCode, tierNum] = match.id.split('-');
     const regionName = REGION_NAMES[regionCode] || `Region ${regionCode}`;
@@ -140,8 +130,6 @@ async function buildSummaryText(entries) {
       return { teamId: enemyTeamId, name: getTeamName(enemyTeamId) };
     });
 
-    // Both shapes were already here: the one with the tier, and the bare
-    // one the branch above uses when there is no match at all.
     const header = live
       ? `${names.join(', ')} landed on ${server} (${regionName} Tier ${tierNum})`
       : `${names.join(', ')} landed on ${server}`;

@@ -1,9 +1,5 @@
 'use strict';
-// ---------------------------------------------------------------------
-// The run
-// What happens when Check is pressed: parse, look up, render, and the
-// saved input and copy buttons around it.
-// ---------------------------------------------------------------------
+// The run: what happens when Check is pressed, and the saved input and copy buttons around it.
 
 // Cleared before each run, so an earlier timeout cannot strip the class
 // off a drop that has only just started.
@@ -11,9 +7,8 @@ let deployTimer = null;
 
 async function run() {
   const { names, cut } = parseGuildNames(guildInput.value);
-  // Cleared up front rather than at each message: every line that goes
-  // through statusMsg after this one is progress or success, and any of
-  // them would otherwise inherit the last failure's colour.
+  // Cleared up front: every statusMsg after this one is progress or success and
+  // would otherwise inherit the last failure's colour.
   statusMsg.classList.remove('status-err');
 
   if (names.length === 0) {
@@ -37,9 +32,8 @@ async function run() {
   const finish = () => {
     runBtn.disabled = false;
     runBtn.textContent = 'Check';
-    // Panels drop in straight away; the siege finale plays over the top
-    // of them. The class comes off once it has played so it is not still
-    // set the next time a check runs.
+    // Panels drop in straight away; the siege finale plays over them. The class
+    // comes off once it has played so the next run starts clean.
     pageEl.classList.remove('deploying');
     void pageEl.offsetWidth;
     pageEl.classList.add('deploying');
@@ -164,10 +158,8 @@ async function run() {
     // The first guild of the list that landed on a team: that team's card.
     if (successEntries.length > 0) showGuildFound(successEntries[0].teamId, successEntries[0].name);
   } catch (err) {
-    // Not a path, a net: every call above that can fail is already
-    // guarded. Without this the run would just stop with the spinner's
-    // last words still on screen. Rethrown so a real bug still reaches
-    // the console instead of being swallowed by the message.
+    // Without this the run would stop with the spinner's last words on screen.
+    // Rethrown so a real bug still reaches the console.
     statusMsg.classList.add('status-err');
     statusMsg.textContent = 'Something went wrong partway through. Give it another try.';
     throw err;
@@ -179,10 +171,9 @@ async function run() {
 // The click and Ctrl+Enter are bound in boot.js, once everything run()
 // calls has loaded.
 
-// Keeps the pasted list across reloads - the same roster gets re-checked
-// every relink. Stays in this browser: nothing is ever sent anywhere.
-// Every access is wrapped because a private window, or a browser set to
-// block site data, throws on localStorage rather than returning null.
+// Keeps the pasted list across reloads; it stays in this browser. Every access is
+// wrapped because a private window, or a browser blocking site data, throws on
+// localStorage rather than returning null.
 const STORAGE_KEY = 'wvw-relink-checker:guilds';
 let saveTimer = null;
 
@@ -204,9 +195,8 @@ function restoreGuildInput() {
 guildInput.addEventListener('input', saveGuildInput);
 restoreGuildInput();
 
-// execCommand('copy') is deprecated, but navigator.clipboard does not
-// exist in a non-secure context and can be refused by permissions
-// policy. This is the only fallback that still works there.
+// navigator.clipboard does not exist in a non-secure context and can be refused
+// by permissions policy; deprecated execCommand('copy') is the fallback there.
 function legacyCopy(text) {
   const ta = document.createElement('textarea');
   ta.value = text;

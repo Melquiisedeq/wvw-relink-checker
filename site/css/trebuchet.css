@@ -1,7 +1,5 @@
-/* Frame and beam are separate images so the beam can turn on its
-   pivot. Both were pulled off a flat magenta backing by unmixing, not
-   thresholding - a hard key eats the one-pixel sling ropes. It stands
-   bottom-left, where every round on the page is thrown from. */
+/* Frame and beam are separate images so the beam can turn on its pivot. It
+   stands bottom-left, where every round on the page is thrown from. */
 .trebuchet{
   position:fixed;left:50px;bottom:6px;
   /* Displayed at half the resolution it was drawn at, so it stays

@@ -2,9 +2,8 @@
 .standings-card{background:rgba(255,255,255,.015);border-color:rgba(255,255,255,.06);}
 .standings-header{margin-bottom:12px;display:flex;align-items:center;gap:8px;}
 .standings-header-left{display:flex;align-items:center;gap:6px;}
-/* A window control, not part of the title: in the card's own top-left
-   corner, small and white like the popovers' close and expand. Cyan icons
-   here open a popover, and this does not. */
+/* A window control, not part of the title: in the card's top-left corner, small
+   and white like the popovers' close and expand (cyan icons open a popover). */
 .standings-card{position:relative;}
 .rail-swap{
   position:absolute;top:4px;left:6px;
@@ -15,9 +14,8 @@
 .rail-swap:hover{color:var(--text);background:rgba(255,255,255,.06);}
 .rail-swap svg{display:block;filter:drop-shadow(0 1px .5px rgba(0,0,0,.6));}
 .standings-status{margin-left:auto;display:inline-flex;align-items:center;gap:6px;position:relative;top:-3px;}
-/* A failed load's message and its button: a compact strip at the top of the
-   card, right of the swap button, so the title keeps its own row. Empty, it
-   takes no room and the card is as it always was. */
+/* A failed load's message and its button: a compact strip at the top of the card,
+   right of the swap button, so the title keeps its row. Empty, it takes no room. */
 .standings-alert{display:none;}
 .standings-alert:not(:empty){
   display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:2px 6px;
@@ -43,10 +41,9 @@
   transition:opacity .15s ease, background .15s ease,
              color .15s ease, box-shadow .15s ease;
 }
-/* The icon buttons are bare glyphs, so their glow is a drop-shadow
-   tracing the outline; inside a filled 22px disc the same filter bleeds
-   into its own background. A box-shadow is the body-shaped version, and
-   the step to --accent-bright is identical. */
+/* The icon buttons are bare glyphs, so their glow is a drop-shadow tracing the
+   outline; inside a filled 22px disc the same filter bleeds into its own
+   background. A box-shadow is the body-shaped version. */
 .leaderboard-link:hover{
   opacity:1;
   background:rgba(127,214,242,.28);
@@ -74,18 +71,16 @@
 .standing-vp{margin-left:auto;font-size:.72rem;white-space:nowrap;flex-shrink:0;}
 .standing-vp .stat-label{color:#8d97a6;opacity:1;font-weight:400;}
 .standing-vp .stat-value{color:#ffffff;font-weight:800;font-size:.85rem;}
-/* Read-only marks, so they get the opposite relief to the buttons:
-   engraved, not raised. A filled body with a bright top reads as
-   pressable, which is a promise the mark cannot keep. */
+/* Read-only marks get the opposite relief to the buttons: engraved, not raised
+   (a bright top reads as pressable). */
 .movement-indicator{
   display:inline-flex;align-items:center;justify-content:center;
   width:20px;margin-left:7px;flex-shrink:0;
   font-size:1rem;line-height:1;
   vertical-align:middle;cursor:default;
 }
-/* Saturated rather than merely tinted. At this size the glyph is small
-   enough that a muted colour reads as grey, and the whole point of the
-   mark is that you catch which way it points without stopping on it. */
+/* Saturated rather than tinted: at this size a muted colour reads as grey, and
+   the mark must be caught without stopping on it. */
 .movement-up{
   color:var(--green-ink);text-shadow:0 1px 1px rgba(0,0,0,.85);
   transform:translateY(-6px);
@@ -94,24 +89,20 @@
   color:var(--red-ink);text-shadow:0 1px 1px rgba(0,0,0,.85);
   transform:translateY(1px);
 }
-/* Optical centring: a triangle carries its weight at the base, so the up
-   arrow reads low and the down arrow reads high, while the bar is a
-   rectangle and reads true - hence transforms on the first two and none
-   on it. Set by eye; derived from the glyph's height they came out
-   wrong. Keep them small, or on a phone the mark lands on the stats
-   line under it. */
-/* "Stays" is the absence of movement, so it keeps no hue at all - the
-   eye should skip it and land on the two that mean something. */
+/* Optical centring: a triangle carries its weight at the base, so the up arrow
+   reads low and the down arrow high, while the bar reads true - transforms on
+   the first two only. Set by eye. Keep them small, or on a phone the mark lands
+   on the stats line under it. */
+/* "Stays" is the absence of movement, so it keeps no hue: the eye skips it. */
 .movement-bar{
   display:inline-block;width:14px;height:3px;border-radius:1.5px;
   background:#a3adba;box-shadow:0 1px 0 rgba(0,0,0,.55);
 }
 .standing-side-top .rank-badge{width:20px;height:20px;font-size:.64rem;}
 .standing-side-top .dot{width:8px;height:8px;box-shadow:0 0 0 1px rgba(0,0,0,.35);}
-/* "Lutgardis Conservatory" is the longest team name in play and used
-   to wrap to a second line, which broke the row rhythm down the whole
-   rail. It gets the leftover space and shrinks a step rather than
-   wrapping; the VP block beside it never shrinks. */
+/* "Lutgardis Conservatory" is the longest team name in play; wrapping it breaks
+   the row rhythm down the rail. It gets the leftover space and shrinks a step
+   rather than wrapping; the VP block beside it never shrinks. */
 .standing-side-name{
   font-weight:600;color:#f2f6fa;min-width:0;flex:0 1 auto;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
@@ -119,14 +110,11 @@
 @media (max-width:1499px){
   .standing-side-name{font-size:.96em;}
 }
-/* Well clear of --muted, and no extra opacity knocked off the
-   labels: the grey that reads fine on the page reads thin once it is
-   inside a tinted card over a photograph. Same hue, higher tone. */
+/* Well clear of --muted, with no extra opacity on the labels: the grey that reads
+   fine on the page reads thin inside a tinted card over a photograph. */
 .standing-side-stats{color:#8d97a6;font-size:.72rem;padding-left:27px;}
-/* The label names the number; the number is the point. Both have to
-   be legible over the photo, but only one should be loud - so the
-   label goes dim and small and the value goes bright and heavy,
-   rather than the two sharing a tone. */
+/* The label names the number; the number is the point: the label dim and small,
+   the value bright and heavy, not a shared tone. */
 .stat-label{color:#8d97a6;opacity:1;font-weight:400;}
 .stat-value{color:#f2f6fa;font-weight:700;}
 .sep{opacity:.4;margin:0 2px;}
@@ -136,9 +124,9 @@
   display:flex;align-items:center;justify-content:center;
   font-size:.78rem;font-weight:800;font-family:Cambria,Georgia,serif;
   background:#0c0f13;border:1px solid var(--border);color:var(--muted);
-  /* Anchors the first-place sheen to the badge. Without it the sweep's
-     absolutely-positioned box falls back to the card (which is
-     positioned for its chamfer) and becomes a card-wide white band. */
+  /* Anchors the first-place sheen to the badge; otherwise the sweep's
+     absolutely-positioned box falls back to the card and becomes a card-wide
+     white band. */
   position:relative;
 }
 .rank-1{background:linear-gradient(160deg,#fff3c4,#c99a2e 65%);color:#3a2a05;}
@@ -154,33 +142,29 @@
   opacity:.95;cursor:pointer;
   transition:opacity .15s ease, transform .15s ease, color .15s ease;
 }
-/* Rest is --accent, hover is --accent-bright, on every one of them.
-   The lift alone said "this moved", never "this is lit" - and the icons
-   were spending the bright cyan at rest, leaving nothing for the
-   hover. */
+/* Rest is --accent, hover is --accent-bright, on every one of them: the lift
+   alone says "this moved", never "this is lit", and bright cyan at rest leaves
+   nothing for the hover. */
 .icon-btn:hover,.icon-btn.active{
   opacity:1;transform:scale(1.15);color:var(--accent-bright);
 }
-/* An icon can only be relieved along its outline. The offset is what
-   makes it safe: a drop-shadow with no offset spreads evenly and closes
-   into a disc at this size. Pushed straight down with almost no blur,
-   it traces the shape instead. */
+/* An icon can only be relieved along its outline. The offset is what makes it
+   safe: a drop-shadow with no offset closes into a disc at this size; pushed
+   straight down with almost no blur, it traces the shape. */
 .icon-btn svg{
   display:block;
   filter:drop-shadow(0 1px .5px rgba(0,0,0,.65));
   transition:filter .15s ease;
 }
-/* The halo, spent on hover only. Held at rest it read as a permanent
-   disc around a 14px glyph; with an unlit state either side of it, the
-   same blur reads as the thing lighting up. The offset shadow stays
-   first so the glyph keeps its outline against the photo. */
+/* The halo, spent on hover only: at rest it is a permanent disc around a 14px
+   glyph. The offset shadow stays first so the glyph keeps its outline against the
+   photo. */
 .icon-btn:hover svg,.icon-btn.active svg{
   filter:drop-shadow(0 1px .5px rgba(0,0,0,.65))
          drop-shadow(0 0 4px rgba(127,214,242,.45));
 }
-/* The three small ones get more of it. A glow is spent on an outline,
-   so the same blur on a 14px glyph covers a fraction of the ink a 19px
-   one does. Matched by eye against the shield, not by arithmetic. */
+/* The three small ones get more of it: the same blur on a 14px glyph covers a
+   fraction of the ink a 19px one does. Matched by eye against the shield. */
 .map-kd-btn:hover svg,.map-kd-btn.active svg,
 .activity-btn:hover svg,.activity-btn.active svg,
 .activity-info-btn:hover svg,.activity-info-btn.active svg{
@@ -189,16 +173,13 @@
 }
 .icon-btn:active{transform:translateY(1px) scale(1.05);}
 
-/* No chip. The chip was an attempt to make this look pressable, and it
-   did - at the cost of being the only button on the page with a body.
-   Accent colour and the shared hover lift do the same job in the same
-   language as the rest. */
+/* No chip: it would be the only button on the page with a body. Accent colour and
+   the shared hover lift do the job in the language of the rest. */
 .tier-map-btn{height:18px;gap:2px;color:var(--accent);}
-/* Reads brighter than the other cyan glyphs at rest because it carries
-   more ink - largest at 18px, with an outline enclosing the whole box -
-   and it sits next to a muted grey word rather than a lit number. Pulled
-   back on opacity, not hue: a duller cyan would stop meaning "you can
-   touch it". This is the number to change if it still sits wrong. */
+/* Reads brighter than the other cyan glyphs at rest because it carries more ink
+   (largest at 18px, an outline enclosing the whole box) beside a muted grey word.
+   Pulled back on opacity, not hue: a duller cyan stops meaning "you can touch
+   it". */
 .tier-map-btn svg{
   width:18px;height:18px;
   opacity:.82;
@@ -214,15 +195,14 @@
 }
 .tier-map-badge img{display:block;}
 .tier-map-btn.has-badge svg circle{display:none;}
-/* Same as .stat-label on purpose - that is what "Skirmish" is. The size
-   is fixed rather than inherited because the button appears at .72rem in
-   the standings card and .95rem in the panel header. */
+/* Same as .stat-label on purpose. The size is fixed rather than inherited: the
+   button appears at .72rem in the standings card and .95rem in the panel header. */
 .tier-map-label{
   font-size:.64rem;font-weight:400;color:#8d97a6;
   line-height:1;
-  /* Optical, not geometric. Flex centres the label's box, but "Maps" has
-     a descender, so its ink sits high inside that box. Nudged down until
-     the cap height lands on the glyph's centre. */
+  /* Optical, not geometric: flex centres the label's box, but "Maps" has a
+     descender, so its ink sits high. Nudged until the cap height lands on the
+     glyph's centre. */
   transform:translateY(1px);
 }
 /* The word is what lights up. The glyph is already accent and has its
@@ -237,13 +217,12 @@
 
 /* Community guild list: small icon next to NA server names, opens a popover */
 .server-guilds-btn{width:19px;height:21px;color:var(--accent);}
-/* Pulled back over the row's 7px gap. That gap is right between the
-   badge, the dot and the name, but the shield belongs to the name it
-   sits beside, not to the row. */
+/* Pulled back over the row's 7px gap: the shield belongs to the name it sits
+   beside, not to the row. */
 .standing-side-top .server-guilds-btn{margin-left:-5px;}
-/* The one opaque surface on the page. At 92-94% the Check button still
-   read through it, and no amount of blur fixes a large bright shape
-   behind small text. Opaque retires the backdrop-filter too. */
+/* The one opaque surface on the page: at 92-94% the Check button still reads
+   through it, and no blur fixes a large bright shape behind small text. Opaque
+   retires the backdrop-filter too. */
 .info-popover{
   position:fixed;z-index:60;width:280px;max-height:min(340px, 70vh);overflow-y:auto;
   overscroll-behavior:contain; /* without it a swipe at the end scrolls the page behind */
@@ -329,20 +308,17 @@
 .map-kd-label--gbl,.pop-bar-label.map-kd-label--gbl{color:var(--green-ink);}
 .map-kd-label--bbl,.pop-bar-label.map-kd-label--bbl{color:var(--blue);}
 .map-kd-label--rbl,.pop-bar-label.map-kd-label--rbl{color:var(--red-ink);}
-/* EBG is nobody's map, so it takes a colour no team owns: the lockout
-   banner's amber. Not cyan - cyan on this page means something you can
-   touch. Three team colours across three letters was tried: blended it
-   washes out, split it reads as a ransom note. */
+/* EBG is nobody's map, so it takes a colour no team owns: the lockout banner's
+   amber. Not cyan: cyan means something you can touch. Not three team colours
+   across three letters: blended it washes out, split it reads as a ransom note. */
 .map-kd-label--ebg,.pop-bar-label.map-kd-label--ebg{color:var(--warn);}
 
-/* The skirmish-score chart and the buttons that open these popovers.
-   One rule for the chart, not two: the height used to be set here and
-   overridden forty lines below, so editing the first one did nothing. */
+/* The skirmish-score chart and the buttons that open these popovers. One rule
+   for the chart's height: a second rule further down would override it and
+   editing this one would do nothing. */
 .activity-btn,.activity-info-btn{width:14px;height:15px;color:var(--accent);vertical-align:middle;}
 .activity-chart{width:100%;height:132px;display:block;margin-top:2px;}
-/* A colour means a team. The chosen side used to be drawn in cyan,
-   which broke that - the legend said green and the line said accent.
-   It is in its own colour now, told apart by weight. */
+/* A colour means a team: the chosen side is in its own colour, told apart by weight. */
 .activity-line{fill:none;stroke-width:2.4;}
 .activity-line--red{stroke:var(--red);}
 .activity-line--blue{stroke:var(--blue);}
@@ -379,10 +355,9 @@
   text-transform:uppercase;letter-spacing:.08em;margin-bottom:1px;
 }
 .pop-figure-value{font-size:1.2rem;color:var(--text);font-variant-numeric:tabular-nums;}
-/* K/D is the only figure that takes a tone, and it is the same figure
-   the cards outside carry - so the same green and red, down to the value.
-   It used to be --ok and --err, which put three reds on screen for one
-   number. */
+/* K/D is the only figure that takes a tone, and it is the figure the cards outside
+   carry, so the same green and red down to the value (--ok and --err would put
+   three reds on screen for one number). */
 .pop-figure--good .pop-figure-value{color:var(--green-ink);}
 .pop-figure--bad .pop-figure-value{color:var(--red-ink);}
 
@@ -443,17 +418,15 @@
 .pop-section .pop-kd-nums{flex:0 0 auto;}
 .pop-bar-row{display:flex;align-items:center;gap:11px;padding:5px 0;font-size:.78rem;}
 .pop-bar-label{font-weight:700;flex:0 0 68px;}
-/* Wide enough for the longest team name there is - Lutgardis
-   Conservatory, 22 characters - so the ellipsis is the exception and
-   not the rule. */
+/* Wide enough for the longest team name (Lutgardis Conservatory, 22 characters),
+   so the ellipsis is the exception. */
 .pop-bar-label--wide{
   flex:0 0 146px;color:var(--text);font-weight:600;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
-/* The row you opened, marked as a row - a rail and a tint in the page's
-   own accent rather than a colour that would claim to be a team. The
-   negative margin is paid back by the padding, so the label still starts
-   where the other rows' labels start. */
+/* The row you opened: a rail and a tint in the page's accent, not a colour that
+   would claim to be a team. The negative margin is paid back by the padding, so
+   the label starts where the other rows' labels start. */
 .pop-bar-row.is-mine{
   margin:0 -8px;padding:5px 8px;border-radius:6px;
   background:rgba(127,214,242,.07);
@@ -473,12 +446,10 @@
   font-variant-numeric:tabular-nums;
 }
 .pop-bar-pct{flex:0 0 36px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;}
-/* The number the rows add up to, at the foot of the column they add up
-   in - the eye goes down the values adding them, and the total closes
-   it. Beside the heading it had nothing to line up with. */
-/* Baseline, not centre: the label is .66rem and the number .78rem, and
-   centring two different sizes leaves their baselines a pixel apart -
-   which reads as the number sitting low. The empty track has no text to
+/* The number the rows add up to, at the foot of the column they add up in: the
+   eye goes down the values adding them, and the total closes it. */
+/* Baseline, not centre: the label is .66rem and the number .78rem, and centring
+   two sizes leaves their baselines a pixel apart. The empty track has no text to
    have a baseline, so it keeps centring. */
 .pop-bar-total{
   align-items:baseline;
@@ -490,9 +461,8 @@
 }
 .pop-bar-total .pop-bar-track{background:none;box-shadow:none;align-self:center;}
 
-/* Five things in this row and nothing may wrap. The numbers are sized
-   to their content and grouped; the bar takes what is left, which is
-   why it ends up the widest thing here. */
+/* Five things in this row and nothing may wrap. The numbers are sized to their
+   content and grouped; the bar takes what is left. */
 .pop-kd-row{gap:10px;white-space:nowrap;}
 .pop-kd-row .pop-bar-label{flex:0 0 62px;}
 .pop-bar-track--slim{flex:1 1 auto;min-width:40px;height:8px;}
@@ -506,11 +476,10 @@
 /* The words over the three numbers, on the same grid as the rows so
    each sits above what it names. The label and track slots are empty
    and are here to hold the columns, not to draw anything. */
-/* Vector, not emoji - the two came from different system fonts, each
-   with its own ascent. The nudge is not a fudge: align-items:center puts
-   the icon's middle 0.414em above the baseline in Segoe UI, while digits
-   have no descender and centre at 0.35em. That 0.064em is why a centred
-   icon reads as floating above the number. */
+/* Vector, not emoji: different system fonts have different ascents. The nudge is
+   not a fudge: align-items:center puts the icon's middle 0.414em above the
+   baseline in Segoe UI, while digits centre at 0.35em; that 0.064em makes a
+   centred icon float above the number. */
 .glyph-sword,.glyph-skull{
   display:block;flex:0 0 auto;opacity:.85;
   transform:translateY(0.064em);

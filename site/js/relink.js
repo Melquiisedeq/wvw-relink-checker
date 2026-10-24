@@ -1,9 +1,5 @@
 'use strict';
-// ---------------------------------------------------------------------
-// Relink and season timers
-// The countdown to the next relink and the season lockout, plus the
-// banner they feed.
-// ---------------------------------------------------------------------
+// Relink and season timers: the countdown to the next relink and the season lockout, and the banner they feed.
 
 function formatCountdown(msRemaining) {
   if (msRemaining === null) return 'unknown';
@@ -45,9 +41,8 @@ function countdownText(ms, resetting) {
   return formatCountdown(ms);
 }
 
-// Feather's alert-triangle, at the weight the other glyphs on the page
-// are drawn. Used in two places - the stat's own label and the line
-// underneath - so it lives here rather than being typed twice.
+// Feather's alert-triangle, at the weight of the page's other glyphs. Used in
+// the stat's own label and the line underneath.
 const WARN_ICON =
   '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
   'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
@@ -74,23 +69,18 @@ function buildRelinkStat(title, value, isPrimary, tooltip, warn) {
   return stat;
 }
 
-// Inside the last two hours the banner starts breathing, so the tab
-// catches your eye from across the desk on reset night.
+// Inside the last two hours the banner starts breathing.
 const RELINK_URGENT_MS = 2 * 60 * 60 * 1000;
-// How long after a week is published before its maps are up and you can
-// get on one. Measured across nine matches in both regions and every one
-// opened at start_time plus 3m37s to 3m47s, so five minutes covers it
-// with room. The line dies with it: "get in early" is no use once the
-// doors are open and the queue is the queue.
+// How long after a week is published before its maps are up: every match opened
+// 3m37s to 3m47s after start_time, so five minutes covers it. The line dies
+// with it: "get in early" is no use once the doors are open.
 const RELINK_OPENING_MS = 5 * 60 * 1000;
-// Only reached when nothing has been published anywhere. A tier normally
-// turns up within minutes, so this is the fuse for an API that has
-// stopped answering, not a window anyone is meant to see the end of.
+// Only reached when nothing has been published anywhere: the fuse for an API
+// that has stopped answering.
 const RELINK_STUCK_MS = 30 * 60 * 1000;
-// The final week of the season, after which the countdown stops being
-// about a reset and starts being about the relink. It is not an
-// estimate: teamAssignment minus seven days lands on the previous reset
-// to the minute, so the window is exactly "this is the last week".
+// The final week of the season, after which the countdown is about the relink,
+// not a reset. Exact, not an estimate: teamAssignment minus seven days is the
+// previous reset to the minute.
 const RELINK_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Whether a region's relink is close enough to shout about. Three ways
@@ -114,20 +104,17 @@ function regionIsUrgent(relinkAt, resetAt, hasLive, now) {
   return false;
 }
 
-// The game's own crossed swords - the icon WvW already puts on a fight
-// in progress, so it needs no learning. Deliberately not the lockout's
-// warning triangle: a relink is an event you turn up for, not a deadline
-// you can miss. The file is a flat alpha silhouette, which is why it is
-// a mask over currentColor and not an <img>: one asset, tinted by
-// whatever state it lands in.
+// The game's own crossed swords, the icon WvW puts on a fight in progress.
+// Deliberately not the lockout's warning triangle: a relink is an event you turn
+// up for, not a deadline you can miss. The file is a flat alpha silhouette, hence
+// a mask over currentColor and not an <img>: one asset, tinted by its state.
 function swordsIcon() {
   const s = document.createElement('span');
   s.className = 'swords-icon';
   return s;
 }
 
-// Dims the region labels (NA/EU) and emphasizes the countdown values,
-// since the time is what the person actually came to read.
+// Dims the region labels (NA/EU) and emphasizes the countdown values.
 function buildRelinkValue(naMs, euMs, naNow, euNow, naResetting, euResetting) {
   const frag = document.createDocumentFragment();
   const naRegion = document.createElement('span');
@@ -136,9 +123,8 @@ function buildRelinkValue(naMs, euMs, naNow, euNow, naResetting, euResetting) {
   const naTime = document.createElement('span');
   naTime.className = naNow ? 'time is-now' : 'time';
   naTime.textContent = countdownText(naMs, naResetting);
-  // The dot is its own element so that it never lights: folded into
-  // ' . EU ' as it used to be, the separator would carry EU's is-now and
-  // brighten along with the region it does not belong to.
+  // The dot is its own element so that it never lights: folded into ' . EU ' it
+  // would carry EU's is-now and brighten with the wrong region.
   const sep = document.createElement('span');
   sep.className = 'region';
   sep.textContent = ' · ';
@@ -157,12 +143,10 @@ function buildRelinkValue(naMs, euMs, naNow, euNow, naResetting, euResetting) {
 // independent schedules and both read the latest values.
 let lockoutTime = null;
 let timersLoaded = false;
-// The first drawing has to be the right one. The matches alone can only
-// draw the weekly countdown, and during a relink window the timers then
-// turned it into the relink's own, taller bar: on reload the small one
-// showed first and the page jumped. So nothing is drawn until the timers
-// have answered or failed - or three seconds have gone, so a hung
-// request cannot keep the bar away.
+// The first drawing has to be the right one: the matches alone draw only the
+// weekly countdown, and the timers would then turn it into the relink's taller
+// bar and the page would jump. So nothing is drawn until the timers have answered
+// or failed, or three seconds have gone (a hung request must not keep the bar away).
 let bannerMayDraw = false;
 setTimeout(() => {
   if (!bannerMayDraw) { bannerMayDraw = true; updateRelinkBanner(); }
@@ -214,12 +198,9 @@ async function fetchTimers() {
   updateRelinkBanner();
 }
 
-// The latest of a field across a region's matches. Reading one match -
-// naMatches[0], which is tier 1 - is a coin toss for as long as a relink
-// takes: on 26/09 tier 4 had been running the new week for forty minutes
-// while tiers 1 and 3 were still serving the old one, and tier 2
-// published the new week and then went back. Whichever tier is furthest
-// ahead is the one that has seen the relink.
+// The latest of a field across a region's matches. Reading one match (tier 1) is
+// a coin toss while a relink takes: tiers publish the new week one at a time, and
+// not always forwards. Whichever tier is furthest ahead has seen the relink.
 function latestOf(matches, field) {
   const times = matches
     .map((m) => Date.parse(m && m[field]))
@@ -249,14 +230,11 @@ function updateRelinkFromMatches(naMatches, euMatches) {
   if (bannerMayDraw) updateRelinkBanner();
 }
 
-// The beat's green layer is .relink-inner::before (css/facets.css), and
-// .relink-inner is rebuilt every minute: its animation restarted each time
-// and fell out of step with the red and blue ones on the bar itself, two
-// colours landing together and the third late. Pinned to the red's clock,
-// which never restarts, the three stay 2.1 s apart. By currentTime, not
-// startTime: while the page idles (.is-idle pauses every animation) a
-// paused animation has no startTime, and a rebuild in that time left the
-// green out of step again once the page woke.
+// The beat's green layer is .relink-inner::before (css/facets.css), rebuilt every
+// minute: its animation would restart and fall out of step with the red and blue
+// ones on the bar itself. Pinned to the red's clock, which never restarts, the
+// three stay 2.1 s apart. By currentTime, not startTime: while the page idles
+// (.is-idle pauses every animation) a paused animation has no startTime.
 function keepBeatInStep(inner) {
   if (!document.getAnimations) return;
   let red = null;
@@ -269,10 +247,9 @@ function keepBeatInStep(inner) {
   if (red && green && red.currentTime !== null) green.currentTime = red.currentTime;
 }
 
-// The relink's own value line. Same shape as the weekly one, with one
-// difference: a region that has already relinked shows that it is done
-// rather than a countdown, because 'any moment now' would be a lie for
-// the eight hours EU spends waiting for NA.
+// The relink's own value line, shaped like the weekly one, except that a region
+// that has already relinked shows it is done: 'any moment now' would be wrong
+// for the eight hours EU spends waiting for NA.
 function buildRebuildValue(naLeft, euLeft) {
   const frag = document.createDocumentFragment();
   const half = (name, left) => {
@@ -295,9 +272,8 @@ function buildRebuildValue(naLeft, euLeft) {
   return frag;
 }
 
-// The relink's bar. One stat and no divider: the lockout has nothing
-// left to say by now, and the reset it used to sit beside is the same
-// instant this is counting to.
+// The relink's bar. One stat and no divider: by now the lockout has nothing left
+// to say, and the reset is the same instant this counts to.
 function buildRebuildBanner(naLeft, euLeft) {
   relinkBanner.classList.add('is-rebuild');
   const inner = document.createElement('div');
@@ -331,29 +307,21 @@ function buildRebuildBanner(naLeft, euLeft) {
   alert.className = 'relink-alert';
   alert.appendChild(swordsIcon());
   const line = document.createElement('span');
-  // Nothing here asks for an action, because by now there is none to
-  // take - the lockout closed days ago. It announces.
+  // Nothing here asks for an action: the lockout closed days ago. It announces.
   line.textContent = 'New link, new enemies, and a month of good fights ahead.';
   alert.appendChild(line);
   relinkBanner.appendChild(alert);
 }
 
-// ---------------------------------------------------------------------
-// The teams notice
-// For the days between ArenaNet publishing the new assignment and the
-// relink landing, when the answer is already there to be looked up and
-// nothing says so. The finding is counted by this project's Apps Script
-// trigger and read from the sheet; see RELINK_SHEET_URL in config.js for
-// why the counting cannot happen here.
-// ---------------------------------------------------------------------
+// ---- The teams notice -------------------------------------------------
+// For the days between ArenaNet publishing the new assignment and the relink
+// landing. The finding is counted by the Apps Script trigger and read from the
+// sheet; RELINK_SHEET_URL in config.js says why it cannot be counted here.
 
-// One cell, holding "window:published" as text. Two number cells would
-// come back through the CSV export in whatever format the sheet happens
-// to be using, and a thousands separator is a comma inside a
-// comma-separated file. Nothing but two integers is ever accepted: the
-// sheet is world-readable and this is the one value on the page that
-// decides what the page claims, so it is parsed strictly rather than
-// trustingly.
+// One cell, holding "window:published" as text: two number cells would come back
+// through the CSV export in the sheet's own number format (a thousands separator
+// is a comma in a comma-separated file). Nothing but two integers is accepted:
+// the sheet is world-readable and this value decides what the page claims.
 const RELINK_STATE_RE = /^"?(\d{1,12}):(\d{1,12})"?$/;
 
 let relinkState = null;        // { window, published }
@@ -364,12 +332,9 @@ let relinkStateAt = 0;
 let relinkStateInFlight = null;
 let relinkStateFailedAt = 0;
 
-// After a failed read, wait before asking again. Without this the banner's
-// one-minute tick would retry every minute for the four days the window is
-// open, in every tab anyone left open - and the case that makes it fail is
-// usually a misconfiguration that will not fix itself, so it would fail
-// every time. Short enough that a blip costs the notice minutes, not the
-// window.
+// After a failed read, wait before asking again; otherwise the banner's one-minute
+// tick retries for the four days the window is open, in every open tab, usually
+// against a misconfiguration. Short enough that a blip costs minutes, not the window.
 const RELINK_SHEET_RETRY_MS = 2 * 60 * 1000;
 
 async function getRelinkState() {
@@ -388,10 +353,8 @@ async function getRelinkState() {
       relinkStateAt = Date.now();
       relinkStateFailedAt = 0;
     } catch {
-      // On doubt, nothing. The notice stays down and the next attempt is a
-      // couple of minutes away; a strip that appears because a read went
-      // wrong would send people to the old answer, which is the one thing
-      // it must not do.
+      // On doubt, nothing: a strip that appears because a read went wrong would
+      // send people to the old answer.
       relinkStateFailedAt = Date.now();
     } finally {
       relinkStateInFlight = null;
@@ -412,10 +375,9 @@ async function readOwnRelink() {
 }
 
 async function readRelinkSheet() {
-  // The same deadline every other request on this page gets. Without it
-  // a connection that accepts and goes quiet would leave this pending
-  // for good, and relinkStateInFlight hands that promise to every later
-  // caller - so the notice would never resolve for the whole session.
+  // The same deadline as every other request: a connection that accepts and goes
+  // quiet would leave this pending for good, and relinkStateInFlight hands that
+  // promise to every later caller.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -430,11 +392,8 @@ async function readRelinkSheet() {
   }
 }
 
-// Dismissal is remembered as the window it was dismissed in, not as a
-// flag. The window is up to four days long and a regular visitor would
-// otherwise meet the same strip every time, but next month's window has
-// a different id and brings it back on its own - which is the behaviour
-// wanted in both directions, out of one string and no expiry logic.
+// Dismissal is remembered as the window it was dismissed in, not as a flag: next
+// month's window has a different id and brings the strip back with no expiry logic.
 const TEAMS_NOTICE_KEY = 'wvw-relink-checker:teams-notice';
 
 function teamsNoticeDismissed(windowId) {
@@ -442,25 +401,19 @@ function teamsNoticeDismissed(windowId) {
   catch { return false; } // storage off: it shows, which is the harmless way to be wrong
 }
 
-// Feather's bell, at the weight the other glyphs on the page are drawn.
-// The mark that opens the strip has to say "this is a notice" before a
-// word of it is read, and the page's other two candidates are both
-// already spoken for: the alert triangle belongs to the lockout, and the
-// shield means "there is a guild list behind this" - which is why the
-// shield appears in the middle of the sentence instead, where it is
-// pointing at the thing it has always pointed at.
+// Feather's bell, at the weight of the page's other glyphs. The mark that opens
+// the strip has to say "this is a notice" before a word is read; the alert
+// triangle belongs to the lockout and the shield means "there is a guild list
+// behind this", so the shield appears mid-sentence instead.
 const NOTICE_ICON =
   '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" ' +
   'stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
   '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>' +
   '<path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
 
-// The page's own name for its two answers, written the way they appear
-// on it. A strip that says "check the sheet" sends people off the site to
-// do by hand the thing the site exists to do; a strip that grows its own
-// button puts a rival beside the one verb the page has. So neither: the
-// sentence points at what is already here and already working, and the
-// marks it points with are the marks themselves.
+// The page's own name for its two answers, written the way they appear on it.
+// The strip neither sends people to the sheet nor grows its own button: the
+// sentence points at what is already here, with the marks themselves.
 function buildTeamsNotice(windowId) {
   teamsNotice.textContent = '';
 
@@ -474,23 +427,18 @@ function buildTeamsNotice(windowId) {
   const lead = document.createElement('strong');
   lead.textContent = 'The new teams are out.';
 
-  // Named, and drawn the way it is drawn. "Hit Check" is a reference
-  // someone has to go and find; the word wearing the button's own colour
-  // is a reference they recognise on the way past.
+  // The word wears the button's own colour, a reference recognised at a glance.
   const checkRef = document.createElement('span');
   checkRef.className = 'teams-notice-ref';
   checkRef.textContent = 'Check';
 
-  // The shield inline in the sentence, so "open the shield" is not an
-  // instruction to go hunting for something described in words.
+  // The shield inline in the sentence, so "open the shield" needs no hunting.
   const shieldRef = document.createElement('span');
   shieldRef.className = 'teams-notice-ref teams-notice-ref--icon';
-  // 15, not 13, and the reason is arithmetic rather than taste. The shield
-  // is drawn in a 24-wide viewBox and the info mark inside it is 3.2 by 8
-  // units, so the mark lands on whole pixels only when 24 scales by a
-  // multiple of .625 - which in this range means a width of exactly 15. At
-  // 13 the mark is 1.73px wide and antialiases into a smudge, and a smudge
-  // is what it looked like.
+  // 15, not 13: the shield is drawn in a 24-wide viewBox and the info mark inside
+  // it is 3.2 by 8 units, so the mark lands on whole pixels only when 24 scales
+  // by a multiple of .625, which in this range is exactly 15. At 13 the mark is
+  // 1.73px wide and antialiases into a smudge.
   shieldRef.innerHTML = serverGuildsShield(15);
   // The word the icon stands for, read out and never seen, because the shield
   // is a noun in the middle of this sentence. serverGuildsShield says why the
@@ -500,9 +448,8 @@ function buildTeamsNotice(windowId) {
   spoken.textContent = 'guild list shield';
   shieldRef.appendChild(spoken);
 
-  // No explanation of what a relink is: anyone reading this page in
-  // these four days knows, and the sentence that teaches them is the
-  // sentence that stops the rest being read.
+  // No explanation of what a relink is: readers in these four days know, and the
+  // sentence that teaches it stops the rest being read.
   text.append(
     lead,
     ' Paste your guilds and hit ',
@@ -517,11 +464,8 @@ function buildTeamsNotice(windowId) {
   close.className = 'teams-notice-close';
   close.setAttribute('aria-label', 'Dismiss this notice');
   close.title = 'Dismiss';
-  // Two drawn strokes, not the × character. A glyph cannot be centred in
-  // a box by any amount of CSS - it sits on a baseline inside metrics the
-  // font chose, and ×, ✕ and the multiplication sign each sit at a
-  // different height in a different face. Drawn, the cross is centred
-  // because its own coordinates say so.
+  // Two drawn strokes, not the × character: a glyph sits on a baseline inside
+  // metrics the font chose and no CSS centres it.
   close.innerHTML =
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" '
     + 'stroke-width="2.4" stroke-linecap="round" aria-hidden="true">'
@@ -552,40 +496,32 @@ function hideTeamsNotice() {
 // in the rebuilding window, the sheet has to say the table has moved, and it
 // has to say so about *this* relink.
 //
-// That last one is what ends the notice, and why nothing ever has to come back
-// and switch it off - the trigger writes once a month, and next month last
-// month's row is still sitting there to be compared against the timer this
+// That last one ends the notice, so nothing has to switch it off: the trigger
+// writes once a month, and last month's row is compared against the timer this
 // page read itself. Outside the window this returns before asking the sheet
-// anything, which keeps twenty-six days a month free of a request that could
-// only ever answer "no".
+// anything.
 function updateTeamsNotice(rebuilding) {
   const windowId = assignNA !== null ? Math.floor(assignNA / 1000) : null;
   if (!rebuilding || windowId === null || teamsNoticeDismissed(windowId)) {
     hideTeamsNotice();
     return;
   }
-  // Already up, and nothing in it changes - so no fetch and no redraw. The
-  // banner is rebuilt every minute; taking the focus off this strip's own
-  // button once a minute for four days would not be.
+  // Already up, and nothing in it changes: no fetch and no redraw. The banner is
+  // rebuilt every minute, which would take focus off this strip's own button.
   if (teamsNotice.dataset.window === String(windowId)) return;
 
-  // The rule the rest of the page already follows - see the visibility test in
-  // schedulePeriodicRefresh and the one in the map poll. It matters here
-  // because the interval driving this was left ungated while it only ticked
-  // text: hidden, it would still ask the sheet every ten minutes for as long
-  // as the tab stayed open. Nothing is lost, since coming back runs this
-  // within the minute.
+  // The page's rule - nothing runs with the tab hidden (see schedulePeriodicRefresh
+  // and the map poll): the interval would otherwise still ask the sheet every ten minutes. Nothing is lost; coming
+  // back runs this within the minute.
   //
-  // visibilityState only, and deliberately not document.hasFocus(), like the
-  // map poll: an unfocused window on a second monitor is exactly where
-  // somebody parks this page waiting for the teams. Animation can stop when
-  // nobody is watching; news cannot.
+  // visibilityState only, not document.hasFocus(), like the map poll: an unfocused
+  // window on a second monitor is where somebody parks this page waiting for the
+  // teams. Animation can stop when nobody is watching; news cannot.
   if (document.visibilityState === 'hidden') return;
 
   getRelinkState().then((state) => {
-    // The window can close, or the strip be dismissed, while this is in
-    // flight - so the decision is made again on arrival rather than
-    // assumed from when it was asked.
+    // The window can close, or the strip be dismissed, while this is in flight:
+    // decided again on arrival.
     const stillWanted = state
       && state.window === windowId
       && state.published > 0
@@ -616,24 +552,20 @@ function updateRelinkBanner() {
   const assignNaLeft = assignNA !== null ? assignNA - now : null;
   const assignEuLeft = assignEU !== null ? assignEU - now : null;
   const lockoutGone = hasLockout && lockoutTime - now <= 0;
-  // The stretch between the lockout closing and the teams landing - 3d18h in
-  // the window measured off the API timers on 28/09/2026, and ArenaNet sets
-  // both ends, so the figure is not a constant. It ends on NA, the later of
-  // the two regions, so the bar survives EU's eight-hour head start and is
-  // gone the moment NA lands. Reading the future of assignNA is also what
-  // stops a stale timer stranding it here.
+  // The stretch between the lockout closing and the teams landing; ArenaNet sets
+  // both ends, so its length is not a constant. It ends on NA, the later region,
+  // so the bar survives EU's eight-hour head start and is gone the moment NA
+  // lands. Reading the future of assignNA also stops a stale timer stranding it.
   const rebuilding = lockoutGone && assignNaLeft !== null && assignNaLeft > 0;
-  // Same condition and the same instant: the notice is born and dies with the
-  // bar above it rather than deciding its own life.
+  // Same condition and instant: the notice is born and dies with the bar above it.
   updateTeamsNotice(rebuilding);
   if (rebuilding) {
     buildRebuildBanner(assignNaLeft, assignEuLeft);
     return;
   }
 
-  // The last week of the season. Both regions enter it eight hours
-  // apart, so the earlier one opens the window for the whole bar - it
-  // is the same week either way.
+  // The last week of the season. The regions enter it eight hours apart; the
+  // earlier one opens the window for the whole bar.
   const ahead = [assignNaLeft, assignEuLeft].filter((v) => v !== null && v > 0);
   const relinkWeek = ahead.length > 0 && Math.min(...ahead) <= RELINK_WEEK_MS;
 
@@ -646,9 +578,8 @@ function updateRelinkBanner() {
   if (hasRelink) {
     const naLeft = relinkNA !== null ? relinkNA - now : null;
     const euLeft = relinkEU !== null ? relinkEU - now : null;
-    // Same numbers either way - on the final week the reset and the
-    // relink are the same instant - so what changes is the name on
-    // them, which is the whole point of the state.
+    // Same numbers either way (on the final week the reset and the relink are the
+    // same instant); what changes is the name on them.
     const stat = buildRelinkStat(
       relinkWeek ? 'Next Relink' : 'Next Reset',
       buildRelinkValue(naLeft, euLeft, naUrgent, euUrgent,
@@ -669,21 +600,18 @@ function updateRelinkBanner() {
     divider.className = 'relink-divider';
     inner.appendChild(divider);
   }
-  // Three days, against the relink's two hours, and the gap between
-  // those two numbers is the whole point. Missing a relink costs you a
-  // week of not knowing who you fight; missing the lockout can put you
-  // on a different team from your guild for a month, and there is no
-  // way to undo it once it passes.
+  // Three days, against the relink's two hours: missing a relink costs a week of
+  // not knowing who you fight; missing the lockout can put you on a different
+  // team from your guild for a month, with no undo.
   const LOCKOUT_URGENT_MS = 3 * 24 * 60 * 60 * 1000;
   const lockoutLeft = hasLockout ? lockoutTime - now : null;
   const lockoutUrgent = lockoutLeft !== null
     && lockoutLeft > 0 && lockoutLeft <= LOCKOUT_URGENT_MS;
 
   if (hasLockout) {
-    // Once the published timestamp is in the past there is no next value
-    // until teams are rebuilt, several days later, and in that window the
-    // game will not let you change your WvW guild at all. So it says it is
-    // shut rather than promising it will come back.
+    // Once the published timestamp is in the past there is no next value until
+    // teams are rebuilt, and the game will not let you change your WvW guild in
+    // between: it says it is shut rather than promising it will come back.
     const lockoutValue = lockoutLeft > 0
       ? formatCountdown(lockoutLeft)
       : 'Locked until relink';
@@ -697,47 +625,37 @@ function updateRelinkBanner() {
   }
   const relinkUrgent = naUrgent || euUrgent;
 
-  // The lockout wins, and only one of the two ever runs: two things
-  // pulsing at once reads as decoration instead of as an alarm, and of
-  // the two the lockout is the one you can still act on. The relink
-  // stands down; its number is still on the bar, just not shouting.
+  // The lockout wins, and only one of the two runs: two things pulsing at once read
+  // as decoration, and the lockout is the one you can still act on.
   relinkBanner.classList.toggle('is-lockout', lockoutUrgent);
   relinkBanner.classList.toggle('is-urgent', relinkUrgent && !lockoutUrgent);
-  // The rule scans red to blue to green and so does the mark under Next
-  // Relink; two of them at once read as decoration rather than as one
-  // signal, so the rule stands down and the mark keeps the colours.
+  // The rule and the mark under Next Relink both scan red to blue to green; two at
+  // once read as decoration, so the rule stands down and the mark keeps the colours.
   relinkBanner.classList.toggle('is-relink-week', relinkWeek);
 
   relinkBanner.style.display = 'block';
   relinkBanner.appendChild(inner);
 
-  // The line only exists while it can still be acted on. A banner that
-  // tells you to do something you can no longer do is worse than no
-  // banner, so this is built from the same condition that lights the
-  // stat and disappears with it.
+  // The line only exists while it can be acted on: built from the same condition
+  // that lights the stat, and gone with it.
   if (lockoutUrgent) {
     const alert = document.createElement('div');
     alert.className = 'relink-alert';
     alert.innerHTML = WARN_ICON;
     const text = document.createElement('span');
-    // Guild or team, not both: a player who has set a WvW guild cannot
-    // pick a team, and one who has not is the only one who can. Saying
-    // "guild or server" as though they were two options you choose
-    // between would send half the readers to a button they do not have.
+    // Guild or team, not both: a player who has set a WvW guild cannot pick a team,
+    // and "guild or server" would send half the readers to a button they do not have.
     text.textContent = 'Set your WvW guild before the lockout - or pick a team if you have none. '
       + 'After it, your team is fixed for the month.';
     alert.appendChild(text);
     relinkBanner.appendChild(alert);
   } else if (relinkUrgent) {
-    // Two hours out, so this is a heads-up to get set rather than a
-    // report of something already under way. Same slot and same shape as
-    // the lockout's line, in the relink's own colour - only one of the
-    // two is ever on the bar.
+    // Two hours out: a heads-up to get set. Same slot and shape as the lockout's
+    // line, in the relink's colour; only one of the two is ever on the bar.
     const alert = document.createElement('div');
     alert.className = 'relink-alert relink-alert--relink';
     alert.appendChild(swordsIcon());
-    // Named rather than pointed at. A glyph beside one of two numbers
-    // has to be noticed and then interpreted; the word is read.
+    // Named rather than pointed at: a glyph beside one of two numbers has to be interpreted; the word is read.
     const where = [];
     if (naUrgent) where.push('NA');
     if (euUrgent) where.push('EU');
@@ -748,10 +666,8 @@ function updateRelinkBanner() {
     alert.appendChild(text);
     relinkBanner.appendChild(alert);
   } else if (relinkWeek) {
-    // Last of the three, and it says the one thing the other two do not:
-    // that the season itself is ending. It deliberately carries no
-    // instruction - going to set your guild is the lockout's line, and
-    // saying it twice would leave neither being read.
+    // Last of the three: it says the season itself is ending, and deliberately
+    // carries no instruction (that is the lockout's line).
     const alert = document.createElement('div');
     alert.className = 'relink-alert relink-alert--relink';
     alert.appendChild(swordsIcon());

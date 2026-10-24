@@ -1,13 +1,8 @@
 'use strict';
-// ---------------------------------------------------------------------
-// Standings
-// Loading the live match data for both regions and rendering one side
-// of a tier: score, victory points, activity and the change flashes.
-// ---------------------------------------------------------------------
+// Standings: loading the live match data for both regions and rendering one side of a tier (score, VP, activity, change flashes).
 
-// Grey blocks in the shape of the real thing while the first request is
-// in flight, so the rails have their eventual shape instead of
-// collapsing to a word.
+// Grey blocks in the shape of the real thing while the first request is in
+// flight, so the rails keep their eventual shape.
 function showStandingsSkeleton(gridEl) {
   gridEl.textContent = '';
   for (let i = 0; i < 3; i++) {
@@ -30,11 +25,9 @@ function showStandingsSkeleton(gridEl) {
 // scratch on every refresh, so the numbers have to outlive the elements.
 const prevSideStats = new Map(); // `${matchId}:${color}` -> { vp, skirmish, pct }
 
-// Dropped the moment a tier's week ends, so the first refresh of the new
-// one has nothing to compare against. Kept, it would have measured a
-// fresh zero against last week's closing figures and floated a -2,116 VP
-// over every side, with all three cards pulsing a collapse that never
-// happened.
+// Dropped the moment a tier's week ends, so the first refresh of the new one has
+// nothing to compare against: kept, it would measure a fresh zero against last
+// week's closing figures and float a huge negative delta over every side.
 function forgetSideStats(matchId) {
   for (const color of COLORS) prevSideStats.delete(`${matchId}:${color}`);
 }
@@ -88,16 +81,13 @@ function deduceLineup(matches, allTeams, tierCount) {
   return { id: late[0].id, lineupOnly: true, all_worlds: { red, blue, green } };
 }
 
-// A tier between weeks still has to be usable. Someone opening the site
-// to look up who plays on a server should not be met with a shimmer, and
-// nothing about that question went stale: team names survive a relink -
-// it is which three are matched together that does not.
+// A tier between weeks still has to be usable for looking up who plays on a
+// server: team names survive a relink, only which three are matched together
+// does not.
 //
-// Dropped is everything that would read as a standing: rank, colour,
-// victory points, the stats line, the bar. The lie was never the data,
-// it was last week's passing for this week's. `yoursByColor` comes only
-// from the match panel, where saying which of the three is yours is the
-// whole point of the screen.
+// Dropped is everything that would read as a standing: rank, colour, victory
+// points, the stats line, the bar. `yoursByColor` comes only from the match
+// panel, where saying which of the three is yours is the point.
 //
 // A line-up only (match.lineupOnly: deduced, or from this browser's memory)
 // is this week's, not last week's: same rows, its own line.
@@ -143,8 +133,7 @@ function buildStandingsStale(match, yoursByColor) {
   return wrap;
 }
 
-// Flashes a number that just changed and floats the delta above it, so a
-// refresh reads as movement rather than a silent swap.
+// Flashes a number that just changed and floats the delta above it.
 function flashValue(el, delta) {
   if (!Number.isFinite(delta)) return;
 
@@ -152,8 +141,7 @@ function flashValue(el, delta) {
   void el.offsetWidth; // restart the animation from zero
   el.classList.add('value-changed');
 
-  // The number itself flashes, and the card it belongs to pulses at the
-  // edge, so a change registers even when you are looking elsewhere.
+  // The number flashes and its card pulses at the edge, so a change registers off-centre.
   const side = el.closest('.standing-side');
   if (side) {
     side.classList.remove('side-pulse');
@@ -161,11 +149,9 @@ function flashValue(el, delta) {
     side.classList.add('side-pulse');
   }
 
-  // Deferred a frame because the side is still being assembled when this
-  // runs: measuring now would read zeros off a detached element. The
-  // delta is parked on <body> at the value's screen position rather than
-  // inside the card, which clips its own chamfered corners and would
-  // shear the number off as it rises.
+  // Deferred a frame: the side is still being assembled, and a detached element
+  // measures zero. The delta is parked on <body> at the value's screen position,
+  // because the card clips its own chamfered corners and would shear it off.
   requestAnimationFrame(() => {
     const rect = el.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) return; // never made it onto the page
@@ -261,17 +247,14 @@ function setStandingsStatus(el, synced, text) {
   el.appendChild(document.createTextNode(text));
 }
 
-// The shimmering placeholder only stands in for an answer that has not
-// arrived yet. Once one has failed it has arrived, and left alone it
-// would shimmer behind the error line for as long as the tab is open.
+// The shimmer only stands in for an answer that has not arrived; a failed one has
+// arrived, and would shimmer behind the error line for as long as the tab is open.
 function clearSkeleton(gridEl) {
   if (gridEl.querySelector('.skel-match')) gridEl.textContent = '';
 }
 
-// One region onto the page. A region that failed keeps whatever it last
-// rendered rather than being emptied: last refresh's standings are still
-// the standings, and blanking a column over one request says far less
-// than leaving it up and saying it did not update. The first load is the
+// One region onto the page. A region that failed keeps whatever it last rendered:
+// last refresh's standings are still the standings. The first load is the
 // exception, because what is up then is the skeleton.
 function showRegion(gridEl, statusEl, matches, label, syncedAt, failed) {
   const resetting = regionResetting(label, Date.now());
@@ -293,9 +276,8 @@ function showRegion(gridEl, statusEl, matches, label, syncedAt, failed) {
 // The fallback when the one request fails: the id list, then one request
 // per region, the answers kept apart all the way down. null means that
 // region's request failed; [] means it answered and has no matches.
-// Collapsing the two is what let one region take the other down with it -
-// Promise.all rejects whole, so a single 500 on EU threw away an NA answer
-// that had already arrived and blanked both columns.
+// Collapsing the two lets one region take the other down: Promise.all rejects
+// whole, so a single 500 on EU would throw away an NA answer already arrived.
 async function loadStandingsByRegion() {
   const idList = await fetchJson(`${API_BASE}/wvw/matches`);
   if (!Array.isArray(idList) || idList.length === 0) {
@@ -322,8 +304,7 @@ async function loadStandingsByRegion() {
 // Puts the column js/region.js chose on the left in the DOM, not only on
 // screen: CSS order moves what is seen, while Tab and a screen reader
 // follow the source. The two asides and their left/right classes swap in
-// one step and the pre-paint override in css/layout.css switches off with
-// them, so nothing moves.
+// one step and the pre-paint override in css/layout.css switches off with them.
 function placeRails() {
   const na = standingsGridNA.closest('.rail');
   const eu = standingsGridEU.closest('.rail');
@@ -340,12 +321,11 @@ function placeRails() {
 // focus on the way, so it gets it back.
 //
 // Everything that swapped slides to its new place - the two columns and
-// the NA / EU halves of the relink bar (FLIP: measured before and after
-// the move, then animated back from where each was). The columns pass
-// under the centre column, shrinking and fading at the crossing so the
-// text there stays readable, like two cards being shuffled. View
-// Transitions were tried and dropped: capturing columns this tall froze
-// the page for about 300ms before anything moved.
+// the NA / EU halves of the relink bar (FLIP: read before and after
+// the move, then animated back from where each was). The columns pass under the
+// centre column, shrinking and fading at the crossing so the text there stays
+// readable. Not View Transitions: capturing columns this tall freezes the page
+// before anything moves.
 const SWAP_MS = 650;
 const SWAP_EASE = 'cubic-bezier(.45, 0, .2, 1)';
 
@@ -385,9 +365,9 @@ function swapRails(btn) {
     const dy = was.top - now.top;
     if (!dx && !dy) continue;
     r.classList.add('is-swapping');
-    // Linear time, eased per step: the fade has to cover the whole middle
-    // stretch of the path, and one easing over the whole run bunched the
-    // travel into the first frames, still opaque over the centre's text.
+    // Linear time, eased per step: the fade has to cover the whole middle stretch
+    // of the path; one easing over the run bunches the travel into the first
+    // frames, still opaque over the centre's text.
     r.animate([
       { transform: `translate(${dx}px, ${dy}px)`, opacity: 1, easing: 'ease-in' },
       { transform: `translate(${dx * .7}px, ${dy * .7}px) scale(.92)`, opacity: .08, offset: .3 },
@@ -400,8 +380,7 @@ function swapRails(btn) {
     if (!was) continue;
     const dx = was.left - el.getBoundingClientRect().left;
     if (!dx) continue;
-    // The halves cross on one line, so one rises and the other dips as they
-    // pass, faded, instead of running through each other.
+    // The halves cross on one line, so one rises and the other dips as they pass.
     const lift = dx > 0 ? -7 : 7;
     el.classList.add('is-swapping');
     el.animate([
@@ -569,19 +548,17 @@ async function loadStandings(origin = 'cycle') {
     }
     const answered = [...(naMatches || []), ...(euMatches || [])];
 
-    // Every refresh leaves a kills/deaths snapshot behind on its way
-    // past. Nothing here waits on it and nothing extra is fetched - it is
-    // what lets the maps popover say which map is busy the moment it
-    // opens, instead of having to sample twice itself. See the fight log
-    // in js/maps.js, which keeps only bodies whose score rose since `asked`.
+    // Every refresh leaves a kills/deaths snapshot behind: nothing waits on it and
+    // nothing extra is fetched, and the maps popover can say which map is busy the
+    // moment it opens. See the fight log in js/maps.js, which keeps only bodies
+    // whose score rose since `asked`.
     recordFightSamples(answered, asked);
 
-    // Forget matches that no longer exist. IDs are stable week to week, so
-    // this only bites when a region loses a tier: a leftover "1-4" would
-    // keep getMaxTierForRegion answering 4, and the genuine bottom side in
-    // tier 3 would get a relegation arrow instead of a flat bar. A tier
-    // missing from the list was read again by id (fetchMatches); only one
-    // missing from that read too is forgotten.
+    // Forget matches that no longer exist. IDs are stable week to week, so this
+    // only bites when a region loses a tier: a leftover "1-4" would keep
+    // getMaxTierForRegion answering 4 and give tier 3's bottom side a relegation
+    // arrow. A tier missing from the list was read again by id (fetchMatches);
+    // only one missing from that read too is forgotten.
     const liveIds = new Set([...idList, ...answered.filter((m) => m && typeof m.id === 'string').map((m) => m.id)]);
     for (const id of [...matchDataCache.keys()]) {
       if (!liveIds.has(id)) matchDataCache.delete(id);
@@ -610,10 +587,8 @@ async function loadStandings(origin = 'cycle') {
     showRegion(standingsGridEU, standingsStatusEU, euMatches, 'EU', syncedAt, failed);
     primeMapBadges();
   } catch {
-    // The id list itself failed, so there is nothing to say about either
-    // region - but the same rule holds: what is on screen stays, because
-    // a refresh that did not answer is not a reason to take away the one
-    // that did. Only a skeleton has to go, for the reason in showRegion.
+    // The id list itself failed, so nothing is said about either region: what is on
+    // screen stays. Only a skeleton has to go, for the reason in showRegion.
     clearSkeleton(standingsGridNA);
     clearSkeleton(standingsGridEU);
     failed.push({ el: standingsStatusNA, label: 'live standings', region: 'NA' },
@@ -723,11 +698,9 @@ function startPeeking() {
 // Rebuilding the grid on refresh would leave a popover pointing at a
 // removed element, so close it first.
 async function refreshStandings() {
-  // Anything open is being read right now, and reloading takes the whole
-  // board down and the popover's own anchor with it. So the tick is
-  // skipped rather than spent closing something in someone's face; the
-  // next one lands as soon as they are done. The tier maps do not go
-  // stale in the meantime - they refresh themselves, in place.
+  // Anything open is being read, and reloading takes the board and the popover's
+  // anchor down: the tick is skipped, not spent closing it. The tier maps refresh
+  // themselves in place meanwhile.
   if (activeTrigger) return false;
   await loadStandings();
 }
