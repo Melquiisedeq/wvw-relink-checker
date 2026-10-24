@@ -263,6 +263,8 @@ const emberField = (function () {
   const MIN_FRAME_MS = 1000 / 85;
 
   let clock = 0, last = 0, running = false, frameId = 0;
+  // Stopped for reduced motion only: a blast may run the field until its sparks end.
+  let blastMayRun = false, settling = false;
   function frame(now) {
     frameId = requestAnimationFrame(frame);
     if (now - last < MIN_FRAME_MS) return;   // clock waits too, so no skip
@@ -270,6 +272,7 @@ const emberField = (function () {
     clock += dt;
     last = now;
     draw(dt);
+    if (settling && !blasting.length) stop(true);
   }
 
   resize();
@@ -283,16 +286,27 @@ const emberField = (function () {
     requestAnimationFrame(() => { resizeQueued = false; resize(); });
   });
 
+  function stop(blastOk) {
+    running = false; settling = false; blastMayRun = !!blastOk;
+    cancelAnimationFrame(frameId);
+  }
+
   return {
     start() {
+      settling = false; blastMayRun = false;
       if (running) return;
       running = true;
       last = performance.now();
       frameId = requestAnimationFrame(frame);
     },
     // The clock stops with it, so coming back carries on instead of jumping forward.
-    stop() { running = false; cancelAnimationFrame(frameId); },
+    stop,
     blast() {
+      if (!running && blastMayRun) {
+        running = settling = true;
+        last = performance.now();
+        frameId = requestAnimationFrame(frame);
+      }
       for (let i = 0; i < 12; i++) {
         blasting.push({
           x: Math.random(),
@@ -311,11 +325,15 @@ const emberField = (function () {
 // what distinguishes "on screen" from "being watched".
 (function idleWhenUnwatched() {
   const root = document.documentElement;
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
   const update = () => {
     const away = document.visibilityState === 'hidden' || !document.hasFocus();
     root.classList.toggle('is-idle', away);
-    if (away) emberField.stop(); else emberField.start();
+    if (away) emberField.stop();
+    else if (reduced.matches) emberField.stop(true);
+    else emberField.start();
   };
+  reduced.addEventListener('change', update);
   window.addEventListener('focus', update);
   window.addEventListener('blur', update);
   document.addEventListener('visibilitychange', update);
