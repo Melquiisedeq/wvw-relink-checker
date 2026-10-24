@@ -205,9 +205,11 @@ try {
   }).observe({ type: 'long-animation-frame' });
 } catch { /* unsupported */ }
 let labNodes = 0;
-new MutationObserver((records) => {
-  for (const r of records) labNodes += r.addedNodes.length + r.removedNodes.length;
-}).observe(document.documentElement, { childList: true, subtree: true });
+try {
+  new MutationObserver((records) => {
+    for (const r of records) labNodes += r.addedNodes.length + r.removedNodes.length;
+  }).observe(document.documentElement, { childList: true, subtree: true });
+} catch { /* unsupported */ }
 setInterval(() => {
   if (labNodes >= 20) labNote(`dom ${labNodes} nodes`);
   labNodes = 0;
