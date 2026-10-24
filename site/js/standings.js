@@ -246,6 +246,8 @@ function showGuildFound(teamId, guildName) {
   setTimeout(drop, 2000);
 }
 
+const RESET_NOTE = 'Weekly reset \u00b7 new matchups arriving';
+
 // Shows the pulsing live-dot next to the synced time on success; plain
 // text (no dot) for loading/error states.
 function setStandingsStatus(el, synced, text) {
@@ -272,7 +274,8 @@ function clearSkeleton(gridEl) {
 // than leaving it up and saying it did not update. The first load is the
 // exception, because what is up then is the skeleton.
 function showRegion(gridEl, statusEl, matches, label, syncedAt, failed) {
-  if (matches) {
+  const resetting = regionResetting(label, Date.now());
+  if (matches && (matches.length || !resetting)) {
     renderStandingsRegion(gridEl, matches);
     paintGuildFound(gridEl, false);
   } else clearSkeleton(gridEl);
@@ -280,7 +283,10 @@ function showRegion(gridEl, statusEl, matches, label, syncedAt, failed) {
   if (ok) return setStandingsStatus(statusEl, true, syncedAt);
   // null is a request that failed, and it will be asked again (below);
   // [] is an answer with nothing in it, which asking again does not change.
-  if (matches === null && failed) failed.push({ el: statusEl, label: `${label} standings` });
+  // In the minutes after the region's reset either is the game's API not yet
+  // having the new week: both are asked again, and an empty answer leaves
+  // the table up as a failure does.
+  if ((matches === null || resetting) && failed) failed.push({ el: statusEl, label: `${label} standings`, region: label });
   else setStandingsStatus(statusEl, false, `Couldn't load ${label} standings.`);
 }
 
@@ -465,7 +471,7 @@ function clearRetryAlert(statusEl) {
   retryAlertOf(statusEl).textContent = '';
 }
 
-function paintRetryStatus(statusEl, spoken, visible, busy) {
+function paintRetryStatus(statusEl, spoken, visible, busy, calm) {
   const el = retryAlertOf(statusEl);
   statusEl.textContent = '';
   let btn = el.querySelector('.retry-btn');
@@ -488,16 +494,21 @@ function paintRetryStatus(statusEl, spoken, visible, busy) {
   if (vis.textContent !== visible) vis.textContent = visible;
   el.querySelector('.spinner').style.display = busy ? '' : 'none';
   btn.setAttribute('aria-disabled', busy ? 'true' : 'false');
+  btn.style.display = calm ? 'none' : '';
 }
 
 function planStandingsRetry() {
   const paint = (spoken, visible) => {
-    for (const f of standingsFailed) paintRetryStatus(f.el, spoken, visible, false);
+    for (const f of standingsFailed) {
+      if (f.region && regionResetting(f.region, Date.now())) paintRetryStatus(f.el, RESET_NOTE, RESET_NOTE, false, true);
+      else paintRetryStatus(f.el, spoken, visible, false);
+    }
   };
   if (standingsExtraUsed >= STANDINGS_RETRY_WINDOWS_MS.length) {
     for (const f of standingsFailed) {
-      const text = `Couldn't load ${f.label}. It will try again in a few minutes.`;
-      paintRetryStatus(f.el, text, text, false);
+      const text = f.region && regionResetting(f.region, Date.now())
+        ? RESET_NOTE : `Couldn't load ${f.label}. It will try again in a few minutes.`;
+      paintRetryStatus(f.el, text, text, false, text === RESET_NOTE);
     }
     return;
   }
@@ -537,7 +548,8 @@ async function loadStandings(origin = 'cycle') {
   cancelStandingsRetry();
   if (origin === 'cycle') standingsExtraUsed = 0;
   else if (origin === 'retry') standingsExtraUsed++;
-  for (const f of standingsFailed) paintRetryStatus(f.el, 'Trying again.', 'Trying again…', true);
+  for (const f of standingsFailed) paintRetryStatus(f.el, 'Trying again.', 'Trying again…', true,
+    f.region && regionResetting(f.region, Date.now()));
   // The first load waits longer than a refresh: on a slow line the whole
   // body takes a while, and a refresh has the old table to fall back on.
   const timeoutMs = standingsEverLoaded ? REQUEST_TIMEOUT_MS : SLOW_REQUEST_TIMEOUT_MS;
@@ -604,8 +616,8 @@ async function loadStandings(origin = 'cycle') {
     // that did. Only a skeleton has to go, for the reason in showRegion.
     clearSkeleton(standingsGridNA);
     clearSkeleton(standingsGridEU);
-    failed.push({ el: standingsStatusNA, label: 'live standings' },
-      { el: standingsStatusEU, label: 'live standings' });
+    failed.push({ el: standingsStatusNA, label: 'live standings', region: 'NA' },
+      { el: standingsStatusEU, label: 'live standings', region: 'EU' });
   } finally {
     standingsInFlight = false;
   }

@@ -250,3 +250,90 @@ test('without /api/relink the sheet raises the teams notice', async ({ page, wvw
   await expect(notice(page)).toHaveAttribute('data-window', String(windowId));
   expect(down.reads, 'the own API tried first').toBeGreaterThan(0);
 });
+
+// Friday 18:00 UTC, EU's weekly reset, with the game's API not having the new week yet.
+// NA's week is still running (it resets at 02:00 UTC), so its countdown goes on.
+async function resetMinute(page, wvw, now) {
+  const t = Date.parse(now), reset = Date.parse('2026-10-23T18:00:00Z');
+  await page.clock.setSystemTime(t);
+  const old = { start: reset - 7 * DAY, end: reset };
+  const newer = { start: reset, end: reset + 7 * DAY };
+  const naWeek = { start: Date.parse('2026-10-17T02:00:00Z'), end: Date.parse('2026-10-24T02:00:00Z') };
+  const list = (eu, euWeek) => recordedJson(GAME + 'wvw/matches?ids=all')
+    .filter(m => m.id[0] === '1' || eu(m))
+    .map(m => { const w = m.id[0] === '1' ? naWeek : euWeek(m); return { ...m, start_time: iso(w.start), end_time: iso(w.end) }; });
+  const ids = recordedJson(GAME + 'wvw/matches?ids=all').map(m => m.id);
+  await answer(page, GAME + 'wvw/timers/lockout', {});
+  await answer(page, GAME + 'wvw/timers/teamAssignment', {});
+  await answer(page, GAME + 'wvw/matches', ids);
+  return { old, newer, list };
+}
+const euStatus = page => page.locator('.standings-card:has(#standingsAlertEU)');
+const counter = page => banner(page).locator('.relink-stat-value').first();
+
+const euButton = page => euStatus(page).locator('.retry-btn');
+const resetWords = 'Weekly reset · new matchups arriving';
+
+// One page through EU's reset minutes, from 18:00:30 on, each phase a different way the
+// game's API can fail to have the new week: the whole API 503 (the id list fails, so both
+// columns fail), then only the EU matches 503 (a region's read fails, null), then an
+// answer with no EU matches in it (empty), then a partial one (tier 1 on the new week).
+// None may say unknown or an error for EU, and none shows its "Try again" button.
+test('the EU reset minute says resetting through a 503, an empty answer and a partial one', async ({ page, wvw }) => {
+  test.setTimeout(90 * 1000);
+  // The extra tries wait 5 s and then 15 s, which keeps the phases inside the 15 minutes.
+  await page.addInitScript(() => { Math.random = () => 0; });
+  const { old, newer, list } = await resetMinute(page, wvw, '2026-10-23T18:00:30Z');
+  // The week before was loaded: EU's matches still carry the old week, which has ended.
+  let served = await serveList(page, list(() => true, () => old));
+  await page.goto(wvw.url);
+  await wvw.settle();
+  await expect(counter(page)).toHaveText('NA 7h 59m · EU resetting');
+  const calm = async () => {
+    await wvw.settle();
+    await expect(counter(page)).toHaveText(/EU resetting/);
+    await expect(euStatus(page)).toContainText(resetWords);
+    await expect(euStatus(page)).not.toContainText(/Couldn't load|unknown/);
+    await expect(euButton(page), 'no Try again beside a note that is not an error').toBeHidden();
+    await expect(banner(page)).not.toContainText('unknown');
+  };
+  // Phase 1: the whole game API answers 503.
+  const down = await fail(page, wvw, /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches/);
+  await page.clock.fastForward(5 * MIN + 20 * 1000);
+  await expect.poll(() => down.reads, { message: 'the refresh failing' }).toBeGreaterThan(0);
+  await calm();
+  down.off();
+  // Phase 2: the list of ids answers, and only the reads of EU's matches 503.
+  const all = await fail(page, wvw, /matches\?ids=all$/);
+  const eu = await fail(page, wvw, /matches\?ids=2-/);
+  await page.clock.fastForward(10 * 1000);
+  await expect.poll(() => eu.reads, { message: 'the refresh reading EU' }).toBeGreaterThan(0);
+  await calm();
+  all.off(); eu.off(); served.off();
+  // Phase 3: the answer has no EU matches in it.
+  served = await serveList(page, list(() => false, () => old));
+  await page.clock.fastForward(20 * 1000);
+  await calm();
+  await expect(page.locator('#standingsGridEU > .standing-match'), 'last week\'s tiers stay up').toHaveCount(wvw.tiers.EU);
+  await expect(page.locator('#standingsGridEU'), "the line-up note").toContainText("Last week's line-up");
+  // Phase 4: tier 1 on the new week, the rest still on the old.
+  served.off();
+  await serveList(page, list(() => true, m => (m.id === '2-1' ? newer : old)));
+  await page.clock.fastForward(5 * MIN + 20 * 1000);
+  await wvw.settle();
+  await expect(counter(page)).toHaveText(/EU 6d 23h/);
+  await expect(euStatus(page)).not.toContainText(/Couldn't load|unknown|Weekly reset/);
+});
+
+test('past the reset window the error is the usual one', async ({ page, wvw }) => {
+  const { old, list } = await resetMinute(page, wvw, '2026-10-23T18:20:30Z');
+  await serveList(page, list(() => false, () => old));
+  await fail(page, wvw, /matches\?ids=all$/);
+  await fail(page, wvw, /matches\?ids=2-/);
+  await page.goto(wvw.url);
+  await wvw.settle();
+  await expect(counter(page)).toHaveText('NA 7h 39m · EU unknown');
+  await expect(euStatus(page)).toContainText(/Couldn't load standings\. Trying again in/);
+  await expect(page.locator('body')).not.toContainText(resetWords);
+  await expect(euButton(page), 'the usual Try again button').toBeVisible();
+});
