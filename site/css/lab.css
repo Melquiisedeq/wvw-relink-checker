@@ -67,3 +67,11 @@ html.lab-scanStill .header-rule::before{animation:none;}
 html.lab-noGlass *,html.lab-noGlass *::before,html.lab-noGlass *::after{
   -webkit-backdrop-filter:none !important;backdrop-filter:none !important;
 }
+
+/* Everything still: the same pause .is-idle applies when the window loses focus (css/base.css). */
+html.lab-allStill *,
+html.lab-allStill *::before,
+html.lab-allStill *::after{animation-play-state:paused !important;}
+/* Blank page: nothing of the site is drawn; only the lab panel stays. */
+html.lab-blank body > :not(.lab-panel){display:none !important;}
+html.lab-blank body{background:#0f1216;}

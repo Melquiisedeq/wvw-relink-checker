@@ -16,6 +16,8 @@ const LAB_ITEMS = [
   { type: 'check', key: 'embersStill', label: 'Embers still (diagnostic)', on: false },
   { type: 'check', key: 'scanStill', label: 'Title scan still (diagnostic)', on: false, cls: true },
   { type: 'check', key: 'noGlass', label: 'No frosted glass (diagnostic)', on: false, cls: true },
+  { type: 'check', key: 'allStill', label: 'Everything still, as when not in focus (diagnostic)', on: false, cls: true },
+  { type: 'check', key: 'blank', label: 'Blank page, only this panel (diagnostic)', on: false, cls: true },
   { type: 'note', label: 'Diagnostic switches are for finding the cause only; the fix is the baked photo.' },
 ];
 
@@ -25,11 +27,12 @@ const LAB_ITEMS = [
 let labEmberStart = null;
 function labApplyEmbers() {
   if (typeof emberField !== 'object' || !emberField) return;
-  if (labPrefs.embersStill && !labEmberStart) {
+  const still = labPrefs.embersStill || labPrefs.allStill || labPrefs.blank;
+  if (still && !labEmberStart) {
     labEmberStart = emberField.start;
     emberField.start = () => {};
     emberField.stop();
-  } else if (!labPrefs.embersStill && labEmberStart) {
+  } else if (!still && labEmberStart) {
     emberField.start = labEmberStart;
     labEmberStart = null;
     const watched = document.visibilityState !== 'hidden' && document.hasFocus();
