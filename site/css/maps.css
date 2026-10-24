@@ -30,6 +30,11 @@
 }
 .wvw-tab.is-hot{padding-left:22px;}
 .wvw-tab:hover{color:#dbe3ec;}
+/* The clip-path would cut away the strip that button:active::after hangs above
+   the sunk tab (css/controls.css); the same bevelled shape, open 2px upward. */
+.wvw-tab:active{
+  clip-path:polygon(4px -2px, 100% -2px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px, 4px 0);
+}
 .wvw-tab.is-active{
   color:#06222c;
   background:linear-gradient(180deg,#a3e2f6,#57b6d6);

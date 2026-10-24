@@ -56,6 +56,20 @@ button:active{
     inset 0 -1px 0 rgba(255,255,255,.12),
     0 1px 1px rgba(0,0,0,.3);
 }
+/* The sink leaves the top 2px of the button's place to whatever is behind it,
+   and a press there would release on that and lose the click: this strip,
+   carried down with the button, keeps the 2px. The zero-specificity position
+   gives it a box to hang from and yields to any class that sets its own
+   (e2e/press.spec.mjs sweeps every button for it). */
+:where(button:active){position:relative;}
+button:active::after{
+  content:"";position:absolute;left:0;right:0;top:-2px;height:2px;
+}
+/* These do not sink, so they need no strip. */
+.retry-btn:active::after,.teams-notice-close:active::after,.wvw-focus-pill:active::after,
+.wvw-focus-go:active::after,.wvw-subtab:active::after,.wvw-cap:active::after,
+.wvw-hud-btn:active::after,.wvw-missed-head:active::after,.wvw-missed-mapname:active::after,
+.wvw-chip:active::after{content:none;}
 /* Held down for as long as the work takes. */
 button:disabled{
   opacity:.8;cursor:wait;transform:translateY(1px);
