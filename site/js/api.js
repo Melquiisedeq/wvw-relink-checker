@@ -462,10 +462,12 @@ function ageFirstSightFromHistory(byMatch, staleMs) {
   return n;
 }
 
-// A first-sight body with fewer kills on some map than the history's newest
-// line for its week is older than that line (kills only rise in a week), so
-// its `at` goes back to the line's time: "Updated" must not say now. Needs
-// no live history, unlike the above: the line proves it on its own.
+// A first-sight body with fewer kills on some map than a line of the
+// history is older than that line (kills only rise in a week), so its `at`
+// goes back to the oldest line of its week that is ahead of it: the lines
+// ahead are a suffix of the list, and a newer one would date old data as
+// recent. "Updated" must not say now. Needs no live history, unlike the
+// above: the line proves it on its own.
 // `totalsOf(match)`: kills per map type, the keys of the lines' `n`.
 function ageBehindHistory(byMatch, totalsOf) {
   let n = 0;
@@ -477,11 +479,19 @@ function ageBehindHistory(byMatch, totalsOf) {
     const week = Date.parse(kept.match.start_time);
     if (!Number.isFinite(week) || last.at < week) continue;
     const now = totalsOf(kept.match);
-    const behind = Object.keys(now).some((t) => now[t] < (Number(last.n && last.n[t]) || 0));
+    const isAhead = (line) => Object.keys(now).some((t) => now[t] < (Number(line.n && line.n[t]) || 0));
+    const firstAhead = isAhead(last)
+      ? list.find((line) => line.at >= week && isAhead(line))
+      : null;
+    if (firstAhead) {
+      kept.at = firstAhead.at;
+      n++;
+      continue;
+    }
     // The score rose inside a gap this page did not watch: a line written
     // since its last answer is the rise's own, unless a map is ahead of it.
     const ahead = Object.keys(now).some((t) => now[t] > (Number(last.n && last.n[t]) || 0));
-    if (!behind && !(kept.gapFrom && last.at > kept.gapFrom && !ahead)) continue;
+    if (!(kept.gapFrom && last.at > kept.gapFrom && !ahead)) continue;
     kept.at = last.at;
     n++;
   }
