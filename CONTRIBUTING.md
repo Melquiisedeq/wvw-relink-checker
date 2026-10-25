@@ -25,7 +25,8 @@ an issue first and say what for.
 site/          everything the browser downloads; Cloudflare serves it as it is
   index.html   markup and the ordered list of scripts
   css/         one stylesheet per concern
-  js/          one file per concern, loaded in order; boot.js runs last
+  js/          one file per concern, loaded in order; boot.js runs last,
+               then js/maps.js, asked for by js/maps-early.js
   assets/      map renders, game icons, and the link-preview card
   _headers     response headers, the CSP among them
 worker/        wvwrelink.com/api: takes each script's signed results into a
@@ -52,6 +53,9 @@ CONTRIBUTING.md  SECURITY.md  LICENSE
 `index.html` decides everything: `config.js` and `dom.js` come first because
 everything reads them, and `boot.js` comes last because it starts the page. A
 new file goes into that list at the right position, not at the end by default.
+One file is outside it: `maps.js`, the map drawing, which `maps-early.js` asks
+for once the standings are drawn or a map is opened, so it runs after all of
+them.
 
 **The Content Security Policy is strict.** It is a response header in
 `site/_headers`, never a `<meta>` (in Chromium, a policy in a `<meta>` makes the

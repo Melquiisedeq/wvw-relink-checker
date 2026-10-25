@@ -183,8 +183,19 @@ def check_scripts(problems):
                 'index.html loads %s, which does not exist. The browser 404s '
                 'it and carries on without whatever was in it.' % src)
 
+    # A script loaded later by another one (js/maps.js, by js/maps-early.js)
+    # is named there as a quoted path; it runs after everything in index.html.
+    late = set()
+    for src in referenced:
+        if src.startswith('js/') and os.path.exists(os.path.join(SITE, src)):
+            late.update(re.findall(r"'(js/[\w.-]+\.js)'", read(src)))
+    for src in sorted(late):
+        if not os.path.exists(os.path.join(SITE, src)):
+            problems.append(
+                'A script loads %s later, but it does not exist. The browser '
+                '404s it and whatever needed it never works.' % src)
     for name in files_in('js', '.js'):
-        if 'js/' + name not in referenced:
+        if 'js/' + name not in referenced and 'js/' + name not in late:
             problems.append(
                 'js/%s exists but nothing in index.html loads it. Either it '
                 'belongs in the ordered list, or it is dead and should go.'

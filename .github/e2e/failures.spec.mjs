@@ -13,7 +13,7 @@ const TIERS = '#standingsGridNA > .standing-match';
 // held, Escape, a resize, the Check button, Ctrl+Enter and a click must raise
 // nothing (the fixture fails the test on an exception), and the page must work
 // once it is let go.
-for (const script of ['maps.js', 'trebuchet.js', 'boot.js']) {
+for (const script of ['maps-early.js', 'trebuchet.js', 'boot.js']) {
   test(`early actions with ${script} held`, async ({ page, wvw }) => {
     const release = await hold(page, wvw.url + 'js/' + script);
     await page.goto(wvw.url, { waitUntil: 'commit' });

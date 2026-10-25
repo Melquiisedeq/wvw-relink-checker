@@ -550,7 +550,7 @@ async function loadStandings(origin = 'cycle') {
 
     // Every refresh leaves a kills/deaths snapshot behind: nothing waits on it and
     // nothing extra is fetched, and the maps popover can say which map is busy the
-    // moment it opens. See the fight log in js/maps.js, which keeps only bodies
+    // moment it opens. See the fight log in js/maps-early.js, which keeps only bodies
     // whose score rose since `asked`.
     recordFightSamples(answered, asked);
 

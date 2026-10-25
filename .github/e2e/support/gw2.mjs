@@ -22,17 +22,17 @@
 // - start <= now < end for every body of the newest pool (js/config.js:67,
 //   matchIsLive; js/stat-popovers.js:168, skirmishProgress); a week ends, the
 //   next one starts at that end with every counter at zero.
-// - Inside a week kills+deaths and the scores only grow (js/api.js:254,
+// - Inside a week kills+deaths and the scores only grow (js/api.js,
 //   matchIsBehind): the older pool serves a body behind, never a body that
 //   went backwards.
-// - The page reads only the last skirmish (js/panels.js:186, getSkirmishScore):
+// - The page reads only the last skirmish (js/panels.js, getSkirmishScore):
 //   a new one is appended at each two-hour mark after the recording, and the
 //   score of the minute goes into the last one. Victory points stay as recorded.
-// - A flip changes `owner` and `last_flipped` together (js/maps.js:2547,
-//   missedOwnerChanges; js/maps.js:1378, riLeft; js/maps.js:2564, missedBodyChanged).
+// - A flip changes `owner` and `last_flipped` together (js/maps-early.js,
+//   missedOwnerChanges and missedBodyChanged; js/maps.js, riLeft).
 // - The maps add up to the match: kills, deaths and scores per colour are the
-//   sums over maps[] (js/maps.js:814, fightTotals, and js/maps.js:2539,
-//   missedKillTotal, read the maps; js/api.js:247, matchActivity, the totals).
+//   sums over maps[] (js/maps-early.js, fightTotals and missedKillTotal, read
+//   the maps; js/api.js, matchActivity, the totals).
 //   The skirmishes add up to the scores too.
 // The server checks the bodies it serves against these (served() below) and
 // reports a break as a problem of the test.
@@ -42,9 +42,9 @@ import { recording } from './recordings.mjs';
 const MIN = 60 * 1000;
 const SKIRMISH_MS = 2 * 60 * MIN;
 const WEEK_MS = 7 * 24 * 60 * MIN;
-const KILLS_WINDOW_MS = 30 * MIN;           // what /api/kills serves (js/maps.js:932)
+const KILLS_WINDOW_MS = 30 * MIN;           // what /api/kills serves (js/maps-early.js, readOwnKills)
 const COLORS = ['red', 'blue', 'green'];
-const MAPS = ['Center', 'RedHome', 'BlueHome', 'GreenHome'];   // js/config.js:144, KILLS_MAP_ORDER
+const MAPS = ['Center', 'RedHome', 'BlueHome', 'GreenHome'];   // js/config.js, KILLS_MAP_ORDER
 const NEXT_OWNER = Object.freeze({ Red: 'Blue', Blue: 'Green', Green: 'Red', Neutral: 'Red' });
 const FLIPPABLE = new Set(['Camp', 'Tower', 'Keep']);
 const ID_RE = /^[12]-[1-9]$/;

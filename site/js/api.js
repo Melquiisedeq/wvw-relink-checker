@@ -247,7 +247,7 @@ function keepNewestMatch(match) {
   matchAnsweredAt.set(match.id, Date.now());
   const kept = newestMatches.get(match.id);
   // Every offer, a frozen repeat included, with the body it would replace:
-  // the maps' "What happened" summary (js/maps.js, loaded after this file).
+  // the maps' "What happened" summary (js/maps-early.js, loaded after this file).
   // Every match body passes here, so a fault there must not cost the page
   // its data: it is caught and the body is kept as if it had not run.
   if (typeof missedMatchOffered === 'function') {
@@ -520,7 +520,7 @@ const rereadMatches = async (url, timeoutMs) => (await Promise.allSettled(
   Array.from({ length: MATCH_REREADS }, () => fetchJson(url, 0, 'no-store', timeoutMs))))
   .flatMap((r) => (r.status !== 'fulfilled' ? [] : Array.isArray(r.value) ? r.value : [r.value]));
 
-// The time of this browser's fight log reading a body is behind (js/maps.js,
+// The time of this browser's fight log reading a body is behind (js/maps-early.js,
 // loaded after this file), else 0. A fault there costs only the check.
 function loggedAheadAt(match) {
   if (typeof fightLogAheadAt !== 'function') return 0;
