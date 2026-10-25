@@ -216,7 +216,7 @@ def check_kills(problems, notes, sheet_id):
     narrow = [r for r in stamped if len(r) < 6]
     if narrow:
         problems.append('%d row(s) in the kills sheet have fewer than 6 '
-                        'columns. js/maps.js skips those, so the swords go '
+                        'columns. js/maps-early.js skips those, so the swords go '
                         'quiet without any error.' % len(narrow))
 
     newest = max(int(r[0].strip()) for r in stamped)

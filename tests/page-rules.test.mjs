@@ -212,7 +212,7 @@ test('ageBehindHistory: a body behind the history is dated by the oldest line ah
     { at: now - 40 * MIN, n: shift(5) }, { at: now - 2 * MIN, n: shift(5) }]), 40);
 });
 
-test('killView: a fight lights the swords; a stopped or silent body does not (js/maps.js)', () => {
+test('killView: a fight lights the swords; a stopped or silent body does not (js/maps-early.js)', () => {
   const p = fresh();
   const base = matches[0];
   const now = p.clock.now;
@@ -241,7 +241,7 @@ test('killView: a fight lights the swords; a stopped or silent body does not (js
   assert.equal(none.clock, 0);
 });
 
-test('killView: alive only when this page saw the score rise within 3 minutes (js/maps.js)', () => {
+test('killView: alive only when this page saw the score rise within 3 minutes (js/maps-early.js)', () => {
   const p = fresh();
   const base = matches[0];
   const body = { Center: 1000, RedHome: 10, BlueHome: 10, GreenHome: 10 };
@@ -258,7 +258,7 @@ test('killView: alive only when this page saw the score rise within 3 minutes (j
   assert.equal(p.call('killView', up, TYPES, p.clock.now + 4 * MIN).alive, false, 'rose 4 min ago');
 });
 
-test('killView: a catch-up step after a long stall lights nothing (js/maps.js)', () => {
+test('killView: a catch-up step after a long stall lights nothing (js/maps-early.js)', () => {
   const p = fresh();
   const base = matches[1];
   const now = p.clock.now;
@@ -286,7 +286,7 @@ test('matchIsLive: only a readable end_time in the future is live (js/config.js)
   for (const body of [null, undefined, {}, 'x', 5]) assert.equal(p.call('matchIsLive', body), false);
 });
 
-test('killView: a match whose end_time cannot be read is neutral, like one that is over (js/maps.js)', () => {
+test('killView: a match whose end_time cannot be read is neutral, like one that is over (js/maps-early.js)', () => {
   const p = fresh();
   const base = matches[0];
   const now = p.clock.now;
@@ -347,7 +347,7 @@ test('weekStoreOffer: a later week always replaces an earlier one; an earlier bo
   assert.equal(stored(p, '1-2').s, t - 3 * day, 'the memory of a week begun a day ago no longer holds against an earlier body');
 });
 
-test('fightSamples: a reading older than three hours, or from before the match began, is no baseline (js/maps.js)', () => {
+test('fightSamples: a reading older than three hours, or from before the match began, is no baseline (js/maps-early.js)', () => {
   const day = 24 * 60 * MIN;
   const row = (at) => ({ at, n: { Center: 100, RedHome: 0, BlueHome: 0, GreenHome: 0 } });
   const run = (rows, startBack = 6 * day) => {
@@ -398,7 +398,7 @@ function stoppedFight(perMin, stopped) {
   return p.call('killView', m, TYPES, now);
 }
 
-test('killView: a fight that stops puts the swords out between the 5.5-minute quiet and 10 minutes, whatever the score does (js/maps.js)', () => {
+test('killView: a fight that stops puts the swords out between the 5.5-minute quiet and 10 minutes, whatever the score does (js/maps-early.js)', () => {
   // The silence the kills may keep is 5.5 min plus the time to make 15 kills at the fight's own pace.
   for (const pace of [5, 8, 12]) {
     const limit = 5.5 * MIN + (15 / pace) * MIN;
@@ -430,7 +430,7 @@ function catchUp(prevRun, jump) {
   return p.call('killView', m, TYPES);
 }
 
-test('killView: a jump after a stall of 10-20 minutes counts spread over the stall; under 10 whole, over 20 not at all (js/maps.js)', () => {
+test('killView: a jump after a stall of 10-20 minutes counts spread over the stall; under 10 whole, over 20 not at all (js/maps-early.js)', () => {
   // Up to 10 min of still kills is no stall: the jump counts whole.
   assert.equal(catchUp(9 * MIN, 55).hot, 'Center');
   assert.equal(catchUp(10 * MIN, 55).hot, 'Center', 'exactly 10 min is not a catch-up');
@@ -448,7 +448,7 @@ test('killView: a jump after a stall of 10-20 minutes counts spread over the sta
   assert.equal(catchUp(60 * MIN, 5000).hot, null);
 });
 
-test('killView: invariants hold on mutated bodies and histories (js/maps.js)', () => {
+test('killView: invariants hold on mutated bodies and histories (js/maps-early.js)', () => {
   const rnd = prng(3);
   let hot = 0;
   let cold = 0;
@@ -508,7 +508,7 @@ function flipSome(base, rnd, k) {
   return { after, flipped };
 }
 
-test('missedOwnerChanges: lists exactly the objectives that changed hands (js/maps.js)', () => {
+test('missedOwnerChanges: lists exactly the objectives that changed hands (js/maps-early.js)', () => {
   const p = fresh();
   const rnd = prng(4);
   for (const base of matches) {
@@ -527,7 +527,7 @@ test('missedOwnerChanges: lists exactly the objectives that changed hands (js/ma
   }
 });
 
-test('missedOwnerChanges: a lost field or a case change is no change, and nothing throws (js/maps.js)', () => {
+test('missedOwnerChanges: a lost field or a case change is no change, and nothing throws (js/maps-early.js)', () => {
   const p = fresh();
   const rnd = prng(5);
   const base = matches[0];
@@ -551,7 +551,7 @@ test('missedOwnerChanges: a lost field or a case change is no change, and nothin
   assert.equal(p.call('missedOwnerChanges', null, undefined).length, 0);
 });
 
-test('missedPeriod: the period holds every listed flip (js/maps.js)', () => {
+test('missedPeriod: the period holds every listed flip (js/maps-early.js)', () => {
   const rnd = prng(6);
   let older = 0;
   for (let i = 0; i < 80; i++) {

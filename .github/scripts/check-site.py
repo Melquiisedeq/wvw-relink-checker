@@ -7,9 +7,9 @@ failed to deploy, and then the page loads, looks right, and one feature is
 missing with nothing in the logs anywhere.
 
 So the list of files is taken from the *served* HTML, not from the repository,
-and every one of them is fetched. A 404 on js/maps.js is the whole maps panel
-gone, and the only place it shows is the console of whoever happened to open
-the site.
+with the scripts those files load later by a quoted path, and every one of them
+is fetched. A 404 on js/maps.js is the whole maps panel gone, and the only
+place it shows is the console of whoever happened to open the site.
 
 The Content Security Policy is a response header, so it is compared with the
 line in site/_headers: a deploy that dropped or mangled that file serves the
@@ -171,11 +171,20 @@ def main():
                         'it was rewritten on the way out.')
         assets = []
 
+    # A script can load another later by a quoted path (js/maps.js, by
+    # js/maps-early.js; check-structure.py reads the same pattern): those
+    # are fetched too, from the served bodies.
     missing = []
+    seen = set(p.lstrip('/') for p in assets)
     for path in assets:
-        status, _, error, _ = fetch(SITE + path.lstrip('/'))
+        status, body, error, _ = fetch(SITE + path.lstrip('/'))
         if error:
             missing.append('%s (%s)' % (path, error))
+        elif path.endswith('.js'):
+            for late in re.findall(r"'(js/[\w.-]+\.js)'", body):
+                if late not in seen:
+                    seen.add(late)
+                    assets.append(late)
 
     if missing:
         problems.append('The page asks for %d file(s) the site does not serve: '

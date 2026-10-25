@@ -79,6 +79,9 @@ test('the load stays inside the budget, and 20 cycles leak nothing', async ({ pa
   const t0 = performance.now();
   await load(page, wvw);
   const loadMs = Math.round(performance.now() - t0);
+  // js/maps.js is asked for as the board is drawn: counted with the load.
+  await expect.poll(() => page.evaluate(() => typeof fillTierMaps), { message: 'js/maps.js loaded after the board' }).toBe('function');
+  await wvw.settle();
   await Promise.all(bodies);
 
   const cdp = await context.newCDPSession(page);

@@ -25,11 +25,16 @@ function dummy() {
   return p;
 }
 
+// Then the scripts one of them loads later by a quoted path (js/maps.js, by
+// js/maps-early.js), as the page has them once the standings are drawn.
 export function scriptFiles() {
   const html = fs.readFileSync(path.join(siteDir, 'index.html'), 'utf8');
-  return [...html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)]
+  const listed = [...html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)]
     .map((m) => m[1])
     .filter((s) => s.startsWith('js/') && !SKIPPED.has(s));
+  const late = listed.flatMap((s) => [...fs.readFileSync(path.join(siteDir, s), 'utf8')
+    .matchAll(/'(js\/[\w.-]+\.js)'/g)].map((m) => m[1]));
+  return [...listed, ...new Set(late.filter((s) => !listed.includes(s)))];
 }
 
 export function loadPage(startAt = 0) {

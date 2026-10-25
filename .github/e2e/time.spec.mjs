@@ -11,7 +11,7 @@
 // Invariants, at every look:
 //   stale    nothing says the data is current - the map's "data from" without
 //            its warning, the kills on one line, swords on a tab - when what
-//            the API gave is more than 6 min old (js/maps.js HUD_STALE_MS), plus
+//            the API gave is more than 6 min old (js/maps-early.js HUD_STALE_MS), plus
 //            the time the page takes to read it again.
 //   same     the map's corner and the tab with the swords give the same count.
 //   forward  nothing goes back: VP, Activity and the skirmish score on the
@@ -24,7 +24,7 @@ import { FOCUS, HOUR, MIN, apiDown, firstReadBehind, frozen, hidden, missed, pla
 
 const STALE_MS = 6 * MIN;
 // How long the page may take to read the API again: the open map asks every
-// 30 s; closed, the standings every 5 min (js/maps.js MAP_REFRESH_MS,
+// 30 s; closed, the standings every 5 min (js/maps-early.js MAP_REFRESH_MS,
 // js/config.js STANDINGS_REFRESH_MS).
 const READ_OPEN_MS = 1 * MIN;
 const READ_CLOSED_MS = 5 * MIN;

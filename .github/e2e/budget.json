@@ -1,7 +1,7 @@
 {
   "_note": "Ceilings for budget.spec.mjs, reviewed by hand. One number per metric: the measure of 16/10/2026 plus a margin (bytes +1 KB, rounded up to 100; requests and blocking scripts none, so one more fails; nodes and listeners +10 %). No fonts today: a font would fail until it gets a ceiling here. If a rise is on purpose, raise the number in the same PR. The paint block is paint.spec.mjs's (1280x800, recorded data): layers and layers per compositing reason, the higher of the cloud's and CI's measure +10 % (none for a count of 5 or fewer); raster tasks in 2 s, three times the mean measure.",
   "bytes": { "html": 7400, "js": 133200, "css": 43400, "image": 89800 },
-  "requests": 38,
+  "requests": 39,
   "blockingScripts": 18,
   "nodes": 2700,
   "listeners": 163,
