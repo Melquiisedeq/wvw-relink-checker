@@ -5,34 +5,13 @@
 // same way and leaves the run-once ones and the loading indicators playing.
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
-import { load, search, recordedJson, serveList, iso } from './support/steps.mjs';
+import { load, search, recordedJson, serveList, iso, looping, LOADERS } from './support/steps.mjs';
 import { HOUR, MIN } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
 
 const DAY = 24 * HOUR;
-const LOADERS = '.spinner, .btn-pips';
 
-// The infinite animations on the page, `loaders` or the rest, over `ms`: how many
-// moved on and how many stood still (each by its currentTime), and which of the
-// rest are still left running on CSS at the end (the clock pauses the ones it moves).
-// It asks for frames while it waits: with the embers stopped, a headless page draws
-// none, and an animation started meanwhile stays pending at 0.
-function looping(page, { ms = 400, loaders = false } = {}) {
-  return page.evaluate(async ([ms, loaders, sel]) => {
-    const now = () => document.getAnimations().filter(a => a.effect && a.effect.target
-      && a.effect.getComputedTiming().iterations === Infinity && !!a.effect.target.closest(sel) === loaders);
-    const before = new Map(now().map(a => [a, a.currentTime]));
-    await new Promise(r => { const t0 = performance.now(); const f = t => (t - t0 < ms ? requestAnimationFrame(f) : r()); requestAnimationFrame(f); });
-    let moved = 0, still = 0;
-    for (const [a, t] of before) {
-      if (!a.effect.target.isConnected || a.playState === 'idle') continue;
-      if (a.currentTime > t) moved++; else still++;
-    }
-    const onCss = loaders ? [] : now().filter(a => a.playState === 'running').map(a => a.animationName);
-    return { moved, still, onCss };
-  }, [ms, loaders, LOADERS]);
-}
 const allMoving = r => r.moved > 0 && r.still === 0 && r.onCss.length === 0;
 // Until every one of them moves on the clock: a sweep adopts what was rebuilt or resumed.
 const expectAllMoving = (page, message) => expect.poll(async () => allMoving(await looping(page)), { message, timeout: 5000 }).toBe(true);
