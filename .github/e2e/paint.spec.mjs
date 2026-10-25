@@ -2,7 +2,8 @@
 // rather than timed. The compositor layers and why each exists, the looping
 // animations moving on the embers' clock (js/boot.js), the ones that cannot run
 // on the compositor (a new one is a new cost per frame: it fails until it is
-// named here), the photo and the embers each on a layer of their own, and the
+// named here), the embers on a layer of their own, the photo on none and with
+// no filter and no blend mode (its effect is baked into the file), and the
 // raster work after the warm-up against a wide ceiling in budget.json. Paint and
 // layout go to one "e2e paint: ..." line, and to $GITHUB_STEP_SUMMARY on CI,
 // never to a failure. Frames drawn are frames.spec.mjs's.
@@ -75,6 +76,11 @@ test('standing still and watched, the layers, the animations and the raster stay
     return reasonsOf.get(node.backendNodeId) || [];
   };
   const photo = await ownLayer('.fx-photo');
+  // A filter or a blend mode on a full-viewport layer is redone on every frame.
+  const photoStyle = await page.evaluate(() => {
+    const cs = getComputedStyle(document.querySelector('.fx-photo'));
+    return { filter: cs.filter, mixBlendMode: cs.mixBlendMode };
+  });
   const embers = await ownLayer('#fxEmbers');
 
   // The looping animations advance (by currentTime: the clock pauses them) and the embers draw.
@@ -107,7 +113,9 @@ test('standing still and watched, the layers, the animations and the raster stay
   for (const [r, ceiling] of Object.entries(budget.reasons)) {
     expect(reasons[r] || 0, `layers for ${r}: ${reasons[r] || 0}, ceiling ${ceiling}; ${RAISE}`).toBeLessThanOrEqual(ceiling);
   }
-  expect(photo, 'the photo is its own layer, with will-change').toContain('WillChangeTransform');
+  // Its own layer is one more full-viewport layer to composite on every frame.
+  expect(photo, 'the photo draws into the background\'s layer, not one of its own').toEqual([]);
+  expect(photoStyle, 'the photo carries its effect in the file, not in a filter or a blend mode').toEqual({ filter: 'none', mixBlendMode: 'normal' });
   expect(embers, 'the embers canvas is its own layer').toContain('Canvas');
   expect(drawn, 'ember frames drawn in 0.6 s').toBeGreaterThan(0);
   expect(loop.moved, `looping animations moving: ${JSON.stringify(loop)}`).toBeGreaterThan(0);

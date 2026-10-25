@@ -48,8 +48,6 @@ body{
   height:100vh;   /* Chromium already reads vh as the large viewport... */
   height:100lvh;  /* ...and this says so by spec rather than by habit. */
   pointer-events:none;z-index:0;overflow:hidden;
-  /* Own stacking context, so the blend below cannot reach the page. */
-  isolation:isolate;
   /* Nothing in here affects anything outside it, so a moving ember does not
      invalidate the page above. paint is what overflow:hidden already does; this
      makes it a promise the compositor can act on. */
@@ -57,24 +55,21 @@ body{
 }
 .fx-l{position:absolute;inset:0;}
 
-/* The page's own colour, as the surface the photo blends into. */
-.fx-ground{background:radial-gradient(circle at top, #1a1f27, #0f1216 60%);}
+/* The page's slate is #1a1f27 to #0f1216. These two are it shifted so that the
+   grey photo at .58 over them gives what the colour photo with
+   mix-blend-mode:luminosity at .58 over the slate would, with no filter or blend
+   to redo on every frame: each is (C - .58 * lum(C)) / .42. */
+.fx-ground{background:radial-gradient(circle at top, rgb(20,32,51), rgb(11,19,28) 60%);}
 
-/* mix-blend-mode:luminosity keeps only the light and dark of the screenshot and
-   takes hue and saturation from the layer under it, so the photo comes back in
-   the site's slate: a busy one can sit behind text, and swapping it needs no
-   colour grading. */
+/* The photo carries its effect in the file: grey, lum = 0.3 R + 0.59 G + 0.11 B,
+   after brightness .72 and contrast 1.04, blurred 1.14 px at its 1700x820
+   (1.5 px on a 1920x1080 screen). A new photo is baked the same way. No
+   will-change: a layer of its own makes every frame dearer (paint.spec.mjs). */
 .fx-photo{
   /* Left of centre: the castle is in the left third, and `center`
      cropped it away on a tall window. */
   background:url("../assets/wvw13-1.webp") 22% 42%/cover no-repeat;
-  filter:brightness(.72) contrast(1.04) blur(1.5px);
-  mix-blend-mode:luminosity;
   opacity:.58;
-  /* Its own layer: a full-viewport blur under a blend mode is the most expensive
-     thing on the page and must not be dirtied by the embers. transform, not
-     filter: naming filter would say the blur is about to change. */
-  will-change:transform;
 }
 
 /* Darkest through the middle where the text sits. Inverse of a
@@ -87,11 +82,7 @@ body{
       rgba(15,18,22,.55), transparent 28%, transparent 70%, rgba(15,18,22,.66));
 }
 
-/* The canvas the ember field is drawn into, deliberately a sibling of .fx and not
-   a layer inside it: .fx is an isolated group with a full-viewport blend layer
-   that re-reads its backdrop, so anything moving inside would recompose photo,
-   blur and blend every frame. Out here nothing carries a blend mode. Everything
-   drawn inside is in js/boot.js. */
+/* The canvas the ember field is drawn into; everything drawn inside is in js/boot.js. */
 .fx-embers{
   position:fixed;left:0;top:0;width:100%;
   height:100vh;   /* lvh for the same reason as .fx above. */
