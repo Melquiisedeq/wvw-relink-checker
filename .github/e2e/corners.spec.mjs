@@ -213,6 +213,8 @@ test.describe('corners by the data clock', () => {
     gapQuiet: { top: 8 * 60e3, base: 65 * 60e3, add: 30, rose: 0 },
     late: { top: 40 * 60e3, base: 10 * 60e3, add: 70, rose: 40 * 60e3 },
     quiet: { top: 8 * 60e3, base: 10 * 60e3, add: 30, rose: 0 },
+    gapStopped: { top: 8 * 60e3, base: 65 * 60e3, add: 30, rose: 5 * 60e3 },
+    stopped: { top: 6 * 60e3, base: 10 * 60e3, add: 56, rose: 5 * 60e3 },
     jumpOn: { top: 20e3, base: 15 * 60e3, add: 155, rose: 0, still: 5 * 60e3 },
     jumpLong: { top: 20e3, base: 25 * 60e3, add: 155, rose: 0, still: 5 * 60e3 },
     jumpSmall: { top: 20e3, base: 12 * 60e3, add: 30, rose: 0, still: 5 * 60e3 },
@@ -309,6 +311,17 @@ test.describe('corners by the data clock', () => {
       if (name === 'quiet') {
         bad(num && c.small === 'kills in 10 min' && c.two && !c.dim && /^no new kills since \S+( \S+)?$/.test(c.line2), 'a quiet map should take two lines, "kills in 10 min" over "no new kills since HH:MM", not dimmed');
         bad(!/^⚠/.test(c.right), 'a quiet map with a fresh score should not warn on the right');
+      }
+      if (name === 'gapStopped') {
+        bad(num && c.small === 'kills in 65 min' && c.two && !c.dim && /^data up to \S+( \S+)?$/.test(c.line2), 'a long window with no proof of a live API should say "data up to HH:MM", not dimmed, no warning sign');
+        expect(await balloon(page, 'l'), "the long window's neutral balloon")
+          .toMatch(/ No newer data from the game's API since \S+( \S+)? yet\./);
+      }
+      if (name === 'stopped') {
+        bad(num && c.big === '56' && c.small === 'kills in 10 min' && c.two && !c.dim && /^data up to \S+( \S+)?$/.test(c.line2), 'kills still for 6 min with the score still for 5 should say "data up to HH:MM", not dimmed, no warning sign');
+        bad(!/^⚠/.test(c.right), 'a score 5 min old should not warn on the right');
+        expect(await balloon(page, 'l'), 'the neutral balloon')
+          .toMatch(/^56 kills in the 10 min up to \S+( \S+)?\. No newer data from the game's API yet: a quiet map or the API behind, too soon to tell\.$/);
       }
       // A jump after a stall: the swords light when the stall was at most 20 min and the kills spread over it
       // still make 50 per 10 min; otherwise not, and the balloon says why.
@@ -446,6 +459,16 @@ test.describe('kills that stood still, through the Worker', () => {
         `${width} px: the kills corner reaches ${room.left}px into the score bar, the page spills ${room.page}px`).toBe(true);
       await cdp.send('Emulation.clearDeviceMetricsOverride');
     }
+  });
+
+  test('still for over 3 h, the score stuck for 5 min: neutral "data up to" the newest reading', async ({ page, wvw }) => {
+    const ages = Array.from({ length: 46 }, (_, i) => (i * 5 + 7) * MIN);
+    const s = await open(page, wvw, ages, () => 0, 5 * MIN);
+    const c = await corner(page);
+    const upTo = await s.at(5 * MIN);
+    expect(c, 'the corner of a match still for 4 h whose score stopped 5 min ago').toEqual(
+      { big: '0', small: 'kills in 10 min', line2: `data up to ${upTo}`, dim: false, swords: false });
+    expect(await balloon(page, 'l')).toBe(`The kill count has not moved from ${await s.at(147 * MIN)}, the oldest reading, to ${upTo}. No newer data from the game's API yet: an empty map or the API behind, too soon to tell.`);
   });
 
   test('still for over 3 h, then the score stuck for 10 min: "data up to" the newest reading, not the oldest', async ({ page, wvw }) => {

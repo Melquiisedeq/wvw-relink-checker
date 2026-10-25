@@ -241,6 +241,23 @@ test('killView: a fight lights the swords; a stopped or silent body does not (js
   assert.equal(none.clock, 0);
 });
 
+test('killView: alive only when this page saw the score rise within 3 minutes (js/maps.js)', () => {
+  const p = fresh();
+  const base = matches[0];
+  const body = { Center: 1000, RedHome: 10, BlueHome: 10, GreenHome: 10 };
+  sheetOf(p, base.id, [{ at: p.clock.now, n: body }]);
+  const m = liveWith(base, body);
+  p.call('keepNewestMatch', m);
+  assert.equal(p.call('killView', m, TYPES, p.clock.now).alive, false, 'a first sight, no rise watched');
+  p.clock.now += MIN;
+  const up = clone(m);
+  up.scores.red = (Number(up.scores.red) || 0) + 1;
+  p.call('keepNewestMatch', up);
+  assert.equal(p.call('killView', up, TYPES, p.clock.now).alive, true, 'the score just rose');
+  assert.equal(p.call('killView', up, TYPES, p.clock.now + 2 * MIN).alive, true, 'rose 2 min ago');
+  assert.equal(p.call('killView', up, TYPES, p.clock.now + 4 * MIN).alive, false, 'rose 4 min ago');
+});
+
 test('killView: a catch-up step after a long stall lights nothing (js/maps.js)', () => {
   const p = fresh();
   const base = matches[1];
