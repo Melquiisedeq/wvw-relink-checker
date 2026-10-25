@@ -151,3 +151,27 @@ export async function boardOpen(page, wvw, width = 1280) {
   await wvw.settle();
   return tier;
 }
+
+// The loading indicators: they turn on CSS, off the embers' clock (js/boot.js).
+export const LOADERS = '.spinner, .btn-pips';
+
+// The infinite animations on the page, `loaders` or the rest, over `ms`: how many
+// moved on and how many stood still (each by its currentTime), and which of the
+// rest are still left running on CSS at the end (the clock pauses the ones it moves).
+// It asks for frames while it waits: with the embers stopped, a headless page draws
+// none, and an animation started meanwhile stays pending at 0.
+export function looping(page, { ms = 400, loaders = false } = {}) {
+  return page.evaluate(async ([ms, loaders, sel]) => {
+    const now = () => document.getAnimations().filter(a => a.effect && a.effect.target
+      && a.effect.getComputedTiming().iterations === Infinity && !!a.effect.target.closest(sel) === loaders);
+    const before = new Map(now().map(a => [a, a.currentTime]));
+    await new Promise(r => { const t0 = performance.now(); const f = t => (t - t0 < ms ? requestAnimationFrame(f) : r()); requestAnimationFrame(f); });
+    let moved = 0, still = 0;
+    for (const [a, t] of before) {
+      if (!a.effect.target.isConnected || a.playState === 'idle') continue;
+      if (a.currentTime > t) moved++; else still++;
+    }
+    const onCss = loaders ? [] : now().filter(a => a.playState === 'running').map(a => a.animationName);
+    return { moved, still, onCss };
+  }, [ms, loaders, LOADERS]);
+}
