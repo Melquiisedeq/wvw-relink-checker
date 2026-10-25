@@ -111,8 +111,9 @@ body{
 /* Nothing loops while the window is not being watched. `*` rather than a list of
    the looping animations, because a list misses whatever gets added next. Paused,
    not disabled, so coming back is instant. Set in idleWhenUnwatched, js/boot.js.
-   The exceptions are the animations that run once and are supposed to end:
-   freezing those is a stuck frame, not a pause. */
+   The looping ones the embers' clock has paused (js/boot.js) ignore this rule and
+   stand still because that clock stops. The exceptions are the animations that run
+   once and are supposed to end: freezing those is a stuck frame, not a pause. */
 .is-idle *:not(.value-changed):not(.delta):not(.match-panel),
 .is-idle *::before,
 .is-idle *:not(.side-pulse)::after{animation-play-state:paused !important;}
