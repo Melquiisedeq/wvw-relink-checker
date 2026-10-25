@@ -568,6 +568,7 @@ var RelinkNotice_ = (function () {
 
 
   function setup() {
+    stateTab();
     var now = Math.floor(Date.now() / 1000);
     var assignNa = timers().assignNa;
     if (assignNa === null) throw new Error('teamAssignment unreadable');
