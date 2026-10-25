@@ -87,11 +87,17 @@
 }
 .skel{
   border-radius:4px;
-  background:linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(127,214,242,.13) 37%, rgba(255,255,255,.04) 55%);
-  background-size:280% 100%;
+  background:rgba(255,255,255,.04);
+  position:relative;overflow:hidden;
+}
+/* The band of light is a layer wider than the block that slides across it.
+   paint.spec.mjs fails an infinite animation off the compositor. */
+.skel::after{
+  content:"";position:absolute;top:0;bottom:0;left:0;width:280%;
+  background:linear-gradient(90deg, rgba(127,214,242,0) 25%, rgba(127,214,242,.094) 37%, rgba(127,214,242,0) 55%);
   animation:skel-sweep 1.5s ease-in-out infinite;
 }
-@keyframes skel-sweep{0%{background-position:120% 0;}100%{background-position:-40% 0;}}
+@keyframes skel-sweep{0%{transform:translateX(-77.142857%);}100%{transform:translateX(25.714286%);}}
 .skel-title{height:9px;width:46px;margin-bottom:9px;}
 .skel-row{height:34px;margin:5px 0;border-radius:8px;}
 /* A team on a tier between weeks: a name and its guild list, none of the furniture
@@ -321,12 +327,32 @@
    out by not belonging, and cyan already means "now" elsewhere. */
 .relink-banner.is-rebuild .time.is-now{
   color:var(--accent-bright);
-  animation:rebuild-now 1.5s ease-in-out infinite;
+  position:relative;z-index:0;
+  text-shadow:0 1px 2px rgba(0,0,0,.7), 0 0 8px rgba(102,245,255,.35);
+}
+/* The glow is two copies of the text (js/relink.js sets data-text) that trade places in opacity,
+   weak out as strong in, behind the text: paint.spec.mjs fails an infinite animation off the
+   compositor. Neither copy is read aloud; where `/ ""` is not understood the weak glow stays on the element. */
+@supports (content:"x" / "") {
+  .relink-banner.is-rebuild .time.is-now{text-shadow:0 1px 2px rgba(0,0,0,.7);}
+  .relink-banner.is-rebuild .time.is-now::before,
+  .relink-banner.is-rebuild .time.is-now::after{
+    content:attr(data-text) / "";
+    position:absolute;left:0;top:0;z-index:-1;white-space:nowrap;pointer-events:none;
+    color:transparent;
+    animation:rebuild-now 1.5s ease-in-out infinite;
+  }
+  .relink-banner.is-rebuild .time.is-now::before{
+    text-shadow:0 0 8px rgba(102,245,255,.35);
+    animation-name:rebuild-now-weak;
+  }
+  .relink-banner.is-rebuild .time.is-now::after{text-shadow:0 0 26px rgba(102,245,255,1);}
 }
 .relink-banner.is-rebuild .region.is-now{color:#bfe9f7;font-weight:700;}
+@keyframes rebuild-now-weak{0%,100%{opacity:1;}50%{opacity:0;}}
 @keyframes rebuild-now{
-  0%,100%{text-shadow:0 1px 2px rgba(0,0,0,.7), 0 0 8px rgba(102,245,255,.35);}
-  50%{text-shadow:0 1px 2px rgba(0,0,0,.7), 0 0 26px rgba(102,245,255,1);}
+  0%,100%{opacity:0;}
+  50%{opacity:1;}
 }
 .relink-banner.is-rebuild .relink-alert{
   margin-top:7px;padding-top:7px;
