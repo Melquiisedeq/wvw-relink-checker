@@ -190,6 +190,28 @@ function sheetOf(p, id, rows) {
   p.set('killSheet', new Map([[id, rows]]));
 }
 
+test('ageBehindHistory: a body behind the history is dated by the oldest line ahead of it, not the newest (js/api.js)', () => {
+  const p = loadPage(recordedAt);
+  const m = matches[0];
+  p.ctx.__m = m; p.run('keepNewestMatch(__m)');
+  const now = p.clock.now;
+  const t = p.run('fightTotals(__m)');
+  const shift = (d) => Object.fromEntries(Object.entries(t).map(([k, v]) => [k, v + d]));
+  const datedBy = (lines) => {
+    p.ctx.__by = new Map([[m.id, lines]]);
+    p.run(`newestMatches.get(${JSON.stringify(m.id)}).at = ${now}`);
+    p.run('ageBehindHistory(__by, fightTotals)');
+    return (now - p.run(`newestMatches.get(${JSON.stringify(m.id)}).at`)) / MIN;
+  };
+  assert.equal(datedBy([{ at: now - 40 * MIN, n: shift(5) }, { at: now - 2 * MIN, n: shift(5) }]), 40);
+  // A line equal to the body, or behind it, is no proof of anything.
+  assert.equal(datedBy([{ at: now - 60 * MIN, n: shift(0) }, { at: now - 50 * MIN, n: shift(-3) },
+    { at: now - 40 * MIN, n: shift(5) }, { at: now - 2 * MIN, n: shift(5) }]), 40);
+  // A line of the week before, ahead of the body, is not of this week.
+  assert.equal(datedBy([{ at: Date.parse(m.start_time) - 10 * MIN, n: shift(9) },
+    { at: now - 40 * MIN, n: shift(5) }, { at: now - 2 * MIN, n: shift(5) }]), 40);
+});
+
 test('killView: a fight lights the swords; a stopped or silent body does not (js/maps.js)', () => {
   const p = fresh();
   const base = matches[0];
