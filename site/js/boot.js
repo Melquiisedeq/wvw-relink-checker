@@ -256,11 +256,46 @@ const emberField = (function () {
     }
   }
 
-  // The fastest ember climbs under two pixels a frame at 60. Chromium drives frames
-  // at the rate of the fastest display attached, so a window on a 60Hz screen
-  // beside a 144Hz one is asked to draw 144 times a second and shown 60 (crbug
-  // 40386822). This draws every frame at 60Hz and every second frame at 144.
+  // The fastest ember climbs under two pixels a frame at 60. On Windows Chromium
+  // times its frames by the primary monitor's vblank (ui/gl/vsync_thread_win_dxgi.cc),
+  // so a window on a 60Hz screen beside a 144Hz primary is asked to draw 144 times a
+  // second and shown 60. This draws every frame at 60Hz and every second frame at 144.
   const MIN_FRAME_MS = 1000 / 85;
+
+  // An infinite CSS animation makes the page draw a frame at every beat of the
+  // monitor, and a video in another window stutters with it. So the looping ones are
+  // paused here and moved on by these frames: the page draws only when the embers do
+  // (frames.spec.mjs). Not the loading indicators, which turn under reduced motion
+  // too. Paused through the API they no longer follow animation-play-state, so the
+  // stopped clock is what holds them still while away or under reduced motion
+  // (embers.spec.mjs); handed back to CSS they would restart.
+  const driven = new Set();
+  let sweepDue = false, sinceSweep = 0;
+  function adopt() {
+    sweepDue = false; sinceSweep = 0;
+    if (!document.getAnimations) return;
+    for (const a of document.getAnimations()) {
+      if (driven.has(a) || a.playState !== 'running' || !a.effect) continue;
+      const t = a.effect.target;
+      if (!t || !t.isConnected || t.closest('.spinner, .btn-pips')) continue;
+      if (a.effect.getComputedTiming().iterations !== Infinity) continue;
+      a.pause();
+      driven.add(a);
+    }
+  }
+  // An element rebuilt starts its animations again; animationstart asks for a sweep.
+  // It can fail to come (embers.spec.mjs holds it back), hence one a second too.
+  function moveLooping(dt) {
+    sinceSweep += dt;
+    if (sweepDue || sinceSweep >= 1) adopt();
+    for (const a of driven) {
+      const t = a.effect && a.effect.target;
+      // A CSS animation whose rule went away is idle, its currentTime null: moved on, it would come back.
+      if (!t || !t.isConnected || a.currentTime === null) { driven.delete(a); continue; }
+      a.currentTime += dt * 1000;
+    }
+  }
+  document.addEventListener('animationstart', () => { sweepDue = true; }, true);
 
   let clock = 0, last = 0, running = false, frameId = 0;
   // Stopped for reduced motion only: a blast may run the field until its sparks end.
@@ -272,6 +307,8 @@ const emberField = (function () {
     clock += dt;
     last = now;
     draw(dt);
+    // A blast under reduced motion runs the embers only.
+    if (!settling) moveLooping(dt);
     if (settling && !blasting.length) stop(true);
   }
 
@@ -293,7 +330,7 @@ const emberField = (function () {
 
   return {
     start() {
-      settling = false; blastMayRun = false;
+      settling = false; blastMayRun = false; sweepDue = true;
       if (running) return;
       running = true;
       last = performance.now();
