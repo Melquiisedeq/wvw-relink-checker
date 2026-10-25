@@ -7,7 +7,7 @@
   "listeners": 163,
   "paint": {
     "layers": 128,
-    "reasons": { "Viewport": 2, "OverflowScrolling": 4, "RootScroller": 2, "Overlap": 53, "Canvas": 1, "BackdropFilter": 5, "ActiveOpacityAnimation": 5, "ActiveTransformAnimation": 13 },
+    "reasons": { "Viewport": 2, "OverflowScrolling": 4, "RootScroller": 2, "Overlap": 53, "Canvas": 1, "BackdropFilter": 5, "ActiveOpacityAnimation": 8, "ActiveTransformAnimation": 13 },
     "raster": 810
   }
 }

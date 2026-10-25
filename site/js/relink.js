@@ -260,6 +260,7 @@ function buildRebuildValue(naLeft, euLeft) {
     const time = document.createElement('span');
     time.className = lit ? 'time is-now' : 'time';
     time.textContent = left !== null && left <= 0 ? 'done' : formatCountdown(left);
+    time.dataset.text = time.textContent;
     return [region, time];
   };
   const sep = document.createElement('span');

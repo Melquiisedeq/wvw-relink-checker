@@ -22,7 +22,7 @@ const budget = JSON.parse(readFileSync(new URL('./budget.json', import.meta.url)
 const COMPOSITABLE = ['opacity', 'transform', 'translate', 'rotate', 'scale', 'filter', 'backdropFilter'];
 const NOT_PROPERTIES = ['offset', 'easing', 'composite', 'computedOffset'];
 // The exact list: add a name here only on purpose.
-const OFF_COMPOSITOR = ['rebuild-now'];
+const OFF_COMPOSITOR = [];
 
 test.use({
   timeline: playing(150), timezoneId: 'UTC', locale: 'en-US', viewport: { width: 1280, height: 800 },
