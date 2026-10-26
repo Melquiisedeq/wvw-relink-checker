@@ -772,6 +772,41 @@ function primeMapBadges() {
   });
 }
 
+// The first map's terrain picture, asked for when the mouse reaches a map
+// button or it takes focus, so it is in the cache by the click. The same URL
+// fillTierMaps asks for, so the <image> finds it there. MAP_IMAGE lives in
+// js/maps.js: if that is not in yet, the picture waits for it.
+const mapPicturesAsked = new Set();
+
+function askFirstMapPicture(btn) {
+  const info = tierMapButtons.get(btn);
+  if (!info) return;
+  // The same connection test as the terrain warm-up in js/maps.js.
+  const conn = navigator.connection;
+  if (conn && (conn.saveData || /(^|-)2g$/.test(conn.effectiveType || ''))) return;
+  const maps = newestBodyOf(info.match).maps || [];
+  const type = MAP_PANEL_ORDER.find((t) => maps.some((m) => m.type === t));
+  const first = maps.find((m) => m.type === type);
+  if (!first) return;
+  const ask = () => {
+    const pic = MAP_IMAGE[first.id];
+    if (!pic || mapPicturesAsked.has(pic.lite)) return;
+    mapPicturesAsked.add(pic.lite);
+    new Image().src = pic.lite;
+  };
+  if (typeof MAP_IMAGE !== 'undefined') ask();
+  else loadMapsScript().then(ask, () => { /* the click asks again */ });
+}
+
+document.addEventListener('pointerover', (e) => {
+  const btn = e.pointerType === 'mouse' && e.target.closest && e.target.closest('.tier-map-btn');
+  if (btn) askFirstMapPicture(btn);
+});
+document.addEventListener('focusin', (e) => {
+  const btn = e.target.closest && e.target.closest('.tier-map-btn');
+  if (btn) askFirstMapPicture(btn);
+});
+
 function buildTierMapButton(match, regionName, tierNum) {
   const btn = document.createElement('button');
   btn.type = 'button';
