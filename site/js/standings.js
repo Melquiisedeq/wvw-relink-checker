@@ -21,8 +21,8 @@ function showStandingsSkeleton(gridEl) {
 }
 
 // Last VP / skirmish per side, so a background refresh can highlight what
-// actually moved. Keyed by match and colour; sides are rebuilt from
-// scratch on every refresh, so the numbers have to outlive the elements.
+// actually moved. Keyed by match and colour, not kept on the cards: a card
+// built again (renderStandingsRegion) has to compare against the one it replaces.
 const prevSideStats = new Map(); // `${matchId}:${color}` -> { vp, skirmish, pct }
 
 // Dropped the moment a tier's week ends, so the first refresh of the new one has
@@ -133,44 +133,59 @@ function buildStandingsStale(match, yoursByColor) {
   return wrap;
 }
 
-// Flashes a number that just changed and floats the delta above it.
-function flashValue(el, delta) {
-  if (!Number.isFinite(delta)) return;
+// The numbers that changed in this repaint, flashed together by flashChanges.
+const pendingFlashes = []; // [valueEl, delta]
 
-  el.classList.remove('value-changed');
-  void el.offsetWidth; // restart the animation from zero
-  el.classList.add('value-changed');
+// Flashes each number that just changed, pulses its card at the edge so a
+// change registers off-centre, and floats the delta above it. All at once: a
+// class removed and added again restarts its animation only across a layout,
+// so they share one layout.
+function flashChanges() {
+  const list = pendingFlashes.splice(0).filter(([, delta]) => Number.isFinite(delta));
+  if (!list.length) return;
+  const sides = new Set(list.map(([el]) => el.closest('.standing-side')).filter(Boolean));
+  let restart = false;
+  for (const [el] of list) if (el.classList.contains('value-changed')) { el.classList.remove('value-changed'); restart = true; }
+  for (const s of sides) if (s.classList.contains('side-pulse')) { s.classList.remove('side-pulse'); restart = true; }
+  if (restart) void document.body.offsetWidth; // restart the animations from zero
+  for (const [el] of list) el.classList.add('value-changed');
+  for (const s of sides) s.classList.add('side-pulse');
 
-  // The number flashes and its card pulses at the edge, so a change registers off-centre.
-  const side = el.closest('.standing-side');
-  if (side) {
-    side.classList.remove('side-pulse');
-    void side.offsetWidth;
-    side.classList.add('side-pulse');
-  }
-
-  // Deferred a frame: the side is still being assembled, and a detached element
-  // measures zero. The delta is parked on <body> at the value's screen position,
-  // because the card clips its own chamfered corners and would shear it off.
+  // Deferred a frame: showRegion hangs the guild-found strip after this, which
+  // moves the cards below it. The delta is parked on <body> at the value's
+  // screen position, because the card clips its own chamfered corners and
+  // would shear it off. Every position is read before any delta is added, so
+  // the page is laid out once.
   requestAnimationFrame(() => {
-    const rect = el.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) return; // never made it onto the page
-
-    const tag = document.createElement('span');
-    tag.className = delta > 0 ? 'delta delta-up' : 'delta delta-down';
-    tag.textContent = `${delta > 0 ? '+' : ''}${delta.toLocaleString()}`;
-    tag.style.left = `${rect.left + rect.width / 2}px`;
-    tag.style.top = `${rect.top - 4}px`;
-    document.body.appendChild(tag);
-    setTimeout(() => tag.remove(), 1700);
+    const rects = list.map(([el]) => el.getBoundingClientRect());
+    list.forEach(([, delta], i) => {
+      const rect = rects[i];
+      if (rect.width === 0 && rect.height === 0) return; // never made it onto the page
+      const tag = document.createElement('span');
+      tag.className = delta > 0 ? 'delta delta-up' : 'delta delta-down';
+      tag.textContent = `${delta > 0 ? '+' : ''}${delta.toLocaleString()}`;
+      tag.style.left = `${rect.left + rect.width / 2}px`;
+      tag.style.top = `${rect.top - 4}px`;
+      document.body.appendChild(tag);
+      setTimeout(() => tag.remove(), 1700);
+    });
   });
 }
 
+// A card outlives its flash, so the flash's classes go when it ends: the next
+// repaint flashes only what changed then.
+document.addEventListener('animationend', (e) => {
+  const t = e.target;
+  if (!(t instanceof Element)) return;
+  if (e.animationName === 'value-flash') t.classList.remove('value-changed');
+  else if (e.animationName === 'side-pulse') t.classList.remove('side-pulse');
+});
+
 // After a guild search: the card of the team the first guild landed on blinks
 // three times, the page scrolls to it, and a strip hangs from its lower edge
-// with the guild's name for a few seconds. The cards are rebuilt every
-// refresh, so what was found is kept here and painted again onto the new
-// cards (without the blink) until the time runs out.
+// with the guild's name for a few seconds. A refresh can build the cards
+// again or move them, so what was found is kept here and painted again after
+// every refresh (without the blink) until the time runs out.
 const GUILD_FOUND_MS = 8000;
 const GUILD_FOUND_FLASH_MS = 2600;
 let guildFound = null; // { teamName, guildName, until }
@@ -236,8 +251,14 @@ const RESET_NOTE = 'Weekly reset \u00b7 new matchups arriving';
 
 // Shows the pulsing live-dot next to the synced time on success; plain
 // text (no dot) for loading/error states.
+// A dot already there keeps pulsing: only the time changes.
 function setStandingsStatus(el, synced, text) {
   clearRetryAlert(el);
+  const [had, time] = el.childNodes;
+  if (synced && el.childNodes.length === 2 && had.classList?.contains('live-dot') && time.nodeType === Node.TEXT_NODE) {
+    if (time.nodeValue !== text) time.nodeValue = text;
+    return;
+  }
   el.textContent = '';
   if (!synced) { el.textContent = text; return; }
   const dot = document.createElement('span');
@@ -695,8 +716,7 @@ function startPeeking() {
   }
 }
 
-// Rebuilding the grid on refresh would leave a popover pointing at a
-// removed element, so close it first.
+// A refresh that builds the board again takes an open popover's anchor down, so none runs while one is open.
 async function refreshStandings() {
   // Anything open is being read, and reloading takes the board and the popover's
   // anchor down: the tick is skipped, not spent closing it. The tier maps refresh
@@ -762,22 +782,34 @@ function buildStandingStats(match, color, stats, className) {
   return statsLine;
 }
 
-function renderStandingSide(match, color, rankByColor, leaders, leaderScore) {
-  const teamId = matchTeamId(match, color);
-  const serverName = getTeamName(teamId);
+// What one side shows, and what it showed at the last repaint (prevSideStats,
+// replaced here by what it shows now).
+function sideFigures(match, color, leaderScore) {
   const kills = Number(match.kills?.[color] ?? 0);
   const deaths = Number(match.deaths?.[color] ?? 0);
-  const kd = formatKd(kills, deaths);
   const vpNum = Number(match.victory_points?.[color] ?? 0);
-  const vp = vpNum.toLocaleString();
   const skirmish = getSkirmishScore(match, color);
-
   const statsKey = `${match.id}:${color}`;
   const prev = prevSideStats.get(statsKey);
   const pctNow = (skirmish !== null && leaderScore !== null && leaderScore > 0)
     ? (skirmish / leaderScore) * 100
     : null;
   prevSideStats.set(statsKey, { vp: vpNum, skirmish, pct: pctNow });
+  const serverName = getTeamName(matchTeamId(match, color));
+  return { serverName, kills, deaths, kd: formatKd(kills, deaths), vpNum, skirmish, prev };
+}
+
+function queueSideFlashes({ prev, vpNum, skirmish }, vpValue, skirmishValue) {
+  if (!prev) return;
+  if (prev.vp !== vpNum) pendingFlashes.push([vpValue, vpNum - prev.vp]);
+  if (skirmishValue && prev.skirmish !== null && prev.skirmish !== skirmish) {
+    pendingFlashes.push([skirmishValue, skirmish - prev.skirmish]);
+  }
+}
+
+function renderStandingSide(match, color, rankByColor, leaders, leaderScore) {
+  const figures = sideFigures(match, color, leaderScore);
+  const { serverName, kills, deaths, kd, vpNum, skirmish, prev } = figures;
 
   const row = document.createElement('div');
   row.className = `standing-side side-${color}`;
@@ -804,7 +836,7 @@ function renderStandingSide(match, color, rankByColor, leaders, leaderScore) {
 
   const vpEl = document.createElement('span');
   vpEl.className = 'standing-vp';
-  vpEl.innerHTML = `<span class="stat-label">VP </span><span class="stat-value">${vp}</span>`;
+  vpEl.innerHTML = `<span class="stat-label">VP </span><span class="stat-value">${vpNum.toLocaleString()}</span>`;
   const [regionCode, tierNum] = match.id.split('-');
   vpEl.appendChild(buildMovementIndicator(regionCode, tierNum, rank, isTiedOnVp(match, color)));
   top.appendChild(vpEl);
@@ -815,15 +847,10 @@ function renderStandingSide(match, color, rankByColor, leaders, leaderScore) {
   row.appendChild(top);
   row.appendChild(statsLine);
 
-  // Flashed only now: the pulse looks for the card its number sits in.
-  // Skirmish is always the first stat when it exists, so its value
-  // element is the first .stat-value in the line.
-  if (prev) {
-    if (prev.vp !== vpNum) flashValue(vpEl.querySelector('.stat-value'), vpNum - prev.vp);
-    if (skirmish !== null && prev.skirmish !== null && prev.skirmish !== skirmish) {
-      flashValue(statsLine.querySelector('.stat-value'), skirmish - prev.skirmish);
-    }
-  }
+  // Skirmish is always the first stat when it exists, so its value element
+  // is the first .stat-value in the line.
+  queueSideFlashes(figures, vpEl.querySelector('.stat-value'),
+    skirmish !== null ? statsLine.querySelector('.stat-value') : null);
 
   if (skirmish !== null && leaderScore !== null) {
     row.appendChild(buildSkirmishBar(color, skirmish, leaderScore, prev ? prev.pct : null));
@@ -832,3 +859,69 @@ function renderStandingSide(match, color, rankByColor, leaders, leaderScore) {
   return row;
 }
 
+const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
+// A stat value holds its number as its first text node, its button after it.
+function setLeadText(el, text) {
+  const t = el.firstChild;
+  if (t && t.nodeType === Node.TEXT_NODE) { if (t.nodeValue !== text) t.nodeValue = text; }
+  else el.insertBefore(document.createTextNode(text), t);
+}
+
+// renderStandingSide, written into the card on the page (patchStandingsRegion
+// has checked it has the same team and the same stats).
+// `restyled`: the card was moved by insertBefore and has no style yet.
+function patchStandingSide(match, color, side, rankByColor, leaders, leaderScore, restyled) {
+  const figures = sideFigures(match, color, leaderScore);
+  const { kills, deaths, kd, vpNum, skirmish } = figures;
+  const rank = rankByColor[color];
+
+  const badge = side.querySelector('.rank-badge');
+  if (badge.className !== `rank-badge rank-${rank}`) badge.className = `rank-badge rank-${rank}`;
+  setText(badge, String(rank));
+
+  const vpEl = side.querySelector('.standing-vp');
+  const vpValue = vpEl.querySelector('.stat-value');
+  setText(vpValue, vpNum.toLocaleString());
+  const [regionCode, tierNum] = match.id.split('-');
+  const move = buildMovementIndicator(regionCode, tierNum, rank, isTiedOnVp(match, color));
+  const had = vpEl.querySelector('.movement-indicator');
+  if (!had) vpEl.appendChild(move);
+  else if (had.className !== move.className || had.title !== move.title || had.textContent !== move.textContent) {
+    had.replaceWith(move);
+  }
+
+  const values = side.querySelectorAll('.standing-side-stats .stat-value');
+  let i = 0;
+  const skirmishValue = skirmish !== null ? values[i++] : null;
+  const activityValue = values[i++];
+  const kdValue = values[i++];
+  if (skirmishValue) {
+    setLeadText(skirmishValue, formatCompact(skirmish));
+    skirmishValue.classList.toggle('stat-leader', leaders.skirmish === color);
+    rebindPopoverMatch(skirmishValue.querySelector('.activity-btn'), match);
+  }
+  setLeadText(activityValue, formatCompact(kills + deaths));
+  activityValue.classList.toggle('stat-leader', leaders.activity === color);
+  rebindPopoverMatch(activityValue.querySelector('.activity-info-btn'), match);
+  setLeadText(kdValue, kd);
+  const kdSign = deaths > 0 && kills !== deaths;
+  kdValue.classList.toggle('kd-good', kdSign && kills > deaths);
+  kdValue.classList.toggle('kd-bad', kdSign && kills < deaths);
+  kdValue.classList.toggle('stat-leader', leaders.kd === color);
+  rebindPopoverMatch(kdValue.querySelector('.map-kd-btn'), match);
+
+  queueSideFlashes(figures, vpValue, skirmishValue);
+
+  // The fill stays, so its width transition runs from the width it has; a
+  // card without style is given it first, at the old width.
+  if (skirmish !== null && leaderScore !== null) {
+    const rawPct = leaderScore > 0 ? (skirmish / leaderScore) * 100 : 0;
+    const fill = side.querySelector('.skirmish-bar-fill');
+    const width = `${Math.max(4, rawPct)}%`;
+    if (fill.style.width !== width) {
+      if (restyled) void getComputedStyle(fill).width;
+      fill.style.width = width;
+    }
+    setText(side.querySelector('.skirmish-bar-pct'), `${Math.round(rawPct)}%`);
+  }
+}
