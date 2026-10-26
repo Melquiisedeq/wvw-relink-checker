@@ -626,8 +626,12 @@ async function loadStandings(origin = 'cycle') {
 // wire, kept 15 s by Cloudflare) is read while the tab is visible: every
 // PEEK_MS while the visitor is using the page, doubling to PEEK_IDLE_MAX_MS
 // while not (the readers move every minute, so "it moved" would never let it
-// slow down); never under PEEK_SAVE_MS with
-// Save-Data on. Hidden, it stops; it runs at once when the tab comes back,
+// slow down); never under PEEK_SAVE_MS less a few seconds with Save-Data on.
+// Once a summary has been read the delay is spent to land PEEK_AFTER_MS after
+// the newest `at` it gave, a whole number of minutes on (see peekWait): the
+// readers write once a minute and /api shows it only after the cache and the
+// way to the database; a moved minute mark is followed. Hidden, it stops; it
+// runs at once when the tab comes back,
 // when a popover closes and on the first input after an idle stretch. A live
 // match /api holds further along than the one on show, which has not risen
 // here for PEEK_BEHIND_MS, loads the board from /api/latest. With a popover
@@ -637,11 +641,16 @@ const PEEK_MS = 30 * 1000;
 const PEEK_IDLE_MAX_MS = 120 * 1000;
 const PEEK_SAVE_MS = 60 * 1000;
 const PEEK_ACTIVE_MS = 2 * 60 * 1000;   // input this recent counts as using the page
-const PEEK_BEHIND_MS = 90 * 1000;
+const PEEK_BEHIND_MS = 30 * 1000;
+const PEEK_AFTER_MS = 25 * 1000;
+const PEEK_RETRY_MS = 10 * 1000;   // an aligned peek that saw no newer `at` (a clock ahead of the server's) asks once more
+let peekStill = false;          // the last peek read a summary whose newest `at` had not moved
+let peekAligned = false;        // the peek now due was armed by peekWait, not by a show or an input
 let peekLoadedAt = 0;           // a load the peek asked for: one per PEEK_BEHIND_MS, if /api fails
 let peekTimer = null;
 let peekDelay = PEEK_MS;
 let peekAt = 0;                 // when the last peek ran
+let peekAnchor = 0;             // ms: the newest `at` in the last summary read (server time)
 let inputAt = Date.now();
 
 const peekFloor = () => (navigator.connection?.saveData === true ? PEEK_SAVE_MS : PEEK_MS);
@@ -658,13 +667,53 @@ async function latestBoard() {
     .sort((a, b) => byId(a.id, b.id));
 }
 
+// The newest `at` of a summary in ms, 0 when none is a number.
+function summaryAt(sum) {
+  let newest = 0;
+  for (const e of Object.values(sum)) {
+    const at = e && typeof e === 'object' ? e.at * 1000 : NaN;
+    if (Number.isFinite(at) && at > newest) newest = at;
+  }
+  return newest;
+}
+
+// Ms until the next peek, from `now`: the last aligned moment within `delay`,
+// or the one a minute on when that is under the floor away (5 s of slack, for
+// a read that took a while). Never zero, so a skipped peek cannot spin.
+function peekWait(delay, now) {
+  if (!peekAnchor) return delay;
+  const base = peekAnchor + PEEK_AFTER_MS;
+  let t = base + Math.floor((now + delay - base) / 60000) * 60000;
+  if (t < now + peekFloor() - 5000) t += 60000;
+  return t - now;
+}
+
+// An aligned peek that read no newer `at` (a clock ahead of the server's) is
+// followed by one more after PEEK_RETRY_MS, never under Save-Data; that one is
+// not aligned, so it is not followed in turn: at most two reads a minute.
+function peekNext(delay, now) {
+  if (peekStill && peekAligned && peekFloor() === PEEK_MS) { peekAligned = false; return PEEK_RETRY_MS; }
+  peekAligned = peekAnchor > 0;
+  return peekWait(delay, now);
+}
+
+// What a summary teaches: the newest `at`, and whether it moved.
+function peekLearn(sum) {
+  const newest = summaryAt(sum);
+  if (!newest) return;
+  peekStill = peekAnchor > 0 && newest <= peekAnchor;
+  peekAnchor = newest;
+}
+
 async function peekLatest() {
   if (standingsInFlight || document.visibilityState === 'hidden' || standingsFailed.length) return;
   peekAt = Date.now();
+  peekStill = false;
   let sum;
   try { sum = await fetchOwnApi(LATEST_SUMMARY_URL); } catch { return; }
   if (!sum || typeof sum !== 'object') return;
   const now = Date.now();
+  peekLearn(sum);
   const ahead = new Set();
   for (const [id, k] of newestMatches) {
     const e = Object.hasOwn(sum, id) ? sum[id] : null;
@@ -687,7 +736,7 @@ async function runPeek() {
   peekDelay = using ? floor : Math.min(Math.max(peekDelay * 2, floor), PEEK_IDLE_MAX_MS);
   if (document.visibilityState !== 'hidden') {
     clearTimeout(peekTimer);   // a show or an input during the peek may have armed one
-    peekTimer = setTimeout(runPeek, peekDelay);
+    peekTimer = setTimeout(runPeek, peekNext(peekDelay, Date.now()));
   }
 }
 
@@ -695,6 +744,7 @@ async function runPeek() {
 function peekSoon() {
   if (document.visibilityState === 'hidden') return;
   clearTimeout(peekTimer);
+  peekAligned = false;
   peekTimer = setTimeout(runPeek, Math.max(0, peekFloor() - (Date.now() - peekAt)));
 }
 

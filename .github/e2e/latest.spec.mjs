@@ -105,7 +105,7 @@ test.describe('a group behind the game', () => {
 // The page opened with /api/latest down, so its first ask got nothing. Five
 // minutes on the game's server group answers a body 10 minutes behind (the page
 // keeps the further-along one it has, and sees nothing rise) while /api/latest is
-// back with the newest: asked again after 90 s of that, the score arrives by it.
+// back with the newest: asked again after 30 s of that, the score arrives by it.
 test.describe('a game body that stands still while /api/latest is ahead', () => {
   test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().latestStatus(503).advance(5).latestStatus(null).olderPool(10) });
 
@@ -158,7 +158,7 @@ test.describe('/api/latest hung', () => {
   });
 });
 
-// The peek (a read of /api/latest/summary every 30 s while the tab is shown)
+// The peek (a read of /api/latest/summary every 30 s until a summary has been read, aligned to the readers after, while the tab is shown)
 // does not arm its next turn for a tab that went to the background while the
 // read was out; the tab coming back arms it. The read is held here until the
 // tab is hidden, so the state is reached every time, not when a timer happens
