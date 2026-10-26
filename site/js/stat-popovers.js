@@ -110,6 +110,13 @@ function renderMapKdPopoverContent(popover, serverName, match, color) {
     + 'fighting went: above 1.00 means more kills than deaths there.'));
 }
 
+// The body each stat button opens with: the one it was built with, until a
+// score written into its card in place (patchStandingSide) gives it the new one.
+const popoverMatches = new WeakMap(); // button -> match
+function rebindPopoverMatch(btn, match) {
+  if (btn) popoverMatches.set(btn, match);
+}
+
 // Small crossed-swords icon next to the K/D value, opening a per-map breakdown.
 // The data is already in `match`: no fetch.
 function buildMapKdButton(serverName, match, color) {
@@ -132,10 +139,11 @@ function buildMapKdButton(serverName, match, color) {
     '<circle cx="12" cy="20" r="1.3" fill="currentColor" stroke="none"/>' +
     '</g>' +
     '</g></svg>';
+  popoverMatches.set(btn, match);
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     openPopover(btn, `${serverName} K/D by map`, (popover) => {
-      renderMapKdPopoverContent(popover, serverName, match, color);
+      renderMapKdPopoverContent(popover, serverName, popoverMatches.get(btn), color);
     }, 'info-popover--data');
   });
   return btn;
@@ -409,10 +417,11 @@ function buildSkirmishTrendButton(serverName, match, color) {
   btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
     '<path d="M3 17 L9 10 L14 14 L21 5" stroke="currentColor" stroke-width="2.2" ' +
     'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  popoverMatches.set(btn, match);
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     openPopover(btn, `${serverName} skirmish score trend`, (popover) => {
-      renderSkirmishTrendPopoverContent(popover, serverName, match, color);
+      renderSkirmishTrendPopoverContent(popover, serverName, popoverMatches.get(btn), color);
     }, 'info-popover--trend');
   });
   return btn;
@@ -474,10 +483,11 @@ function buildActivityInfoButton(serverName, match, color) {
   btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
     'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">' +
     '<path d="M13 2 L4 14 h6 l-1 8 l9 -12 h-6 Z"/></svg>';
+  popoverMatches.set(btn, match);
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     openPopover(btn, `What Activity means for ${serverName}`, (popover) => {
-      renderActivityInfoPopoverContent(popover, serverName, match, color);
+      renderActivityInfoPopoverContent(popover, serverName, popoverMatches.get(btn), color);
     }, 'info-popover--data');
   });
   return btn;

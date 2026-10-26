@@ -1,10 +1,8 @@
 'use strict';
 // Result rows and match panels: the per-guild answer rows, the match panel under them, and their formatters.
 
-function renderStandingsRegion(gridEl, matches) {
-  gridEl.textContent = '';
-  if (matches.length === 0) return;
-
+// The cards of a region, in the order they stand: one per tier.
+function standingsBoard(matches) {
   // One late tier among live ones shows the teams left over (deduceLineup):
   // that is the API's own data, so it goes first. Otherwise a body behind
   // the week this browser remembers, and a tier of that week the API left
@@ -25,7 +23,17 @@ function renderStandingsRegion(gridEl, matches) {
   for (let t = 1; t < Math.max(0, ...tiers); t++) {
     if (!tiers.includes(t)) waiting.push({ waitingId: `${region}-${t}` });
   }
-  const sorted = [...shown, ...waiting].sort((a, b) => tierOf(a) - tierOf(b));
+  return [...shown, ...waiting].sort((a, b) => tierOf(a) - tierOf(b));
+}
+
+// A new score is written into the cards on the page when the board has the
+// same shape (patchStandingsRegion); otherwise every card is built again.
+function renderStandingsRegion(gridEl, matches) {
+  const sorted = matches.length ? standingsBoard(matches) : [];
+  if (patchStandingsRegion(gridEl, sorted)) return;
+  gridEl.textContent = '';
+  if (!sorted.length) return;
+  const region = matches[0].id.split('-')[0];
 
   for (const match of sorted) {
     if (match.waitingId) {
@@ -72,6 +80,71 @@ function renderStandingsRegion(gridEl, matches) {
 
     gridEl.appendChild(box);
   }
+  flashChanges();
+}
+
+const sideColorOf = (el) => COLORS.find((c) => el.classList.contains(`side-${c}`));
+
+// The new score written into the cards already on the page, so their elements
+// and their animations stay. False, with nothing touched, when the board's
+// shape differs from what is there: a tier came or went, a card is a line-up,
+// waiting or stale, other teams, a skirmish score came or went.
+function patchStandingsRegion(gridEl, sorted) {
+  const boxes = gridEl.children;
+  if (!sorted.length || boxes.length !== sorted.length) return false;
+  const plans = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const m = sorted[i];
+    const box = boxes[i];
+    if (m.waitingId || m.lineupOnly || !matchIsLive(m)) return false;
+    const sides = {};
+    for (const s of box.children) {
+      if (s.classList.contains('standing-side')) sides[sideColorOf(s)] = s;
+    }
+    const leaderScore = getSkirmishLeaderScore(m);
+    for (const c of COLORS) {
+      const s = sides[c];
+      if (!s) return false;
+      if (s.querySelector('.standing-side-name').textContent !== getTeamName(matchTeamId(m, c))) return false;
+      // The bar comes and goes with the skirmish score, and its button with it.
+      if ((getSkirmishScore(m, c) !== null) !== !!s.querySelector('.activity-btn')) return false;
+    }
+    plans.push({ m, box, sides, leaderScore });
+  }
+  for (const p of plans) patchStandingMatch(p);
+  flashChanges();
+  return true;
+}
+
+function patchStandingMatch({ m, box, sides, leaderScore }) {
+  const [region, tierNum] = m.id.split('-');
+  const mapBtn = box.querySelector(':scope > .standing-match-title .tier-map-btn');
+  if (mapBtn) {
+    tierMapButtons.set(mapBtn, { match: m, regionName: REGION_NAMES[region] || `Region ${region}`, tierNum: tierNum || '?' });
+    paintMapBadge(mapBtn);
+  }
+
+  const rankByColor = rankMatchByVictoryPoints(m);
+  const leaders = getStatLeaders(m);
+  const ranked = [...COLORS].sort((a, b) => rankByColor[a] - rankByColor[b]);
+
+  // A side overtook: the cards move, not rebuilt. The guild-found strip hangs
+  // from its card, so it goes and paintGuildFound hangs it again. moveBefore
+  // keeps a moved card's style; insertBefore drops it, and the card's bar then
+  // has no width to travel from (patchStandingSide gives it one).
+  const order = [...box.children].filter((e) => e.classList.contains('standing-side'));
+  const restyled = new Set();
+  if (ranked.some((c, i) => order[i] !== sides[c])) {
+    for (const s of box.querySelectorAll(':scope > .guild-found-strip')) s.remove();
+    const keeps = typeof box.moveBefore === 'function';
+    let ref = box.querySelector(':scope > .standing-match-title').nextSibling;
+    for (const c of ranked) {
+      if (sides[c] === ref) { ref = ref.nextSibling; continue; }
+      if (keeps) box.moveBefore(sides[c], ref);
+      else { box.insertBefore(sides[c], ref); restyled.add(c); }
+    }
+  }
+  for (const c of COLORS) patchStandingSide(m, c, sides[c], rankByColor, leaders, leaderScore, restyled.has(c));
 }
 
 // The card of a tier with no body at all: its number and a line, no map
@@ -236,9 +309,9 @@ function buildSkirmishBar(color, score, leaderScore, fromPct) {
   const pct = Math.max(4, rawPct);
   fill.className = `skirmish-bar-fill skirmish-bar-${color}`;
 
-  // The rail is rebuilt on every refresh, so a fresh element would appear at its
-  // final width and the CSS transition would never run. Starting at the previous
-  // width gives it somewhere to travel from.
+  // A card built again gets a fresh fill, which would appear at its final width
+  // and the CSS transition would never run. Starting at the previous width gives
+  // it somewhere to travel from.
   const shouldAnimate = typeof fromPct === 'number' && Math.abs(fromPct - rawPct) > 0.01;
   fill.style.width = `${shouldAnimate ? Math.max(4, fromPct) : pct}%`;
   if (shouldAnimate) {

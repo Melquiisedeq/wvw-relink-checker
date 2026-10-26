@@ -705,9 +705,10 @@ async function fillWhenLoaded(popover, match, regionName, tierNum, triggerEl) {
   await fillTierMaps(popover, match, regionName, tierNum, triggerEl);
 }
 
-// The matches the tier buttons were built for, so the badge can be painted
-// again when the shared kill history lands. A WeakMap: the buttons are
-// rebuilt with every standings refresh and the old ones are dropped.
+// The match each tier button opens and paints its badge from: the one it
+// was built with, until a score written into its card in place
+// (patchStandingMatch) gives it the new one. A WeakMap: a board built again
+// drops the old buttons.
 const tierMapButtons = new WeakMap();
 let mapBadgesAsked = false;
 
@@ -792,7 +793,7 @@ function buildTierMapButton(match, regionName, tierNum) {
     '</svg>';
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
-    toggleTierMaps(match, regionName, tierNum, btn);
+    toggleTierMaps(tierMapButtons.get(btn).match, regionName, tierNum, btn);
   });
   tierMapButtons.set(btn, { match, regionName, tierNum });
   paintMapBadge(btn);
