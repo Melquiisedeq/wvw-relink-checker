@@ -583,10 +583,11 @@ function matchesToReread(list, regions) {
 // behind the fight log is read again the same way, once, with /api/latest
 // asked too if it was not in the last LATEST_GAP_MS.
 async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
-  // The first read of a visit, and a single match gone quiet (the maps
-  // popover's poll), ask /api/latest beside the game, not after it.
+  // The first read of a visit, the first after the tab was hidden, and a
+  // single match gone quiet (the maps popover's poll), ask /api/latest beside
+  // the game, not after it.
   const one = new URL(url).searchParams.get('id');
-  const early = regions.length ? (latestAsked ? null : startLatest())
+  const early = regions.length ? (latestAsked && !latestMissed ? null : startLatest())
     : (one && latestWanted([one]) ? startLatest() : null);
   const latestFor = (logged) => early
     || (logged && Date.now() - latestAskedAt >= LATEST_GAP_MS ? startLatest() : null);
@@ -634,11 +635,12 @@ async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
 // ---- /api/latest: a second read of the matches ------------------------
 // The game's own answer can sit still for minutes while the match moves.
 // /api/latest holds the same match bodies as the game gave them, gzipped and
-// base64, taken by our own scripts. Asked on the visit's first read and
-// whenever any live match read has not risen here for LATEST_QUIET_MS, at most
-// once per LATEST_GAP_MS (any one match, not all nine: one of nine almost always
-// rises, so asking only when all stood still would be once a visit). Each body goes
-// through keepNewestMatch like any other, so it wins only by being further
+// base64, taken by our own scripts. Asked on the visit's first read, on the
+// first after the tab was hidden, and whenever any live match read has not
+// risen here for LATEST_QUIET_MS, at most once per LATEST_GAP_MS (any one
+// match, not all nine: one of nine almost always rises, so asking only when
+// all stood still would be once a visit). Each body goes through
+// keepNewestMatch like any other, so it wins only by being further
 // along. Threat model: anyone able to answer on this origin can hand us a
 // body, so: only ids the game already gave this visit, id and start must
 // match the body's own, the inflated size is capped while it streams, and
@@ -654,6 +656,16 @@ const LATEST_GZ_MAX = 96 * 1024;       // base64 characters per match
 const LATEST_MATCHES_MAX = 20;
 let latestAsked = false;
 let latestAskedAt = 0;
+// Set while the tab is hidden, from the start in a tab opened in the
+// background, until a read of /api/latest with it shown. The peek
+// (js/standings.js) watched nothing meanwhile, and the read the tab's return
+// brings sees every match risen since it left, so latestWanted asks nothing:
+// a server group behind would be painted, a skirmish's victory points
+// missing, until the next peek.
+let latestMissed = document.visibilityState === 'hidden';
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') latestMissed = true;
+});
 
 async function latestInflate(b64) {
   if (typeof b64 !== 'string' || b64.length > LATEST_GZ_MAX) return null;
@@ -701,6 +713,7 @@ function startLatest() {
   if (typeof DecompressionStream !== 'function') return null;
   latestAsked = true;
   latestAskedAt = Date.now();
+  if (document.visibilityState !== 'hidden') latestMissed = false;
   return latestRead();
 }
 
