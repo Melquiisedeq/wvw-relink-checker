@@ -512,10 +512,12 @@
   text-decoration-color:var(--accent);text-underline-offset:3px;
 }
 
-/* A side that overtakes slides over the one it passes (js/panels.js, slideRun). The
-   cards are stacking contexts already (their clip-path); z-index orders them while
-   they cross. The shadow is its own layer: the card's clip-path would cut a box-shadow. */
+/* A side that overtakes slides over the one it passes (js/panels.js, slideRun). z-index
+   needs a positioned element: the cards are, the guild-found strip is not until here,
+   and without it the climber's strip would pass under the card it overtakes. The shadow
+   is its own layer: the card's clip-path would cut a box-shadow. */
 .slide-host{position:relative;}
+.slide-over,.slide-under{position:relative;}
 .slide-over{z-index:3;}
 .slide-under{z-index:1;}
 .slide-shadow{

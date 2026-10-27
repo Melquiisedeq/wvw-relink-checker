@@ -124,7 +124,7 @@ test.describe('a side overtakes in a tier', () => {
     await serveList(page, list);
     await repaint(page);
     await expect.poll(() => page.evaluate(() => document.getAnimations()
-      .some(a => !a.animationName && a.currentTime > 250))).toBe(true);
+      .some(a => !a.animationName && a.effect.target.classList.contains('standing-side') && a.currentTime > 250 && a.currentTime < SWAP_MS))).toBe(true);
 
     // The first takes the lead back, now: the cards turn round where they are.
     const back = JSON.parse(JSON.stringify(list));
@@ -145,6 +145,17 @@ test.describe('a side overtakes in a tier', () => {
     await wvw.settle();
   });
 
+  test('a delta born over a card that slides goes with it', async ({ page, wvw }) => {
+    await load(page, wvw);
+    const { list, byRank: [first, second] } = await board(page);
+    overtake(list, second, first);
+    await serveList(page, list);
+    await repaint(page);
+    await expect.poll(() => page.evaluate(() => [...document.querySelectorAll('body > .delta')]
+      .some(t => t.getAnimations().some(a => !a.animationName && a.effect.getKeyframes()[1].translate !== '0 0')))).toBe(true);
+    await ended(page);
+  });
+
   test('the guild-found strip goes with its card', async ({ page, wvw }) => {
     await load(page, wvw);
     const { list, byRank: [first, second] } = await board(page);
@@ -157,6 +168,23 @@ test.describe('a side overtakes in a tier', () => {
       return { animated: strip.getAnimations().filter(a => !a.animationName).length, over: strip.classList.contains('slide-over') };
     }, FOCUS);
     expect(r).toEqual({ animated: 1, over: true });
+    // Where the climber's strip crosses the card it overtakes, the strip is on top.
+    const top = await page.evaluate(async id => {
+      const box = document.querySelector(`.standing-match[data-match-id="${id}"]`);
+      const held = document.getAnimations().filter(a => !a.animationName && box.contains(a.effect.target));
+      held.forEach(a => { a.pause(); a.currentTime = 325; });
+      await Promise.all(held.map(a => a.ready));
+      box.scrollIntoView({ block: 'center', behavior: 'instant' });
+      const strip = box.querySelector(':scope > .guild-found-strip').getBoundingClientRect();
+      const under = box.querySelector(':scope > .slide-under.standing-side').getBoundingClientRect();
+      const x = (Math.max(strip.left, under.left) + Math.min(strip.right, under.right)) / 2;
+      const y = (Math.max(strip.top, under.top) + Math.min(strip.bottom, under.bottom)) / 2;
+      const overlap = Math.min(strip.bottom, under.bottom) > Math.max(strip.top, under.top);
+      const hit = document.elementFromPoint(x, y);
+      held.forEach(a => a.finish());
+      return { overlap, strip: !!(hit && hit.closest('.guild-found-strip')) };
+    }, FOCUS);
+    expect(top, 'the strip crosses the overtaken card and is drawn over it').toEqual({ overlap: true, strip: true });
     await ended(page);
     expect(await page.locator('.guild-found-strip').evaluate(el => getComputedStyle(el).transform)).toBe('none');
   });

@@ -153,7 +153,7 @@ function patchStandingMatch({ m, box, sides, leaderScore }) {
 // read before the move (slideFirst) and after it (slideRun, in a microtask, once
 // paintGuildFound has hung the strip again), then only transform and opacity animate.
 // Places are relative to the tier's own box, so a tier above that grew in the same
-// repaint does not read as a slide. The climber passes over the side it passes.
+// repaint does not read as a slide.
 const slideBefore = new Map(); // tier box -> { boxTop, tops: Map(card -> top), index: Map(card -> i), stripTop }
 const slideLive = new Map();   // tier box -> { anims, marked, shadow }
 const slideQueue = [];
@@ -247,14 +247,13 @@ function slideAnimate({ box, boxRect, moves, stripMove, border }) {
       ], timing));
     }
   }
-  // The strip goes with its card, on the same layer.
+  // The strip goes with its card, at the same z-index.
   if (stripMove) {
     mark(stripMove.strip, climbers.has(stripMove.card) ? 'slide-over' : 'slide-under');
     live.anims.push(stripMove.strip.animate(
       [{ transform: `translateY(${stripMove.dy}px)` }, { transform: 'none' }], timing));
   }
-  // The climber's shadow is a layer between it and the side it passes: the card's
-  // own clip-path would cut a box-shadow.
+  // The climber's shadow, between it and the side it passes.
   if (climbers.size) {
     const m = moves.find((x) => climbers.has(x.side));
     const shadow = document.createElement('div');
