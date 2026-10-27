@@ -24,6 +24,7 @@ const EXTERNAL = /^https:\/\/(api\.guildwars2\.com|docs\.google\.com)\//;
 export const BLOCKED = /cloudflareinsights/;
 const IDS_URL = 'https://api.guildwars2.com/v2/wvw/matches?ids=';
 const ALL_URL = IDS_URL + 'all';
+const LIST_URL = 'https://api.guildwars2.com/v2/wvw/matches';
 // The guild tactics a map asks for are the ones its match holds that no map
 // opened before it asked for, so the address depends on the order maps are
 // opened in. A test opens maps in its own order: an unrecorded list of ids is
@@ -122,6 +123,12 @@ export function answerFrom(base, problem, own = null) {
         }
         const list = JSON.parse(bodyOf(all).toString('utf8')).filter(m => want.includes(m.id));
         return await fulfil(route, 200, 'application/json; charset=utf-8', Buffer.from(JSON.stringify(list)));
+      }
+      // The game's plain list of match ids, which the recording lacks: what the
+      // fallback asks first.
+      if (!RECORDING_ON && url === LIST_URL && !entries.has(url) && entries.has(ALL_URL)) {
+        const ids = JSON.parse(bodyOf(entries.get(ALL_URL)).toString('utf8')).map(m => m.id);
+        return await fulfil(route, 200, 'application/json; charset=utf-8', Buffer.from(JSON.stringify(ids)));
       }
       if (!RECORDING_ON && url.startsWith(TACTICS_URL) && !entries.has(url)) {
         const want = url.slice(TACTICS_URL.length).split(',');

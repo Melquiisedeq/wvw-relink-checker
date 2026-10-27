@@ -4,7 +4,8 @@
 // and ours failing in each way a player can meet: what is on screen in each.
 import { test, expect } from './support/fixtures.mjs';
 import { abort, answer, fail, hold } from './support/faults.mjs';
-import { firstTier, load, openMap, recordedJson } from './support/steps.mjs';
+import { firstTier, load, openMap } from './support/steps.mjs';
+import { killRows } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 const TIERS = '#standingsGridNA > .standing-match';
@@ -123,8 +124,6 @@ const ALL = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
 const ALL_RE = /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches\?ids=all$/;
 const BY_ID = /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches\?ids=/;
 const EU_ONLY = /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches\?ids=2-[1-9](,2-[1-9])*$/;
-// The game's plain list of match ids, which the recording lacks: what the fallback asks first.
-const idList = page => answer(page, 'https://api.guildwars2.com/v2/wvw/matches', recordedJson(ALL).map(m => m.id));
 const EU = '#standingsGridEU > .standing-match';
 const alertOf = (page, region) => page.locator(`#standingsAlert${region}`);
 
@@ -227,7 +226,6 @@ test.describe('the page\'s own waits, on its clock', () => {
 // nothing to show; it asks region by region and the board is not empty.
 test('an empty list from ids=all: the page asks region by region and paints', async ({ page, wvw }) => {
   const empty = await answer(page, ALL, []);
-  await idList(page);
   await page.goto(wvw.url);
   await expect(page.locator(TIERS)).toHaveCount(wvw.tiers.NA);
   await expect(page.locator(EU)).toHaveCount(wvw.tiers.EU);
@@ -240,7 +238,6 @@ test('an empty list from ids=all: the page asks region by region and paints', as
 test('a refresh that fails keeps the tiers on screen and only says so', async ({ page, wvw }) => {
   await load(page, wvw);
   const names = await page.locator(TIERS).allInnerTexts();
-  await idList(page);
   const down = await fail(page, wvw, BY_ID);
   await page.evaluate(() => loadStandings());
   await expect(alertOf(page, 'NA'), 'the message').toContainText(/Trying again in \d+ s/);
@@ -261,7 +258,6 @@ test('a refresh that fails keeps the tiers on screen and only says so', async ({
 test.describe('one region of the fallback', () => {
   test('EU fails: NA paints, EU says it will try again', async ({ page, wvw }) => {
     await answer(page, ALL, []);
-    await idList(page);
     const down = await fail(page, wvw, EU_ONLY);
     await page.goto(wvw.url);
     await expect(page.locator(TIERS), 'NA, whose request answered').toHaveCount(wvw.tiers.NA);
@@ -275,7 +271,6 @@ test.describe('one region of the fallback', () => {
 
   test('EU answers with nothing: NA paints, EU says it could not load, and does not try again', async ({ page, wvw }) => {
     await answer(page, ALL, []);
-    await idList(page);
     await answer(page, EU_ONLY, []);
     await page.goto(wvw.url);
     await expect(page.locator(TIERS)).toHaveCount(wvw.tiers.NA);
@@ -292,9 +287,10 @@ test.describe('one region of the fallback', () => {
 // and a map shows its age from it, amber, as with /api/kills.
 test('only /api/kills down: the sheet still gives the history, and the map its age', async ({ page, wvw }) => {
   const sheet = [];
+  let target;
   await page.route(/^https:\/\/docs\.google\.com\/spreadsheets\/.*sheet=kills/, async route => {
     sheet.push(route.request().url());
-    const rows = await page.evaluate(() => [...newestMatches.keys()].map(k => [Date.now() - (k === window.__target ? 7 * 60000 : 60000), k, 5, 5, 5, 5]));
+    const rows = await killRows(page, target, 7 * 60000);
     await route.fulfill({ status: 200, contentType: 'text/csv', body: rows.map(r => r.join(',')).join('\n'),
       headers: { 'Access-Control-Allow-Origin': '*' } });
   });
@@ -302,7 +298,7 @@ test('only /api/kills down: the sheet still gives the history, and the map its a
   page.on('response', r => { if (/^http:\/\/127\.0\.0\.1:\d+\/api\/relink$/.test(r.url())) relink.push(r.status()); });
   await load(page, wvw);
   const tier = await firstTier(page);
-  await page.evaluate(id => { window.__target = id; }, tier.id);
+  target = tier.id;
   const down = await fail(page, wvw, /^http:\/\/127\.0\.0\.1:\d+\/api\/kills$/);
   await page.evaluate(async () => {
     for (const k of newestMatches.values()) { k.rose = false; k.at = Date.now(); }

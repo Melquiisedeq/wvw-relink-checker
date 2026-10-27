@@ -1,11 +1,11 @@
 {
   "site/js/api.js": {
-    "lines": 89.7,
-    "branches": 88.5
+    "lines": 89.9,
+    "branches": 90
   },
   "site/js/boot.js": {
-    "lines": 92.3,
-    "branches": 91.2
+    "lines": 93.1,
+    "branches": 94.6
   },
   "site/js/config.js": {
     "lines": 98.7,
@@ -24,12 +24,12 @@
     "branches": 92.2
   },
   "site/js/maps.js": {
-    "lines": 92.3,
-    "branches": 84.8
+    "lines": 92.4,
+    "branches": 85.1
   },
   "site/js/panels.js": {
-    "lines": 92.7,
-    "branches": 81.1
+    "lines": 94.3,
+    "branches": 82.5
   },
   "site/js/popover-parts.js": {
     "lines": 100,
@@ -44,8 +44,8 @@
     "branches": 75
   },
   "site/js/relink.js": {
-    "lines": 95.7,
-    "branches": 95.5
+    "lines": 95.9,
+    "branches": 95.8
   },
   "site/js/run.js": {
     "lines": 88.6,
@@ -56,11 +56,11 @@
     "branches": 98.4
   },
   "site/js/standings.js": {
-    "lines": 93.2,
-    "branches": 86
+    "lines": 94.4,
+    "branches": 90.1
   },
   "site/js/stat-popovers.js": {
-    "lines": 93.2,
+    "lines": 93.4,
     "branches": 77.1
   },
   "site/js/summary.js": {
@@ -68,8 +68,8 @@
     "branches": 96.4
   },
   "site/js/trebuchet.js": {
-    "lines": 96.7,
-    "branches": 87.1
+    "lines": 96.9,
+    "branches": 90.3
   },
   "site/js/wvw-static.js": {
     "lines": 100,
@@ -80,7 +80,7 @@
     "branches": 97
   },
   "worker/index.mjs": {
-    "lines": 98.7,
-    "branches": 99.6
+    "lines": 98.9,
+    "branches": 99.7
   }
 }

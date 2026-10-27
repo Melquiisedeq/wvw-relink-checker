@@ -3,9 +3,9 @@
 // and when they refuse to. Run: node --test "tests/*.test.mjs"
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHmac } from 'node:crypto';
 import worker from '../worker/index.mjs';
 import { fakeD1 } from './fake-d1.mjs';
+import { signHeaders } from './signed.mjs';
 
 const KILLS_KEY = 'k'.repeat(128);
 const RELINK_KEY = 'r'.repeat(128);
@@ -39,8 +39,7 @@ function setup(opts = {}) {
         t = Math.max(Math.floor(clock / 1000), lastSigned + 1);
         lastSigned = t;
       }
-      const sig = createHmac('sha256', key).update(t + '\n' + sigPath + '\n' + body).digest('hex');
-      return { 'x-wvw-time': String(t), 'x-wvw-sig': sig };
+      return signHeaders(key, t, sigPath, body);
     },
     async post(source, obj, o = {}) {
       const path = '/api/ingest/' + source;
@@ -389,9 +388,8 @@ test('carrying the move gives the body a rebuild from scratch gives', async () =
   const send = (env, now, rows) => {
     const body = JSON.stringify({ rows });
     const t = Math.floor(now / 1000);
-    const sig = createHmac('sha256', KILLS_KEY).update(t + '\n/api/ingest/kills\n' + body).digest('hex');
     return worker.fetch(new Request('https://wvwrelink.com/api/ingest/kills',
-      { method: 'POST', body, headers: { 'x-wvw-time': String(t), 'x-wvw-sig': sig } }), env);
+      { method: 'POST', body, headers: signHeaders(KILLS_KEY, t, '/api/ingest/kills', body) }), env);
   };
 
   // Each sequence: its messages by minute from t0, made up front.

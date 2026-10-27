@@ -4,8 +4,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import worker from '../worker/index.mjs';
 import { fakeD1 } from './fake-d1.mjs';
+import { postSigned } from './signed.mjs';
 import {
   REGIONS, regionFor, checkMatch, checkRead, checkSummaryBody, pickNewer, buildBody, sign, sameSecret, handle
 } from '../supabase/reader.mjs';
@@ -94,16 +94,8 @@ function door() {
       const { source } = REGIONS[region];
       const path = '/api/ingest/' + source;
       const sig = await sign(SECRET[region], String(t), path, body);
-      const real = Date.now;
-      Date.now = () => NOW;
-      try {
-        const r = await worker.fetch(new Request('https://wvwrelink.com' + path, {
-          method: 'POST', body, headers: { 'x-wvw-time': String(t), 'x-wvw-sig': sig }
-        }), env, {});
-        return { status: r.status, text: await r.text() };
-      } finally {
-        Date.now = real;
-      }
+      const r = await postSigned(env, NOW, path, body, { 'x-wvw-time': String(t), 'x-wvw-sig': sig });
+      return { status: r.status, text: await r.text() };
     }
   };
 }
@@ -136,18 +128,11 @@ test('a signature made with the other region\'s secret is refused', async () => 
   const path = '/api/ingest/' + REGIONS['us-east-1'].source;
   assert.equal(await sign(SECRET['us-east-1'], String(t), path, built.body),
     createHmac('sha256', SECRET['us-east-1']).update(t + '\n' + path + '\n').update(built.body).digest('hex'));
-  const real = Date.now;
-  Date.now = () => NOW;
-  try {
-    const sig = await sign(SECRET['eu-central-1'], String(t), path, built.body);
-    const { DB } = fakeD1();
-    const r = await worker.fetch(new Request('https://wvwrelink.com' + path, {
-      method: 'POST', body: built.body, headers: { 'x-wvw-time': String(t), 'x-wvw-sig': sig }
-    }), { DB, INGEST_LATEST_SUPA_US: SECRET['us-east-1'] }, {});
-    assert.equal(r.status, 401);
-  } finally {
-    Date.now = real;
-  }
+  const sig = await sign(SECRET['eu-central-1'], String(t), path, built.body);
+  const { DB } = fakeD1();
+  const r = await postSigned({ DB, INGEST_LATEST_SUPA_US: SECRET['us-east-1'] }, NOW, path, built.body,
+    { 'x-wvw-time': String(t), 'x-wvw-sig': sig });
+  assert.equal(r.status, 401);
   assert.ok(w);
 });
 
