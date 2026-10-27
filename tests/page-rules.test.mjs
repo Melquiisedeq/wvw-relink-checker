@@ -827,21 +827,23 @@ test('the aligned peek: a summary that did not move gets one more ask, and reads
   nav.connection.saveData = true;
   assert.equal(next(true, true)[0] > 10000, true, 'Save-Data never asks under its floor');
   nav.connection.saveData = false;
-  // Ten minutes of a clock that never sees the summary move, with a show (peekSoon) every 100 s: reads stay at 20 or under.
-  page.run('peekAnchor = 1000 * 60000 + 3000');
-  let now = 1000 * 60000 + 9 * 60000, reads = 0, lastSoon = now;
-  const end = now + 10 * 60000;
-  page.run('peekAligned = true');
-  while (now < end) {
-    reads++;
-    page.run(`peekAt = ${now}; peekStill = true`);
-    const wait = page.run(`peekNext(30000, ${now})`);
-    if (now + wait > lastSoon + 100000) {   // a popover closes before that peek
-      lastSoon += 100000; page.run('peekAligned = false');
-      now = Math.max(lastSoon, now + 30000);   // peekSoon: not before the floor after the last peek
-    } else now += wait;
+  // Ten minutes of a clock that never sees the summary move, with a show (the real peekSoon) every `every` ms:
+  // reads stay at 20 or under. Shows 40-50 s apart are where a show that left peekAligned set reads past that.
+  for (const every of [40000, 50000, 75000, 100000]) {
+    page.run('peekAnchor = 1000 * 60000 + 3000; peekAligned = true');
+    let now = 1000 * 60000 + 9 * 60000, reads = 0, lastSoon = now;
+    const end = now + 10 * 60000;
+    while (now < end) {
+      reads++;
+      page.run(`peekAt = ${now}; peekStill = true`);
+      const wait = page.run(`peekNext(30000, ${now})`);
+      if (now + wait > lastSoon + every) {   // a popover closes before that peek
+        lastSoon += every; page.run('peekSoon()');
+        now = Math.max(lastSoon, now + 30000);   // peekSoon: not before the floor after the last peek
+      } else now += wait;
+    }
+    assert.ok(reads <= 20, `a show every ${every / 1000} s: ${reads} reads in 10 min`);
   }
-  assert.ok(reads <= 20, `${reads} reads in 10 min`);
 });
 
 test('summaryAt: the newest `at` of a summary, in ms, ignoring what is not a number (js/standings.js)', () => {

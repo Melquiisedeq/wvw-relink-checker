@@ -690,7 +690,9 @@ function peekWait(delay, now) {
 
 // An aligned peek that read no newer `at` (a clock ahead of the server's) is
 // followed by one more after PEEK_RETRY_MS, never under Save-Data; that one is
-// not aligned, so it is not followed in turn: at most two reads a minute.
+// not aligned, so it is not followed in turn. The timer alone reads two a minute
+// at most on average (an aligned read and its retry per minute mark); a show or
+// an input adds a read, never within the floor of the last.
 function peekNext(delay, now) {
   if (peekStill && peekAligned && peekFloor() === PEEK_MS) { peekAligned = false; return PEEK_RETRY_MS; }
   peekAligned = peekAnchor > 0;
