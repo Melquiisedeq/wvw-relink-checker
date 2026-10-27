@@ -3,9 +3,8 @@
 // Run: node --test "tests/*.test.mjs"
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHmac } from 'node:crypto';
 import { fakeD1 } from './fake-d1.mjs';
-import { postSigned } from './signed.mjs';
+import { postSigned, signHeaders } from './signed.mjs';
 import {
   REGIONS, regionFor, checkMatch, checkRead, checkSummaryBody, pickNewer, buildBody, sign, sameSecret, handle
 } from '../supabase/reader.mjs';
@@ -127,7 +126,7 @@ test('a signature made with the other region\'s secret is refused', async () => 
   const t = Math.floor(NOW / 1000);
   const path = '/api/ingest/' + REGIONS['us-east-1'].source;
   assert.equal(await sign(SECRET['us-east-1'], String(t), path, built.body),
-    createHmac('sha256', SECRET['us-east-1']).update(t + '\n' + path + '\n').update(built.body).digest('hex'));
+    signHeaders(SECRET['us-east-1'], t, path, built.body)['x-wvw-sig']);
   const sig = await sign(SECRET['eu-central-1'], String(t), path, built.body);
   const { DB } = fakeD1();
   const r = await postSigned({ DB, INGEST_LATEST_SUPA_US: SECRET['us-east-1'] }, NOW, path, built.body,

@@ -3,10 +3,11 @@
 // Run: node --test "tests/*.test.mjs"
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHmac, createHash } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import worker from '../worker/index.mjs';
 import { fakeD1 } from './fake-d1.mjs';
+import { signHeaders } from './signed.mjs';
 
 const SOURCES = {
   'latest-supa-us': 'INGEST_LATEST_SUPA_US', 'latest-supa-eu': 'INGEST_LATEST_SUPA_EU'
@@ -61,9 +62,7 @@ function setup(opts = {}) {
       const path = '/api/ingest/' + source;
       let t = o.t;
       if (t === undefined) t = last = Math.max(Math.floor(clock / 1000), last + 1);
-      const sig = createHmac('sha256', o.key || KEYS[source] || 'z'.repeat(128))
-        .update(t + '\n' + (o.sigPath || path) + '\n').update(buf).digest('hex');
-      const headers = o.headers || { 'x-wvw-time': String(t), 'x-wvw-sig': sig, ...o.extra };
+      const headers = o.headers || { ...signHeaders(o.key || KEYS[source] || 'z'.repeat(128), t, o.sigPath || path, buf), ...o.extra };
       const r = await call(new Request('https://wvwrelink.com' + path, { method: 'POST', body: buf, headers }));
       w.last = r;
       return r.status;
