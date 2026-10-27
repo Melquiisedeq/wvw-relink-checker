@@ -121,8 +121,8 @@ test.describe('the round on the sling', () => {
   test.use({ clock: 'playwright' });
 
   const ROUNDS = '.siege-charge';
-  async function toDone(page) {
-    await page.locator('#runBtn').click();
+  async function toDone(page, { press = true } = {}) {
+    if (press) await page.locator('#runBtn').click();
     for (let i = 0; i < 100; i++) {
       if (/^Done/.test(await page.locator('#statusMsg').textContent())) return;
       await page.clock.runFor(100);
@@ -167,6 +167,14 @@ test.describe('the round on the sling', () => {
     await page.clock.runFor(300);
     await expect(page.locator(`${ROUNDS}.flying`), 'the first round, let go').toHaveCount(1);
     await expect(page.locator(`${ROUNDS}.charging`), 'the new round, still gathering').toHaveCount(1);
+    // The new round's own release finds the sling already let go of.
+    await toDone(page, { press: false });
+    await toSwing(page);
+    await page.clock.runFor(300);
+    await expect(page.locator(`${ROUNDS}.flying`), 'the second round, let go').toHaveCount(1);
+    await expect(page.locator(`${ROUNDS}.charging`)).toHaveCount(0);
+    await page.clock.runFor(1000);
+    await expect(page.locator(ROUNDS), 'both rounds landed').toHaveCount(0);
     await wvw.settle();
   });
 });
@@ -403,6 +411,8 @@ test.describe('the tick of an open map', () => {
     const badges = page.locator(`${POP} .wvw-ri`);
     const clocks = () => badges.locator('text').allTextContents();
     await expect(badges.first(), 'a fresh flip wearing its badge').toBeAttached();
+    // The map's first read has landed and been drawn: a clock that changes from here on is the tick's.
+    await wvw.settle();
     await pause(page, wvw);
     const secs = c => { const [m, s] = c.split(':').map(Number); return m * 60 + s; };
     const before = (await clocks()).map(secs);
