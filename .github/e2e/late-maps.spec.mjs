@@ -6,7 +6,7 @@
 // a download that fails says so and its "Try again" opens the map.
 import { test, expect } from './support/fixtures.mjs';
 import { abort, hold } from './support/faults.mjs';
-import { load } from './support/steps.mjs';
+import { load, firstTier, recordedJson } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 const PLOT = ".info-popover .wvw-plot g[role='button']";
@@ -117,4 +117,70 @@ test('closed and opened again while the catalogue downloads: only the open popov
   await expect(page.locator(PLOT).first(), 'the map drawn').toBeAttached();
   await wvw.settle();
   expect(await page.evaluate(() => window.__fills), 'fills, each true if into the open popover').toEqual([true]);
+});
+
+test('a late answer of a map closed and reopened by the same button does not take the reopening back', async ({ page, wvw }) => {
+  await load(page, wvw);
+  const t = await firstTier(page);
+  const rec = recordedJson(t.url);
+  const sum = m => ['red', 'blue', 'green'].reduce((n, c) => n + Number(m.scores[c]), 0);
+  const bump = n => ({ ...rec, scores: { ...rec.scores, red: Number(rec.scores.red) + n } });
+  // Each read of the tier's match held, then answered: the first opening's one
+  // point up, the reopening's five, any later one five.
+  const gates = [];
+  await page.route(t.url, async route => {
+    const k = gates.length;
+    let go;
+    gates.push({ release: new Promise(ok => { go = ok; }), go });
+    if (k < 2) await gates[k].release;
+    await route.fulfill({ status: 200, body: JSON.stringify(bump(k === 0 ? 1 : 5)),
+      headers: { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } });
+  });
+  // /api/latest held until the end: the first opening's read waits it out.
+  let latestGo;
+  const latestHeld = new Promise(ok => { latestGo = ok; });
+  let latestReads = 0;
+  await page.route(/\/api\/latest$/, async route => {
+    latestReads++;
+    await latestHeld;
+    await route.fulfill({ status: 200, body: '{"at":0,"matches":[]}',
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } });
+  });
+  await expect.poll(() => page.evaluate(() => typeof fillTierMaps === 'function'), { message: 'maps.js in' }).toBe(true);
+  await page.evaluate(() => {
+    window.__opened = [];
+    const fill = renderTierMapsContent;
+    renderTierMapsContent = function (p, m, ...rest) { window.__opened.push(colorSum(m.scores)); return fill.call(this, p, m, ...rest); };
+  });
+  // The match quiet long enough that the opening's read asks /api/latest beside it.
+  await wvw.skew(100000);
+  const kept = () => page.evaluate(id => colorSum(newestMatches.get(id).match.scores), t.id);
+
+  await t.button.click();
+  await expect(page.locator(PLOT).first()).toBeAttached();
+  await expect.poll(() => gates.length, { message: 'the first opening read the match' }).toBe(1);
+  await expect.poll(() => latestReads, { message: 'the first opening asked /api/latest' }).toBe(1);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.info-popover')).toHaveCount(0);
+  await t.button.click();
+  await expect(page.locator(PLOT).first()).toBeAttached();
+  await expect.poll(() => gates.length, { message: 'the reopening read the match' }).toBe(2);
+  // The first opening's answer lands and waits on /api/latest; the reopening's,
+  // higher, lands inside that wait.
+  gates[0].go();
+  await expect.poll(kept).toBe(sum(rec) + 1);
+  gates[1].go();
+  await expect.poll(kept).toBe(sum(rec) + 5);
+  await expect.poll(() => page.evaluate(() => freshRecall.data && colorSum(freshRecall.data.scores)),
+    { message: 'the reopening\'s answer recalled' }).toBe(sum(rec) + 5);
+  // Past the 1.2 s the first opening's read waits for /api/latest.
+  await page.waitForTimeout(2000);
+  latestGo();
+  await wvw.settle();
+  expect.soft(await page.evaluate(() => colorSum(freshRecall.data.scores)), 'the recall after the late answer').toBe(sum(rec) + 5);
+  await page.keyboard.press('Escape');
+  await t.button.click();
+  await expect(page.locator(PLOT).first()).toBeAttached();
+  await wvw.settle();
+  expect(await page.evaluate(() => window.__opened), 'the score each opening painted from').toEqual([sum(rec), sum(rec), sum(rec) + 5]);
 });
