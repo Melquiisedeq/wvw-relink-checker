@@ -91,3 +91,30 @@ test('closed and opened again while maps.js downloads: one fill, into the open p
   await wvw.settle();
   expect(await page.evaluate(() => window.__fills), 'fills, each true if into the open popover').toEqual([true]);
 });
+
+test('closed and opened again while the catalogue downloads: only the open popover is filled', async ({ page, wvw }) => {
+  await load(page, wvw);
+  await expect.poll(() => page.evaluate(() => typeof fillTierMaps === 'function'), { message: 'maps.js in' }).toBe(true);
+  // The catalogue held, and each popover that is filled logged.
+  await page.evaluate(() => {
+    let go;
+    const gate = new Promise(ok => { go = ok; });
+    window.__release = go;
+    window.__fills = [];
+    const catalogue = getObjectiveCatalogue;
+    getObjectiveCatalogue = async () => { await gate; return catalogue(); };
+    const fill = renderTierMapsContent;
+    renderTierMapsContent = function (p, ...rest) { window.__fills.push(p === activePopover); return fill.call(this, p, ...rest); };
+  });
+  const btn = page.locator('.tier-map-btn').first();
+  await btn.click();
+  await expect(page.locator('.info-popover')).toContainText('Loading maps');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.info-popover')).toHaveCount(0);
+  await btn.click();
+  await expect(page.locator('.info-popover')).toContainText('Loading maps');
+  await page.evaluate(() => window.__release());
+  await expect(page.locator(PLOT).first(), 'the map drawn').toBeAttached();
+  await wvw.settle();
+  expect(await page.evaluate(() => window.__fills), 'fills, each true if into the open popover').toEqual([true]);
+});
