@@ -1,7 +1,7 @@
 // Loads the page's scripts into a node:vm, in the order of site/index.html,
 // without a browser. The rules under test are plain functions in the scripts'
 // shared global scope, so tests call them through `run`. boot.js (it starts
-// the page) and count.js (the beacon) are left out. The clock is the
+// the page) is left out. The clock is the
 // harness's: Date.now() and new Date() inside the context answer clock.now.
 import vm from 'node:vm';
 import fs from 'node:fs';
@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const siteDir = path.join(root, 'site');
-const SKIPPED = new Set(['js/boot.js', 'js/count.js']);
+const SKIPPED = new Set(['js/boot.js']);
 
 // Any property read, call or construction on the page's DOM answers itself.
 function dummy() {

@@ -64,8 +64,7 @@ back to the spreadsheets if it cannot answer) and the newest match bodies. Nothi
 | `render.guildwars2.com` | Guild emblem images, for objectives claimed by a guild. Images only. |
 | `wvwrelink.com/api` | This site's own server: the kills history when you open a tier's maps, whether the new teams are out (read only in the days before a relink), and the newest match bodies, kept only when further along than the game's own answer. |
 | `docs.google.com` | Three public spreadsheets, read-only: the community guild list when you click a shield icon, and the kills history and the new-teams notice when `/api` does not answer. |
-| `melquiisedeq.goatcounter.com` | One anonymous page view per visit. Nothing else. |
-| `static.cloudflareinsights.com`, `cloudflareinsights.com` | Cloudflare Web Analytics: its script, and a report of how fast the page loaded. |
+| `static.cloudflareinsights.com`, `cloudflareinsights.com` | Cloudflare Web Analytics: its script, and a report of each visit and how fast the page loaded. |
 
 Six things are kept in your browser's own storage. None of them ever
 leave your device; three clear themselves out as they age, and the other
@@ -85,12 +84,7 @@ three are a single value each that gets overwritten.
 
 <br>
 
-Visits are counted with [GoatCounter](https://www.goatcounter.com) (no
-cookies, no persistent identifier; its script is `site/js/count.js`, served
-from this repository). To keep your own browser out of its count, run
-`localStorage.skipgc = 't'` in the developer console on the site.
-
-Cloudflare, which serves the site, also counts visits with its
+Cloudflare, which serves the site, counts visits with its
 [Web Analytics](https://developers.cloudflare.com/web-analytics/about/).
 Cloudflare says it "does not use any client-side state, such as cookies or
 localStorage, to collect usage metrics" and does not "fingerprint"
@@ -126,9 +120,7 @@ or sponsored by **ArenaNet** or **NCsoft**. All game content belongs to
 its respective owners. Data is pulled live from the official Guild Wars 2
 API.
 
-Released under the [MIT license](LICENSE). `site/js/count.js` is GoatCounter's
-counting script, used unmodified under the ISC license; its license header
-is preserved in the file.
+Released under the [MIT license](LICENSE).
 
 <div align="center">
 <br>

@@ -34,7 +34,7 @@
 <!--
   One address for this page, named in the page itself. Cloudflare already
   redirects plain http and www here, so this is for a crawler still holding an
-  older one. js/count.js reads the same tag to normalise the path it reports.
+  older one.
 -->
 <link rel="canonical" href="https://wvwrelink.com/">
 <meta name="description" content="Guild Wars 2 WvW relink checker. Paste your guild names, see which team each landed on after the relink, and watch live maps that show where the fighting is.">
@@ -382,14 +382,6 @@ One More Guild Name"></textarea>
 <script src="js/run.js"></script>
 <script src="js/trebuchet.js"></script>
 <script src="js/boot.js"></script>
-
-<!-- Page views only: no cookies, no fingerprint. count.js is served from this repo
-     rather than gc.zgo.at, so script-src needs no host for it. Opt out with
-     localStorage.skipgc = 't'. Told not to count off wvwrelink.com when js/boot.js
-     runs first, which this async script does not guarantee: see the end of
-     js/boot.js. -->
-<script data-goatcounter="https://melquiisedeq.goatcounter.com/count"
-        async src="js/count.js"></script>
 
 <!-- Cloudflare Web Analytics: visits and real visitors' page speed, no cookies.
      Loaded from Cloudflare, which already serves every byte of this site, and

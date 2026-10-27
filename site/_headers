@@ -9,13 +9,12 @@
 # default-src 'none' denies everything, then:
 #
 # script-src and style-src 'self', no unsafe-inline: every script comes from
-# js/, GoatCounter's vendored copy included, and styles set from JS go through
-# the CSSOM, which no CSP governs. One script comes from elsewhere, named down
-# to its path: Cloudflare Web Analytics' beacon.
+# js/, and styles set from JS go through the CSSOM, which no CSP governs. One
+# script comes from elsewhere, named down to its path: Cloudflare Web
+# Analytics' beacon.
 #
 # connect-src - this site's /api, the GW2 API, three read-only Google Sheets,
-# Cloudflare Web Analytics' collector and GoatCounter, which falls back from
-# sendBeacon to an image - hence that host in img-src too. The three sheets are
+# and Cloudflare Web Analytics' collector. The three sheets are
 # one host and one entry: the community guild list when a shield is clicked,
 # this project's own kills history when a tier's maps are opened, and the one
 # cell saying whether the new teams are out.
@@ -29,7 +28,7 @@
 # check-structure.py reads the policy from this line; check-site.py compares
 # it with what wvwrelink.com serves.
 /*
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://static.cloudflareinsights.com/beacon.min.js; style-src 'self'; connect-src 'self' https://api.guildwars2.com https://docs.google.com https://cloudflareinsights.com https://melquiisedeq.goatcounter.com; img-src 'self' https://render.guildwars2.com https://melquiisedeq.goatcounter.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://static.cloudflareinsights.com/beacon.min.js; style-src 'self'; connect-src 'self' https://api.guildwars2.com https://docs.google.com https://cloudflareinsights.com; img-src 'self' https://render.guildwars2.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Cross-Origin-Opener-Policy: same-origin

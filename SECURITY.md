@@ -58,5 +58,5 @@ turns out to be writable by anyone with the link, that is a finding here and a
 serious one, because whoever can write that cell decides what this page tells
 people about their team.
 
-ArenaNet's API, the community guild sheet, Google as a platform, Cloudflare and
-GoatCounter are other people's services — report those to them.
+ArenaNet's API, the community guild sheet, Google as a platform, and Cloudflare
+are other people's services — report those to them.

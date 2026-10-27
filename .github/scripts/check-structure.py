@@ -34,7 +34,6 @@ FETCHED = {
     'api.guildwars2.com': 'guild search, matches, objectives, timers',
     'docs.google.com': 'the three public spreadsheets',
     'render.guildwars2.com': 'guild emblem images',
-    'melquiisedeq.goatcounter.com': 'one page view per visit',
     'static.cloudflareinsights.com': 'the Web Analytics beacon script',
     'cloudflareinsights.com': 'where the Web Analytics beacon reports',
 }
@@ -43,8 +42,6 @@ MENTIONED = {
     'wvwrelink.com': 'canonical link and JSON-LD - the site naming itself',
     'schema.org': 'JSON-LD vocabulary, not a URL anything loads',
     'www.w3.org': 'SVG and XML namespaces',
-    'opensource.org': 'the ISC licence header inside the GoatCounter script',
-    'www.goatcounter.com': 'a comment saying where count.js came from',
     'wiki.guildwars2.com': 'a comment linking the published team names',
     'www.guildwars2.com': 'a comment link',
     'gw2mists.com': 'a comment link',
@@ -52,10 +49,6 @@ MENTIONED = {
     'github.com': 'a comment link',
     'lucide.dev': 'a comment crediting an icon',
 }
-
-# Storage keys the README table leaves out: GoatCounter's own opt-out flag,
-# explained in the README's prose about the visit counter.
-EXEMPT_KEYS = {'skipgc'}
 
 
 def read(rel):
@@ -71,9 +64,8 @@ def files_in(directory, suffix):
 def script_tags(html):
     """Every <script> tag: its src, whether it is async, whether in <head>.
 
-    Parsed rather than grepped, for two reasons: the GoatCounter tag spans two
-    lines, and the JSON-LD block has no src at all. A line-based grep reports
-    the first as an orphan file and trips over the second.
+    Parsed rather than grepped: the JSON-LD block has no src at all, which a
+    line-based grep trips over.
     """
     body = html.find('<body')
     out = []
@@ -384,8 +376,6 @@ def note(keys, problems, name, arg, writes, fixed):
             'js/%s passes %r as a storage key and this check cannot read it '
             'as a fixed text. Use a quoted string or a const with one, so '
             'the README key table can be compared.' % (name, arg.strip()))
-        return
-    if key in EXEMPT_KEYS:
         return
     keys['read'].add(key)
     if writes:
