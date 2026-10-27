@@ -74,9 +74,10 @@ export async function startCoverage(page) {
 
 export async function addCoverage(started) {
   if (!started) return;
+  // A script a test served changed (a spy appended) would be joined as another file and the real one's counts dropped.
   const entries = (await started.coverage.stopJSCoverage())
     .map(e => ({ ...e, url: fileUrl(e.url) }))
-    .filter(e => e.url);
+    .filter(e => e.url && e.source === readFileSync(fileURLToPath(e.url), 'utf8'));
   if (entries.length) await new (await monocart())(options()).add(entries);
 }
 
