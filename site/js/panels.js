@@ -88,7 +88,7 @@ const sideColorOf = (el) => COLORS.find((c) => el.classList.contains(`side-${c}`
 // The new score written into the cards already on the page, so their elements
 // and their animations stay. False, with nothing touched, when the board's
 // shape differs from what is there: a tier came or went, a card is a line-up,
-// waiting or stale, other teams, a skirmish score or its bar came or went.
+// waiting or stale, other teams, a skirmish score came or went.
 function patchStandingsRegion(gridEl, sorted) {
   const boxes = gridEl.children;
   if (!sorted.length || boxes.length !== sorted.length) return false;
@@ -97,7 +97,6 @@ function patchStandingsRegion(gridEl, sorted) {
     const m = sorted[i];
     const box = boxes[i];
     if (m.waitingId || m.lineupOnly || !matchIsLive(m)) return false;
-    if (!box.classList.contains('standing-match') || box.dataset.matchId !== m.id) return false;
     const sides = {};
     for (const s of box.children) {
       if (s.classList.contains('standing-side')) sides[sideColorOf(s)] = s;
@@ -106,11 +105,9 @@ function patchStandingsRegion(gridEl, sorted) {
     for (const c of COLORS) {
       const s = sides[c];
       if (!s) return false;
-      const name = s.querySelector('.standing-side-name');
-      if (!name || name.textContent !== getTeamName(matchTeamId(m, c))) return false;
-      const skirmish = getSkirmishScore(m, c);
-      if ((skirmish !== null) !== !!s.querySelector('.activity-btn')) return false;
-      if ((skirmish !== null && leaderScore !== null) !== !!s.querySelector('.skirmish-bar-row')) return false;
+      if (s.querySelector('.standing-side-name').textContent !== getTeamName(matchTeamId(m, c))) return false;
+      // The bar comes and goes with the skirmish score, and its button with it.
+      if ((getSkirmishScore(m, c) !== null) !== !!s.querySelector('.activity-btn')) return false;
     }
     plans.push({ m, box, sides, leaderScore });
   }

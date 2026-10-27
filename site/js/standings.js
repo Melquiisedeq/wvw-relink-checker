@@ -915,8 +915,7 @@ const setText = (el, text) => { if (el.textContent !== text) el.textContent = te
 // A stat value holds its number as its first text node, its button after it.
 function setLeadText(el, text) {
   const t = el.firstChild;
-  if (t && t.nodeType === Node.TEXT_NODE) { if (t.nodeValue !== text) t.nodeValue = text; }
-  else el.insertBefore(document.createTextNode(text), t);
+  if (t.nodeValue !== text) t.nodeValue = text;
 }
 
 // renderStandingSide, written into the card on the page (patchStandingsRegion

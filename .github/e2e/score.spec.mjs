@@ -73,6 +73,8 @@ test.describe('a new score on the same board', () => {
     focus.kills[first] = Number(focus.kills[first]) + 7;
     const kills = focus.kills[first];
 
+    // The guild-found strip hangs under the side that will move.
+    await page.evaluate(([id, c]) => showGuildFound(matchTeamId(matchDataCache.get(id), c), 'Found Guild'), [FOCUS, second]);
     const before = await mark(page);
     await serveList(page, list);
     const moving = await repaint(page, second);
@@ -89,6 +91,11 @@ test.describe('a new score on the same board', () => {
     expect((await page.locator('.delta').allTextContents()).sort()).toEqual(['+1', `+${rise.toLocaleString('en-US')}`, `+${lead.toLocaleString('en-US')}`].sort());
     expect(after.mapBody, 'the map button holds the new body').toEqual(vp);
     expect(moving, 'the bar of the side that moved travels to its new width').toBe(1);
+    expect(await page.evaluate(([id, c]) => {
+      const box = document.querySelector(`.standing-match[data-match-id="${id}"]`);
+      const strips = box.querySelectorAll('.guild-found-strip');
+      return strips.length === 1 && box.querySelector(`.side-${c}`).nextElementSibling === strips[0];
+    }, [FOCUS, second]), 'one guild-found strip, under the side that moved').toBe(true);
 
     // The Activity button of the side that fought opens on the new body.
     const side = page.locator(`.standing-match[data-match-id="${FOCUS}"] .standing-side.side-${first}`);
@@ -107,12 +114,20 @@ test.describe('a new score on the same board', () => {
     const focus = list.find(m => m.id === FOCUS);
     for (const key of ['all_worlds', 'worlds']) [focus[key].red, focus[key].blue] = [focus[key].blue, focus[key].red];
     focus.kills.red = Number(focus.kills.red) + 1;
+    // Red takes the skirmish lead, so green's bar shrinks: built again, it starts
+    // from the width it had and travels to the new one.
+    const last = focus.skirmishes[focus.skirmishes.length - 1];
+    last.scores.red = Math.max(...COLORS.map(c => Number(last.scores[c]))) * 3 + 1000;
     const blueName = await page.locator(`.standing-match[data-match-id="${FOCUS}"] .side-blue .standing-side-name`).textContent();
+    const green = `.standing-match[data-match-id="${FOCUS}"] .side-green .skirmish-bar-fill`;
+    const wasWidth = await page.locator(green).evaluate(el => el.style.width);
     await mark(page);
     await serveList(page, list);
-    await page.evaluate(() => loadStandings());
+    const startWidth = await page.evaluate(async sel => { await loadStandings(); return document.querySelector(sel).style.width; }, green);
     const fresh = await page.evaluate(() => [...document.querySelectorAll('#standingsGridNA .standing-side')].every(el => !el.__mark));
     expect(fresh, 'every NA card built again').toBe(true);
+    expect(startWidth, "the bar built again starts at the width it had").toBe(wasWidth);
+    await expect.poll(() => page.locator(green).evaluate(el => el.style.width), 'then travels to the new one').not.toBe(wasWidth);
     await expect(page.locator(`.standing-match[data-match-id="${FOCUS}"] .side-red .standing-side-name`)).toHaveText(blueName);
     await wvw.settle();
   });
