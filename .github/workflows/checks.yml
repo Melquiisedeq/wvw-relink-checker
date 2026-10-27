@@ -3,9 +3,11 @@
 # ordered list in index.html, a host missing from the Content Security Policy,
 # a syntax error in a file nothing parses until a browser does - and the e2e
 # job (Playwright Test) opens it in a real Chrome and fails on whatever the
-# browser objects to. The rules job runs the unit tests (tests/): the Worker
-# behind /api, and the page's own functions in a node:vm. Five jobs; four are
-# required (structure, syntax, rules, page), and page passes only if e2e did.
+# browser objects to. The rules job runs the unit tests (tests/), among them
+# the Worker behind /api, the page's own functions in a node:vm, and the Apps
+# Script setup() of the teams notice against a fake spreadsheet. Five jobs;
+# four are required (structure, syntax, rules, page), and page passes only if
+# e2e did.
 name: Checks
 
 on:
@@ -78,9 +80,10 @@ jobs:
       # The runner's own Node, no setup step and nothing installed: node:test
       # is built in, and node:sqlite (the fake D1) needs 22.13 or later, which
       # the image carries (Node 22; the step prints the exact version).
-      # The page's own rules ride along (tests/page-rules.test.mjs: the scripts
-      # in a node:vm, no browser). The dot reporter keeps the log to the failures.
-      - name: What the /api Worker refuses, keeps and serves, and the page's rules
+      # The page's own rules (tests/page-rules.test.mjs: the scripts in a
+      # node:vm, no browser) and the notice's Apps Script setup() ride along.
+      # The dot reporter keeps the log to the failures.
+      - name: The unit tests (tests/*.test.mjs)
         run: |
           node --version
           node --test --test-reporter=dot "tests/*.test.mjs"
