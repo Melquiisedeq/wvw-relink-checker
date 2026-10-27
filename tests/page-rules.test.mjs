@@ -777,3 +777,80 @@ test('KEEP_SPAWN_TEAM: every borderland and EBG keep of the recording has an ent
   }
   assert.deepEqual([...missing], []);
 });
+
+test('the aligned peek: lands PEEK_AFTER_MS after the minute mark of the summary, never under the floor (js/standings.js)', () => {
+  const page = fresh();
+  const nav = { connection: { saveData: false } };
+  page.ctx.navigator = nav;
+  const MIN = 60000, mark = 1000 * MIN + 3000, aligned = (k) => mark + 25000 + k * MIN;
+  const wait = (anchor, delay, now) => { page.ctx.__a = anchor; return page.run(`peekAnchor = __a; peekWait(${delay}, ${now})`); };
+  assert.equal(page.run('PEEK_BEHIND_MS'), 30000);
+  assert.equal(page.run('PEEK_AFTER_MS'), 25000);
+  assert.equal(wait(0, 30000, 5), 30000, 'no summary read yet: the delay as it was');
+  for (const delay of [30000, 120000]) {
+    for (const from of [0, 4000, 25000, 59000, 61000, 90000]) {
+      const now = 1000 * MIN + 9 * MIN + from;
+      const at = now + wait(mark, delay, now);
+      assert.equal((at - aligned(0)) % MIN, 0, `delay ${delay} from ${from}: on the mark`);
+      assert.ok(at - now >= 25000 && at - now <= Math.max(delay, 30000) + MIN, 'about the delay');
+    }
+  }
+  // Whenever it is asked, never sooner than the floor less the slack (a skipped peek must not spin).
+  for (let from = 0; from < 3 * MIN; from += 1000) assert.ok(wait(mark, 30000, aligned(0) + from) >= 25000);
+  // Save-Data (floor 60 s): the peek that ran on the mark is followed by the next minute, not two on.
+  nav.connection.saveData = true;
+  for (const late of [0, 300, 4000]) {
+    const now = aligned(8) + late + 700;
+    assert.equal(wait(mark, 60000, now), aligned(9) - now, `Save-Data, ${late} ms late: 60 s on`);
+  }
+  for (let from = 0; from < 3 * MIN; from += 1000) assert.ok(wait(mark, 60000, aligned(0) + from) >= 55000);
+  nav.connection.saveData = false;
+  // A mark that moved 10 s later is followed.
+  const moved = mark + 10000, now = 1000 * MIN + 5 * MIN + 25000;
+  assert.equal((now + wait(moved, 30000, now) - moved - 25000) % MIN, 0);
+});
+
+test('the aligned peek: a summary that did not move gets one more ask, and reads stay at two a minute (js/standings.js)', () => {
+  const page = fresh();
+  const nav = { connection: { saveData: false } };
+  page.ctx.navigator = nav;
+  const learn = (sum) => { page.ctx.__s = sum; return page.run('peekStill = false; peekLearn(__s); [peekAnchor, peekStill]'); };
+  page.run('peekAnchor = 0');
+  assert.deepEqual([...learn({ a: { at: 100 }, b: { at: 160 } })], [160000, false], 'first summary: learned, not still');
+  assert.deepEqual([...learn({ a: { at: 100 }, b: { at: 160 } })], [160000, true], 'same newest at: still');
+  assert.deepEqual([...learn({ a: { at: 220 } })], [220000, false], 'a newer at: moved');
+  assert.deepEqual([...learn({ a: { at: 'x' } })], [220000, false], 'no number: kept');
+  const next = (still, aligned) => page.run(`peekStill = ${still}; peekAligned = ${aligned}; [peekNext(30000, 1e6), peekAligned]`);
+  assert.deepEqual([...next(true, true)].slice(0, 2), [10000, false], 'aligned and still: ask again in 10 s');
+  assert.equal(next(true, false)[0] > 10000, true, 'that ask, or a show or an input, is not followed by another');
+  assert.equal(next(false, true)[0] > 10000, true, 'moved: the rhythm');
+  nav.connection.saveData = true;
+  assert.equal(next(true, true)[0] > 10000, true, 'Save-Data never asks under its floor');
+  nav.connection.saveData = false;
+  // Ten minutes of a clock that never sees the summary move, with a show (the real peekSoon) every `every` ms:
+  // reads stay at 20 or under. Shows 40-50 s apart are where a show that left peekAligned set reads past that.
+  for (const every of [40000, 50000, 75000, 100000]) {
+    page.run('peekAnchor = 1000 * 60000 + 3000; peekAligned = true');
+    let now = 1000 * 60000 + 9 * 60000, reads = 0, lastSoon = now;
+    const end = now + 10 * 60000;
+    while (now < end) {
+      reads++;
+      page.run(`peekAt = ${now}; peekStill = true`);
+      const wait = page.run(`peekNext(30000, ${now})`);
+      if (now + wait > lastSoon + every) {   // a popover closes before that peek
+        lastSoon += every; page.run('peekSoon()');
+        now = Math.max(lastSoon, now + 30000);   // peekSoon: not before the floor after the last peek
+      } else now += wait;
+    }
+    assert.ok(reads <= 20, `a show every ${every / 1000} s: ${reads} reads in 10 min`);
+  }
+});
+
+test('summaryAt: the newest `at` of a summary, in ms, ignoring what is not a number (js/standings.js)', () => {
+  const page = fresh();
+  const at = (o) => { page.ctx.__s = o; return page.run('summaryAt(__s)'); };
+  assert.equal(at({ '1-1': { at: 100 }, '1-2': { at: 160 }, '1-3': { at: 130 } }), 160000);
+  assert.equal(at({ '1-1': { at: 'x' }, '1-2': {}, '1-3': null, '1-4': { at: NaN }, '1-5': { at: 90 } }), 90000);
+  assert.equal(at({ '1-1': {}, '1-2': 'x' }), 0);
+  assert.equal(at({}), 0);
+});
