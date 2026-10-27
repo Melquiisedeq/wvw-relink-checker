@@ -601,6 +601,10 @@ async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
     let kept = keepNewestMatch(raw);
     if (reading && !isMatchBody(kept)) reading.then(offerLatest);
     else if (reading) kept = (await mergeLatest([kept], reading))[0];
+    // A newer body can land while mergeLatest waits: a map reopened by the
+    // same button takes this answer of the closed one as its own.
+    const newest = isMatchBody(kept) && newestMatches.get(kept.id);
+    if (newest && matchIsBehind(kept, newest.match)) kept = newest.match;
     if (logged) ageBehindLog([raw.id]);
     return kept;
   }
