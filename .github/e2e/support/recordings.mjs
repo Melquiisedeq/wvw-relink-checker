@@ -21,7 +21,7 @@ const OWN_FIXED = new Map([
 ]);
 const EXTERNAL = /^https:\/\/(api\.guildwars2\.com|docs\.google\.com)\//;
 // Analytics: refused, as a blocker would, and their errors ignored.
-export const BLOCKED = /goatcounter|cloudflareinsights/;
+export const BLOCKED = /cloudflareinsights/;
 const IDS_URL = 'https://api.guildwars2.com/v2/wvw/matches?ids=';
 const ALL_URL = IDS_URL + 'all';
 // The guild tactics a map asks for are the ones its match holds that no map

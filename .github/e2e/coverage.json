@@ -11,10 +11,6 @@
     "lines": 98.7,
     "branches": 91.7
   },
-  "site/js/count.js": {
-    "lines": 2.9,
-    "branches": 3.4
-  },
   "site/js/dom.js": {
     "lines": 100,
     "branches": 100
