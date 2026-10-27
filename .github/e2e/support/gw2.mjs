@@ -159,6 +159,12 @@ class Timeline {
     return this.#with([{ kind: 'status', at: this.#cursor, code }]);
   }
 
+  // From here on, /api/kills gets no rows while the API goes on (our readers
+  // stopped); true ends it. The rows of those minutes never come back.
+  killHistory(on) {
+    return this.#with([{ kind: 'history', at: this.#cursor, on: !!on }]);
+  }
+
   // From here on, /api/latest and its summary answer `code` (503: the Worker
   // with nothing recent kept) or never ('hang'); null ends it.
   latestStatus(code) {
@@ -251,7 +257,7 @@ class Timeline {
     for (const id of ids) roll(id, horizon);
     for (const list of frames.values()) list.sort((a, b) => a.at - b.at);
     const windows = kind => this.#ops.filter(o => o.kind === kind).sort((a, b) => a.at - b.at);
-    this.#compiled = { anchor, base, ids, frames, pools: windows('pool'), statuses: windows('status'), latest: windows('latest') };
+    this.#compiled = { anchor, base, ids, frames, pools: windows('pool'), statuses: windows('status'), latest: windows('latest'), history: windows('history') };
     return this.#compiled;
   }
 
@@ -291,6 +297,12 @@ class Timeline {
   latestStatusAt(t) {
     const w = this.#windowAt(this.#compile().latest, t);
     return w ? w.code : null;
+  }
+
+  // Whether /api/kills takes rows at t.
+  historyAt(t) {
+    const w = this.#windowAt(this.#compile().history, t);
+    return w ? w.on : true;
   }
 
   // How far behind the older group is at t, 0 for none.
@@ -552,14 +564,15 @@ class Server {
   }
 
   // /api/kills: the recorded rows and a row per state of the timeline, the
-  // last thirty minutes, none while the API was down (the readers read it too).
+  // last thirty minutes, none while the API was down (the readers read it too)
+  // or while killHistory(false) holds.
   #rows(t) {
     const { anchor, ids, frames } = Timeline.compiled(this.#tl);
     const from = t - KILLS_WINDOW_MS;
     const rows = baseBodies().rows.filter(r => r[0] - anchor > from && r[0] - anchor <= t);
     for (const id of ids) {
       for (const f of frames.get(id)) {
-        if (!(f.at > from && f.at <= t) || this.#tl.statusAt(f.at) !== null) continue;
+        if (!(f.at > from && f.at <= t) || this.#tl.statusAt(f.at) !== null || !this.#tl.historyAt(f.at)) continue;
         const k = this.#tl.killsByMap(id, f.at);
         rows.push([anchor + f.at, id, ...MAPS.map(type => k[type] || 0)]);
       }
