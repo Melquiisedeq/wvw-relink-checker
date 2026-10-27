@@ -1,0 +1,35 @@
+# Deletes the claude/... branches with no open pull request whose commits are
+# all in main, or whose last commit is over three days old.
+name: Prune branches
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: List what would be deleted, delete nothing
+        type: boolean
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: prune-branches
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: node .github/scripts/prune-branches.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # The schedule deletes; a manual run obeys its dry_run input.
+          DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || (inputs.dry_run && 'true' || 'false') }}
