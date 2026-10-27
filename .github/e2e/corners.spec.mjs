@@ -291,17 +291,17 @@ test.describe('corners by the data clock', () => {
         `a base ${mins} min back should take two lines, "kills in ${mins} min" over "${late ? '⚠ ' : ''}${lead} HH:MM"`);
         bad(!c.swords, 'a window over 20 min should light no swords');
         expect(await balloon(page, 'l'), "the long window's balloon")
-          .toMatch(/ The window is longer than 10 minutes because the game's API stopped sending data between \S+( \S+)? and \S+( \S+)?\./);
+          .toMatch(/ The window is longer than 10 minutes because no kill data reached us between \S+( \S+)? and \S+( \S+)?\./);
       }
-      // Up to 20 min the API's gap does not hide the fight: the swords go by the pace per 10 min and the
+      // Up to 20 min a gap in the data does not hide the fight: the swords go by the pace per 10 min and the
       // second line names the gap, the balloon says the same.
       if (name === 'twenty' || name === 'stall19') {
         const mins = name === 'twenty' ? 20 : 19;
-        bad(num && c.small === `kills in ${mins} min` && c.two && !c.dim && /^API gap .+–.+$/.test(c.line2),
-          `a window of ${mins} min should take two lines, "kills in ${mins} min" over "API gap HH:MM–HH:MM"`);
+        bad(num && c.small === `kills in ${mins} min` && c.two && !c.dim && /^data gap .+–.+$/.test(c.line2),
+          `a window of ${mins} min should take two lines, "kills in ${mins} min" over "data gap HH:MM–HH:MM"`);
         bad(c.swords, `a fight in a ${mins} min window should light the swords`);
         expect(await balloon(page, 'l'), "the gap window's balloon")
-          .toMatch(/ The window is longer than 10 minutes because the game's API stopped sending data between \S+( \S+)? and \S+( \S+)?\. The swords count the pace per 10 minutes\.$/);
+          .toMatch(/ The window is longer than 10 minutes because no kill data reached us between \S+( \S+)? and \S+( \S+)?\. The swords count the pace per 10 minutes\.$/);
       }
       if (name === 'late') {
         bad(num && c.small === 'kills in 10 min' && c.two && c.dim && /^⚠\sdata up to \S+( \S+)?$/.test(c.line2), 'stalled data should take two lines, "kills in 10 min" over "⚠ data up to HH:MM", dimmed');

@@ -880,7 +880,7 @@ function buildMapCorners(wrap, matchId) {
     const line = rates && type ? fightCount(rates, type) : null;
     const odd = !!line && !!view.clock && (isStale || !!view.strange);
     const old = !!line && !!view.clock && (odd || view.silence > KILLS_QUIET_MS);
-    // A window over 15 min takes two lines too: the API sent nothing for a while.
+    // A window over 15 min takes two lines too: no data reached us for a while.
     const two = old || (!!line && view.long);
     const hole = !!line && view.longOk && !old;
     const unproven = old && !odd && !view.alive;
@@ -893,7 +893,7 @@ function buildMapCorners(wrap, matchId) {
     put(smallMins, line ? String(line.mins) : '');
     put(smallLong, line ? ' min' : '');
     put(smallShort, line ? 'm' : '');
-    put(lead, hole ? 'API gap ' : two ? (old && !odd && view.alive ? (view.still ? 'no new kills since before ' : 'no new kills since ') : 'data up to ') : '');
+    put(lead, hole ? 'data gap ' : two ? (old && !odd && view.alive ? (view.still ? 'no new kills since before ' : 'no new kills since ') : 'data up to ') : '');
     put(smallMark, odd ? '\u26a0\u00a0' : '');
     if (hole) {
       put(smallTime, `${hhmm(view.gap.from)}\u2013${hhmm(view.gap.to)}`);
@@ -920,7 +920,7 @@ function buildMapCorners(wrap, matchId) {
       const tail = Number.isFinite(view.prevRun) && view.prevRun > KILLS_CATCHUP_MS && !view.hot
         ? ` The last jump came after the game's API sent nothing for ${Math.round(view.prevRun / 60000)} min, so when those kills happened is unknown; it lights no swords.` : '';
       if (view.long) {
-        text = `${line.kills} kills in the ${line.mins} min up to ${t}. The window is longer than 10 minutes because the game's API stopped sending data between ${hhmm(view.gap.from)} and ${hhmm(view.gap.to)}.`
+        text = `${line.kills} kills in the ${line.mins} min up to ${t}. The window is longer than 10 minutes because no kill data reached us between ${hhmm(view.gap.from)} and ${hhmm(view.gap.to)}.`
           + (hole ? ' The swords count the pace per 10 minutes.' : '')
           + (odd ? ` The game's API has been behind since ${t}, so this is not now.` : unproven ? ` No newer data from the game's API since ${t} yet.` : old ? ` No new kills since ${t}, as on a quiet map.` : '') + tail;
       } else if (odd && view.still) {
