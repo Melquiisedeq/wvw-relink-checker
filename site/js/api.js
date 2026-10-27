@@ -621,6 +621,11 @@ async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
     list = [...out.values()].sort((a, b) => byId(a.id, b.id));
   }
   if (regions.length || reading) list = await mergeLatest(list, reading);
+  // A newer body can land while mergeLatest waits (see the one-match path).
+  list = list.map((m) => {
+    const newest = newestMatches.get(m.id);
+    return newest && matchIsBehind(m, newest.match) ? newest.match : m;
+  });
   ageBehindLog(logged);
   for (const region of regions) weekStoreRegion(region, list);
   return list;
