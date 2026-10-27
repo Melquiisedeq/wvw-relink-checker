@@ -28,7 +28,11 @@
 //   went backwards.
 // - The page reads only the last skirmish (js/panels.js, getSkirmishScore):
 //   a new one is appended at each two-hour mark after the recording, and the
-//   score of the minute goes into the last one. Victory points stay as recorded.
+//   score of the minute goes into the last one.
+// - A skirmish that ends gives its colours 5, 4 and 3 victory points by its
+//   score, in the same body as the skirmish after it (js/standings.js,
+//   sideFigures; js/panels.js, rankMatchByVictoryPoints). A tie goes to the
+//   first of red, blue, green: this world's rule, not the game's.
 // - A flip changes `owner` and `last_flipped` together (js/maps-early.js,
 //   missedOwnerChanges and missedBodyChanged; js/maps.js, riLeft).
 // - The maps add up to the match: kills, deaths and scores per colour are the
@@ -408,7 +412,8 @@ function materialise(recorded, state) {
       }
     }
   }
-  const lastId = b.skirmishes.length ? b.skirmishes[b.skirmishes.length - 1].id : 0;
+  const had = b.skirmishes.length;
+  const lastId = had ? b.skirmishes[had - 1].id : 0;
   for (let i = 1; i <= state.skirmishes; i++) {
     b.skirmishes.push({ id: lastId + i, scores: { red: 0, blue: 0, green: 0 },
       map_scores: MAPS.map(type => ({ type, scores: { red: 0, blue: 0, green: 0 } })) });
@@ -433,6 +438,10 @@ function materialise(recorded, state) {
   }
   for (const f of ['kills', 'deaths', 'scores']) {
     b[f] = Object.fromEntries(COLORS.map(c => [c, b.maps.reduce((n, m) => n + m[f][c], 0)]));
+  }
+  for (let i = Math.max(0, had - 1); i < b.skirmishes.length - 1; i++) {
+    const sc = b.skirmishes[i].scores;
+    [...COLORS].sort((x, y) => sc[y] - sc[x]).forEach((c, place) => { b.victory_points[c] += 5 - place; });
   }
   return b;
 }

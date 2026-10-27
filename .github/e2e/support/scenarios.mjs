@@ -35,6 +35,14 @@ export const twoPools = (lag = 10, min = 30, id) => opened(id).latestStatus(503)
 export const firstReadBehind = (lag = 10, min = 30, id) =>
   opened(id).latestStatus(503).olderPool(lag, { first: true }).advance(min);
 
+// A skirmish ends while the tab is away: `min` minutes of play from the opening
+// carry the match past its next two-hour mark (the recording's is 105 min
+// after it), and a server group `lag` minutes behind answers every second
+// minute from the opening on. A tab back in an odd minute just past the mark
+// gets the older group's body - risen, but from before the mark, with the
+// victory points of before - while /api/latest holds the newest.
+export const skirmishAway = (min = 100, lag = 5, id) => opened(id).olderPool(lag).advance(min);
+
 // The game goes on while its API answers `code` for `min` minutes, after 4 of
 // play, then 12 more with the API back.
 export const apiDown = (min = 10, code = 503, id) =>

@@ -5,7 +5,7 @@
 // what a visitor sees at the end, not that the code was passed.
 import { test, expect } from './support/fixtures.mjs';
 import { answer, hold } from './support/faults.mjs';
-import { FOCUS, playing } from './support/scenarios.mjs';
+import { FOCUS, MIN, hidden, playing, skirmishAway, visible } from './support/scenarios.mjs';
 import { check, firstTier, frame, iso, keptMatch, later, load, openMap, search } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
@@ -468,5 +468,43 @@ test.describe('a side\'s VP moves on a refresh', () => {
     await expect(page.locator(`.standing-match[data-match-id="${FOCUS}"] .side-red .standing-vp .stat-value`),
       'red VP after the refresh').toHaveText(mine.victory_points.red.toLocaleString('en-US'));
     expect(await pulsing(), 'the sides whose card pulsed after red VP moved').toEqual(['red']);
+  });
+});
+
+// Only the focus match plays in this world; in the game all nine move, so the
+// others are marked as seen rising at the return, as the game's answer would have them.
+test.describe('a skirmish ends while the tab is away', () => {
+  test.use({ timeline: skirmishAway(100, 5) });
+  // `loadedHidden`: a tab opened in the background (a middle-click), hidden
+  // before any script of the page runs, as support/scenarios.mjs hides it.
+  for (const loadedHidden of [false, true]) test(`the VP comes back with the other numbers${loadedHidden ? ' (opened in the background)' : ''}`, async ({ page, wvw }) => {
+    if (loadedHidden) {
+      await page.addInitScript(() => {
+        window.__visibility = 'hidden';
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => window.__visibility });
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => window.__visibility === 'hidden' });
+      });
+    }
+    await opened(page, wvw);
+    const tl = wvw.timeline;
+    const back = 107.5 * MIN;
+    const older = tl.body(FOCUS, back - 5 * MIN), newest = tl.body(FOCUS, back);
+    expect(tl.skirmishAt(FOCUS, back - 5 * MIN), 'the state: the older group\'s body is from before the mark')
+      .toBeLessThan(tl.skirmishAt(FOCUS, back));
+    expect(newest.victory_points, 'the state: the mark moved the VP').not.toEqual(older.victory_points);
+    const side = c => page.locator(`.standing-match[data-match-id="${FOCUS}"] .side-${c}`);
+    const activity = async c => (await side(c).locator('.standing-side-stats .stat-value').nth(1).evaluate(el => el.firstChild.nodeValue)).trim();
+    const before = await activity('red');
+    const away = wvw.recordedAt + back - await wvw.now();
+    if (loadedHidden) await wvw.skew(away);
+    else await hidden(page, wvw, away);
+    await page.evaluate(id => { for (const [k, kept] of newestMatches) if (k !== id) kept.at = Date.now(); }, FOCUS);
+    await visible(page);
+    await expect.poll(() => activity('red'), 'red Activity after the return').not.toBe(before);
+    await wvw.settle();
+    const vp = c => side(c).locator('.standing-vp .stat-value').textContent();
+    for (const c of ['red', 'blue', 'green']) {
+      expect(await vp(c), `${c} VP after the return`).toBe(newest.victory_points[c].toLocaleString('en-US'));
+    }
   });
 });
