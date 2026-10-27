@@ -6,7 +6,7 @@
 // a download that fails says so and its "Try again" opens the map.
 import { test, expect } from './support/fixtures.mjs';
 import { abort, hold } from './support/faults.mjs';
-import { load, firstTier, recordedJson } from './support/steps.mjs';
+import { load, firstTier, recordedJson, serveList } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 const PLOT = ".info-popover .wvw-plot g[role='button']";
@@ -183,4 +183,32 @@ test('a late answer of a map closed and reopened by the same button does not tak
   await expect(page.locator(PLOT).first()).toBeAttached();
   await wvw.settle();
   expect(await page.evaluate(() => window.__opened), 'the score each opening painted from').toEqual([sum(rec), sum(rec), sum(rec) + 5]);
+});
+
+test('a list read waiting on /api/latest hands out the newer body that landed meanwhile', async ({ page, wvw }) => {
+  await load(page, wvw);
+  const t = await firstTier(page);
+  const rec = recordedJson(t.url);
+  const sum = m => ['red', 'blue', 'green'].reduce((n, c) => n + Number(m.scores[c]), 0);
+  const newer = { ...rec, scores: { ...rec.scores, red: Number(rec.scores.red) + 5 } };
+  let latestGo;
+  const latestHeld = new Promise(ok => { latestGo = ok; });
+  let latestReads = 0;
+  await page.route(/\/api\/latest$/, async route => {
+    latestReads++;
+    await latestHeld;
+    await route.fulfill({ status: 200, body: '{"at":0,"matches":[]}',
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } });
+  });
+  // The game's list answers with the older body.
+  await serveList(page, [rec]);
+  await wvw.skew(100000);
+  const list = page.evaluate(({ id }) => fetchMatches(`${API_BASE}/wvw/matches?ids=${id}`, 8000, ['1'])
+    .then(l => l.map(m => colorSum(m.scores))), { id: t.id });
+  await expect.poll(() => latestReads, { message: 'the list read asked /api/latest' }).toBe(1);
+  // A newer body of the same match lands inside the wait.
+  await page.evaluate(m => { keepNewestMatch(m); }, newer);
+  const scores = await list;
+  latestGo();
+  expect(scores, 'the score the list hands out').toEqual([sum(rec) + 5]);
 });
