@@ -511,3 +511,14 @@
   text-decoration:underline;
   text-decoration-color:var(--accent);text-underline-offset:3px;
 }
+
+/* A side that overtakes slides over the one it passes (js/panels.js, slideRun). The
+   cards are stacking contexts already (their clip-path); z-index orders them while
+   they cross. The shadow is its own layer: the card's clip-path would cut a box-shadow. */
+.slide-host{position:relative;}
+.slide-over{z-index:3;}
+.slide-under{z-index:1;}
+.slide-shadow{
+  position:absolute;z-index:2;pointer-events:none;opacity:0;
+  box-shadow:0 10px 22px 2px rgba(0,0,0,.7);
+}
