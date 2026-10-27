@@ -127,6 +127,7 @@ function patchStandingMatch({ m, box, sides, leaderScore }) {
   const rankByColor = rankMatchByVictoryPoints(m);
   const leaders = getStatLeaders(m);
   const ranked = [...COLORS].sort((a, b) => rankByColor[a] - rankByColor[b]);
+  slideFirst(box, ranked, sides);
 
   // A side overtook: the cards move, not rebuilt. The guild-found strip hangs
   // from its card, so it goes and paintGuildFound hangs it again. moveBefore
@@ -145,6 +146,162 @@ function patchStandingMatch({ m, box, sides, leaderScore }) {
     }
   }
   for (const c of COLORS) patchStandingSide(m, c, sides[c], rankByColor, leaders, leaderScore, restyled.has(c));
+  slidePlay(box);
+}
+
+// The cards of a tier slide to their new places when a side overtakes: each place is
+// read before the move (slideFirst) and after it (slideRun, in a microtask, once
+// paintGuildFound has hung the strip again), then only transform and opacity animate.
+// Places are relative to the tier's own box, so a tier above that grew in the same
+// repaint does not read as a slide.
+const slideBefore = new Map(); // tier box -> { boxTop, tops: Map(card -> top), index: Map(card -> i), stripTop }
+const slideLive = new Map();   // tier box -> { anims, marked, shadow }
+const slideQueue = [];
+let slideQueued = false;
+const SLIDE_EASE = 'ease-in-out';
+
+function slideFirst(box, ranked, sides) {
+  const order = [...box.children].filter((e) => e.classList.contains('standing-side'));
+  if (!ranked.some((c, i) => order[i] !== sides[c])) return;
+  // A slide still running is where the eye is: its transform is part of the place read.
+  const strip = box.querySelector(':scope > .guild-found-strip');
+  slideBefore.set(box, {
+    boxTop: box.getBoundingClientRect().top,
+    tops: new Map(order.map((s) => [s, s.getBoundingClientRect().top])),
+    index: new Map(order.map((s, i) => [s, i])),
+    stripTop: strip ? strip.getBoundingClientRect().top : null,
+  });
+}
+
+function slidePlay(box) {
+  if (!slideBefore.has(box)) return;
+  slideQueue.push(box);
+  if (!slideQueued) { slideQueued = true; queueMicrotask(slideRun); }
+}
+
+function slideStop(box) {
+  const live = slideLive.get(box);
+  if (!live) return;
+  slideLive.delete(box);
+  for (const a of live.anims) a.cancel();
+  for (const el of live.marked) el.classList.remove('slide-over', 'slide-under');
+  if (live.shadow) live.shadow.remove();
+  box.classList.remove('slide-host');
+}
+
+function slideRun() {
+  slideQueued = false;
+  const boxes = slideQueue.splice(0);
+  for (const box of boxes) slideStop(box);
+  // Every place is read before any animation starts: one layout for all the tiers.
+  const plans = [];
+  for (const box of boxes) {
+    const before = slideBefore.get(box);
+    slideBefore.delete(box);
+    if (!before || !box.isConnected) continue;
+    const boxRect = box.getBoundingClientRect();
+    const order = [...box.children].filter((e) => e.classList.contains('standing-side'));
+    const moves = [];
+    order.forEach((side, i) => {
+      if (!before.tops.has(side)) return;
+      const rect = side.getBoundingClientRect();
+      const dy = (before.tops.get(side) - before.boxTop) - (rect.top - boxRect.top);
+      if (Math.abs(dy) < 0.5) return;
+      moves.push({ side, dy, rect, up: i < before.index.get(side) });
+    });
+    const strip = box.querySelector(':scope > .guild-found-strip');
+    let stripMove = null;
+    if (strip && before.stripTop !== null) {
+      const dy = (before.stripTop - before.boxTop) - (strip.getBoundingClientRect().top - boxRect.top);
+      if (Math.abs(dy) >= 0.5) stripMove = { strip, dy, card: strip.previousElementSibling };
+    }
+    if (moves.length) plans.push({ box, boxRect, moves, stripMove, border: [box.clientLeft, box.clientTop] });
+  }
+  for (const p of plans) slideAnimate(p);
+  if (plans.length) requestAnimationFrame(slideFollowDeltas);
+}
+
+function slideAnimate({ box, boxRect, moves, stripMove, border }) {
+  const live = { anims: [], marked: [], shadow: null };
+  slideLive.set(box, live);
+  const timing = { duration: SWAP_MS, easing: SLIDE_EASE };
+  // The tier clips its chamfer at its 10px padding: on a wide rail 3% would reach it.
+  const grow = (width) => Math.min(1.03, 1 + 12 / width);
+  const mark = (el, cls) => { el.classList.add(cls); live.marked.push(el); };
+  const climbers = new Set();
+  for (const m of moves) {
+    if (m.up) {
+      mark(m.side, 'slide-over');
+      climbers.add(m.side);
+      live.anims.push(m.side.animate([
+        { transform: `translateY(${m.dy}px) scale(1)` },
+        { transform: `translateY(${m.dy / 2}px) scale(${grow(m.rect.width)})`, offset: 0.5 },
+        { transform: 'none' },
+      ], timing));
+    } else {
+      mark(m.side, 'slide-under');
+      live.anims.push(m.side.animate([
+        { transform: `translateY(${m.dy}px)`, opacity: 1 },
+        { transform: `translateY(${m.dy / 2}px)`, opacity: 0.6, offset: 0.5 },
+        { transform: 'none', opacity: 1 },
+      ], timing));
+    }
+  }
+  // The strip goes with its card, at the same z-index.
+  if (stripMove) {
+    mark(stripMove.strip, climbers.has(stripMove.card) ? 'slide-over' : 'slide-under');
+    live.anims.push(stripMove.strip.animate(
+      [{ transform: `translateY(${stripMove.dy}px)` }, { transform: 'none' }], timing));
+  }
+  // The climber's shadow, between it and the side it passes.
+  if (climbers.size) {
+    const m = moves.find((x) => climbers.has(x.side));
+    const shadow = document.createElement('div');
+    shadow.className = 'slide-shadow';
+    shadow.setAttribute('aria-hidden', 'true');
+    shadow.style.left = `${m.rect.left - boxRect.left - border[0]}px`;
+    shadow.style.top = `${m.rect.top - boxRect.top - border[1]}px`;
+    shadow.style.width = `${m.rect.width}px`;
+    shadow.style.height = `${m.rect.height}px`;
+    box.classList.add('slide-host');
+    box.appendChild(shadow);
+    live.shadow = shadow;
+    live.anims.push(shadow.animate([
+      { transform: `translateY(${m.dy}px)`, opacity: 0 },
+      { transform: `translateY(${m.dy / 2}px) scale(${grow(m.rect.width)})`, opacity: 1, offset: 0.5 },
+      { transform: 'none', opacity: 0 },
+    ], timing));
+  }
+  Promise.all(live.anims.map((a) => a.finished)).then(() => {
+    if (slideLive.get(box) === live) slideStop(box);
+  }, () => { /* cancelled by a newer slide, which cleaned up */ });
+}
+
+// A delta floats from <body> at the place its number had in the first frame, which
+// is the card's old place: one that started over a sliding card goes with it.
+// Runs after flashChanges' own frame callback has parked the deltas.
+const slideFollowed = new WeakSet();
+function slideFollowDeltas() {
+  const tags = [...document.querySelectorAll('body > .delta')].filter((t) => !slideFollowed.has(t));
+  if (!tags.length) return;
+  const sliding = [];
+  for (const live of slideLive.values()) {
+    for (const a of live.anims) {
+      const el = a.effect && a.effect.target;
+      if (!el || !el.classList.contains('standing-side')) continue;
+      const dy = Number(/translateY\((-?[\d.]+)px\)/.exec(a.effect.getKeyframes()[0].transform)?.[1]);
+      if (Number.isFinite(dy)) sliding.push({ a, rect: el.getBoundingClientRect(), dy });
+    }
+  }
+  for (const t of tags) {
+    const x = parseFloat(t.style.left);
+    const y = parseFloat(t.style.top) + 5;
+    const hit = sliding.find(({ rect }) => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom);
+    if (!hit) continue;
+    slideFollowed.add(t);
+    t.animate([{ translate: '0 0' }, { translate: `0 ${-hit.dy}px` }],
+      { duration: Math.max(0, SWAP_MS - (Number(hit.a.currentTime) || 0)), easing: SLIDE_EASE, fill: 'forwards' });
+  }
 }
 
 // The card of a tier with no body at all: its number and a line, no map
