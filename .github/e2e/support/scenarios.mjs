@@ -60,6 +60,13 @@ export const at = (iso, id = FOCUS) => {
   return gw2.match(id).freeze(Math.floor(t / MIN) - 12).advance(12).pageOpens();
 };
 
+// ---- the kill history ------------------------------------------------
+// One line per match the page holds (it must be loaded), the match `id` last
+// seen `age` ms ago and the others `othersAge`; the same lines for /api/kills
+// ({ rows }) and for the kills sheet (as CSV).
+export const killRows = (page, id, age, othersAge = MIN) =>
+  page.evaluate(([target, a, b]) => [...newestMatches.keys()].map(k => [Date.now() - (k === target ? a : b), k, 5, 5, 5, 5]), [id, age, othersAge]);
+
 // ---- the tab ---------------------------------------------------------
 // A hidden tab cannot be had for real in a test browser (headless, Xvfb,
 // another tab on top, setWebLifecycleState frozen: the timers go on). What the page reads is simulated: document.visibilityState and

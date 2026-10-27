@@ -11,7 +11,7 @@ import { test, expect } from './support/fixtures.mjs';
 import { answer, fail } from './support/faults.mjs';
 import { phone, recordedJson, load, firstTier, openMap, later } from './support/steps.mjs';
 import { gw2 } from './support/gw2.mjs';
-import { FOCUS } from './support/scenarios.mjs';
+import { FOCUS, killRows } from './support/scenarios.mjs';
 import { createHmac } from 'node:crypto';
 import worker from '../../worker/index.mjs';
 import { fakeD1 } from '../../tests/fake-d1.mjs';
@@ -153,7 +153,7 @@ test.describe('map corners', () => {
 // swapped; the kept matches are put as a first sight with no rise.
 test.describe('history ages first sight', () => {
   const reset = async (page, wvw, id, ageOfTarget, ageOfOthers) => {
-    const rows = await page.evaluate(([target, a, b]) => [...newestMatches.keys()].map(k => [Date.now() - (k === target ? a : b), k, 5, 5, 5, 5]), [id, ageOfTarget, ageOfOthers]);
+    const rows = await killRows(page, id, ageOfTarget, ageOfOthers);
     await answer(page, wvw.url + 'api/kills', { rows });
     await page.evaluate(async () => {
       for (const k of newestMatches.values()) { k.rose = false; k.at = Date.now(); }

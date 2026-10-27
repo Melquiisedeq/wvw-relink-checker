@@ -163,8 +163,6 @@ for (const failing of ['NA', 'EU']) {
     await expect(value).toHaveText('NA 5h 0m · EU 5h 0m');
     // The next refresh: the whole list does not answer, the list of ids does,
     // and one region's matches fail.
-    const ids = recordedJson(GAME + 'wvw/matches?ids=all').map(m => m.id);
-    await answer(page, GAME + 'wvw/matches', ids);
     await fail(page, wvw, /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches\?ids=all$/);
     const region = await fail(page, wvw, failing === 'NA' ? /matches\?ids=1-/ : /matches\?ids=2-/);
     for (const left of ['4h 54m', '4h 48m']) {
@@ -262,10 +260,8 @@ async function resetMinute(page, wvw, now) {
   const list = (eu, euWeek) => recordedJson(GAME + 'wvw/matches?ids=all')
     .filter(m => m.id[0] === '1' || eu(m))
     .map(m => { const w = m.id[0] === '1' ? naWeek : euWeek(m); return { ...m, start_time: iso(w.start), end_time: iso(w.end) }; });
-  const ids = recordedJson(GAME + 'wvw/matches?ids=all').map(m => m.id);
   await answer(page, GAME + 'wvw/timers/lockout', {});
   await answer(page, GAME + 'wvw/timers/teamAssignment', {});
-  await answer(page, GAME + 'wvw/matches', ids);
   return { old, newer, list };
 }
 const euStatus = page => page.locator('.standings-card:has(#standingsAlertEU)');

@@ -1,6 +1,7 @@
 // A fake Guild Wars 2 world with one timeline. Every URL the page reads a match
-// from - ?ids=all, ?ids=<list>, ?id=, ?world=, /api/latest (and its summary)
-// and /api/kills - is answered from the same timeline at the page's own time,
+// from - the plain list of ids, ?ids=all, ?ids=<list>, ?id=, ?world=,
+// /api/latest (and its summary) and /api/kills - is answered from the same
+// timeline at the page's own time,
 // so no two URLs contradict each other: bodies that disagree between URLs
 // mislead the page into states the game never shows.
 //
@@ -497,7 +498,7 @@ class Server {
   answer(url, pageNow) {
     const { anchor, ids } = Timeline.compiled(this.#tl);
     const t = pageNow - anchor;
-    if (url.startsWith(API)) {
+    if (url === API.slice(0, -1) || url.startsWith(API)) {
       const q = new URLSearchParams(url.slice(API.length));
       const code = this.#tl.statusAt(t);
       if (code === 'hang') return 'hang';
@@ -505,6 +506,7 @@ class Server {
         this.#planted.add(url);
         return json(code, { text: code === 429 ? 'too many requests' : 'ErrBadData' });
       }
+      if (url.length < API.length) return json(200, ids);
       const pick = this.#at(t);
       const get = id => this.#body(id, pick.t, pageNow, !pick.older);
       if (q.has('ids')) {
