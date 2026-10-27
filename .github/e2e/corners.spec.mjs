@@ -12,7 +12,7 @@ import { answer, fail } from './support/faults.mjs';
 import { phone, recordedJson, load, firstTier, openMap, later } from './support/steps.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { FOCUS, killRows } from './support/scenarios.mjs';
-import { createHmac } from 'node:crypto';
+import { signHeaders, postSigned } from '../../tests/signed.mjs';
 import worker from '../../worker/index.mjs';
 import { fakeD1 } from '../../tests/fake-d1.mjs';
 
@@ -382,9 +382,8 @@ test.describe('kills that stood still, through the Worker', () => {
     try {
       const body = JSON.stringify({ rows: [row(newest)] });
       const t = Math.floor(now / 1000);
-      const sig = createHmac('sha256', KEY).update(t + '\n/api/ingest/kills\n' + body).digest('hex');
-      const sent = await worker.fetch(new Request('https://wvwrelink.com/api/ingest/kills',
-        { method: 'POST', body, headers: { 'x-wvw-time': String(t), 'x-wvw-sig': sig } }), env);
+      const path = '/api/ingest/kills';
+      const sent = await postSigned(env, now, path, body, signHeaders(KEY, t, path, body));
       expect(sent.status, 'the Worker took the newest row').toBe(200);
       const read = await worker.fetch(new Request('https://wvwrelink.com/api/kills'), env);
       expect(read.status).toBe(200);
