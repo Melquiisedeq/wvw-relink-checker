@@ -3,9 +3,10 @@
 import { createHmac } from 'node:crypto';
 import worker from '../worker/index.mjs';
 
-// The two headers the entrance checks: the time, and HMAC-SHA256 over time, path and body.
+// The two headers the entrance checks: the time, and HMAC-SHA256 over time, path and body
+// (text or bytes).
 export function signHeaders(key, t, path, body) {
-  const sig = createHmac('sha256', key).update(t + '\n' + path + '\n' + body).digest('hex');
+  const sig = createHmac('sha256', key).update(t + '\n' + path + '\n').update(body).digest('hex');
   return { 'x-wvw-time': String(t), 'x-wvw-sig': sig };
 }
 
