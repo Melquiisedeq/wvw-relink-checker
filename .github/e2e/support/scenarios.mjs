@@ -40,6 +40,12 @@ export const firstReadBehind = (lag = 10, min = 30, id) =>
 export const apiDown = (min = 10, code = 503, id) =>
   opened(id).advance(4).status(code).advance(min).status(null).advance(12);
 
+// The game goes on and its API answers, but /api/kills gets no rows for `gap`
+// minutes (our readers stopped): `before` minutes of play, the gap, `after`
+// more, and the page opens then, with no log of its own to fill the hole.
+export const killsGap = (gap = 12, before = 6, after = 2, id) =>
+  gw2.match(id ?? FOCUS).advance(before).killHistory(false).advance(gap).killHistory(true).advance(after).pageOpens().advance(2);
+
 // `min` minutes of play with `flips` objectives changing hands, from the moment
 // the page opens: what a tab away for that long comes back to.
 export const missed = (min = 5, flips = 3, id) => opened(id).advance(min, { flips });
