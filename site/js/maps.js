@@ -3061,7 +3061,7 @@ async function fillTierMaps(popover, match, regionName, tierNum, triggerEl) {
     ]);
     catalogue = cat;
   } catch {
-    if (activeTrigger !== triggerEl) return;
+    if (activePopover !== popover) return;
     popover.textContent = '';
     const msg = document.createElement('p');
     msg.className = 'hint';
@@ -3071,7 +3071,8 @@ async function fillTierMaps(popover, match, regionName, tierNum, triggerEl) {
     return;
   }
 
-  if (activeTrigger !== triggerEl) return; // closed while loading
+  // Closed and opened again, the same button holds a new popover.
+  if (activePopover !== popover) return;
   renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     sectorsByType, pendingSectors, triggerEl);
 }
