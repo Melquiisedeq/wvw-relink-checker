@@ -290,8 +290,9 @@ function keepNewestMatch(match) {
     gapFrom = gapped ? answeredBefore : kept.gapFrom;
   }
   let at = moved ? now : kept.at;
-  const copyAt = moved ? latestBodyAt.get(match) : undefined;
-  if (copyAt !== undefined) {
+  // While `at` is only a first sight, a copy with the same score dates it.
+  const copyAt = moved || (same && !kept.rose) ? latestBodyAt.get(match) : undefined;
+  if (copyAt !== undefined && (moved || copyAt < at)) {
     // Our copy dates its body, a gap or not; "rose" only as recent as the
     // quiet-map claim needs (KILLS_ALIVE_MS, js/maps-early.js).
     at = Math.min(now, copyAt);
@@ -456,10 +457,12 @@ function weekLineupOfTeam(teamId) {
 // Backdates `at` for matches whose `at` is only a first sight, using the
 // newest line the shared history holds for them (the script writes a line
 // when a score rose). Never newer than the current `at`, never over a rise
-// this page saw, never from a line older than the match's own week.
-// `byMatch`: Map matchId -> samples [{at}] oldest first. Returns how many
+// this page saw, never from a line older than the match's own week, never
+// for a body with more kills on a map than the line: its rise is one no
+// reader of ours wrote down (one dropped the match), not the game's API behind.
+// `byMatch`: Map matchId -> samples [{at, n}] oldest first. Returns how many
 // changed.
-function ageFirstSightFromHistory(byMatch, staleMs) {
+function ageFirstSightFromHistory(byMatch, staleMs, totalsOf) {
   const now = Date.now();
   let n = 0;
   for (const [id, kept] of newestMatches) {
@@ -470,6 +473,8 @@ function ageFirstSightFromHistory(byMatch, staleMs) {
     if (now - last.at <= staleMs || last.at >= kept.at) continue;
     const week = Date.parse(kept.match.start_time);
     if (Number.isFinite(week) && last.at < week) continue;
+    const totals = totalsOf(kept.match);
+    if (Object.keys(totals).some((t) => totals[t] > (Number(last.n && last.n[t]) || 0))) continue;
     kept.at = last.at;
     n++;
   }
