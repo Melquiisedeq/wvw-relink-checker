@@ -719,6 +719,10 @@ async function peekLatest() {
   const ahead = new Set();
   for (const [id, k] of newestMatches) {
     const e = Object.hasOwn(sum, id) ? sum[id] : null;
+    // A body in hand (the open map, or an answer past LATEST_WAIT_MS) that the list does not draw yet.
+    const drawn = matchDataCache.get(id);
+    if (drawn && matchIsLive(k.match) && drawn.start_time === k.match.start_time
+      && colorSum(k.match.scores) > colorSum(drawn.scores)) ahead.add(id);
     if (e && matchIsLive(k.match) && now - k.at >= PEEK_BEHIND_MS
       && Number.isFinite(e.score) && e.start === Date.parse(k.match.start_time)
       && e.score > colorSum(k.match.scores)) ahead.add(id);

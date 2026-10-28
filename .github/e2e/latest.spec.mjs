@@ -208,3 +208,28 @@ test.describe('the tab hides during a peek', () => {
     expect(await armed(), 'peek timers armed after the tab came back').toBeGreaterThan(0);
   });
 });
+
+// A body newer than the one the list draws (the open map put it in newestMatches,
+// or /api/latest answered after the paint's wait) reaches the list at the next
+// peek, though the summary says nothing newer.
+test.describe('a newer body in hand', () => {
+  test.use({ timeline: playing(), clock: 'playwright' });
+
+  test('the next peek reloads the list', async ({ page, wvw }) => {
+    await page.route(/\/api\/latest\/summary$/, route => route.fulfill({ status: 200, body: '{}',
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } }));
+    await opened(page, wvw);
+    const id = await page.evaluate(() => {
+      const m = [...matchDataCache.values()].find(x => matchIsLive(x));
+      keepNewestMatch({ ...m, scores: { ...m.scores, red: m.scores.red + 500 } });
+      window.__peekLoads = 0;
+      const load = loadStandings;
+      loadStandings = function (...a) { if (a[0] === 'peek') window.__peekLoads++; return load.apply(this, a); };
+      return m.id;
+    });
+    const drawn = await scoreOf(page, id);
+    await expect.poll(async () => { await page.clock.fastForward(31 * 1000); return page.evaluate(() => window.__peekLoads); },
+      'the peek reloaded the list').toBeGreaterThan(0);
+    await expect.poll(() => scoreOf(page, id), 'the list draws the newer body').toBe(drawn + 500);
+  });
+});
