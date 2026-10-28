@@ -3,7 +3,7 @@
 //   state                                  how
 //   API frozen 40 min, then back           frozen(40), the map opened four times
 //   two server groups alternating          twoPools(10, 30)
-//   reload, one group behind               firstReadBehind(10, 30) and twoPools(10, 30), reload()
+//   reload, one group behind               copyBehindAll(10, 30) and twoPools(10, 30), reload()
 //   tab hidden 2 h, then back              missed(120, 6), hidden() / visible()
 //   laptop waking after 30 min             playing(40), wake(): every due timer once
 //   map open while the API is down         apiDown(12), the map never closed
@@ -22,7 +22,7 @@
 // holds every flip, its count is the flips', its kills are the timeline's.
 import { test, expect } from './support/fixtures.mjs';
 import { gw2 } from './support/gw2.mjs';
-import { FOCUS, HOUR, MIN, apiDown, copyAheadOld, firstReadBehind, frozen, hidden, killSteps, missed, playing, twoPools, visible, wake } from './support/scenarios.mjs';
+import { FOCUS, HOUR, MIN, apiDown, copyAheadOld, copyBehindAll, frozen, hidden, killSteps, missed, playing, twoPools, visible, wake } from './support/scenarios.mjs';
 
 const STALE_MS = 6 * MIN;
 // How long the page may take to read the API again: the open map asks every
@@ -214,18 +214,20 @@ test.describe('two server groups alternating', () => {
 // A reload forgets the bodies the page held; this browser's fight log does
 // not. The first read after it lands on the older group, 10 min behind.
 test.describe('reload while one server group is behind', () => {
-  test.describe('a re-read reaches the newer group', () => {
-    test.use({ timeline: firstReadBehind(10, 30) });
+  test.describe('the whole group is behind and our copy is ahead', () => {
+    test.use({ timeline: copyBehindAll(10, 30) });
     test('nothing goes back', async ({ page, wvw }) => {
       const r = rower(page, wvw);
+      const copyReads = [];
+      page.on('request', q => { if (/\/api\/latest$/.test(q.url())) copyReads.push(q.url()); });
       await r.load();
       await r.pass(8, 4, 'alternating');
       await r.peek('before 8 min');
       await r.pass(8, 4, 'alternating');
       await r.peek('before 16 min');
+      const copyBefore = copyReads.length;
       await r.reload();
-      const t = await wvw.now() - wvw.recordedAt;
-      expect(Math.floor(t / MIN) % 2, 'the state: the older group answering').toBe(1);
+      expect(copyReads.length - copyBefore, 'the state: after the reload the copy was asked, the only way to a newer body').toBeGreaterThanOrEqual(1);
       await r.peek('reloaded, map opened');
     });
   });
