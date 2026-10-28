@@ -101,10 +101,15 @@ export const at = (iso, id = FOCUS) => {
 
 // ---- the kill history ------------------------------------------------
 // One line per match the page holds (it must be loaded), the match `id` last
-// seen `age` ms ago and the others `othersAge`; the same lines for /api/kills
-// ({ rows }) and for the kills sheet (as CSV).
+// seen `age` ms ago and the others `othersAge`, each with the kills of the body
+// the page keeps: a body ahead of its line is not dated by it (js/api.js,
+// ageFirstSightFromHistory). The same lines for /api/kills ({ rows }) and for
+// the kills sheet (as CSV).
 export const killRows = (page, id, age, othersAge = MIN) =>
-  page.evaluate(([target, a, b]) => [...newestMatches.keys()].map(k => [Date.now() - (k === target ? a : b), k, 5, 5, 5, 5]), [id, age, othersAge]);
+  page.evaluate(([target, a, b]) => [...newestMatches.entries()].map(([k, kept]) => {
+    const n = fightTotals(kept.match);
+    return [Date.now() - (k === target ? a : b), k, ...KILLS_MAP_ORDER.map(t => n[t] || 0)];
+  }), [id, age, othersAge]);
 
 // ---- the tab ---------------------------------------------------------
 // A hidden tab cannot be had for real in a test browser (headless, Xvfb,

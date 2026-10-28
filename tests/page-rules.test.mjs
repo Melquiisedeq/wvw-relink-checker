@@ -212,6 +212,52 @@ test('ageBehindHistory: a body behind the history is dated by the oldest line ah
     { at: now - 40 * MIN, n: shift(5) }, { at: now - 2 * MIN, n: shift(5) }]), 40);
 });
 
+test('ageFirstSightFromHistory: a first sight ahead of the newest line is not dated by it; one equal to it is (js/api.js)', () => {
+  const p = loadPage(recordedAt);
+  const m = matches[0];
+  p.ctx.__m = m; p.run('keepNewestMatch(__m)');
+  const now = p.clock.now;
+  const t = p.run('fightTotals(__m)');
+  const shift = (d) => Object.fromEntries(Object.entries(t).map(([k, v], i) => [k, i === 0 ? v + d : v]));
+  const datedBy = (lines) => {
+    p.ctx.__by = new Map([[m.id, lines]]);
+    p.run(`newestMatches.get(${JSON.stringify(m.id)}).at = ${now}`);
+    p.run('ageFirstSightFromHistory(__by, HUD_STALE_MS, fightTotals)');
+    return (now - p.run(`newestMatches.get(${JSON.stringify(m.id)}).at`)) / MIN;
+  };
+  // Opening during a freeze: the body is the line's, and is as old as it.
+  assert.equal(datedBy([{ at: now - 30 * MIN, n: shift(0) }]), 30);
+  // A map ahead of the line: the score rose after it, where no reader of ours saw it.
+  assert.equal(datedBy([{ at: now - 30 * MIN, n: shift(-4) }]), 0);
+});
+
+test('keepNewestMatch: a first sight with the score of our copy takes the copy\'s time (js/api.js)', () => {
+  const p = loadPage(recordedAt);
+  const m = matches[0];
+  const now = p.clock.now;
+  p.ctx.__m = m; p.run('keepNewestMatch(__m)');
+  const copy = clone(m);
+  p.ctx.__c = copy;
+  p.run(`latestBodyAt.set(__c, ${now - 4 * MIN})`);
+  p.clock.now += 2000;
+  p.run('keepNewestMatch(__c)');
+  const id = JSON.stringify(m.id);
+  assert.equal((now - p.run(`matchScoreRoseAt(${id})`)) / MIN, 4);
+  // A rise this page watched keeps its own time.
+  const q = loadPage(recordedAt);
+  q.ctx.__m = m; q.run('keepNewestMatch(__m)');
+  q.clock.now += 30000;
+  const up = clone(m); up.scores.red += 1;
+  q.ctx.__u = up; q.run('keepNewestMatch(__u)');
+  const watched = q.clock.now;
+  const same = clone(up);
+  q.ctx.__c = same;
+  q.run(`latestBodyAt.set(__c, ${watched - 4 * MIN})`);
+  q.clock.now += 2000;
+  q.run('keepNewestMatch(__c)');
+  assert.equal(q.run(`matchScoreRoseAt(${id})`), watched);
+});
+
 test('killView: a fight lights the swords; a stopped or silent body does not (js/maps-early.js)', () => {
   const p = fresh();
   const base = matches[0];
