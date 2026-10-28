@@ -524,8 +524,11 @@ function matchScoreRoseAt(matchId) {
 }
 
 // fetchJson for any wvw/matches URL that returns match bodies, one or a
-// list, same shape back. In parallel, not in turn: reads in a row come back from
-// the same server.
+// list, same shape back. Reads again, in parallel, only in the window of the
+// reset, when a body of last week or an unfinished list can differ from
+// the next read; a body behind within its week comes from the visitor's group,
+// pinned to their IP, and a read repeats it (see "The newest body per match"):
+// /api/latest is asked instead.
 const MATCH_REREADS = 2;
 
 const isMatchBody = (m) => !!m && typeof m.id === 'string';
@@ -546,7 +549,7 @@ function loggedAheadAt(match) {
   try { return fightLogAheadAt(match) || 0; } catch { return 0; }
 }
 
-// A first-sight body still behind the fight log after the re-reads is from
+// A first-sight body still behind the fight log after /api/latest, when it was asked, is from
 // before the log's reading, so "Updated" starts there, never later. Only
 // the `ids` matchesToReread named for the log: a body this visit watched rise
 // keeps its own time.
@@ -559,23 +562,31 @@ function ageBehindLog(ids) {
   }
 }
 
-// Which ids of a list answer to read again: a body behind the kept one or
-// behind the week this browser remembers, a first sight behind this
-// browser's fight log (what a reload forgot), a body whose week is over. `regions` ('1' NA, '2' EU) says the URL lists
+const sameStart = (a, b) => Date.parse(a.start_time) === Date.parse(b.start_time);
+
+// Which ids of a list answer to read again: a body behind the kept one from
+// an earlier week, a body whose week is over, a body behind the week this browser remembers. `regions` ('1' NA, '2' EU) says the URL lists
 // whole regions, and then also a tier this page holds that the answer left
 // out, and a gap in the tiers (1-2 and 1-3 without 1-1). Relink nights serve
 // partial lists and tiers from both weeks. `holes`: the gaps,
-// tiers that certainly exist. `logged`: the ids named for the fight log.
+// tiers that certainly exist. `behind`: bodies behind the kept one in the same
+// week; `logged`: first sights behind this browser's fight log (what a reload
+// forgot). Neither is read again: they are the cases for /api/latest.
 function matchesToReread(list, regions) {
   const got = new Set(list.filter(isMatchBody).map((m) => m.id));
   const need = new Set();
   const holes = [];
   const logged = [];
+  const behind = [];
   for (const m of list) {
     if (!isMatchBody(m)) continue;
     const kept = newestMatches.get(m.id);
-    if (!kept && loggedAheadAt(m)) { need.add(m.id); logged.push(m.id); }
-    if ((kept && matchIsBehind(m, kept.match)) || !matchIsLive(m) || weekAhead(m)) need.add(m.id);
+    if (!kept && loggedAheadAt(m)) logged.push(m.id);
+    if (kept && matchIsBehind(m, kept.match)) {
+      if (sameStart(m, kept.match)) behind.push(m.id);
+      else need.add(m.id);
+    }
+    if (!matchIsLive(m) || weekAhead(m)) need.add(m.id);
   }
   for (const region of regions) {
     for (const id of matchDataCache.keys()) {
@@ -591,16 +602,17 @@ function matchesToReread(list, regions) {
       if (!got.has(`${region}-${t}`)) { need.add(`${region}-${t}`); holes.push(`${region}-${t}`); }
     }
   }
-  return { need: [...need].sort(byId), holes, logged };
+  return { need: [...need].sort(byId), holes, logged, behind };
 }
 
-// A single body behind the kept one: the URL is read twice more at once and
-// the furthest along wins. A list: only the ids matchesToReread names are
-// read again, twice at once, and the answer is the union by id, the newest
-// body of each, in id order; a gap still missing gets the last body seen,
-// if any. Nothing to read again, nothing more is asked. A first sight
-// behind the fight log is read again the same way, once, with /api/latest
-// asked too if it was not in the last LATEST_GAP_MS.
+// A single body behind the kept one from an earlier week: the URL is read
+// twice more at once and the furthest along wins. A list: only the ids
+// matchesToReread names are read again, twice at once, and the answer is the
+// union by id, the newest body of each, in id order; a gap still missing gets
+// the last body seen, if any. Nothing to read again, nothing more is asked.
+// A body behind in its own week, or a first sight behind the fight log, is
+// not read again: /api/latest is asked instead, if it was not in the last
+// LATEST_GAP_MS.
 async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
   // The first read of a visit, the first after the tab was hidden, and a
   // single match gone quiet (the maps popover's poll), ask /api/latest beside
@@ -608,14 +620,16 @@ async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
   const one = new URL(url).searchParams.get('id');
   const early = regions.length ? (latestAsked && !latestMissed ? null : startLatest())
     : (one && latestWanted([one]) ? startLatest() : null);
-  const latestFor = (logged) => early
-    || (logged && Date.now() - latestAskedAt >= LATEST_GAP_MS ? startLatest() : null);
+  const latestFor = (behind) => early
+    || (behind && Date.now() - latestAskedAt >= LATEST_GAP_MS ? startLatest() : null);
   const raw = await fetchJson(url, 0, 'no-store', timeoutMs);
   if (!Array.isArray(raw)) {
     const known = isMatchBody(raw) && newestMatches.has(raw.id);
     const logged = isMatchBody(raw) && !known && loggedAheadAt(raw) > 0;
-    const reading = latestFor(logged);
-    if (logged || (known && matchIsBehind(raw, newestMatches.get(raw.id).match))) {
+    const keptRaw = known && newestMatches.get(raw.id).match;
+    const behind = logged || (known && matchIsBehind(raw, keptRaw) && sameStart(raw, keptRaw));
+    const reading = latestFor(behind);
+    if (known && matchIsBehind(raw, keptRaw) && !sameStart(raw, keptRaw)) {
       for (const m of await rereadMatches(url, timeoutMs)) keepNewestMatch(m);
     }
     let kept = keepNewestMatch(raw);
@@ -628,8 +642,8 @@ async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
     if (logged) ageBehindLog([raw.id]);
     return kept;
   }
-  const { need, holes, logged } = matchesToReread(raw, regions);
-  const reading = latestFor(logged.length > 0);
+  const { need, holes, logged, behind } = matchesToReread(raw, regions);
+  const reading = latestFor(logged.length > 0 || behind.length > 0);
   let list;
   if (need.length === 0) list = raw.map(keepNewestMatch);
   else {

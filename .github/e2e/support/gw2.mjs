@@ -10,7 +10,6 @@
 //     .advance(6, { kills: {} })          // the score rises, the kills stand still
 //     .pageOpens()                        // the page's clock starts here
 //     .olderPool(10).advance(20).olderPool(0)   // a server group 10 min behind
-//     .olderPool(10, { first: true })     // the same, for the first read of its minutes only
 //     .olderPool(30, { every: true })     // the visitor's whole group 30 min behind
 //     .latestHeld(true)                   // our copy keeps this moment's bodies
 //     .freeze(40)                         // 40 min, nothing new from the API
@@ -150,13 +149,10 @@ class Timeline {
   }
 
   // From here on, a server group `min` minutes behind answers every match URL
-  // in every second minute (reads in a row come back from the same server,
-  // js/api.js:498); 0 ends it.
-  // `first`: only the first match URL read in each of those minutes; the reads
-  // after it get the newer group. A page whose first read lands on the older one.
+  // in every second minute; 0 ends it.
   // `every`: every read, in every minute: the visitor's IP is on the group behind.
-  olderPool(min, { first = false, every = false } = {}) {
-    return this.#with([{ kind: 'pool', at: this.#cursor, lag: Math.max(0, min) * MIN, first, every }]);
+  olderPool(min, { every = false } = {}) {
+    return this.#with([{ kind: 'pool', at: this.#cursor, lag: Math.max(0, min) * MIN, every }]);
   }
 
   // From here on, every match URL answers `code` (503, 429) or never ('hang');
@@ -338,12 +334,6 @@ class Timeline {
     return w ? w.lag : 0;
   }
 
-  // Whether the older group answers only the first read of its minutes at t.
-  firstOnlyAt(t) {
-    const w = this.#windowAt(this.#compile().pools, t);
-    return !!(w && w.first);
-  }
-
   // Whether the older group answers every read at t, not every second minute.
   everyAt(t) {
     const w = this.#windowAt(this.#compile().pools, t);
@@ -506,7 +496,7 @@ function broken(b, now, prev) {
 const json = (status, value) => ({ status, type: 'application/json; charset=utf-8', body: Buffer.from(JSON.stringify(value)) });
 
 class Server {
-  #tl; #problem; #newest = new Map(); #planted = new Set(); #cache = new Map(); #olderIn = null;
+  #tl; #problem; #newest = new Map(); #planted = new Set(); #cache = new Map();
 
   constructor(timeline, problem) {
     this.#tl = timeline;
@@ -539,10 +529,6 @@ class Server {
     const minute = Math.floor(t / MIN);
     if (lag && this.#tl.everyAt(t)) return { t: t - lag, older: true };
     if (!lag || minute % 2 !== 1) return { t, older: false };
-    if (this.#tl.firstOnlyAt(t)) {
-      if (this.#olderIn === minute) return { t, older: false };
-      this.#olderIn = minute;
-    }
     return { t: t - lag, older: true };
   }
 

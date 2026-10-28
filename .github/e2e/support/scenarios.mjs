@@ -29,11 +29,17 @@ export const frozen = (min = 40, id) => opened(id).advance(4).freeze(min).advanc
 // (keepNewestMatch) stands between the older group and the screen.
 export const twoPools = (lag = 10, min = 30, id) => opened(id).latestStatus(503).olderPool(lag).advance(min);
 
-// The same, with the older group answering only the first match read of its
-// minutes: a page opened (or reloaded) in one of them gets a body `lag`
-// minutes behind first and the newest on a re-read.
-export const firstReadBehind = (lag = 10, min = 30, id) =>
-  opened(id).latestStatus(503).olderPool(lag, { first: true }).advance(min);
+// The visitor's whole group `lag` minutes behind on every read for `min`
+// minutes of play, /api/latest up with the newest: a page opened (or
+// reloaded) gets a body behind first and the newer one only from the copy.
+export const copyBehindAll = (lag = 10, min = 30, id) =>
+  opened(id).olderPool(lag, { every: true }).advance(min);
+
+// The week turns (counters at zero) and the group `lag` minutes behind, in
+// every second minute, serves the week that ended: /api/latest down, so only
+// the page's own guard stands between that body and the screen.
+export const weekTurnBehind = (lag = 10, min = 6, id) =>
+  opened(id).latestStatus(503).newWeek().olderPool(lag).advance(min);
 
 // Our copy ahead of the visitor's group, and old: 40 min of play, then our
 // readers stop (/api/latest keeps that moment's bodies, /api/kills its lines)
