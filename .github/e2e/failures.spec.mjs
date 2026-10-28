@@ -323,7 +323,7 @@ test('only /api/kills down: the sheet still gives the history, and the map its a
 test.describe('a hole in the kill history', () => {
   const BEFORE = 6, GAP = 12;
   test.use({ timeline: killsGap(GAP, BEFORE, 2), timezoneId: 'UTC', locale: 'en-US' });
-  test('the corner says "API gap" with its hours and the busiest map keeps its swords', async ({ page, wvw }) => {
+  test('the corner says "data gap" with its hours and the busiest map keeps its swords', async ({ page, wvw }) => {
     // The hole runs from the last row before it (the minute before the readers stop) to the first one after it (the minute they start).
     const hhmm = ms => new Date(recording().recordedAt + ms).toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
     const hours = `${hhmm((BEFORE - 1) * MIN)}–${hhmm((BEFORE + GAP) * MIN)}`;
@@ -334,12 +334,12 @@ test.describe('a hole in the kill history', () => {
     const left = page.locator('.info-popover .wvw-plot-wrap .wvw-hud-l');
     await expect(left.locator('.wvw-hud-big'), 'the kills of the window across the hole').toHaveText(/^\d+$/);
     await expect(left.locator('.wvw-hud-small').first(), 'its length').toContainText('kills in 17 min');
-    await expect(left.locator('.wvw-hud-small2'), 'the gap, in two lines, with the hours the timeline gives').toHaveText(`API gap ${hours}`);
+    await expect(left.locator('.wvw-hud-small2'), 'the gap, in two lines, with the hours the timeline gives').toHaveText(`data gap ${hours}`);
     await expect(left).not.toHaveClass(/is-dim/);
     await expect(page.locator('.info-popover .wvw-tab[data-type="Center"]'), 'the busiest map is hot').toHaveClass(/is-hot/);
     await left.locator('.wvw-hud-btn').click();
     await expect(page.locator('.info-popover .wvw-hud-note'), 'the balloon names the gap and the pace')
-      .toHaveText(new RegExp(`^\\d+ kills in the 17 min up to .+\\. The window is longer than 10 minutes because the game's API stopped sending data between ${hours.replace('–', ' and ')}\\. The swords count the pace per 10 minutes\\.$`));
+      .toHaveText(new RegExp(`^\\d+ kills in the 17 min up to .+\\. The window is longer than 10 minutes because no kill data reached us between ${hours.replace('–', ' and ')}\\. The swords count the pace per 10 minutes\\.$`));
     await wvw.settle();
   });
 });
