@@ -212,6 +212,32 @@ test('ageBehindHistory: a body behind the history is dated by the oldest line ah
     { at: now - 40 * MIN, n: shift(5) }, { at: now - 2 * MIN, n: shift(5) }]), 40);
 });
 
+test('ageBehindHistory: a rise after a gap, with no copy to date it, takes the line written inside the gap (js/api.js)', () => {
+  const p = loadPage(recordedAt);
+  const m = matches[0];
+  const id = JSON.stringify(m.id);
+  p.ctx.__m = m; p.run('keepNewestMatch(__m)');
+  p.clock.now += 30000;
+  p.ctx.__m = state(m, 1); p.run('keepNewestMatch(__m)');
+  const before = p.clock.now;
+  p.clock.now += 30 * MIN;
+  p.ctx.__m = state(m, 2); p.run('keepNewestMatch(__m)');
+  const woke = p.clock.now;
+  assert.equal(p.run(`newestMatches.get(${id}).gapFrom`), before);
+  const t = p.run(`fightTotals(newestMatches.get(${id}).match)`);
+  const datedBy = (line) => {
+    p.ctx.__by = new Map([[m.id, [line]]]);
+    p.run(`newestMatches.get(${id}).at = ${woke}`);
+    p.run('ageBehindHistory(__by, fightTotals)');
+    return (woke - p.run(`newestMatches.get(${id}).at`)) / MIN;
+  };
+  assert.equal(datedBy({ at: woke - 20 * MIN, n: t }), 20);
+  // A line from before the gap, or one a map is ahead of, is not the rise's.
+  assert.equal(datedBy({ at: before - MIN, n: t }), 0);
+  const [first] = Object.keys(t);
+  assert.equal(datedBy({ at: woke - 20 * MIN, n: { ...t, [first]: t[first] - 1 } }), 0);
+});
+
 test('ageFirstSightFromHistory: a first sight ahead of the newest line is not dated by it; one equal to it is (js/api.js)', () => {
   const p = loadPage(recordedAt);
   const m = matches[0];
