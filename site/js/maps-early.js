@@ -147,7 +147,7 @@ function ageFromHistory(byMatch) {
     const last = list && list[list.length - 1];
     if (last && now - last.at <= HISTORY_LIVE_MS) { alive = true; break; }
   }
-  if (alive) ageFirstSightFromHistory(byMatch, HUD_STALE_MS);
+  if (alive) ageFirstSightFromHistory(byMatch, HUD_STALE_MS, fightTotals);
 }
 
 async function getKillSheet() {
