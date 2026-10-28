@@ -25,9 +25,10 @@ create table if not exists public.heartbeat (
 alter table public.heartbeat enable row level security;
 revoke all on public.heartbeat from public, anon, authenticated;
 
--- 3. The call. Fixed body, secret in a header, 10 s timeout. x-region only routes
--- the call to a region; the function trusts its own SB_REGION, and answers 404 if
--- the two differ.
+-- 3. The call. Fixed body, secret in a header, and a timeout that must exceed the
+-- reader's serial deadlines (tests/scheduler.test.mjs). x-region only routes the
+-- call to a region; the function trusts its own SB_REGION, and answers 404 if the
+-- two differ.
 create or replace function public.call_reader(p_region text) returns void
 language plpgsql
 set search_path = ''
@@ -46,7 +47,7 @@ begin
       'x-wvw-key', (select decrypted_secret from vault.decrypted_secrets where name = 'reader_key')
     ),
     body := '{}'::jsonb,
-    timeout_milliseconds := 10000
+    timeout_milliseconds := 30000
   ) into rid;
   insert into public.heartbeat (region, request_id) values (p_region, rid);
 end;
