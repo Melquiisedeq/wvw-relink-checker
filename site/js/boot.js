@@ -13,7 +13,7 @@ refreshStandings();
 fetchTimers();
 setInterval(updateRelinkBanner, 60000); // ticks the countdown display only
 startPeeking(); // /api ahead of the board: load it now (js/standings.js)
-schedulePeriodicRefresh(refreshStandings, STANDINGS_REFRESH_MS);
+standingsTick = schedulePeriodicRefresh(refreshStandings, STANDINGS_REFRESH_MS);
 schedulePeriodicRefresh(fetchTimers, TIMERS_REFRESH_MS);
 
 // Embers drifting up the page: 46 of them, one in four cyan instead of warm, each

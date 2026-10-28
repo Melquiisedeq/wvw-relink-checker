@@ -620,6 +620,7 @@ async function loadStandings(origin = 'cycle') {
   standingsFailed = failed;
   if (failed.length) planStandingsRetry();
   else standingsExtraUsed = 0;
+  if (standingsSkipped) setTimeout(readOwed, 0);
 }
 
 // Between the five-minute refreshes, the readers' summary (~0.2 KB on the
@@ -772,12 +773,30 @@ function startPeeking() {
   }
 }
 
+// Set by a tick skipped under an open popover; readOwed pays it once none is open.
+let standingsSkipped = false;
+
+// The list's scheduled run (set in js/boot.js).
+let standingsTick = null;
+
+// Reads the game for a skipped tick, through the scheduler's own run so it
+// counts as that tick's (a tab return then does not read twice). The mark
+// stays while a popover is open or a load is in flight (loadStandings calls this
+// again when it ends). True when a read is owed, so the caller skips the peek.
+function readOwed() {
+  if (!standingsSkipped) return false;
+  if (activeTrigger || standingsInFlight) return true;
+  if (standingsTick) standingsTick();
+  return true;
+}
+
 // A refresh that builds the board again takes an open popover's anchor down, so none runs while one is open.
 async function refreshStandings() {
   // Anything open is being read, and reloading takes the board and the popover's
   // anchor down: the tick is skipped, not spent closing it. The tier maps refresh
   // themselves in place meanwhile.
-  if (activeTrigger) return false;
+  if (activeTrigger) { standingsSkipped = true; return false; }
+  standingsSkipped = false;
   await loadStandings();
 }
 

@@ -844,6 +844,7 @@ function colorForTeam(match, teamId) {
 // immediately when focus returns if enough time has passed. Skips a run
 // if the previous one is still in flight. An fn that returns false skipped
 // its work, so the run does not count and the next tick or focus tries again.
+// Returns the run, for a caller that owes one (the same guards apply).
 function schedulePeriodicRefresh(fn, intervalMs) {
   let inFlight = false;
   // Seeded with "now": callers load right before scheduling, and without it a quick
@@ -873,4 +874,5 @@ function schedulePeriodicRefresh(fn, intervalMs) {
 
   setInterval(run, intervalMs);
   document.addEventListener('visibilitychange', run);
+  return run;
 }
