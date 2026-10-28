@@ -916,11 +916,11 @@ function buildMapCorners(wrap, matchId) {
           : HUD_NO_WINDOW_TIP;
     } else {
       const t = hhmm(view.clock);
-      // A step that came after the API sent nothing, and lit no swords, says why.
-      const tail = Number.isFinite(view.prevRun) && view.prevRun > KILLS_CATCHUP_MS && !view.hot
-        ? ` The last jump came after the game's API sent nothing for ${Math.round(view.prevRun / 60000)} min, so when those kills happened is unknown; it lights no swords.` : '';
+      // The tail names the stall only when it, not the pace, kept the swords off.
+      const tail = view.jumpHeld
+        ? ` No swords: the last jump came after ${Math.round(view.prevRun / 60000)} min without new kill data.` : '';
       if (view.long) {
-        text = `${line.kills} kills in the ${line.mins} min up to ${t}. The window is longer than 10 minutes because no kill data reached us between ${hhmm(view.gap.from)} and ${hhmm(view.gap.to)}.`
+        text = `${line.kills} kills in the ${line.mins} min up to ${t}. No kill data reached us between ${hhmm(view.gap.from)} and ${hhmm(view.gap.to)}.`
           + (hole ? ' The swords count the pace per 10 minutes.' : '')
           + (odd ? ` The game's API has been behind since ${t}, so this is not now.` : unproven ? ` No newer data from the game's API since ${t} yet.` : old ? ` No new kills since ${t}, as on a quiet map.` : '') + tail;
       } else if (odd && view.still) {
