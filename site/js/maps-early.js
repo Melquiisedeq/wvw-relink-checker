@@ -14,9 +14,10 @@ const MAP_PANEL_ORDER = ['Center', 'BlueHome', 'GreenHome', 'RedHome'];
 const MAP_TAB_NAME = Object.freeze({
   Center: 'EBG', RedHome: 'Red BL', BlueHome: 'Blue BL', GreenHome: 'Green BL',
 });
-// How often open tier maps re-read their own match. The API serves match
-// data with max-age=1, so the only lag is ours. One match is 82KB, and
-// this runs only while the maps are open and the page is visible.
+// How often open tier maps re-read their own match. One match is 82KB, and
+// this runs only while the maps are open and the page is visible. A faster
+// read only catches sooner the update of the copy this IP gets; a copy that
+// lags is fetchMatches' job (js/api.js).
 const MAP_REFRESH_MS = 30 * 1000;
 // Past this, the corner stops calling the map "updated" and says how long
 // its data has not moved, frozen or unanswered: one 5-min score tick
@@ -92,9 +93,9 @@ function fightLogAheadAt(match) {
 // went out. A body is stamped with that, not with the moment it is written
 // - a slow answer or a sleeping computer would otherwise carry the time of
 // the waking up. Only bodies whose score this page watched rise since
-// `asked` are written: a first sight may come from a server behind the
-// others and would become the window's base. It declines samples that
-// arrive too close together.
+// `asked` are written: a first sight may be the copy of the group that is
+// behind at that moment and would become the window's base. It declines
+// samples that arrive too close together.
 function recordFightSamples(matches, asked) {
   const log = readFightLog();
   const now = Date.now();

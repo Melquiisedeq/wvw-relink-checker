@@ -519,8 +519,9 @@ const MOVEMENT_SYMBOLS = { up: '▲', down: '▼' };
 
 // Projects where a side lands after the next weekly reset from its rank within
 // the tier: 1st promotes, 2nd always stays, 3rd relegates, unless there is
-// nowhere further up or down to go. Reset, not relink: the relink rebuilds the
-// teams and moves nobody between tiers.
+// nowhere further up or down to go. The reset that brings a relink moves the
+// teams the same way; the relink only swaps which guilds and alliances sit on
+// which team.
 function getRelinkMovement(rank, tierNum, maxTierForRegion) {
   const tier = Number(tierNum);
   if (rank === 1) {
