@@ -203,16 +203,21 @@ function findLink(guildId, maps) {
 }
 
 // ---- The newest body per match ---------------------------------------
-// Some of the API's servers answer wvw/matches with a body frozen in the past,
-// for minutes to over an hour, and no header tells the servers apart. Painted,
-// it walks the maps, the scores and the kill rate backwards. Every reader of a
-// match goes through fetchMatches, which never hands out a body behind one
-// already seen.
-// matchId -> { match, at }; `at` is when this page last saw the match's score go
-// up. A frozen server repeats the same body, so the time of an answer says
-// nothing about the data's age; the score sum of a live match rises every
-// 20-40 s and jumps at each 5-min tick.
+// The API answers from two groups of servers, picked by where the caller is,
+// and either can serve a body frozen in the past while the other moves on; the
+// body is pinned to the caller's IP, so a re-read stays on the same view. No
+// header gives the data's age. Painted, an older body walks the maps, the
+// scores and the kill rate backwards. Every reader of a match goes through
+// fetchMatches, which never hands out a body behind one already seen, and
+// /api/latest offers our copy, the newest our readers got from both groups.
+// matchId -> { match, at }; `at` is when the match's score last went up, as
+// this page saw it or as our copy dates its body. A frozen server repeats the
+// same body, so the time of an answer says nothing about the data's age; the
+// score sum of a live match rises every 20-40 s and jumps at each 5-min tick.
 const newestMatches = new Map();
+// Body from /api/latest -> when our readers saw its score go up (ms). A body
+// of our copy can be older than the moment it wins here.
+const latestBodyAt = new WeakMap();
 // When this page last got an answer for each match, any body, a frozen repeat
 // included (newestMatches keeps only when the score rose): the map's "checked".
 const matchAnsweredAt = new Map();
@@ -265,7 +270,8 @@ function keepNewestMatch(match) {
   // body again keeps the old time.
   const moved = !kept || match.start_time !== kept.match.start_time
     || colorSum(match.scores) > colorSum(kept.match.scores);
-  // `rose`: this page watched the score go up. False while `at` is only the
+  // `rose`: this page watched the score go up, or our readers saw it within
+  // KILLS_ALIVE_MS (below). False while `at` is only the
   // time of the first sight, which the kill history may know to be older.
   // A rise after a gap (a sleep, a hidden tab) happened somewhere in it, not
   // now: it is a first sight again, and `gapFrom` lets a history line from
@@ -283,7 +289,15 @@ function keepNewestMatch(match) {
   } else if (same && !moved) {
     gapFrom = gapped ? answeredBefore : kept.gapFrom;
   }
-  newestMatches.set(match.id, { match, at: moved ? Date.now() : kept.at, rose, gapFrom });
+  let at = moved ? now : kept.at;
+  const copyAt = moved ? latestBodyAt.get(match) : undefined;
+  if (copyAt !== undefined) {
+    // Our copy dates its body, a gap or not; "rose" only as recent as the
+    // quiet-map claim needs (KILLS_ALIVE_MS, js/maps-early.js).
+    at = Math.min(now, copyAt);
+    rose = now - at <= (typeof KILLS_ALIVE_MS === 'number' ? KILLS_ALIVE_MS : 0);
+  }
+  newestMatches.set(match.id, { match, at, rose, gapFrom });
   weekStoreOffer(match);
   return match;
 }
@@ -498,7 +512,7 @@ function ageBehindHistory(byMatch, totalsOf) {
   return n;
 }
 
-// When this page last saw the match's score go up; 0 if never.
+// When the match's score last went up, as this page or our copy saw it; 0 if never.
 function matchScoreRoseAt(matchId) {
   const kept = newestMatches.get(matchId);
   return kept ? kept.at : 0;
@@ -700,6 +714,7 @@ async function latestRead() {
         if (!body || body.id !== e.id || typeof body.all_worlds !== 'object' || !body.all_worlds
           || typeof body.scores !== 'object' || !body.scores || !Array.isArray(body.maps)) continue;
         if (!Number.isFinite(e.start) || Date.parse(body.start_time) !== e.start) continue;
+        if (Number.isFinite(e.at) && e.at > 0) latestBodyAt.set(body, e.at * 1000);
         out.push(body);
       } catch { /* this match has no data */ }
     }

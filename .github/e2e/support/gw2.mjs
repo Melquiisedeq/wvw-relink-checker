@@ -10,6 +10,8 @@
 //     .pageOpens()                        // the page's clock starts here
 //     .olderPool(10).advance(20).olderPool(0)   // a server group 10 min behind
 //     .olderPool(10, { first: true })     // the same, for the first read of its minutes only
+//     .olderPool(30, { every: true })     // the visitor's whole group 30 min behind
+//     .latestHeld(true)                   // our copy keeps this moment's bodies
 //     .freeze(40)                         // 40 min, nothing new from the API
 //     .status(503).advance(8).status(null)      // the game moves, the API is down
 //     .latestStatus(503)                  // /api/latest down (or 'hang': never answers)
@@ -151,8 +153,9 @@ class Timeline {
   // js/api.js:498); 0 ends it.
   // `first`: only the first match URL read in each of those minutes; the reads
   // after it get the newer group. A page whose first read lands on the older one.
-  olderPool(min, { first = false } = {}) {
-    return this.#with([{ kind: 'pool', at: this.#cursor, lag: Math.max(0, min) * MIN, first }]);
+  // `every`: every read, in every minute: the visitor's IP is on the group behind.
+  olderPool(min, { first = false, every = false } = {}) {
+    return this.#with([{ kind: 'pool', at: this.#cursor, lag: Math.max(0, min) * MIN, first, every }]);
   }
 
   // From here on, every match URL answers `code` (503, 429) or never ('hang');
@@ -174,6 +177,13 @@ class Timeline {
   latestStatus(code) {
     if (code !== null && code !== 'hang' && !(code >= 400 && code < 600)) throw new Error(`gw2: latest status ${code}`);
     return this.#with([{ kind: 'latest', at: this.#cursor, code }]);
+  }
+
+  // From here on our readers push nothing (each stuck on a group that stands
+  // still): /api/latest and its summary keep the bodies of this moment, with
+  // the time each last rose, and /api/kills gets no rows; false ends it.
+  latestHeld(held) {
+    return this.#with([{ kind: 'held', at: this.#cursor, held: !!held }]);
   }
 
   // The page's clock starts here.
@@ -261,7 +271,7 @@ class Timeline {
     for (const id of ids) roll(id, horizon);
     for (const list of frames.values()) list.sort((a, b) => a.at - b.at);
     const windows = kind => this.#ops.filter(o => o.kind === kind).sort((a, b) => a.at - b.at);
-    this.#compiled = { anchor, base, ids, frames, pools: windows('pool'), statuses: windows('status'), latest: windows('latest'), history: windows('history') };
+    this.#compiled = { anchor, base, ids, frames, pools: windows('pool'), statuses: windows('status'), latest: windows('latest'), history: windows('history'), held: windows('held') };
     return this.#compiled;
   }
 
@@ -303,6 +313,18 @@ class Timeline {
     return w ? w.code : null;
   }
 
+  // The time /api/latest's bodies are of at t: the start of a latestHeld that
+  // holds at t, else t.
+  heldAt(t) {
+    let from = t;
+    for (const w of this.#compile().held) {
+      if (w.at > t) break;
+      if (!w.held) from = t;
+      else if (from === t) from = w.at;
+    }
+    return from;
+  }
+
   // Whether /api/kills takes rows at t.
   historyAt(t) {
     const w = this.#windowAt(this.#compile().history, t);
@@ -319,6 +341,12 @@ class Timeline {
   firstOnlyAt(t) {
     const w = this.#windowAt(this.#compile().pools, t);
     return !!(w && w.first);
+  }
+
+  // Whether the older group answers every read at t, not every second minute.
+  everyAt(t) {
+    const w = this.#windowAt(this.#compile().pools, t);
+    return !!(w && w.every);
   }
 
   // The newest body of a match at t (ms after the recording), as a new object.
@@ -508,6 +536,7 @@ class Server {
   #at(t) {
     const lag = this.#tl.lagAt(t);
     const minute = Math.floor(t / MIN);
+    if (lag && this.#tl.everyAt(t)) return { t: t - lag, older: true };
     if (!lag || minute % 2 !== 1) return { t, older: false };
     if (this.#tl.firstOnlyAt(t)) {
       if (this.#olderIn === minute) return { t, older: false };
@@ -559,13 +588,14 @@ class Server {
         this.#planted.add(url);
         return json(down, { error: 'down' });
       }
-      const up = this.#tl.lastUp(t);
-      const at = Math.floor(pageNow / 1000);
+      const up = Math.min(this.#tl.lastUp(t), this.#tl.heldAt(t));
+      // `at`, in seconds as the Worker gives it: when the body's score last rose.
+      const at = id => Math.floor(this.#tl.changedAt(id, up) / 1000);
       const bodies = ids.map(id => this.#body(id, up, anchor + up, false));
       if (path === '/api/latest/summary') {
-        return json(200, Object.fromEntries(bodies.map(b => [b.id, { start: Date.parse(b.start_time), score: sum(b.scores), at, by: 'a' }])));
+        return json(200, Object.fromEntries(bodies.map(b => [b.id, { start: Date.parse(b.start_time), score: sum(b.scores), at: at(b.id), by: 'a' }])));
       }
-      return json(200, { matches: bodies.map(b => ({ id: b.id, start: Date.parse(b.start_time), score: sum(b.scores), at, by: 'a',
+      return json(200, { matches: bodies.map(b => ({ id: b.id, start: Date.parse(b.start_time), score: sum(b.scores), at: at(b.id), by: 'a',
         gz: gzipSync(Buffer.from(JSON.stringify(b))).toString('base64') })) });
     }
     if (path === '/api/kills') return json(200, { rows: this.#rows(t) });
@@ -574,14 +604,15 @@ class Server {
 
   // /api/kills: the recorded rows and a row per state of the timeline, the
   // last thirty minutes, none while the API was down (the readers read it too)
-  // or while killHistory(false) holds.
+  // or while killHistory(false) or latestHeld(true) holds.
   #rows(t) {
     const { anchor, ids, frames } = Timeline.compiled(this.#tl);
     const from = t - KILLS_WINDOW_MS;
     const rows = baseBodies().rows.filter(r => r[0] - anchor > from && r[0] - anchor <= t);
     for (const id of ids) {
       for (const f of frames.get(id)) {
-        if (!(f.at > from && f.at <= t) || this.#tl.statusAt(f.at) !== null || !this.#tl.historyAt(f.at)) continue;
+        if (!(f.at > from && f.at <= t) || this.#tl.statusAt(f.at) !== null || !this.#tl.historyAt(f.at)
+          || this.#tl.heldAt(f.at) !== f.at) continue;
         const k = this.#tl.killsByMap(id, f.at);
         rows.push([anchor + f.at, id, ...MAPS.map(type => k[type] || 0)]);
       }
