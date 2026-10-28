@@ -76,7 +76,7 @@ const MARKER_ICON = Object.freeze({
   Mercenary: 'Event_Mercenary',
 });
 let plotSerial = 0;
-// mapPollTimer, mapTickTimer and mapCatchUp are declared in popover.js.
+// mapPollTimer, mapTickTimer, mapCatchUp and mapAhead are declared in popover.js.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && mapCatchUp) mapCatchUp();
 });
@@ -2906,6 +2906,9 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   }, MAP_REFRESH_MS);
   mapCatchUp = () => {
     if (Date.now() - pulledAt >= MAP_REFRESH_MS) pullFresh();
+  };
+  mapAhead = (ids) => {
+    if (document.visibilityState !== 'hidden' && ids.has(match.id)) pullFresh();
   };
 
   clearInterval(mapTickTimer);

@@ -952,3 +952,68 @@ test('summaryAt: the newest `at` of a summary, in ms, ignoring what is not a num
   assert.equal(at({ '1-1': {}, '1-2': 'x' }), 0);
   assert.equal(at({}), 0);
 });
+
+test('our copy and its summary are read past the browser cache; the other /api reads are not (js/api.js, js/standings.js)', async () => {
+  const page = fresh();
+  const seen = new Map();
+  page.ctx.AbortController = AbortController;
+  page.ctx.fetch = (url, init) => { seen.set(String(url), init && init.cache); return Promise.reject(new TypeError('offline')); };
+  await page.run('latestRead()');
+  await page.run('peekLatest()');
+  await page.run('fetchOwnApi(OWN_KILLS_URL)').catch(() => {});
+  assert.equal(seen.get('/api/latest'), 'no-store', '/api/latest');
+  assert.equal(seen.get('/api/latest/summary'), 'no-store', '/api/latest/summary');
+  assert.notEqual(seen.get(page.run('OWN_KILLS_URL')), 'no-store', '/api/kills keeps the cache');
+});
+
+test('latestSummaryLearn: keeps a number start and score under a match id, nothing else (js/api.js)', () => {
+  const page = fresh();
+  page.ctx.__s = {
+    '1-1': { start: 5, score: 9, at: 1, by: 'a' },
+    '1-2': { start: '5', score: 9 }, '1-3': { start: 5, score: NaN }, '1-4': null, '1-5': 'x',
+    '3-1': { start: 5, score: 9 }, '__proto__x': { start: 5, score: 9 }, '2-9': { start: 7, score: 0 },
+  };
+  const kept = page.run('[...latestSummaryLearn(__s)]');
+  assert.deepEqual(JSON.parse(JSON.stringify(kept)), [['1-1', { start: 5, score: 9 }], ['2-9', { start: 7, score: 0 }]]);
+});
+
+test('latestWanted: a fresh summary decides; without one, a body behind or a quiet match (js/api.js)', () => {
+  const page = fresh();
+  const live = matches.find((m) => Date.parse(m.end_time) > recordedAt);
+  page.call('keepNewestMatch', clone(live));
+  const score = page.run(`colorSum(newestMatches.get('${live.id}').match.scores)`);
+  const want = (behind = false) => page.call('latestWanted', [live.id], behind);
+  page.clock.now += 40000;
+  assert.equal(want(), false, 'no summary, risen 40 s ago');
+  assert.equal(want(true), true, 'no summary, the game gave a body behind');
+  page.call('latestSummaryLearn', { [live.id]: { start: Date.parse(live.start_time), score } });
+  assert.equal(want(true), false, 'the summary holds the same score: the copy has nothing newer');
+  page.call('latestSummaryLearn', { [live.id]: { start: Date.parse(live.start_time), score: score + 1 } });
+  assert.equal(want(), true, 'the summary is ahead');
+  page.call('latestSummaryLearn', { [live.id]: { start: Date.parse(live.start_time) + 1, score: score + 1 } });
+  assert.equal(want(), false, 'another week in the summary');
+  page.clock.now += 91000;
+  assert.equal(want(), true, 'the summary is old: quiet 131 s');
+});
+
+test('offerLate: a late copy that moves a match makes the open map read once; that read asks no copy (js/api.js)', () => {
+  const page = fresh();
+  const live = matches.find((m) => Date.parse(m.end_time) > recordedAt);
+  page.call('keepNewestMatch', clone(live));
+  const pushed = [];
+  page.ctx.__push = (ids) => pushed.push([...ids]);
+  page.run('mapAhead = __push');
+  page.run('latestAskedAt = Date.now()');   // startLatest, as the map's read asked it
+  page.clock.now += 2000;
+  const ahead = state(live, 1);
+  page.call('offerLate', [ahead]);
+  assert.deepEqual(pushed, [[live.id]], 'the body that won is pushed to the map');
+  page.call('offerLate', [clone(ahead)]);
+  page.call('offerLate', [clone(live)]);
+  assert.equal(pushed.length, 1, 'the same body again, or one behind, pushes nothing');
+  // The read mapAhead starts gets the game's body, behind the copy's.
+  assert.equal(page.call('latestWanted', [live.id], true), false, 'no summary: the last ask is under LATEST_GAP_MS old');
+  page.call('latestSummaryLearn', { [live.id]: { start: Date.parse(live.start_time), score: page.run(`colorSum(newestMatches.get('${live.id}').match.scores)`) } });
+  page.clock.now += 60000;
+  assert.equal(page.call('latestWanted', [live.id], true), false, 'a summary no further than the copy: no ask');
+});
