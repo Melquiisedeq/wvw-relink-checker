@@ -565,10 +565,10 @@ function updateRelinkBanner() {
     return;
   }
 
-  // The last week of the season. The regions enter it eight hours apart; the
-  // earlier one opens the window for the whole bar.
+  // The last week of the season. The regions enter it eight hours apart; the bar
+  // says Relink only once the later one is in too, since its NA number is NA's own.
   const ahead = [assignNaLeft, assignEuLeft].filter((v) => v !== null && v > 0);
-  const relinkWeek = ahead.length > 0 && Math.min(...ahead) <= RELINK_WEEK_MS;
+  const relinkWeek = ahead.length > 0 && Math.max(...ahead) <= RELINK_WEEK_MS;
 
   const inner = document.createElement('div');
   inner.className = 'relink-inner';
