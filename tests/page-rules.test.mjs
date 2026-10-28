@@ -448,6 +448,26 @@ test('killView: a jump after a stall of 10-20 minutes counts spread over the sta
   assert.equal(catchUp(60 * MIN, 5000).hot, null);
 });
 
+test('killView: jumpHeld is set only when the stall, not the pace, kept the swords off (js/maps-early.js)', () => {
+  const big = catchUp(25 * MIN, 155);
+  assert.equal(big.long, false);
+  assert.equal(big.hot, null);
+  assert.equal(big.jumpHeld, true, 'a big jump after more than 20 min still');
+  const on = catchUp(15 * MIN, 155);
+  assert.equal(on.hot, 'Center');
+  assert.equal(on.jumpHeld, false, 'the swords are on');
+  assert.equal(catchUp(12 * MIN, 30).jumpHeld, false, '30 kills never light the swords');
+  assert.equal(catchUp(9 * MIN, 155).jumpHeld, false, 'no stall');
+  const p = fresh();
+  const base = matches[3];
+  sheetOf(p, base.id, [{ at: p.clock.now - 30 * MIN, n: { Center: 100, RedHome: 0, BlueHome: 0, GreenHome: 0 } }]);
+  const m = liveWith(base, { Center: 5100 });
+  p.call('keepNewestMatch', m);
+  const wide = p.call('killView', m, TYPES);
+  assert.equal(wide.long && !wide.longOk, true, 'a window past 20 min');
+  assert.equal(wide.jumpHeld, false);
+});
+
 test('killView: invariants hold on mutated bodies and histories (js/maps-early.js)', () => {
   const rnd = prng(3);
   let hot = 0;

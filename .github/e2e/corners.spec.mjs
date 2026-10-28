@@ -217,6 +217,7 @@ test.describe('corners by the data clock', () => {
     stopped: { top: 6 * 60e3, base: 10 * 60e3, add: 56, rose: 5 * 60e3 },
     jumpOn: { top: 20e3, base: 15 * 60e3, add: 155, rose: 0, still: 5 * 60e3 },
     jumpLong: { top: 20e3, base: 25 * 60e3, add: 155, rose: 0, still: 5 * 60e3 },
+    jumpHeld: { top: 20e3, base: 25 * 60e3, add: 155, rose: 0, still: 10 * 60e3 },
     jumpSmall: { top: 20e3, base: 12 * 60e3, add: 30, rose: 0, still: 5 * 60e3 },
     reset: { none: true, startAgo: 12 * 60e3 },
     nodata: { none: true },
@@ -326,14 +327,16 @@ test.describe('corners by the data clock', () => {
       // A jump after a stall: the swords light when the stall was at most 20 min and the kills spread over it
       // still make 50 per 10 min; otherwise not, and the balloon says why.
       if (name === 'jumpOn') bad(c.swords && !c.cold && num, '155 kills after a 15 min stall should light the swords');
-      if (name === 'jumpLong' || name === 'jumpSmall') {
-        bad(!c.swords, name === 'jumpLong' ? 'a jump after a 25 min stall should light no swords' : '30 kills after 12 min should light no swords');
+      if (['jumpLong', 'jumpSmall', 'jumpHeld'].includes(name)) {
+        bad(!c.swords, name === 'jumpSmall' ? '30 kills after 12 min should light no swords' : `a jump after a 25 min stall should light no swords`);
         const tip = await balloon(page, 'l');
-        // Past 20 min the gap sentence already says why: the balloon is those two sentences and no tail.
-        if (name === 'jumpLong') expect(tip, 'the balloon of a window past 20 min has no tail')
+        // The tail names the stall only when the stall, not the pace, kept the swords off.
+        if (name === 'jumpHeld') expect(tip, 'a big jump held back by the stall says so')
+          .toMatch(/ No swords: the last jump came after 25 min without new kill data\.$/);
+        else expect(tip, 'no stall to blame: no tail').not.toContain('No swords');
+        // In a window past 20 min the gap sentence already says why: the balloon is those two sentences.
+        if (name === 'jumpLong') expect(tip, 'the balloon of a window past 20 min')
           .toMatch(/^\d+ kills in the 25 min up to \S+( \S+)?\. No kill data reached us between \S+( \S+)? and \S+( \S+)?\.$/);
-        else expect(tip, 'the balloon says why there are no swords')
-          .toMatch(/ No swords: the last jump came after 12 min without new kill data\.$/);
       }
       if (name === 'reset' || name === 'nodata') {
         bad(c.big === '–' && c.small === 'kills', 'no reading should give a dash');

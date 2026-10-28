@@ -292,7 +292,7 @@ const HOT_FLOOR = 50;      // kills per ten minutes: a real fight, not API noise
 
 function killView(match, types, now = Date.now()) {
   const view = { clock: 0, atLeast: false, silence: 0, prevRun: Infinity, rates: null, pace: 0,
-    strange: false, frozen: false, alive: false, hot: null, noWindow: 'data', counting: null, long: false, longOk: false, gap: null, still: false, upTo: 0 };
+    strange: false, frozen: false, alive: false, hot: null, jumpHeld: false, noWindow: 'data', counting: null, long: false, longOk: false, gap: null, still: false, upTo: 0 };
   // Nothing is claimed on a match that is not running: between the reset
   // and the API publishing the new one, the rest of the popover is neutral.
   if (!match || !matchIsLive(match)) return view;
@@ -378,19 +378,24 @@ function killView(match, types, now = Date.now()) {
   }
 
   const catching = view.prevRun > KILLS_CATCHUP_MS;
-  if (view.rates && (!view.long || view.longOk) && !view.strange && !view.frozen && view.silence <= HOT_WANT_MS
-    && (!catching || view.prevRun <= KILLS_CATCHUP_MAX_MS)) {
+  if (view.rates && (!view.long || view.longOk) && !view.strange && !view.frozen && view.silence <= HOT_WANT_MS) {
     // After a stall the kills are spread over all of it, the window or the stall, whichever is longer.
     const spread = catching ? view.rates.span / Math.max(view.rates.span, view.prevRun) : 1;
+    const canLight = !catching || view.prevRun <= KILLS_CATCHUP_MAX_MS;
     const pick = types || MAP_PANEL_ORDER.filter((t) => (match.maps || []).some((m) => m.type === t));
     let bestN = 0;
+    let rawBest = 0;
     // Taken on a strict win, so a tie keeps whichever map comes first rather
     // than swapping the swords on every refresh.
     for (const type of pick) {
-      const n = (view.rates.per.get(type) || 0) * spread;
-      if (n > bestN) { bestN = n; view.hot = type; }
+      const raw = view.rates.per.get(type) || 0;
+      rawBest = Math.max(rawBest, raw);
+      const n = raw * spread;
+      if (canLight && n > bestN) { bestN = n; view.hot = type; }
     }
     if (bestN < HOT_FLOOR) view.hot = null;
+    // True when the jump would light the swords were it not for the stall.
+    view.jumpHeld = catching && !view.hot && rawBest >= HOT_FLOOR;
   }
   return view;
 }

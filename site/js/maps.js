@@ -916,8 +916,8 @@ function buildMapCorners(wrap, matchId) {
           : HUD_NO_WINDOW_TIP;
     } else {
       const t = hhmm(view.clock);
-      // A step after a stretch with no new kill data, with no swords, says why; not past 20 min.
-      const tail = Number.isFinite(view.prevRun) && view.prevRun > KILLS_CATCHUP_MS && !view.hot && !(view.long && !view.longOk)
+      // The tail names the stall only when it, not the pace, kept the swords off.
+      const tail = view.jumpHeld
         ? ` No swords: the last jump came after ${Math.round(view.prevRun / 60000)} min without new kill data.` : '';
       if (view.long) {
         text = `${line.kills} kills in the ${line.mins} min up to ${t}. No kill data reached us between ${hhmm(view.gap.from)} and ${hhmm(view.gap.to)}.`
