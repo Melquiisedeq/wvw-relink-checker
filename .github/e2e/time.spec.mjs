@@ -8,6 +8,7 @@
 //   laptop waking after 30 min             playing(40), wake(): every due timer once
 //   map open while the API is down         apiDown(12), the map never closed
 //   our copy ahead of the visitor's, old   copyAheadOld(20) and (2), the map open
+//   kills in steps, the score rising       killSteps(7, 12, 42), the map open
 //
 // Invariants, at every look:
 //   stale    nothing says the data is current - the map's "data from" without
@@ -21,7 +22,7 @@
 // holds every flip, its count is the flips', its kills are the timeline's.
 import { test, expect } from './support/fixtures.mjs';
 import { gw2 } from './support/gw2.mjs';
-import { FOCUS, HOUR, MIN, apiDown, copyAheadOld, firstReadBehind, frozen, hidden, missed, playing, twoPools, visible, wake } from './support/scenarios.mjs';
+import { FOCUS, HOUR, MIN, apiDown, copyAheadOld, firstReadBehind, frozen, hidden, killSteps, missed, playing, twoPools, visible, wake } from './support/scenarios.mjs';
 
 const STALE_MS = 6 * MIN;
 // How long the page may take to read the API again: the open map asks every
@@ -347,6 +348,105 @@ test.describe("our copy ahead of the visitor's server group, and old", () => {
       });
     });
   }
+});
+
+// A busy match whose kills the API publishes in steps of 7 min while the score
+// rises every minute: a silence that long is the API's rhythm, not a quiet map
+// nor the API behind. Up to the step the corner may say only how far the kill
+// data goes; kills that truly stop still read as a quiet map, then as late.
+const killCorner = page => page.evaluate(id => {
+  const q = s => document.querySelector('.info-popover .wvw-plot-wrap ' + s);
+  const s2 = q('.wvw-hud-small2');
+  const kept = newestMatches.get(id);
+  return { line2: s2 && !s2.hidden ? s2.textContent.replace(/\s+/g, ' ') : '', dim: !!q('.wvw-hud-l.is-dim'),
+    silence: kept ? killView(kept.match, null).silence : 0 };
+}, FOCUS);
+
+test.describe('kills in steps, the score rising', () => {
+  for (const lag of [0, 10]) {
+    const how = lag ? 'every step through our copy, the visitor\'s group 10 min behind' : 'read from the game';
+    test.describe(how, () => {
+      test.use({ timeline: killSteps(7, 12, 42, lag) });
+      test('the corner never says "no new kills" nor warns', async ({ page, wvw }) => {
+        const r = rower(page, wvw);
+        await r.load();
+        await r.open();
+        let longest = 0;
+        let upTo = 0;
+        for (let i = 1; i <= 80; i++) {
+          await page.clock.fastForward(30 * 1000);
+          await r.check(`steps, +${i / 2} min`, READ_OPEN_MS);
+          const c = await killCorner(page);
+          const at = `${i / 2} min after opening, the kills silent ${Math.round(c.silence / 1000)} s`;
+          expect(c.line2.startsWith('no new kills'), `${at}: "${c.line2}", a quiet map`).toBe(false);
+          expect(c.line2.includes('\u26a0') || c.dim, `${at}: "${c.line2}", warned or dimmed`).toBe(false);
+          longest = Math.max(longest, c.silence);
+          if (c.line2.startsWith('data up to')) upTo++;
+        }
+        // The state: silences past the 5.5 min where the corner turns to two lines.
+        expect(longest, 'the state: the longest silence the page saw').toBeGreaterThan(6 * MIN);
+        expect(longest, 'the page learns of a step within 2 min of its 7').toBeLessThanOrEqual(9 * MIN);
+        expect(upTo, 'the state: "data up to" on the long silences').toBeGreaterThan(0);
+      });
+    });
+  }
+
+  // The swords stay lit through a step's silence, and go out with the 10 min window.
+  test.describe('a step, then the kills stop: the swords', () => {
+    test.use({ timeline: killSteps(7, 12, 21).advance(20, { kills: {} }) });
+    test('stay on the busiest map at 8 min of silence, out past 10', async ({ page, wvw }) => {
+      const r = rower(page, wvw);
+      await r.load();
+      await r.open();
+      let lit = 0;
+      let out = 0;
+      for (let i = 1; i <= 60; i++) {
+        await page.clock.fastForward(30 * 1000);
+        await r.check(`swords, +${i / 2} min`, READ_OPEN_MS);
+        const c = await killCorner(page);
+        const hot = await page.locator('.info-popover .wvw-tab.is-hot').evaluateAll(t => t.map(b => b.dataset.type));
+        const at = `the kills silent ${Math.round(c.silence / 1000)} s, swords on [${hot}]`;
+        if (c.silence > 7.5 * MIN && c.silence < 8.5 * MIN) {
+          expect(hot, `${at}: they should stay on EBG`).toEqual(['Center']);
+          lit++;
+        }
+        if (c.silence > 10.2 * MIN) {
+          expect(hot, `${at}: they should be out`).toEqual([]);
+          out++;
+        }
+      }
+      expect(lit, 'the state: looks between 7.5 and 8.5 min of silence').toBeGreaterThan(0);
+      expect(out, 'the state: looks past 10.2 min of silence').toBeGreaterThan(0);
+    });
+  });
+
+  test.describe('then the kills stop, the score still rising', () => {
+    test.use({ timeline: killSteps(7, 12, 21).advance(20, { kills: {} }) });
+    test('the corner says a quiet map past 9 min, then warns', async ({ page, wvw }) => {
+      const r = rower(page, wvw);
+      await r.load();
+      await r.open();
+      let quiet = 0;
+      let warned = 0;
+      for (let i = 1; i <= 60; i++) {
+        await page.clock.fastForward(30 * 1000);
+        await r.check(`stopped, +${i / 2} min`, READ_OPEN_MS);
+        const c = await killCorner(page);
+        const at = `the kills silent ${Math.round(c.silence / 1000)} s: "${c.line2}"`;
+        if (c.silence > 9.2 * MIN && c.silence < 9.8 * MIN) {
+          expect(/^no new kills since \S+( \S+)?$/.test(c.line2) && !c.dim, `${at}, not a quiet map`).toBe(true);
+          quiet++;
+        }
+        // 9 min plus 15 kills at the window's pace, 12 to 17 a minute.
+        if (c.silence > 10.5 * MIN && c.silence < 15 * MIN) {
+          expect(/^\u26a0 data up to \S+( \S+)?$/.test(c.line2) && c.dim, `${at}, no warning`).toBe(true);
+          warned++;
+        }
+      }
+      expect(quiet, 'the state: looks between 9.2 and 9.8 min of silence').toBeGreaterThan(0);
+      expect(warned, 'the state: looks past 10.5 min of silence').toBeGreaterThan(0);
+    });
+  });
 });
 
 // Every read of the visitor's behind, our copy current: after a sleep with the

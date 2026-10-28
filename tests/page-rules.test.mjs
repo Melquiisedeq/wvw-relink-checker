@@ -398,10 +398,14 @@ function stoppedFight(perMin, stopped) {
   return p.call('killView', m, TYPES, now);
 }
 
-test('killView: a fight that stops puts the swords out between the 5.5-minute quiet and 10 minutes, whatever the score does (js/maps-early.js)', () => {
-  // The silence the kills may keep is 5.5 min plus the time to make 15 kills at the fight's own pace.
-  for (const pace of [5, 8, 12]) {
-    const limit = 5.5 * MIN + (15 / pace) * MIN;
+test('killView: a fight that stops puts the swords out past one kill step plus 15 kills at its pace, or at 10 minutes, whichever comes first, whatever the score does (js/maps-early.js)', () => {
+  // The silence the kills may keep: KILLS_STEP_MS plus the time to make KILLS_LATE_KILLS at the
+  // fight's own pace (view.strange), cut at HOT_WANT_MS. At 30 a minute the first comes first.
+  const p = fresh();
+  const step = p.run('KILLS_STEP_MS'), kills = p.run('KILLS_LATE_KILLS'), want = p.run('HOT_WANT_MS');
+  for (const pace of [5, 8, 12, 30]) {
+    const limit = Math.min(step + (kills / pace) * MIN, want);
+    if (pace === 30) assert.ok(limit < want, 'at 30 a minute the late-kills rule, not the window, puts them out');
     const early = stoppedFight(pace, Math.floor(limit - 30000));
     assert.equal(early.frozen, false, 'the score was still offered');
     assert.equal(early.hot, 'Center', `pace ${pace}: swords must stay ${Math.round((limit - 30000) / 1000)} s into the silence`);

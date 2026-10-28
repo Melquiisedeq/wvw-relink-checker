@@ -252,17 +252,23 @@ function fightSamples(match) {
 const killFirstSeen = new Map(); // match id -> { total, at }
 const killCountingSince = new Map(); // match id -> when killView first found no window for it
 
-// Silence that is still ordinary: the API publishes kills in a step of its
-// own, up to about five minutes after a score tick, plus half a minute.
+// Silent past this, the corner says only how far the kill data goes ("data
+// up to HH:MM"): no claim yet about why.
 const KILLS_QUIET_MS = 5.5 * 60 * 1000;
+// A silence up to this long can still be one of the API's own kill steps,
+// which come while the score rises every minute, plus the delay before this
+// page learns of the next (js/api.js, LATEST_QUIET_MS + LATEST_GAP_MS).
+// "Quiet map" and the late-kills warning (view.strange), which also puts the
+// swords out, start only past it.
+const KILLS_STEP_MS = 9 * 60 * 1000;
 // "Quiet map" is claimed only when the game's API is known to be moving:
 // this page saw the match's score go up within this long. A stopped API
 // freezes the kills and the score together, and from outside that looks
 // exactly like a quiet map; a live match's score rises far more often.
 const KILLS_ALIVE_MS = 3 * 60 * 1000;
-// Past that, the time the match takes to make this many kills at its own
-// pace in the window: silent longer, and the kills are late, not the map
-// quiet. 15 raises no false alarm on the recorded history.
+// Past KILLS_STEP_MS plus the time the match takes to make this many kills
+// at its own pace in the window: silent longer, and the kills are late, not
+// the map quiet. 15 raises no false alarm on the recorded history.
 const KILLS_LATE_KILLS = 15;
 // A step that lands after more than this of still kills is the source
 // catching up: when it happened is unknown, so it lights no swords until the
@@ -374,7 +380,7 @@ function killView(match, types, now = Date.now()) {
     view.pace = moved / (span / 60000);
   }
   if (view.pace > 0) {
-    view.strange = view.silence > KILLS_QUIET_MS + (KILLS_LATE_KILLS / view.pace) * 60000;
+    view.strange = view.silence > KILLS_STEP_MS + (KILLS_LATE_KILLS / view.pace) * 60000;
   }
 
   const catching = view.prevRun > KILLS_CATCHUP_MS;

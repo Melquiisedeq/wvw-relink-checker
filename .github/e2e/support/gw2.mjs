@@ -7,6 +7,7 @@
 //
 //   gw2.match('1-1')                      // the recording, as the 1-1 focus
 //     .advance(12, { kills: { Center: 30 } })   // 12 min of play, one state a minute
+//     .advance(6, { kills: {} })          // the score rises, the kills stand still
 //     .pageOpens()                        // the page's clock starts here
 //     .olderPool(10).advance(20).olderPool(0)   // a server group 10 min behind
 //     .olderPool(10, { first: true })     // the same, for the first read of its minutes only
