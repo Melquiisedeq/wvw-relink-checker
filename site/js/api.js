@@ -58,12 +58,13 @@ async function fetchJson(url, attempt = 0, cacheMode = 'no-store', timeoutMs = R
 
 // wvwrelink.com/api, the reads that stand in for the two project sheets. One
 // try, no retry: the caller's retry is the sheet. Throws on anything but a
-// 200 carrying JSON.
-async function fetchOwnApi(url) {
+// 200 carrying JSON. `cache`: 'no-store' for our copy and its summary, which
+// the Worker sends with a max-age the browser would answer a repeat from.
+async function fetchOwnApi(url, cache = 'default') {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), OWN_API_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, { signal: controller.signal, cache });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } finally {
@@ -611,29 +612,32 @@ function matchesToReread(list, regions) {
 // union by id, the newest body of each, in id order; a gap still missing gets
 // the last body seen, if any. Nothing to read again, nothing more is asked.
 // A body behind in its own week, or a first sight behind the fight log, is
-// not read again: /api/latest is asked instead, if it was not in the last
-// LATEST_GAP_MS.
+// not read again: /api/latest is asked instead, for the first sight if it
+// was not in the last LATEST_GAP_MS, for the body behind if latestWanted says so.
 async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
   // The first read of a visit, the first after the tab was hidden, and a
-  // single match gone quiet (the maps popover's poll), ask /api/latest beside
-  // the game, not after it.
+  // single match gone quiet with no summary read lately, ask /api/latest
+  // beside the game: quiet is judged on the body from before this read, as a
+  // rise after a sleep is not news. With a summary, a single body asks after
+  // the game's answer is kept: the game's own answer, when it is as far along
+  // as the summary, saves the copy.
   const one = new URL(url).searchParams.get('id');
   const early = regions.length ? (latestAsked && !latestMissed ? null : startLatest())
-    : (one && latestWanted([one]) ? startLatest() : null);
-  const latestFor = (behind) => early
-    || (behind && Date.now() - latestAskedAt >= LATEST_GAP_MS ? startLatest() : null);
+    : (one && !latestTold(Date.now()) && latestWanted([one]) ? startLatest() : null);
+  const latestGap = () => (latestGapOver(Date.now()) ? startLatest() : null);
   const raw = await fetchJson(url, 0, 'no-store', timeoutMs);
   if (!Array.isArray(raw)) {
     const known = isMatchBody(raw) && newestMatches.has(raw.id);
     const logged = isMatchBody(raw) && !known && loggedAheadAt(raw) > 0;
     const keptRaw = known && newestMatches.get(raw.id).match;
-    const behind = logged || (known && matchIsBehind(raw, keptRaw) && sameStart(raw, keptRaw));
-    const reading = latestFor(behind);
+    const behind = known && matchIsBehind(raw, keptRaw) && sameStart(raw, keptRaw);
     if (known && matchIsBehind(raw, keptRaw) && !sameStart(raw, keptRaw)) {
       for (const m of await rereadMatches(url, timeoutMs)) keepNewestMatch(m);
     }
     let kept = keepNewestMatch(raw);
-    if (reading && !isMatchBody(kept)) reading.then(offerLatest);
+    const reading = early || (logged ? latestGap()
+      : isMatchBody(kept) && latestWanted([kept.id], behind) ? startLatest() : null);
+    if (reading && !isMatchBody(kept)) reading.then(offerLate);
     else if (reading) kept = (await mergeLatest([kept], reading))[0];
     // A newer body can land while mergeLatest waits: a map reopened by the
     // same button takes this answer of the closed one as its own.
@@ -643,7 +647,8 @@ async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
     return kept;
   }
   const { need, holes, logged, behind } = matchesToReread(raw, regions);
-  const reading = latestFor(logged.length > 0 || behind.length > 0);
+  const reading = early || (logged.length ? latestGap()
+    : behind.length && latestWanted(behind, true) ? startLatest() : null);
   let list;
   if (need.length === 0) list = raw.map(keepNewestMatch);
   else {
@@ -669,10 +674,13 @@ async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
 // The game's own answer can sit still for minutes while the match moves.
 // /api/latest holds the same match bodies as the game gave them, gzipped and
 // base64, taken by our own scripts. Asked on the visit's first read, on the
-// first after the tab was hidden, and whenever any live match read has not
-// risen here for LATEST_QUIET_MS, at most once per LATEST_GAP_MS (any one
-// match, not all nine: one of nine almost always rises, so asking only when
-// all stood still would be once a visit). Each body goes through
+// first after the tab was hidden, and then, at most once per LATEST_GAP_MS,
+// when a live match read is behind what our copy holds: by the summary the
+// peek read (js/standings.js), while it is LATEST_SUMMARY_FRESH_MS old or
+// less; without one, when the game gave a body behind the kept one, or the
+// match has not risen here for LATEST_QUIET_MS (any one match, not all nine:
+// one of nine almost always rises, so asking only when all stood still would
+// be once a visit). Each body goes through
 // keepNewestMatch like any other, so it wins only by being further
 // along. Threat model: anyone able to answer on this origin can hand us a
 // body, so: only ids the game already gave this visit, id and start must
@@ -683,12 +691,18 @@ const LATEST_URL = '/api/latest';
 const LATEST_SUMMARY_URL = '/api/latest/summary';
 const LATEST_QUIET_MS = 90 * 1000;
 const LATEST_GAP_MS = 30 * 1000;
+// The peek reads the summary about once a minute with a map open; past this,
+// the quiet rule above judges instead.
+const LATEST_SUMMARY_FRESH_MS = 90 * 1000;
 const LATEST_WAIT_MS = 1200;           // how long a read holds the paint; a late answer waits for the next one
 const LATEST_BODY_MAX = 256 * 1024;    // inflated bytes per match
 const LATEST_GZ_MAX = 96 * 1024;       // base64 characters per match
 const LATEST_MATCHES_MAX = 20;
 let latestAsked = false;
 let latestAskedAt = 0;
+// The last summary read: id -> { start, score } (ms, the score sum), and when.
+let latestSummary = new Map();
+let latestSummaryAt = 0;
 // Set while the tab is hidden, from the start in a tab opened in the
 // background, until a read of /api/latest with it shown. The peek
 // (js/standings.js) watched nothing meanwhile, and the read the tab's return
@@ -723,7 +737,7 @@ async function latestInflate(b64) {
 // Resolves, never rejects, to the bodies that passed every check.
 async function latestRead() {
   try {
-    const data = await fetchOwnApi(LATEST_URL);
+    const data = await fetchOwnApi(LATEST_URL, 'no-store');
     const list = data && Array.isArray(data.matches) ? data.matches.slice(0, LATEST_MATCHES_MAX) : [];
     const out = [];
     for (const e of list) {
@@ -751,14 +765,42 @@ function startLatest() {
   return latestRead();
 }
 
-// True when one of `ids` is a live match this page has not seen rise for
-// LATEST_QUIET_MS, and the last ask is LATEST_GAP_MS old.
-function latestWanted(ids) {
+// The slack: a map's reads are MAP_REFRESH_MS (= LATEST_GAP_MS) apart, each
+// asking after its own game answer, so the next can come a few ms short.
+const latestGapOver = (now) => now - latestAskedAt >= LATEST_GAP_MS - 1000;
+
+const latestTold = (now) => now - latestSummaryAt <= LATEST_SUMMARY_FRESH_MS;
+
+// Keeps what a summary of /api/latest says of each match, checked like the
+// copy's own entries; anything else is dropped. Returns the kept table.
+function latestSummaryLearn(sum) {
+  const out = new Map();
+  for (const [id, e] of Object.entries(sum).slice(0, LATEST_MATCHES_MAX)) {
+    if (!WEEK_ID_RE.test(id) || !e || typeof e !== 'object') continue;
+    if (Number.isFinite(e.start) && Number.isFinite(e.score)) out.set(id, { start: e.start, score: e.score });
+  }
+  latestSummary = out;
+  latestSummaryAt = Date.now();
+  return out;
+}
+
+// True when the summary holds `m`'s week with a higher score than `m`.
+function summaryAhead(m) {
+  const e = latestSummary.get(m.id);
+  return !!e && e.start === Date.parse(m.start_time) && e.score > colorSum(m.scores);
+}
+
+// True when one of `ids` is a live match behind what our copy holds, and the
+// last ask is LATEST_GAP_MS old. `behind`: the game just gave a body behind
+// the kept one.
+function latestWanted(ids, behind = false) {
   const now = Date.now();
-  if (now - latestAskedAt < LATEST_GAP_MS) return false;
+  if (!latestGapOver(now)) return false;
+  const told = latestTold(now);
   return ids.some((id) => {
     const k = newestMatches.get(id);
-    return !!k && matchIsLive(k.match) && now - k.at >= LATEST_QUIET_MS;
+    if (!k || !matchIsLive(k.match)) return false;
+    return told ? summaryAhead(k.match) : behind || now - k.at >= LATEST_QUIET_MS;
   });
 }
 
@@ -768,6 +810,18 @@ function offerLatest(bodies) {
   const out = new Map();
   for (const body of bodies) if (newestMatches.has(body.id)) out.set(body.id, keepNewestMatch(body));
   return out;
+}
+
+// A read that answered after its paint: an open map whose match it moved
+// reads again (mapAhead, js/popover.js), which paints the body kept. That read
+// asks no copy: the body kept is the copy's, and the last ask is under
+// LATEST_GAP_MS old.
+function offerLate(bodies) {
+  const was = new Map(bodies.map((b) => [b.id, newestMatches.get(b.id)]));
+  const kept = offerLatest(bodies);
+  const won = new Set(bodies.filter((b) => kept.get(b.id) === b && was.get(b.id)
+    && matchIsBehind(was.get(b.id).match, b)).map((b) => b.id));
+  if (won.size && mapAhead) mapAhead(won);
 }
 
 // `early`: a read already in the air. Waits only a moment
@@ -780,7 +834,7 @@ async function mergeLatest(list, early) {
   const timedOut = Symbol('late');
   const got = await Promise.race([reading, sleep(LATEST_WAIT_MS).then(() => timedOut)]);
   if (got === timedOut) {
-    reading.then(offerLatest);
+    reading.then(offerLate);
     return list;
   }
   const kept = offerLatest(got);

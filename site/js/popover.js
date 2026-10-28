@@ -11,6 +11,11 @@ let mapPollTimer = null;
 // interval old, so a tab that was hidden does not come back showing a stale map
 // with its capture clocks still counting.
 let mapCatchUp = null;
+// Set while a tier's maps are open: given ids shown further along than this
+// page, by the summary of /api/latest (js/standings.js, peekLatest) or by a
+// late copy (js/api.js, offerLate), reads the map's match at once if it is one
+// of them.
+let mapAhead = null;
 // Separate from the poll on purpose: this one only rewrites the RI
 // clocks, so it can run every second without touching the refresh
 // cadence or asking the API for anything.
@@ -39,6 +44,7 @@ function closePopover() {
   clearInterval(mapTickTimer);
   mapTickTimer = null;
   mapCatchUp = null;
+  mapAhead = null;
   // Deferred: opening another popover right after must not find a load under it.
   if (trigger) setTimeout(() => { if (!activeTrigger && !readOwed()) peekSoon(); }, 0);
 }

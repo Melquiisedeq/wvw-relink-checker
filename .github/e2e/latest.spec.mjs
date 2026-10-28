@@ -211,27 +211,38 @@ test.describe('the tab hides during a peek', () => {
 
 // A body newer than the one the list draws (the open map put it in newestMatches,
 // or /api/latest answered after the paint's wait) reaches the list at the next
-// peek, though the summary says nothing newer.
+// peek from what is in hand: with a summary that says nothing newer, /api/latest
+// is not read; with one that says the match is further still and /api/latest
+// down, the body in hand is drawn all the same.
 test.describe('a newer body in hand', () => {
   test.use({ timeline: playing(), clock: 'playwright' });
 
-  test('the next peek reloads the list', async ({ page, wvw }) => {
-    await page.route(/\/api\/latest\/summary$/, route => route.fulfill({ status: 200, body: '{}',
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } }));
-    await opened(page, wvw);
-    const id = await page.evaluate(() => {
-      const m = [...matchDataCache.values()].find(x => matchIsLive(x));
-      keepNewestMatch({ ...m, scores: { ...m.scores, red: m.scores.red + 500 } });
-      window.__peekLoads = 0;
-      const load = loadStandings;
-      loadStandings = function (...a) { if (a[0] === 'peek') window.__peekLoads++; return load.apply(this, a); };
-      return m.id;
+  for (const copyDown of [false, true]) {
+    test(copyDown ? 'the next peek reloads the list with /api/latest down' : 'the next peek reloads the list without reading /api/latest', async ({ page, wvw }) => {
+      let summary = '{}';
+      await page.route(/\/api\/latest\/summary$/, route => route.fulfill({ status: 200, body: summary,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } }));
+      if (copyDown) await fail(page, wvw, /\/api\/latest$/, 503);
+      await opened(page, wvw);
+      let copies = 0;
+      page.on('request', r => { if (/\/api\/latest$/.test(r.url())) copies++; });
+      const { id, start } = await page.evaluate(() => {
+        const m = [...matchDataCache.values()].find(x => matchIsLive(x));
+        keepNewestMatch({ ...m, scores: { ...m.scores, red: m.scores.red + 500 } });
+        window.__peekLoads = 0;
+        const load = loadStandings;
+        loadStandings = function (...a) { if (a[0] === 'peek') window.__peekLoads++; return load.apply(this, a); };
+        return { id: m.id, start: Date.parse(m.start_time) };
+      });
+      const drawn = await scoreOf(page, id);
+      if (copyDown) summary = JSON.stringify({ [id]: { start, score: drawn + 1000, at: 0, by: 'a' } });
+      await expect.poll(async () => { await page.clock.fastForward(31 * 1000); return page.evaluate(() => window.__peekLoads); },
+        'the peek reloaded the list').toBeGreaterThan(0);
+      await expect.poll(() => scoreOf(page, id), 'the list draws the newer body').toBe(drawn + 500);
+      if (copyDown) expect(copies, 'reads of /api/latest, the summary ahead').toBeGreaterThan(0);
+      else expect(copies, 'reads of /api/latest, the summary saying nothing newer').toBe(0);
     });
-    const drawn = await scoreOf(page, id);
-    await expect.poll(async () => { await page.clock.fastForward(31 * 1000); return page.evaluate(() => window.__peekLoads); },
-      'the peek reloaded the list').toBeGreaterThan(0);
-    await expect.poll(() => scoreOf(page, id), 'the list draws the newer body').toBe(drawn + 500);
-  });
+  }
 });
 
 // A tick that came while a popover was open was skipped; closing it reads the

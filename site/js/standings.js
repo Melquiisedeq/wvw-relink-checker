@@ -556,9 +556,9 @@ async function loadStandings(origin = 'cycle') {
   try {
     const asked = Date.now();
     let idList, naMatches, euMatches;
-    // A load the peek asked for reads /api, which it saw ahead, and not the
-    // game's ~97 KB again; with nothing from /api it leaves the board be.
-    const all = origin === 'peek' ? await latestBoard() : await fetchAllMatches(timeoutMs);
+    // A load the peek asked for reads /api when the summary is ahead, and not
+    // the game's ~97 KB again; with nothing newer in hand it leaves the board be.
+    const all = origin === 'peek' ? await latestBoard(peekCopy) : await fetchAllMatches(timeoutMs);
     if (!all && origin === 'peek') return;
     if (all) {
       idList = all.map((m) => m.id);
@@ -635,9 +635,11 @@ async function loadStandings(origin = 'cycle') {
 // runs at once when the tab comes back,
 // when a popover closes and on the first input after an idle stretch. A live
 // match /api holds further along than the one on show, which has not risen
-// here for PEEK_BEHIND_MS, loads the board from /api/latest. With a popover
-// open the board cannot load (it would take the popover's anchor down; the
-// maps refresh themselves), so the numbers come when the popover closes.
+// here for PEEK_BEHIND_MS, loads the board from /api/latest; a body in hand
+// further along than the one on show loads it from what is in hand. With a
+// popover open the board cannot load (it would take the popover's anchor
+// down), so the numbers come when the popover closes; an open map whose match
+// the summary shows ahead reads at once (mapAhead, js/popover.js).
 const PEEK_MS = 30 * 1000;
 const PEEK_IDLE_MAX_MS = 120 * 1000;
 const PEEK_SAVE_MS = 60 * 1000;
@@ -648,6 +650,7 @@ const PEEK_RETRY_MS = 10 * 1000;   // an aligned peek that saw no newer `at` (a 
 let peekStill = false;          // the last peek read a summary whose newest `at` had not moved
 let peekAligned = false;        // the peek now due was armed by peekWait, not by a show or an input
 let peekLoadedAt = 0;           // a load the peek asked for: one per PEEK_BEHIND_MS, if /api fails
+let peekCopy = false;           // that load asks /api/latest: the summary is ahead of a body on show
 let peekTimer = null;
 let peekDelay = PEEK_MS;
 let peekAt = 0;                 // when the last peek ran
@@ -656,16 +659,17 @@ let inputAt = Date.now();
 
 const peekFloor = () => (navigator.connection?.saveData === true ? PEEK_SAVE_MS : PEEK_MS);
 
-// The board as /api holds it: each body on show, or the further-along one
-// /api/latest gave for it. Null when /api gave nothing.
-async function latestBoard() {
+// The board as this page holds it: each body on show, or the further-along
+// one in hand, after what /api/latest gave when `copy` asks for it. Null when
+// the copy gave nothing and nothing in hand is further along.
+async function latestBoard(copy) {
   const shown = [...matchDataCache.values()];
-  const reading = shown.length ? startLatest() : null;
+  const reading = copy && shown.length ? startLatest() : null;
   const bodies = reading ? await reading : [];
-  if (!bodies.length) return null;
   offerLatest(bodies);
-  return shown.map((m) => (newestMatches.has(m.id) ? newestMatches.get(m.id).match : m))
-    .sort((a, b) => byId(a.id, b.id));
+  const board = shown.map((m) => (newestMatches.has(m.id) ? newestMatches.get(m.id).match : m));
+  if (!bodies.length && board.every((m, i) => m === shown[i])) return null;
+  return board.sort((a, b) => byId(a.id, b.id));
 }
 
 // The newest `at` of a summary in ms, 0 when none is a number.
@@ -713,24 +717,26 @@ async function peekLatest() {
   peekAt = Date.now();
   peekStill = false;
   let sum;
-  try { sum = await fetchOwnApi(LATEST_SUMMARY_URL); } catch { return; }
+  try { sum = await fetchOwnApi(LATEST_SUMMARY_URL, 'no-store'); } catch { return; }
   if (!sum || typeof sum !== 'object') return;
   const now = Date.now();
   peekLearn(sum);
-  const ahead = new Set();
+  latestSummaryLearn(sum);
+  const copied = new Set();   // live matches our copy holds further along than this page
+  let inHand = false;         // a body in hand (the open map, or an answer past LATEST_WAIT_MS) the list does not draw yet
   for (const [id, k] of newestMatches) {
-    const e = Object.hasOwn(sum, id) ? sum[id] : null;
-    // A body in hand (the open map, or an answer past LATEST_WAIT_MS) that the list does not draw yet.
+    if (!matchIsLive(k.match)) continue;
     const drawn = matchDataCache.get(id);
-    if (drawn && matchIsLive(k.match) && drawn.start_time === k.match.start_time
-      && colorSum(k.match.scores) > colorSum(drawn.scores)) ahead.add(id);
-    if (e && matchIsLive(k.match) && now - k.at >= PEEK_BEHIND_MS
-      && Number.isFinite(e.score) && e.start === Date.parse(k.match.start_time)
-      && e.score > colorSum(k.match.scores)) ahead.add(id);
+    if (drawn && drawn.start_time === k.match.start_time
+      && colorSum(k.match.scores) > colorSum(drawn.scores)) inHand = true;
+    if (summaryAhead(k.match)) copied.add(id);
   }
-  if (!ahead.size) return;
+  if (copied.size && mapAhead) mapAhead(copied);
+  const behind = [...copied].some((id) => now - newestMatches.get(id).at >= PEEK_BEHIND_MS);
+  if (!inHand && !behind) return;
   if (activeTrigger || standingsInFlight || now - peekLoadedAt < PEEK_BEHIND_MS) return;
   peekLoadedAt = now;
+  peekCopy = behind;
   await loadStandings('peek');
 }
 
