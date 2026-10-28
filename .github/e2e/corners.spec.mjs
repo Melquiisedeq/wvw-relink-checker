@@ -291,7 +291,7 @@ test.describe('corners by the data clock', () => {
         `a base ${mins} min back should take two lines, "kills in ${mins} min" over "${late ? '⚠ ' : ''}${lead} HH:MM"`);
         bad(!c.swords, 'a window over 20 min should light no swords');
         expect(await balloon(page, 'l'), "the long window's balloon")
-          .toMatch(/ The window is longer than 10 minutes because no kill data reached us between \S+( \S+)? and \S+( \S+)?\./);
+          .toMatch(/ No kill data reached us between \S+( \S+)? and \S+( \S+)?\./);
       }
       // Up to 20 min a gap in the data does not hide the fight: the swords go by the pace per 10 min and the
       // second line names the gap, the balloon says the same.
@@ -301,7 +301,7 @@ test.describe('corners by the data clock', () => {
           `a window of ${mins} min should take two lines, "kills in ${mins} min" over "data gap HH:MM–HH:MM"`);
         bad(c.swords, `a fight in a ${mins} min window should light the swords`);
         expect(await balloon(page, 'l'), "the gap window's balloon")
-          .toMatch(/ The window is longer than 10 minutes because no kill data reached us between \S+( \S+)? and \S+( \S+)?\. The swords count the pace per 10 minutes\.$/);
+          .toMatch(/ No kill data reached us between \S+( \S+)? and \S+( \S+)?\. The swords count the pace per 10 minutes\.$/);
       }
       if (name === 'late') {
         bad(num && c.small === 'kills in 10 min' && c.two && c.dim && /^⚠\sdata up to \S+( \S+)?$/.test(c.line2), 'stalled data should take two lines, "kills in 10 min" over "⚠ data up to HH:MM", dimmed');
@@ -328,9 +328,12 @@ test.describe('corners by the data clock', () => {
       if (name === 'jumpOn') bad(c.swords && !c.cold && num, '155 kills after a 15 min stall should light the swords');
       if (name === 'jumpLong' || name === 'jumpSmall') {
         bad(!c.swords, name === 'jumpLong' ? 'a jump after a 25 min stall should light no swords' : '30 kills after 12 min should light no swords');
-        const mins = name === 'jumpLong' ? 25 : 12;
-        expect(await balloon(page, 'l'), 'the balloon says why there are no swords')
-          .toMatch(new RegExp(` The last jump came after ${mins} min with no new kill data, so when those kills happened is unknown; it lights no swords\\.$`));
+        const tip = await balloon(page, 'l');
+        // Past 20 min the gap sentence already says why: the balloon is those two sentences and no tail.
+        if (name === 'jumpLong') expect(tip, 'the balloon of a window past 20 min has no tail')
+          .toMatch(/^\d+ kills in the 25 min up to \S+( \S+)?\. No kill data reached us between \S+( \S+)? and \S+( \S+)?\.$/);
+        else expect(tip, 'the balloon says why there are no swords')
+          .toMatch(/ No swords: the last jump came after 12 min without new kill data\.$/);
       }
       if (name === 'reset' || name === 'nodata') {
         bad(c.big === '–' && c.small === 'kills', 'no reading should give a dash');

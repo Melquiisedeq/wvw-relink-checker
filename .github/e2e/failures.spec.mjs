@@ -339,7 +339,7 @@ test.describe('a hole in the kill history', () => {
     await expect(page.locator('.info-popover .wvw-tab[data-type="Center"]'), 'the busiest map is hot').toHaveClass(/is-hot/);
     await left.locator('.wvw-hud-btn').click();
     await expect(page.locator('.info-popover .wvw-hud-note'), 'the balloon names the gap and the pace')
-      .toHaveText(new RegExp(`^\\d+ kills in the 17 min up to .+\\. The window is longer than 10 minutes because no kill data reached us between ${hours.replace('–', ' and ')}\\. The swords count the pace per 10 minutes\\.$`));
+      .toHaveText(new RegExp(`^\\d+ kills in the 17 min up to .+\\. No kill data reached us between ${hours.replace('–', ' and ')}\\. The swords count the pace per 10 minutes\\.$`));
     await wvw.settle();
   });
 });
