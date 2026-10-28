@@ -64,6 +64,21 @@ export const apiDown = (min = 10, code = 503, id) =>
 export const killsGap = (gap = 12, before = 6, after = 2, id) =>
   gw2.match(id ?? FOCUS).advance(before).killHistory(false).advance(gap).killHistory(true).advance(after).pageOpens().advance(2);
 
+// A busy match whose kills the API publishes in steps: every `step` minutes
+// the step's kills land at once on EBG (`pace` a minute), while the score
+// rises every minute, for `min` minutes after the opening. `lag`: the
+// visitor's whole server group that many minutes behind, so every step
+// reaches the page through /api/latest.
+export const killSteps = (step = 7, pace = 12, min = 42, lag = 0, id) => {
+  let tl = opened(id);
+  if (lag) tl = tl.olderPool(lag, { every: true });
+  for (let done = 0; done < min; done += step) {
+    tl = tl.advance(1, { kills: { Center: pace * step } });
+    if (step > 1) tl = tl.advance(step - 1, { kills: {} });
+  }
+  return tl;
+};
+
 // `min` minutes of play with `flips` objectives changing hands, from the moment
 // the page opens: what a tab away for that long comes back to.
 export const missed = (min = 5, flips = 3, id) => opened(id).advance(min, { flips });

@@ -210,9 +210,14 @@ test.describe('corners by the data clock', () => {
     stall25: { top: 20e3, rows: [[25, 0], [7, 540], [0, 750]], rose: 0 },
     gap: { top: 20e3, base: 65 * 60e3, add: 700, rose: 0 },
     gapLate: { top: 40 * 60e3, base: 65 * 60e3, add: 700, rose: 40 * 60e3 },
-    gapQuiet: { top: 8 * 60e3, base: 65 * 60e3, add: 30, rose: 0 },
+    gapQuiet: { top: 10 * 60e3, base: 65 * 60e3, add: 30, rose: 0 },
+    gapStep: { top: 8 * 60e3, base: 65 * 60e3, add: 30, rose: 0 },
     late: { top: 40 * 60e3, base: 10 * 60e3, add: 70, rose: 40 * 60e3 },
-    quiet: { top: 8 * 60e3, base: 10 * 60e3, add: 30, rose: 0 },
+    quiet: { top: 10 * 60e3, base: 10 * 60e3, add: 30, rose: 0 },
+    // Silent 8 min with the score rising: still within one of the API's steps.
+    step: { top: 8 * 60e3, base: 10 * 60e3, add: 30, rose: 0 },
+    // The score stopped 7 min ago, the kills 6 min before it.
+    behind: { top: 13 * 60e3, base: 10 * 60e3, add: 70, rose: 7 * 60e3 },
     gapStopped: { top: 8 * 60e3, base: 65 * 60e3, add: 30, rose: 5 * 60e3 },
     stopped: { top: 6 * 60e3, base: 10 * 60e3, add: 56, rose: 5 * 60e3 },
     jumpOn: { top: 20e3, base: 15 * 60e3, add: 155, rose: 0, still: 5 * 60e3 },
@@ -283,7 +288,7 @@ test.describe('corners by the data clock', () => {
         expect(tip).toContain(`Data from ${want}:`);
       }
       // No reading 8 to 15 min back: the newest one at least 10 min back, the real span in two lines; past 20 min, no swords.
-      if (['stall25', 'gap', 'gapLate', 'gapQuiet'].includes(name)) {
+      if (['stall25', 'gap', 'gapLate', 'gapQuiet', 'gapStep'].includes(name)) {
         const mins = name === 'stall25' ? 25 : 65;
         const late = name === 'gapLate';
         const lead = name === 'gapQuiet' ? 'no new kills since' : 'data up to';
@@ -312,6 +317,22 @@ test.describe('corners by the data clock', () => {
       if (name === 'quiet') {
         bad(num && c.small === 'kills in 10 min' && c.two && !c.dim && /^no new kills since \S+( \S+)?$/.test(c.line2), 'a quiet map should take two lines, "kills in 10 min" over "no new kills since HH:MM", not dimmed');
         bad(!/^⚠/.test(c.right), 'a quiet map with a fresh score should not warn on the right');
+      }
+      if (name === 'step') {
+        bad(num && c.small === 'kills in 10 min' && c.two && !c.dim && /^data up to \S+( \S+)?$/.test(c.line2), 'kills still for 8 min with the score rising should say "data up to HH:MM", not dimmed, no warning sign');
+        expect(await balloon(page, 'l'), 'the neutral balloon')
+          .toMatch(/^30 kills in the 10 min up to \S+( \S+)?\. No newer data from the game's API yet: a quiet map or the API behind, too soon to tell\.$/);
+      }
+      if (name === 'behind') {
+        // "Behind since" the score's last rise, where the API stopped; "up to" the kills' own clock.
+        const [kills, score] = await page.evaluate(id => {
+          const hh = t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          return [hh(killView(newestMatches.get(id).match, null).clock), hh(matchScoreRoseAt(id))];
+        }, tier.id);
+        bad(kills !== score, 'the state: the kills\' clock and the score\'s in different minutes');
+        bad(c.dim && c.line2 === `\u26a0\u00a0data up to ${kills}`, `a stalled match should say "⚠ data up to ${kills}", dimmed`);
+        expect(await balloon(page, 'l'), 'the balloon of a stalled match')
+          .toBe(`70 kills in the 10 min up to ${kills}. The game's API has been behind since ${score}, so this is not now.`);
       }
       if (name === 'gapStopped') {
         bad(num && c.small === 'kills in 65 min' && c.two && !c.dim && /^data up to \S+( \S+)?$/.test(c.line2), 'a long window with no proof of a live API should say "data up to HH:MM", not dimmed, no warning sign');

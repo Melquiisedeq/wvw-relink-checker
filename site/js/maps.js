@@ -870,12 +870,14 @@ function buildMapCorners(wrap, matchId) {
   // The kills side, from killView for the map on show. No window, a dash and
   // only "kills": never 0 from a window nobody counted. Four looks:
   // current, one line ("80 kills · 11 min"); old for a normal reason, the
-  // quiet of a slow map (view.alive), old with no proof the API moves
-  // ("data up to HH:MM", no sign, not dimmed), and old for an abnormal
+  // quiet of a slow map (view.alive, past KILLS_STEP_MS), old with no proof
+  // yet ("data up to HH:MM", no sign, not dimmed: the API not known to move,
+  // or a silence still within one of its steps), and old for an abnormal
   // one, the API behind or the map frozen ("data up to HH:MM ⚠", the number
   // dimmed: the sign and the words are the signal, not the colour). Old
-  // takes two lines ("80 kills in 10 min" over the second).
-  const paintKills = (view, type, isStale) => {
+  // takes two lines ("80 kills in 10 min" over the second). `at`: when the
+  // score last rose, which is when a stale API stopped.
+  const paintKills = (view, type, isStale, at) => {
     const rates = view && view.rates;
     const line = rates && type ? fightCount(rates, type) : null;
     const odd = !!line && !!view.clock && (isStale || !!view.strange);
@@ -883,7 +885,7 @@ function buildMapCorners(wrap, matchId) {
     // A window over 15 min takes two lines too: no data reached us for a while.
     const two = old || (!!line && view.long);
     const hole = !!line && view.longOk && !old;
-    const unproven = old && !odd && !view.alive;
+    const unproven = old && !odd && (!view.alive || view.silence <= KILLS_STEP_MS);
     put(big, line ? String(line.kills) : '–');
     smallTail.hidden = !line;
     left.classList.toggle('is-dim', odd);
@@ -893,7 +895,7 @@ function buildMapCorners(wrap, matchId) {
     put(smallMins, line ? String(line.mins) : '');
     put(smallLong, line ? ' min' : '');
     put(smallShort, line ? 'm' : '');
-    put(lead, hole ? 'data gap ' : two ? (old && !odd && view.alive ? (view.still ? 'no new kills since before ' : 'no new kills since ') : 'data up to ') : '');
+    put(lead, hole ? 'data gap ' : two ? (old && !odd && !unproven ? (view.still ? 'no new kills since before ' : 'no new kills since ') : 'data up to ') : '');
     put(smallMark, odd ? '\u26a0\u00a0' : '');
     if (hole) {
       put(smallTime, `${hhmm(view.gap.from)}\u2013${hhmm(view.gap.to)}`);
@@ -916,21 +918,22 @@ function buildMapCorners(wrap, matchId) {
           : HUD_NO_WINDOW_TIP;
     } else {
       const t = hhmm(view.clock);
+      const behind = (fallback) => hhmm(isStale && at ? at : fallback);
       // The tail names the stall only when it, not the pace, kept the swords off.
       const tail = view.jumpHeld
         ? ` No swords: the last jump came after ${Math.round(view.prevRun / 60000)} min without new kill data.` : '';
       if (view.long) {
         text = `${line.kills} kills in the ${line.mins} min up to ${t}. No kill data reached us between ${hhmm(view.gap.from)} and ${hhmm(view.gap.to)}.`
           + (hole ? ' The swords count the pace per 10 minutes.' : '')
-          + (odd ? ` The game's API has been behind since ${t}, so this is not now.` : unproven ? ` No newer data from the game's API since ${t} yet.` : old ? ` No new kills since ${t}, as on a quiet map.` : '') + tail;
+          + (odd ? ` The game's API has been behind since ${behind(view.clock)}, so this is not now.` : unproven ? ` No newer data from the game's API since ${t} yet.` : old ? ` No new kills since ${t}, as on a quiet map.` : '') + tail;
       } else if (odd && view.still) {
-        text = `The kill count has not moved from ${t}, the oldest reading, to ${hhmm(view.upTo)}. The game's API has been behind since ${hhmm(view.upTo)}, so this is not now.`;
+        text = `The kill count has not moved from ${t}, the oldest reading, to ${hhmm(view.upTo)}. The game's API has been behind since ${behind(view.upTo)}, so this is not now.`;
       } else if (unproven && view.still) {
         text = `The kill count has not moved from ${t}, the oldest reading, to ${hhmm(view.upTo)}. No newer data from the game's API yet: an empty map or the API behind, too soon to tell.`;
       } else if (unproven) {
         text = `${line.kills} kills in the ${line.mins} min up to ${t}. No newer data from the game's API yet: a quiet map or the API behind, too soon to tell.${tail}`;
       } else if (odd) {
-        text = `${line.kills} kills in the ${line.mins} min up to ${t}. The game's API has been behind since ${t}, so this is not now.${tail}`;
+        text = `${line.kills} kills in the ${line.mins} min up to ${t}. The game's API has been behind since ${behind(view.clock)}, so this is not now.${tail}`;
       } else if (old && view.still) {
         text = `No new kills since before ${t}, as on an empty map: the kill history goes back to ${t} and the count has not moved in it. ${line.kills} kills in the last ${line.mins} min.`;
       } else if (old) {
@@ -949,10 +952,10 @@ function buildMapCorners(wrap, matchId) {
     paint(view, type, at) {
       left.hidden = !at;
       right.hidden = !at;
-      if (!at) { paintKills(view, type, false); stale = null; return; }
+      if (!at) { paintKills(view, type, false, 0); stale = null; return; }
       const age = Math.max(0, Date.now() - at);
       const isStale = age > HUD_STALE_MS;
-      paintKills(view, type, isStale);
+      paintKills(view, type, isStale, at);
       ago.classList.toggle('is-stale', isStale);
       ago.dateTime = new Date(at).toISOString();
       const mins = Math.floor(age / 60000);
