@@ -330,7 +330,7 @@ test.describe('corners by the data clock', () => {
         bad(!c.swords, name === 'jumpLong' ? 'a jump after a 25 min stall should light no swords' : '30 kills after 12 min should light no swords');
         const mins = name === 'jumpLong' ? 25 : 12;
         expect(await balloon(page, 'l'), 'the balloon says why there are no swords')
-          .toMatch(new RegExp(` The last jump came after the game's API sent nothing for ${mins} min, so when those kills happened is unknown; it lights no swords\\.$`));
+          .toMatch(new RegExp(` The last jump came after ${mins} min with no new kill data, so when those kills happened is unknown; it lights no swords\\.$`));
       }
       if (name === 'reset' || name === 'nodata') {
         bad(c.big === '–' && c.small === 'kills', 'no reading should give a dash');

@@ -916,9 +916,9 @@ function buildMapCorners(wrap, matchId) {
           : HUD_NO_WINDOW_TIP;
     } else {
       const t = hhmm(view.clock);
-      // A step that came after the API sent nothing, and lit no swords, says why.
+      // A step that came after a stretch with no new kill data, and lit no swords, says why.
       const tail = Number.isFinite(view.prevRun) && view.prevRun > KILLS_CATCHUP_MS && !view.hot
-        ? ` The last jump came after the game's API sent nothing for ${Math.round(view.prevRun / 60000)} min, so when those kills happened is unknown; it lights no swords.` : '';
+        ? ` The last jump came after ${Math.round(view.prevRun / 60000)} min with no new kill data, so when those kills happened is unknown; it lights no swords.` : '';
       if (view.long) {
         text = `${line.kills} kills in the ${line.mins} min up to ${t}. The window is longer than 10 minutes because no kill data reached us between ${hhmm(view.gap.from)} and ${hhmm(view.gap.to)}.`
           + (hole ? ' The swords count the pace per 10 minutes.' : '')
