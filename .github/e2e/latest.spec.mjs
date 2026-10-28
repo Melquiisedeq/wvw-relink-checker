@@ -233,3 +233,68 @@ test.describe('a newer body in hand', () => {
     await expect.poll(() => scoreOf(page, id), 'the list draws the newer body').toBe(drawn + 500);
   });
 });
+
+// A tick that came while a popover was open was skipped; closing it reads the
+// game at once, though /api/latest has nothing newer, and once (a tab return
+// after it does not read again). A close with nothing skipped reads nothing but
+// the peek. Swapping one popover for another is not a close: nothing is read
+// under the new one.
+test.describe('closing a popover after a skipped tick', () => {
+  test.use({ timeline: playing(), clock: 'playwright' });
+
+  async function setup(page, wvw) {
+    const seen = { game: [], peeks: 0 };
+    await page.route(/\/api\/latest\/summary$/, route => { seen.peeks++; return route.fulfill({ status: 200, body: '{}',
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } }); });
+    await opened(page, wvw);
+    await page.locator('.icon-btn.activity-info-btn').first().click();
+    await expect(page.locator('.info-popover')).toHaveCount(1);
+    seen.peeks = 0;
+    page.on('request', r => { if (/api\.guildwars2\.com\/v2\/wvw\/matches/.test(r.url())) seen.game.push(r.url()); });
+    return seen;
+  }
+  // The scheduler's own tick, which finds the popover open and skips (its run is not counted).
+  const tickUnderPopover = async page => {
+    await page.clock.fastForward(5 * 60 * 1000 + 1000);
+    await page.evaluate(() => { if (!standingsSkipped) throw new Error('the tick was not skipped'); });
+  };
+  const close = async page => {
+    await page.locator('.info-popover .info-popover-close').click();
+    await expect(page.locator('.info-popover')).toHaveCount(0);
+    await page.clock.fastForward(31 * 1000);
+  };
+
+  test('reloads the list, once', async ({ page, wvw }) => {
+    const seen = await setup(page, wvw);
+    await tickUnderPopover(page);
+    expect(seen.game, 'no game read while it is open').toEqual([]);
+    await close(page);
+    await expect.poll(() => seen.game.length, 'game reads after the close').toBeGreaterThan(0);
+    await page.waitForFunction(() => !standingsInFlight);
+    const n = seen.game.length;
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await page.clock.fastForward(31 * 1000);
+    expect(seen.game.length, 'a tab return right after reads the game again').toBe(n);
+    await wvw.settle();
+  });
+
+  test('only peeks when nothing was skipped', async ({ page, wvw }) => {
+    const seen = await setup(page, wvw);
+    await close(page);
+    await expect.poll(() => seen.peeks, 'peeks after the close').toBeGreaterThan(0);
+    expect(seen.game, 'a close with nothing skipped reads no game').toEqual([]);
+    await wvw.settle();
+  });
+
+  test('swapping popovers reads nothing under the new one', async ({ page, wvw }) => {
+    const seen = await setup(page, wvw);
+    await tickUnderPopover(page);
+    await page.locator('.icon-btn.map-kd-btn').first().click();
+    await expect(page.locator('.info-popover')).toHaveCount(1);
+    await page.clock.fastForward(5 * 1000);
+    expect(seen.game, 'no game read under the new popover').toEqual([]);
+    await close(page);
+    await expect.poll(() => seen.game.length, 'game reads after the close').toBeGreaterThan(0);
+    await wvw.settle();
+  });
+});

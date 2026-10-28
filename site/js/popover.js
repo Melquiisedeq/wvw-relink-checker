@@ -39,8 +39,8 @@ function closePopover() {
   clearInterval(mapTickTimer);
   mapTickTimer = null;
   mapCatchUp = null;
-  // A refresh skipped while it was open, or /api ahead meanwhile: now.
-  if (trigger) peekSoon();
+  // Deferred: opening another popover right after must not find a load under it.
+  if (trigger) setTimeout(() => { if (!activeTrigger && !readOwed()) peekSoon(); }, 0);
 }
 
 // The one place that gives every popover what keyboard users need: a role, a
