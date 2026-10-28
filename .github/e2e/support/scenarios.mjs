@@ -35,6 +35,16 @@ export const twoPools = (lag = 10, min = 30, id) => opened(id).latestStatus(503)
 export const firstReadBehind = (lag = 10, min = 30, id) =>
   opened(id).latestStatus(503).olderPool(lag, { first: true }).advance(min);
 
+// Our copy ahead of the visitor's group, and old: 40 min of play, then our
+// readers stop (/api/latest keeps that moment's bodies, /api/kills its lines)
+// while every read of the visitor's lands on a group `lag` minutes behind; the
+// page opens `age` minutes later and plays `min` more, its own reads behind
+// the copy all along.
+export const copyAheadOld = (age = 20, lag = 30, min = 8, id) => {
+  if (!(age + min < lag)) throw new Error('scenarios: copyAheadOld needs age + min < lag');
+  return gw2.match(id ?? FOCUS).advance(40).latestHeld(true).olderPool(lag, { every: true }).advance(age).pageOpens().advance(min);
+};
+
 // A skirmish ends while the tab is away: `min` minutes of play from the opening
 // carry the match past its next two-hour mark (the recording's is 105 min
 // after it), and a server group `lag` minutes behind answers every second

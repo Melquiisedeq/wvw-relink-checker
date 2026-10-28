@@ -7,6 +7,7 @@
 //   tab hidden 2 h, then back              missed(120, 6), hidden() / visible()
 //   laptop waking after 30 min             playing(40), wake(): every due timer once
 //   map open while the API is down         apiDown(12), the map never closed
+//   our copy ahead of the visitor's, old   copyAheadOld(20) and (2), the map open
 //
 // Invariants, at every look:
 //   stale    nothing says the data is current - the map's "data from" without
@@ -20,7 +21,7 @@
 // holds every flip, its count is the flips', its kills are the timeline's.
 import { test, expect } from './support/fixtures.mjs';
 import { gw2 } from './support/gw2.mjs';
-import { FOCUS, HOUR, MIN, apiDown, firstReadBehind, frozen, hidden, missed, playing, twoPools, visible, wake } from './support/scenarios.mjs';
+import { FOCUS, HOUR, MIN, apiDown, copyAheadOld, firstReadBehind, frozen, hidden, missed, playing, twoPools, visible, wake } from './support/scenarios.mjs';
 
 const STALE_MS = 6 * MIN;
 // How long the page may take to read the API again: the open map asks every
@@ -317,6 +318,52 @@ test.describe('map open while the API is down', () => {
     const seen = r.looks[r.looks.length - 1];
     expect(seen.map.stale, 'the state: current again').toBe(false);
     expect(seen.map.tabs.some(b => b.hot && b.active), 'the state: swords on the open tab').toBe(true);
+  });
+});
+
+// /api/latest wins over every read of the visitor's, with a body our readers
+// saw rise `age` minutes ago: the corner gives that time, never the moment it
+// won, and claims a quiet map only on a rise seen within 3 min.
+test.describe("our copy ahead of the visitor's server group, and old", () => {
+  const HELD = 40 * MIN;   // copyAheadOld: when our readers stopped
+  for (const age of [20, 2]) {
+    test.describe(`its data ${age} min old`, () => {
+      test.use({ timeline: copyAheadOld(age) });
+      test('the corner gives the copy\'s time, with its warning past 6 min', async ({ page, wvw }) => {
+        const r = rower(page, wvw);
+        await r.load();
+        await r.open();
+        const served = Math.floor(wvw.timeline.changedAt(FOCUS, HELD) / 1000) * 1000;
+        const quiet = s => s.map.small.startsWith('no new kills since');
+        let seen = await r.check('map open', READ_OPEN_MS);
+        expect(seen.map.at, '"data from": the copy\'s time').toBe(served);
+        expect(seen.map.stale, `the corner marked old on data ${age} min old`).toBe(age > 6);
+        if (age > 6) expect(quiet(seen), `"${seen.map.small}": a quiet map on a rise ${age} min old`).toBe(false);
+        await r.pass(8, 2, 'map open', READ_OPEN_MS);
+        seen = r.looks[r.looks.length - 1];
+        expect(seen.map.at, '"data from": still the copy\'s time').toBe(served);
+        expect(seen.map.ago, 'the corner past 6 min').toMatch(/^⚠/);
+        expect(quiet(seen), `"${seen.map.small}": a quiet map on a rise over 6 min old`).toBe(false);
+      });
+    });
+  }
+});
+
+// Every read of the visitor's behind, our copy current: after a sleep with the
+// map open, the copy wins in the burst of the wake, and the rise is still one
+// inside the gap, so the map reads the kill history again.
+test.describe("laptop waking after 30 min, our copy ahead of the visitor's server group", () => {
+  test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().olderPool(10, { every: true }).advance(50) });
+  test('the map reads the kill history again', async ({ page, wvw }) => {
+    const r = rower(page, wvw);
+    await r.load();
+    await r.open();
+    await r.check('map open', READ_OPEN_MS);
+    const history = page.waitForResponse(q => new URL(q.url()).pathname === '/api/kills', { timeout: 15000 })
+      .catch(() => { throw new Error('the page never read /api/kills after waking'); });
+    await wake(page, 30 * MIN);
+    await history;
+    await r.check('awake', READ_OPEN_MS);
   });
 });
 

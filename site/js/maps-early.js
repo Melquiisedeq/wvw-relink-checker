@@ -561,7 +561,7 @@ function missedMakeNote(before, after, since, back, kind, endAt = back) {
   const period = missedPeriod(before, after, since, endAt, changes);
   // The body is kept only after this call: until then the end is the period's,
   // then the time the kept body's data is from, which the history may still
-  // move earlier. A later body resets that time to now, so the earliest end
+  // move earlier. A later body moves that time on, so the earliest end
   // seen stands (missedMatchOffered reads it before keepNewestMatch writes).
   const newest = Math.max(period.start, ...changes.map((c) => (c.flipped <= endAt ? c.flipped : -Infinity)));
   let earliest = period.end;
@@ -597,7 +597,7 @@ function missedMatchOffered(match, kept) {
   const lastOffer = missedLastOffer.get(match.id) || 0;
   missedLastOffer.set(match.id, now);
   const standing = missedNotes.get(match.id);
-  // Reading the end fixes it before keepNewestMatch moves `at` to now.
+  // Reading the end fixes it before keepNewestMatch moves `at` on.
   if (standing) void standing.end;
   if (!kept || matchIsBehind(match, kept.match)) return;
   if (match.start_time !== kept.match.start_time || !matchIsLive(match)) return;
