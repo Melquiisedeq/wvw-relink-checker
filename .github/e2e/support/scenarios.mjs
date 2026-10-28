@@ -109,6 +109,17 @@ export async function visible(page) {
   await setVisibility(page, 'visible');
 }
 
+// The tab goes away for `ms` and comes back. `wvw` is anything with skew(ms)
+// (the fixture's). With `othersSeen`, the matches but FOCUS are marked as seen
+// rising at the return: only FOCUS plays in this world, in the game all nine move.
+// A tab already hidden (opened in the background) is not hidden again.
+export async function awayAndBack(page, wvw, ms, { othersSeen = false } = {}) {
+  if (await page.evaluate(() => document.hidden)) await wvw.skew(ms);
+  else await hidden(page, wvw, ms);
+  if (othersSeen) await page.evaluate(id => { for (const [k, kept] of newestMatches) if (k !== id) kept.at = Date.now(); }, FOCUS);
+  await visible(page);
+}
+
 // A laptop waking after `ms`: the clock jumps and every timer due fires once
 // (page.clock.fastForward). Needs the fixture's clock: 'playwright'.
 export async function wake(page, ms) {

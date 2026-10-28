@@ -5,7 +5,7 @@
 // what a visitor sees at the end, not that the code was passed.
 import { test, expect } from './support/fixtures.mjs';
 import { answer, hold } from './support/faults.mjs';
-import { FOCUS, MIN, hidden, playing, skirmishAway, visible } from './support/scenarios.mjs';
+import { FOCUS, MIN, awayAndBack, playing, skirmishAway } from './support/scenarios.mjs';
 import { check, firstTier, frame, iso, keptMatch, later, load, openMap, search } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
@@ -496,10 +496,7 @@ test.describe('a skirmish ends while the tab is away', () => {
     const activity = async c => (await side(c).locator('.standing-side-stats .stat-value').nth(1).evaluate(el => el.firstChild.nodeValue)).trim();
     const before = await activity('red');
     const away = wvw.recordedAt + back - await wvw.now();
-    if (loadedHidden) await wvw.skew(away);
-    else await hidden(page, wvw, away);
-    await page.evaluate(id => { for (const [k, kept] of newestMatches) if (k !== id) kept.at = Date.now(); }, FOCUS);
-    await visible(page);
+    await awayAndBack(page, wvw, away, { othersSeen: true });
     await expect.poll(() => activity('red'), 'red Activity after the return').not.toBe(before);
     await wvw.settle();
     const vp = c => side(c).locator('.standing-vp .stat-value').textContent();
