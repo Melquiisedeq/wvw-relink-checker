@@ -458,6 +458,8 @@ test('killView: jumpHeld is set only when the stall, not the pace, kept the swor
   assert.equal(on.jumpHeld, false, 'the swords are on');
   assert.equal(catchUp(12 * MIN, 30).jumpHeld, false, '30 kills never light the swords');
   assert.equal(catchUp(9 * MIN, 155).jumpHeld, false, 'no stall');
+  assert.equal(catchUp(15 * MIN, 60).jumpHeld, true, '60 whole, 40 per 10 spread over 15 min');
+  assert.equal(catchUp(15 * MIN, 40).jumpHeld, false, '40 whole never reaches the floor');
   const p = fresh();
   const base = matches[3];
   sheetOf(p, base.id, [{ at: p.clock.now - 30 * MIN, n: { Center: 100, RedHome: 0, BlueHome: 0, GreenHome: 0 } }]);

@@ -325,15 +325,16 @@ test.describe('corners by the data clock', () => {
           .toMatch(/^56 kills in the 10 min up to \S+( \S+)?\. No newer data from the game's API yet: a quiet map or the API behind, too soon to tell\.$/);
       }
       // A jump after a stall: the swords light when the stall was at most 20 min and the kills spread over it
-      // still make 50 per 10 min; otherwise not, and the balloon says why.
+      // still make 50 per 10 min; otherwise not.
       if (name === 'jumpOn') bad(c.swords && !c.cold && num, '155 kills after a 15 min stall should light the swords');
       if (['jumpLong', 'jumpSmall', 'jumpHeld'].includes(name)) {
         bad(!c.swords, name === 'jumpSmall' ? '30 kills after 12 min should light no swords' : `a jump after a 25 min stall should light no swords`);
         const tip = await balloon(page, 'l');
         // The tail names the stall only when the stall, not the pace, kept the swords off.
         if (name === 'jumpHeld') expect(tip, 'a big jump held back by the stall says so')
-          .toMatch(/ No swords: the last jump came after 25 min without new kill data\.$/);
-        else expect(tip, 'no stall to blame: no tail').not.toContain('No swords');
+          .toMatch(/^Player kills on this map in the last \d+ minutes\. Orange swords mark the busiest map, past 50\. No swords: the last jump came after 25 min without new kill data\.$/);
+        if (name === 'jumpSmall') expect(tip, 'no stall to blame: no tail')
+          .toMatch(/^Player kills on this map in the last \d+ minutes\. Orange swords mark the busiest map, past 50\.$/);
         // In a window past 20 min the gap sentence already says why: the balloon is those two sentences.
         if (name === 'jumpLong') expect(tip, 'the balloon of a window past 20 min')
           .toMatch(/^\d+ kills in the 25 min up to \S+( \S+)?\. No kill data reached us between \S+( \S+)? and \S+( \S+)?\.$/);
