@@ -58,14 +58,23 @@ test('a normal month: Next Reset and the lockout counting, nothing shouting', as
 });
 
 test('the last week of the season: Next Relink, and the line that says so', async ({ page, wvw }) => {
-  // EU lands 8 h before NA and is the one inside the week; the lockout, 3 d 18 h
-  // before NA, is still beyond its 3 days.
-  await open(page, wvw, { lockout: 3 * DAY + 10 * HOUR + S, assign: { na: 7 * DAY + 4 * HOUR + S, eu: 6 * DAY + 20 * HOUR + S },
-    na: { start: -2 * DAY, end: 6 * DAY + 20 * HOUR + S }, eu: { start: -2 * DAY, end: 6 * DAY + 20 * HOUR + S } });
+  // Both regions inside the week (EU lands 8 h before NA); the lockout is
+  // still beyond its 3 days.
+  await open(page, wvw, { lockout: 3 * DAY + 10 * HOUR + S, assign: { na: 6 * DAY + 20 * HOUR + S, eu: 6 * DAY + 12 * HOUR + S },
+    na: { start: -2 * DAY, end: 6 * DAY + 20 * HOUR + S }, eu: { start: -2 * DAY, end: 6 * DAY + 12 * HOUR + S } });
   await expect(titles(page)).toHaveText(['Next Relink', 'Season Lockout']);
   await expect(banner(page)).toHaveClass(/is-relink-week/);
   await expect(banner(page)).not.toHaveClass(/is-(lockout|urgent)/);
   await expect(alertLine(page)).toHaveText('Last week of the season. New teams at the next reset.');
+});
+
+test('EU inside the last week, NA eight hours behind: still Next Reset, no relink claim', async ({ page, wvw }) => {
+  // NA's own relink is 7 d 4 h away, so nothing may say the teams are rebuilt at its next reset.
+  await open(page, wvw, { lockout: 3 * DAY + 10 * HOUR + S, assign: { na: 7 * DAY + 4 * HOUR + S, eu: 6 * DAY + 20 * HOUR + S },
+    na: { start: -2 * DAY, end: 6 * DAY + 20 * HOUR + S }, eu: { start: -2 * DAY, end: 6 * DAY + 20 * HOUR + S } });
+  await expect(titles(page)).toHaveText(['Next Reset', 'Season Lockout']);
+  await expect(banner(page)).not.toHaveClass(/is-(lockout|urgent|relink-week|rebuild)/);
+  await expect(alertLine(page)).toHaveCount(0);
 });
 
 test('the lockout inside 3 days: the alert line, and the relink stands down', async ({ page, wvw }) => {
