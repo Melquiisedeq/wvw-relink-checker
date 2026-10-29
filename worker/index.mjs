@@ -75,7 +75,7 @@ const MOVE_MS = 2.5 * 3600e3;
 // ticks every 5 minutes, relink every 15.
 const STALE_KILLS_S = 20 * 60;
 const STALE_RELINK_S = 45 * 60;
-// Every match id the entrance accepts, so the rebuild below reads the kills
+// Every match id the entrance accepts, so the rebuild and the cleanup below read the kills
 // table by its key. By time alone it would scan the whole table.
 const MATCHES = [];
 for (const r of [1, 2]) for (let t = 1; t <= 9; t++) MATCHES.push(r + '-' + t);
@@ -104,8 +104,8 @@ export default {
   },
 
   async scheduled(event, env) {
-    const r = await env.DB.prepare('DELETE FROM kills WHERE at < ?1')
-      .bind(Date.now() - KEEP_DAYS * 86400e3).run();
+    const r = await env.DB.prepare(cleanupSql)
+      .bind(Date.now() - KEEP_DAYS * 86400e3, ...MATCHES).run();
     console.log(JSON.stringify({ cleanup: true, deleted: r.meta && r.meta.changes }));
   }
 };
@@ -438,6 +438,8 @@ async function rowsAt(db, asks, floor) {
   for (const r of results) got.set(r.match, rowOf(r));
   return got;
 }
+
+const cleanupSql = 'DELETE FROM kills WHERE at < ?1 AND match IN (' + MATCHES.map((_, i) => '?' + (i + 2)).join(', ') + ')';
 
 // The window, and each match's newest row before it.
 const windowSql = 'WITH ids(m) AS (VALUES ' + MATCHES.map((_, i) => '(?' + (i + 3) + ')').join(', ') + ') ' +
