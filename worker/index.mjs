@@ -328,7 +328,7 @@ function checkBoard(m, nowMs) {
 }
 
 // One statement for the whole message. Two readers, or one sending the same
-// finished skirmish every minute for two hours, make one row; it changes only
+// finished skirmish over its two hours, make one row; it changes only
 // when the score (the week's last skirmish, still running) or the VP (should it
 // come a read after the skirmish list) rose and neither fell, so a repeat
 // changes nothing. Returns the run's meta, for the log.
