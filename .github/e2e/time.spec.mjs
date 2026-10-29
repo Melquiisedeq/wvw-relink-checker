@@ -351,6 +351,29 @@ test.describe("the visitor's server group down, our copy current", () => {
     expect(seen.map.stale, `the corner "${seen.map.ago}" on our copy, current`).toBe(false);
     // A 2 min step, and the read after it.
     expect(seen.now - seen.map.at, '"data from": the copy\'s time, within 3 min').toBeLessThan(2 * MIN + READ_OPEN_MS);
+    // The balloon dates the score to our copy and says since when the game has not answered.
+    const btn = page.locator('.info-popover .wvw-hud-r .wvw-hud-btn');
+    const note = page.locator('.info-popover .wvw-hud-note');
+    const said = async () => { await wvw.settle(); await page.clock.fastForward(1000); return note.textContent(); };
+    const want = await page.evaluate(t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), seen.map.at);
+    await btn.click();
+    let tip = await said();
+    expect(tip, 'the balloon on the copy').toMatch(/^Score last changed at .*, read by our server\. The game last answered this page \d+ min ago\.$/);
+    expect(Number(/answered this page (\d+) min/.exec(tip)[1]), 'the game silent since the visitor went down').toBeGreaterThanOrEqual(9);
+    expect(tip).toContain(`Score last changed at ${want}, read by our server.`);
+    // The wording follows the body on show, not the game's last answer: an answer just now
+    // changes nothing while the copy's body stands, and the game's own body gets the plain line.
+    const body = (mode) => page.evaluate(([id, how]) => {
+      if (how === 'answered') gameAnsweredAt.set(id, Date.now());
+      else { const k = newestMatches.get(id); k.match = { ...k.match }; }
+    }, [FOCUS, mode]);
+    await body('answered');
+    tip = await said();
+    expect(tip, 'the game answered just now, the copy\'s body on show').toMatch(/read by our server\. The game last answered this page \d+ s ago\.$/);
+    await body('game');
+    tip = await said();
+    expect(tip, 'the game\'s own body on show').toMatch(/^Score last changed at [^.]*\. This page checks the game every 30 s; last answer \d+ s ago\. The game's data runs about 40 s behind play\.$/);
+    await btn.click();
     const drawn = activity(seen);
     await r.close();
     await walk(6, 'visitor down, map closed');

@@ -108,7 +108,7 @@ function wrong(seen, zone, locale, { synced }) {
   if (seen.ago) {
     if (!Number.isFinite(seen.ago.at)) out.push('the corner has no instant');
     else if (squash(seen.ago.text) !== hhmm(seen.ago.at, zone, locale)) out.push(`the corner reads "${squash(seen.ago.text)}" for ${new Date(seen.ago.at).toISOString()}, wanted ${hhmm(seen.ago.at, zone, locale)}`);
-    if (seen.note !== null && !squash(seen.note).includes(`Data from ${hhmm(seen.ago.at, zone, locale)}:`)) out.push(`the note says "${squash(seen.note).slice(0, 160)}", wanted "Data from ${hhmm(seen.ago.at, zone, locale)}:"`);
+    if (seen.note !== null && !squash(seen.note).includes(`Score last changed at ${hhmm(seen.ago.at, zone, locale)}`)) out.push(`the note says "${squash(seen.note).slice(0, 160)}", wanted "Score last changed at ${hhmm(seen.ago.at, zone, locale)}"`);
   }
   if (seen.small && squash(seen.small.text) !== hhmm(seen.small.at, zone, locale)) {
     out.push(`the corner's second line reads "${squash(seen.small.text)}" for ${new Date(seen.small.at).toISOString()}, wanted ${hhmm(seen.small.at, zone, locale)}`);
