@@ -7,7 +7,8 @@
 // along as the summary and the copy is not read at all.
 import { test, expect } from './support/fixtures.mjs';
 import { fail } from './support/faults.mjs';
-import { FOCUS, MIN, copyBehindAll, playing } from './support/scenarios.mjs';
+import { gw2 } from './support/gw2.mjs';
+import { FOCUS, MIN, copyBehindAll, playing, visitorDown } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, clock: 'playwright' });
 const PLOT = ".info-popover .wvw-plot g[role='button']";
@@ -125,5 +126,94 @@ test.describe("the visitor's group in step", () => {
     const { samples, copies } = await watch(page, wvw, 4);
     expect(samples.at(-1).shown, 'the map moved with the game').toBeGreaterThan(samples[0].shown);
     expect(copies, 'reads of /api/latest with the map open').toEqual([]);
+  });
+});
+
+// The game's reads refused and our copy the only source: the list draws the
+// copy when a body of it rose within 6 min (HUD_STALE_MS) of the servers' time
+// (the Date of the copy's answer, whole seconds), whatever the device's clock says.
+test.describe('the list drawn from the copy, by the servers\' clock', () => {
+  const RETRY = '.standings-alert .retry-btn';
+  const refusal = page => page.evaluate(async () => {
+    try { await copyBoard(new Error('refused')); return 'drawn'; } catch (e) { return e.message; }
+  });
+  const scoreOf = page => page.evaluate(id => colorSum(matchDataCache.get(id).scores), FOCUS);
+
+  test.describe('the device 7 min ahead, our copy current', () => {
+    test.use({ timeline: visitorDown(20) });
+    test('the list draws the copy, with no "Trying again"', async ({ page, wvw }) => {
+      test.setTimeout(120 * 1000);
+      await page.goto(wvw.url);
+      await expect(page.locator('#standingsGridNA > .standing-match')).toHaveCount(wvw.tiers.NA);
+      await wvw.settle();
+      await wvw.ahead(7 * MIN);
+      // 4 min of play, then the visitor's reads refused: the loads at 5 and 10 min come from the copy.
+      let first = 0;
+      for (let i = 0; i < 7; i++) {
+        await wvw.settle();
+        await page.clock.fastForward(2 * MIN);
+        if (i === 3) first = await scoreOf(page);
+      }
+      await wvw.settle();
+      expect(await page.evaluate(() => peekAnchor), 'the summary was read').toBeGreaterThan(0);
+      expect(await scoreOf(page), 'the list drew a body newer than the 8 min mark').toBeGreaterThan(first);
+      await expect(page.locator(RETRY), 'no "Trying again"').toHaveCount(0);
+    });
+  });
+
+  test.describe('our readers stopped 20 min before the page opened', () => {
+    test.use({ timeline: gw2.match(FOCUS).advance(12).latestHeld(true).advance(20).pageOpens().advance(4).status(503, { visitor: true }).advance(10) });
+    test('a copy that old is not drawn: "Trying again"', async ({ page, wvw }) => {
+      test.setTimeout(120 * 1000);
+      await page.goto(wvw.url);
+      await expect(page.locator('#standingsGridNA > .standing-match')).toHaveCount(wvw.tiers.NA);
+      for (let i = 0; i < 3; i++) {
+        await wvw.settle();
+        await page.clock.fastForward(2 * MIN);
+      }
+      await wvw.settle();
+      await expect(page.locator(RETRY).first(), 'the list\'s "Trying again"').toBeAttached();
+    });
+  });
+
+  test.describe('the copy stopped', () => {
+    test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().advance(4).latestHeld(true).status(503, { visitor: true }).advance(20) });
+    test('a body is drawn up to 6 min after its `at`, by the servers\' clock, and not 1 s more', async ({ page, wvw }) => {
+      test.setTimeout(120 * 1000);
+      await page.goto(wvw.url);
+      await expect(page.locator('#standingsGridNA > .standing-match')).toHaveCount(wvw.tiers.NA);
+      await wvw.settle();
+      await wvw.ahead(7 * MIN);
+      for (let i = 0; i < 4; i++) {
+        await wvw.settle();
+        await page.clock.fastForward(2 * MIN);
+      }
+      await wvw.settle();
+      // The newest body of the copy is the summary's newest `at`; the servers' time is the page's less the 7 min.
+      const anchor = await page.evaluate(() => peekAnchor);
+      expect(anchor, 'the summary was read').toBeGreaterThan(0);
+      await page.clock.setFixedTime(anchor + 7 * MIN + 6 * MIN);
+      expect(await refusal(page), 'at 6 min').toBe('drawn');
+      await page.clock.setFixedTime(anchor + 7 * MIN + 6 * MIN + 999);
+      expect(await refusal(page), 'at 6 min and 999 ms, the same second of the Date').toBe('drawn');
+      await page.clock.setFixedTime(anchor + 7 * MIN + 6 * MIN + 1000);
+      expect(await refusal(page), 'at 6 min and 1 s').toBe('refused');
+    });
+  });
+
+  test.describe('no Date on the answer', () => {
+    test.use({ timeline: visitorDown(20) });
+    test('the device\'s own clock measures the age', async ({ page, wvw }) => {
+      await page.addInitScript(() => {
+        const real = fetch;
+        globalThis.fetch = async (...a) => { const r = await real(...a); return new Response(await r.blob(), { status: r.status }); };
+      });
+      await page.goto(wvw.url);
+      await expect(page.locator('#standingsGridNA > .standing-match')).toHaveCount(wvw.tiers.NA);
+      await wvw.settle();
+      expect(await refusal(page), 'the clock right, the copy current').toBe('drawn');
+      await wvw.ahead(7 * MIN);
+      expect(await refusal(page), 'the clock 7 min ahead, with nothing else to measure by').toBe('refused');
+    });
   });
 });

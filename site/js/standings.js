@@ -679,14 +679,16 @@ async function latestBoard(copy) {
 
 // The game's reads failed (the visitor's server group down, or the IP
 // refused): our copy draws the board when one of its bodies rose within
-// HUD_STALE_MS, by its own `at`. A copy empty, down or stopped throws `err`,
-// and the failure stands.
+// HUD_STALE_MS, by its own `at`, on the servers' clock: this device's less its
+// lead on the Date of the copy's own answer (ownClockLead), so a clock ahead
+// does not age the copy. A copy empty, down or stopped throws `err`, and the
+// failure stands.
 async function copyBoard(err) {
   const shown = [...matchDataCache.values()];
   const reading = shown.length ? startLatest() : null;
   const bodies = reading ? await reading : [];
   offerLatest(bodies);
-  const now = Date.now();
+  const now = Date.now() - ownClockLead;
   if (!bodies.some((b) => now - (latestBodyAt.get(b) || 0) <= HUD_STALE_MS)) throw err;
   return shown.map((m) => (newestMatches.has(m.id) ? newestMatches.get(m.id).match : m)).sort((a, b) => byId(a.id, b.id));
 }

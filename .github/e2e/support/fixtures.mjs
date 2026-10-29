@@ -16,6 +16,9 @@
 //             wvw.skew(ms). 'playwright': no shim, page.clock installed at the
 //             same instant, for tests that drive the timers (runFor,
 //             fastForward); wvw.skew(ms) then jumps it with setSystemTime.
+// A device clock ahead of the servers': wvw.ahead(ms) jumps the page's clock
+// by ms and answers the timeline at the page's time minus the total, so the
+// servers' time stays what it was (wvw.skew moves both).
 import { test as base, expect } from '@playwright/test';
 import { startSite } from './site.mjs';
 import { BLOCKED, answerFrom, expectedTiers, recording } from './recordings.mjs';
@@ -129,9 +132,12 @@ export const test = base.extend({
       if (clock === 'shim') await page.evaluate(n => globalThis.__skewClock(n), ms);
       else await page.clock.setSystemTime(await now() + ms);
     };
-    await page.route('**/*', answerFrom(site.url, problem, server && (async url => server.answer(url, await now()))));
+    let lead = 0;
+    await page.route('**/*', answerFrom(site.url, problem, server && (async url => server.answer(url, await now() - lead))));
 
-    await use({ url: site.url + '/', recordedAt, opensAt, guilds, tiers: expectedTiers(), problems, problem, allowLog: re => allowed.push(re), settle, now, skew, timeline });
+    const ahead = async ms => { lead += ms; await skew(ms); };
+
+    await use({ url: site.url + '/', recordedAt, opensAt, guilds, tiers: expectedTiers(), problems, problem, allowLog: re => allowed.push(re), settle, now, skew, ahead, timeline });
 
     // A failure here must not hide the test's own: it joins the problems below.
     await addCoverage(covering).catch(e => problem('coverage: ' + (e?.message || e)));
