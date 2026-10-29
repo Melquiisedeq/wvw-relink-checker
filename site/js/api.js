@@ -294,8 +294,8 @@ function keepNewestMatch(match) {
     gapFrom = gapped ? answeredBefore : kept.gapFrom;
   }
   let at = moved ? now : kept.at;
-  // While `at` is only a first sight, a copy with the same score dates it.
-  const copyAt = moved || (same && !kept.rose) ? latestBodyAt.get(match) : undefined;
+  // While `at` is only a first sight, a copy with the same score dates it, or else its summary.
+  const copyAt = moved || (same && !kept.rose) ? (latestBodyAt.get(match) ?? summaryDate(match)) : undefined;
   if (copyAt !== undefined && (moved || copyAt < at)) {
     // Our copy dates its body, a gap or not; "rose" only as recent as the
     // quiet-map claim needs (KILLS_ALIVE_MS, js/maps-early.js).
@@ -726,7 +726,7 @@ const LATEST_GZ_MAX = 96 * 1024;       // base64 characters per match
 const LATEST_MATCHES_MAX = 20;
 let latestAsked = false;
 let latestAskedAt = 0;
-// The last summary read: id -> { start, score } (ms, the score sum), and when.
+// The last summary read: id -> { start, score, at } (ms, the score sum, ms), and when.
 let latestSummary = new Map();
 let latestSummaryAt = 0;
 // Set while the tab is hidden, from the start in a tab opened in the
@@ -803,11 +803,24 @@ function latestSummaryLearn(sum) {
   const out = new Map();
   for (const [id, e] of Object.entries(sum).slice(0, LATEST_MATCHES_MAX)) {
     if (!WEEK_ID_RE.test(id) || !e || typeof e !== 'object') continue;
-    if (Number.isFinite(e.start) && Number.isFinite(e.score)) out.set(id, { start: e.start, score: e.score });
+    if (Number.isFinite(e.start) && Number.isFinite(e.score)) {
+      out.set(id, { start: e.start, score: e.score, at: Number.isFinite(e.at) && e.at > 0 ? e.at * 1000 : undefined });
+    }
   }
   latestSummary = out;
   latestSummaryAt = Date.now();
+  // A body kept before the summary came: a first sight is redated, as keepNewestMatch does.
+  for (const k of newestMatches.values()) {
+    const at = summaryDate(k.match);
+    if (at < k.at && !k.rose) { k.at = at; k.rose = Date.now() - at <= (typeof KILLS_ALIVE_MS === 'number' ? KILLS_ALIVE_MS : 0); }
+  }
   return out;
+}
+
+// The summary's `at` (ms) for `m`'s week and score; undefined otherwise.
+function summaryDate(m) {
+  const e = latestSummary.get(m.id);
+  return e && e.start === Date.parse(m.start_time) && e.score === colorSum(m.scores) ? e.at : undefined;
 }
 
 // True when the summary holds `m`'s week with a higher score than `m`.

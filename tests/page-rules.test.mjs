@@ -969,12 +969,57 @@ test('our copy and its summary are read past the browser cache; the other /api r
 test('latestSummaryLearn: keeps a number start and score under a match id, nothing else (js/api.js)', () => {
   const page = fresh();
   page.ctx.__s = {
-    '1-1': { start: 5, score: 9, at: 1, by: 'a' },
+    '1-1': { start: 5, score: 9, at: 1, by: 'a' }, '2-1': { start: 5, score: 9, at: '7' }, '2-2': { start: 5, score: 9, at: -3 },
+    '2-3': { start: 5, score: 9, at: NaN },
     '1-2': { start: '5', score: 9 }, '1-3': { start: 5, score: NaN }, '1-4': null, '1-5': 'x',
     '3-1': { start: 5, score: 9 }, '__proto__x': { start: 5, score: 9 }, '2-9': { start: 7, score: 0 },
   };
   const kept = page.run('[...latestSummaryLearn(__s)]');
-  assert.deepEqual(JSON.parse(JSON.stringify(kept)), [['1-1', { start: 5, score: 9 }], ['2-9', { start: 7, score: 0 }]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(kept)), [['1-1', { start: 5, score: 9, at: 1000 }], ['2-1', { start: 5, score: 9 }],
+    ['2-2', { start: 5, score: 9 }], ['2-3', { start: 5, score: 9 }], ['2-9', { start: 7, score: 0 }]]);
+});
+
+test('the summary dates a body of the same week and score, never later than now, and only a first sight (js/api.js)', () => {
+  const page = fresh();
+  const live = matches.find((m) => Date.parse(m.end_time) > recordedAt);
+  const start = Date.parse(live.start_time);
+  const score = (m) => page.run(`colorSum(newestMatches.get('${m}').match.scores)`);
+  const kept = () => page.run(`({ at: newestMatches.get('${live.id}').at, rose: newestMatches.get('${live.id}').rose })`);
+  const tell = (e) => page.call('latestSummaryLearn', { [live.id]: e });
+  // Kept first, the summary read after: the first sight is redated.
+  page.clock.now += 5 * 60000;
+  page.call('keepNewestMatch', clone(live));
+  const sec = Math.floor(page.run('Date.now()') / 1000);
+  const s = score(live.id);
+  tell({ start, score: s, at: sec - 240 });
+  assert.equal(kept().at, (sec - 240) * 1000, 'a body kept before the summary is redated');
+  assert.equal(kept().rose, false, 'older than KILLS_ALIVE_MS: not a recent rise');
+  tell({ start, score: s, at: sec - 300 });
+  assert.equal(kept().at, (sec - 300) * 1000, 'an earlier time moves it back');
+  tell({ start, score: s, at: sec - 100 });
+  assert.equal(kept().at, (sec - 300) * 1000, 'a later time does not move it forward');
+  tell({ start, score: s + 1, at: 1 });
+  tell({ start: start + 1, score: s, at: 1 });
+  assert.equal(kept().at, (sec - 300) * 1000, 'another score or week dates nothing');
+  // A rise this page watched is not a first sight: the summary does not redate it.
+  const watched = fresh();
+  watched.call('keepNewestMatch', clone(live));
+  watched.clock.now += 2000;
+  watched.call('keepNewestMatch', state(live, 1));
+  assert.equal(watched.run(`newestMatches.get('${live.id}').rose`), true, 'the page saw the rise');
+  const roseAt = watched.run(`newestMatches.get('${live.id}').at`);
+  const wsec = Math.floor(watched.run('Date.now()') / 1000);
+  watched.call('latestSummaryLearn', { [live.id]: { start, score: watched.run(`colorSum(newestMatches.get('${live.id}').match.scores)`), at: wsec - 300 } });
+  assert.equal(watched.run(`newestMatches.get('${live.id}').at`), roseAt, 'a watched rise keeps its time');
+  // Offered after the summary: a new body of the same score is dated by it, never after now.
+  const other = fresh();
+  other.call('latestSummaryLearn', { [live.id]: { start, score: s, at: (other.run('Date.now()') + 999999000) / 1000 } });
+  other.call('keepNewestMatch', clone(live));
+  assert.equal(other.run(`newestMatches.get('${live.id}').at`), other.run('Date.now()'), 'a time ahead of now is now');
+  const again = fresh();
+  again.call('latestSummaryLearn', { [live.id]: { start, score: s, at: Math.floor(again.run('Date.now()') / 1000) - 90 } });
+  again.call('keepNewestMatch', clone(live));
+  assert.equal(again.run(`newestMatches.get('${live.id}').at`), (Math.floor(again.run('Date.now()') / 1000) - 90) * 1000, 'a body offered after the summary');
 });
 
 test('latestWanted: a fresh summary decides; without one, a body behind or a quiet match (js/api.js)', () => {
