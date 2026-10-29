@@ -157,9 +157,11 @@ async function getKillSheet() {
 
   killSheetInFlight = (async () => {
     try {
-      killSheet = await readOwnKills().catch(readKillSheet);
+      let fromSheet = false;
+      killSheet = await readOwnKills().catch(() => { fromSheet = true; return readKillSheet(); });
       killSheetAt = Date.now();
       ageFromHistory(killSheet);
+      if (fromSheet) ageByScoreSum(killSheet);
     } catch {
       // The local log still answers for anyone who has been here a
       // while; only the cold visit loses out, and it loses quietly.
@@ -172,12 +174,28 @@ async function getKillSheet() {
 }
 
 // One reading into the map both sources fill: match id to samples.
-function addKillSample(by, at, id, counts) {
+function addKillSample(by, at, id, counts, score) {
   if (!Number.isFinite(at) || !at || !id) return;
   const n = {};
   KILLS_MAP_ORDER.forEach((t, i) => { n[t] = Number(counts[i]) || 0; });
   if (!by.has(id)) by.set(id, []);
-  by.get(id).push({ at, n });
+  const sample = { at, n };
+  if (score !== undefined && score !== '' && Number.isFinite(Number(score))) sample.score = Number(score);
+  by.get(id).push(sample);
+}
+
+// /api/kills does not carry the score sum; the sheet's eighth column does. A
+// body whose `at` is just a first sight is dated by the oldest line of its week
+// with the same sum, as the line is written when the score rises to it. No such
+// line leaves `at` as it is.
+function ageByScoreSum(byMatch) {
+  for (const [id, kept] of newestMatches) {
+    if (kept.rose) continue;
+    const week = Date.parse(kept.match.start_time);
+    const sum = colorSum(kept.match.scores);
+    const line = ((byMatch.get(id)) || []).find((s) => s.score === sum && !(s.at < week));
+    if (line && line.at < kept.at) kept.at = line.at;
+  }
 }
 
 function sortKillSamples(by) {
@@ -217,7 +235,7 @@ async function readKillSheet() {
     const by = new Map();
     for (const r of parseCsv(await res.text())) {
       if (!r || r.length < 2 + KILLS_MAP_ORDER.length) continue;
-      addKillSample(by, Number(r[0]), String(r[1] || ''), r.slice(2));
+      addKillSample(by, Number(r[0]), String(r[1] || ''), r.slice(2), r[7]);
     }
     return sortKillSamples(by);
   } finally {
