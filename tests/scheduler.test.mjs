@@ -16,3 +16,16 @@ test('call_reader timeout is longer than the reader\'s serial deadlines', () => 
   const sum = waits.reduce((a, b) => a + b, 0);
   assert.ok(timeouts[0] > sum, `timeout ${timeouts[0]} ms must exceed the reader's ${sum} ms`);
 });
+
+test('both readers are scheduled every 30 seconds and the peek follows', () => {
+  const sql = read('scheduler.sql');
+  const jobs = [...sql.matchAll(/cron\.schedule\('(reader-[a-z]+)',\s*'([^']+)'/g)].map((m) => [m[1], m[2]]);
+  assert.deepEqual(jobs, [['reader-us', '30 seconds'], ['reader-eu', '30 seconds']]);
+  const page = readFileSync(new URL('../site/js/standings.js', import.meta.url), 'utf8');
+  assert.match(page, /const PEEK_EVERY_MS = 30 \* 1000;/, 'the peek follows the beat');
+});
+
+test('the serial waits fit in one beat', () => {
+  const waits = [...read('reader.mjs').matchAll(/AbortSignal\.timeout\((\d+)\)/g)].map((m) => Number(m[1]));
+  assert.ok(waits.reduce((a, b) => a + b, 0) < 30000, 'the serial waits fit in one beat');
+});

@@ -226,7 +226,7 @@ async function acceptLatest(env, source, body, t, now) {
   if (applied.length) {
     const at = Date.now();
     const rows = applied.map((m) => [m.id, at, ...m.kills, m.start, m.score]);
-    entered = (await killsInsert(env.DB, rows).run()).meta.changes;
+    entered = (await killsInsert(env.DB, rows, true).run()).meta.changes;
   }
   console.log(JSON.stringify({ source, ok: true, applied: applied.length, lost: lost.length }));
   if (entered) {
@@ -301,6 +301,8 @@ function toBase64(bytes) {
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(s);
 }
+
+const KILLS_LINE_MS = 55e3;
 
 // The one row GET /api/kills reads. Built here, once per tick, so a read
 // costs one row of D1's 5 million a day however many there are: the cheapest
@@ -521,8 +523,10 @@ function killsStatement(db, data, t) {
 // of an older week, and in the same week its score rose (its kills total did
 // not fall, if either row has no score): a stale body cannot put old numbers
 // above newer ones. SQLite reads the whole SELECT before the first insert
-// (a test checks two rows of one match in one batch).
-function killsInsert(db, rows) {
+// (a test checks two rows of one match in one batch). `thin` (the readers'
+// lines) also keeps out a row whose four kills equal the newest's and which
+// is under KILLS_LINE_MS after it.
+function killsInsert(db, rows, thin = false) {
   return db.prepare(
     'INSERT OR IGNORE INTO kills (match, at, center, red, blue, green, start, score) ' +
     'WITH n AS (SELECT ' +
@@ -532,10 +536,12 @@ function killsInsert(db, rows) {
     'SELECT m, at, c, r, b, g, st, sc FROM n WHERE NOT EXISTS (' +
       'SELECT 1 FROM kills o WHERE o.match = n.m ' +
       'AND o.at = (SELECT at FROM kills WHERE match = n.m ORDER BY at DESC LIMIT 1) ' +
-      'AND NOT (n.at > o.at AND (n.st > o.start OR (n.st = o.start AND ' +
+      'AND (NOT (n.at > o.at AND (n.st > o.start OR (n.st = o.start AND ' +
         'CASE WHEN n.sc IS NOT NULL AND o.score IS NOT NULL THEN n.sc > o.score ' +
-        'ELSE n.c + n.r + n.b + n.g >= o.center + o.red + o.blue + o.green END))))'
-  ).bind(JSON.stringify(rows));
+        'ELSE n.c + n.r + n.b + n.g >= o.center + o.red + o.blue + o.green END))) ' +
+      'OR (?2 = 1 AND n.at - o.at < ' + KILLS_LINE_MS + ' AND n.st = o.start AND ' +
+        'n.c = o.center AND n.r = o.red AND n.b = o.blue AND n.g = o.green)))'
+  ).bind(JSON.stringify(rows), thin ? 1 : 0);
 }
 
 // { beat, window, published, fails }; window and published are null together

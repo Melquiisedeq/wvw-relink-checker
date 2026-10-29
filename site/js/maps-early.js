@@ -545,7 +545,7 @@ function missedPeriod(before, after, since, back, changes = []) {
     if (j >= 0) end = Math.min(back, list[j].at);
   }
   // The history may show the new total before a listed flip happened (its
-  // rows are a minute apart): the end is never before the newest of them.
+  // rows are 30 to 60 s apart): the end is never before the newest of them.
   return { start, end: Math.max(end, newest), sure };
 }
 
