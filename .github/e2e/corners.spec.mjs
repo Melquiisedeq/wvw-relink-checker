@@ -566,6 +566,36 @@ test('skirmish trend stalled: a block cut off midway is not the last block', asy
   expect(out.current).not.toMatch(/stopped partway/);
 });
 
+// Just after the turn of a block the body is still the old one, but it rose
+// minutes ago: that is the API running behind, not a stop. The block that
+// closed counts and the text does not say the data stopped.
+test('skirmish trend: a body that rose minutes ago, just after the turn, is not stalled', async ({ page, wvw }) => {
+  await load(page, wvw);
+  const out = await page.evaluate(() => {
+    const id = [...newestMatches.keys()][0];
+    const kept = newestMatches.get(id);
+    const keptAt = kept.at;
+    const H = 3600000;
+    const start = Date.now() - (128 * H + 2 * 60000);
+    const lastEnd = start + 128 * H;
+    const sk = n => ({ scores: { red: n, blue: n, green: n } });
+    const match = { id, start_time: new Date(start).toISOString(), end_time: new Date(start + 168 * H).toISOString(),
+      skirmishes: [...Array(63).fill(1000), 400].map(sk) };
+    const render = at => {
+      kept.at = at;
+      const el = document.createElement('div');
+      renderSkirmishTrendPopoverContent(el, 'X', match, 'red');
+      return el.textContent;
+    };
+    try { return { fresh: render(lastEnd - 60000), old: render(lastEnd - 20 * 60000) }; } finally { kept.at = keptAt; }
+  });
+  expect(out.fresh, 'no stop right after the turn').not.toMatch(/stopped partway/);
+  expect(out.fresh).toMatch(/ArenaNet hasn't published this block yet/);
+  expect(out.fresh, 'the block that closed counts').toMatch(/Last block\s*400/);
+  expect(out.fresh).toMatch(/64 of 84 finished/);
+  expect(out.old, 'a body 22 min old is a real stop').toMatch(/stopped partway through block 64/);
+});
+
 // The pace of the block being played divides by how far into it the body was,
 // not by the clock: a body 6 min behind at 60 min into the block, 500 points.
 test('skirmish trend pace: the fraction of the body\'s instant, not the clock\'s', async ({ page, wvw }) => {

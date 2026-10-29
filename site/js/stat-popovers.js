@@ -194,11 +194,12 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
   // The clock can be a block ahead of the body: the API freezes a match for
   // half an hour or more, and its last entry is then a block cut off midway.
   // That entry counts as finished only if the body's own time (when this
-  // page saw the score rise) is past its end. Time unknown (0) trusts it.
+  // page saw the score rise) is past its end. Time unknown (0) trusts it. A
+  // body that rose within HUD_STALE_MS is the API running behind the turn, not stopped.
   const lastEnd = Date.parse(match.start_time) + total * 2 * 3600000;
   const dataAt = matchScoreRoseAt(match.id);
   const stalled = !!progress && total >= 1 && progress.index > total
-    && dataAt > 0 && dataAt <= lastEnd;
+    && dataAt > 0 && dataAt <= lastEnd && Date.now() - dataAt > HUD_STALE_MS;
   const cut = scored || stalled ? total - 1 : total;
   // The score is the body's, which may be minutes behind the clock: the pace
   // divides by how far into the block the body was. A body from before this
