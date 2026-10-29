@@ -963,11 +963,15 @@ function buildMapCorners(wrap, matchId) {
       put(mark, isStale ? '⚠ ' : '');
       put(val, hhmm(at));
       const answered = gameAnsweredAt.get(matchId);
-      setTip('when', whenBtn, `${answered ? `Checked ${ageWords(Date.now() - answered)} ago` : 'Not checked yet'}:`
-        + " this page asks the game's API every 30 s."
-        + ` Data from ${hhmm(at)}: when this match's score last changed there${isStale ? `, ${ageWords(age)} ago` : ''}.`
-        + ' The API sometimes repeats an old answer for a while; that does not count.'
-        + " The game's API itself runs about 40 s behind the game.");
+      const late = isStale ? `, ${ageWords(age)} ago` : '';
+      const kept = newestMatches.get(matchId);
+      // The body on show decides the wording, not the game's last answer: ours may be the newer.
+      const fromCopy = !!answered && !!kept && latestBodyAt.has(kept.match);
+      setTip('when', whenBtn, fromCopy
+        ? `Score last changed at ${hhmm(at)}${late}, read by our server. The game last answered this page ${ageWords(Date.now() - answered)} ago.`
+        : `Score last changed at ${hhmm(at)}${late}. This page checks the game every 30 s; `
+          + `${answered ? `last answer ${ageWords(Date.now() - answered)} ago` : 'no answer yet'}.`
+          + " The game's data runs about 40 s behind play.");
       if (stale !== null && stale !== isStale) {
         put(live, isStale ? `No new map data for ${mins} min` : 'New map data again');
       }

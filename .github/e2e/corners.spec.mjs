@@ -284,8 +284,8 @@ test.describe('corners by the data clock', () => {
         expect(c.right, 'the right corner').toBe(`data from ${want}`);
         bad(await page.evaluate(w => new Date(w).getUTCHours() !== new Date(w).getHours(), c.when), "the time is not in the viewer's zone (the same hour as UTC)");
         const tip = await balloon(page, 'r');
-        expect(tip, 'the right balloon').toMatch(/^Checked \d+ (s|min) ago: this page asks the game's API every 30 s\. Data from /);
-        expect(tip).toContain(`Data from ${want}:`);
+        expect(tip, 'the right balloon').toMatch(/^Score last changed at .*\. This page checks the game every 30 s; last answer \d+ (s|min) ago\. The game's data runs about 40 s behind play\.$/);
+        expect(tip).toContain(`Score last changed at ${want}`);
       }
       // No reading 8 to 15 min back: the newest one at least 10 min back, the real span in two lines; past 20 min, no swords.
       if (['stall25', 'gap', 'gapLate', 'gapQuiet', 'gapStep'].includes(name)) {
