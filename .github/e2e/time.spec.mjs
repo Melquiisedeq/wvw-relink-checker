@@ -10,6 +10,7 @@
 //   the visitor's group down, copy current visitorDown(20), the map open, then closed
 //   our copy ahead of the visitor's, old   copyAheadOld(20) and (2), the map open
 //   kills in steps, the score rising       killSteps(7, 12, 42), the map open
+//   no DecompressionStream, copy unread    freeze(3), the map open
 //
 // Invariants, at every look:
 //   stale    nothing says the data is current - the map's "data from" without
@@ -417,6 +418,26 @@ test.describe("our copy ahead of the visitor's server group, and old", () => {
       });
     });
   }
+});
+
+// Without DecompressionStream the copy cannot be opened, but its summary is plain
+// JSON: a body of the game with the summary's score is dated by the summary's
+// `at`, not by the moment the page read it.
+test.describe('no DecompressionStream, the game\'s body as far along as the summary', () => {
+  test.use({ timeline: gw2.match(FOCUS).advance(12).freeze(3).pageOpens() });
+  test('the corner gives the summary\'s time', async ({ page, wvw }) => {
+    await page.addInitScript(() => { delete window.DecompressionStream; });
+    const r = rower(page, wvw);
+    await r.load();
+    await r.open();
+    const served = Math.floor(wvw.timeline.changedAt(FOCUS, 12 * MIN) / 1000) * 1000;
+    await r.pass(1, 1, 'map open', READ_OPEN_MS);
+    let seen = r.looks[r.looks.length - 1];
+    expect(seen.map.at, '"data from": the summary\'s time at the first look after the summary').toBe(served);
+    await r.pass(2, 0.5, 'map open', READ_OPEN_MS);
+    seen = r.looks[r.looks.length - 1];
+    expect(seen.map.at, '"data from": the summary\'s time, not the page\'s reading').toBe(served);
+  });
 });
 
 // A busy match whose kills the API publishes in steps of 7 min while the score
