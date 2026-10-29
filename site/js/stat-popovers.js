@@ -363,6 +363,13 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     head.innerHTML = `<i class="trend-live-dot"></i>Block ${progress.index} playing · `
       + `${mins} of 120 min`;
     const body = document.createElement('span');
+    // A body older than the corner's margin is told by its own minute, so the
+    // score, the minute beside it and the projection all describe one instant.
+    // A body from before this block has no minute in it: it keeps "so far".
+    const minute = Math.round(dataFraction * 120);
+    const told = minute > 0
+      && Math.round((progress.fraction - dataFraction) * 120 * 60000) > HUD_STALE_MS;
+    const when = told ? `by minute ${minute}` : 'so far';
     if (running === null) {
       // The clock is ours, the score is theirs: say the block is running and whose
       // delay the gap is, so it reads neither as "nothing is happening" nor as a fault here.
@@ -372,10 +379,10 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     } else if (dataFraction >= LIVE_PROJECT_AFTER) {
       // Two segments, not three: the projection is read against the Average card
       // above. In the first hours of a week there is no Average and the pace stands alone.
-      body.innerHTML = `<b>${running.toLocaleString()}</b> so far · on pace for `
-        + `<b>${Math.round(running / dataFraction).toLocaleString()}</b>`;
+      body.innerHTML = `<b>${running.toLocaleString()}</b> ${when} · on pace for `
+        + `<b>${(told ? Math.round(running * 120 / minute) : Math.round(running / dataFraction)).toLocaleString()}</b>`;
     } else {
-      body.innerHTML = `<b>${running.toLocaleString()}</b> so far · too early to project`;
+      body.innerHTML = `<b>${running.toLocaleString()}</b> ${when} · too early to project`;
     }
     now.appendChild(head);
     now.appendChild(body);
