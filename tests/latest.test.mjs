@@ -379,7 +379,7 @@ test('GET /api/latest: 503 with no rows, 503 past 10 minutes, 200 at 9, nothing 
   assert.equal(j.at, Math.floor((w.now - 9 * MIN) / 1000));
   assert.deepEqual(Object.keys(j.matches[0]), ['id', 'start', 'score', 'at', 'by', 'gz']);
   assert.equal(j.matches[0].by, US);
-  assert.equal(r.headers.get('cache-control'), 'public, max-age=30');
+  assert.equal(r.headers.get('cache-control'), 'public, max-age=5');
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(r.headers.get('content-type'), 'application/json');
   assert.ok(![...r.headers.keys()].some((k) => k.startsWith('access-control-')));
@@ -422,7 +422,7 @@ test('GET /api/latest is cached under one key whatever the query, and a 503 is n
     w.sql.exec('DELETE FROM latest');
     const again = await w.get('/api/latest?x=1', 'GET', ctx);
     assert.equal(again.status, 200);
-    assert.equal(again.headers.get('cache-control'), 'public, max-age=30', 'a hit keeps the route\'s max-age');
+    assert.equal(again.headers.get('cache-control'), 'public, max-age=5', 'a hit keeps the route\'s max-age');
     assert.equal(globalThis.caches.puts.length, 1);
   } finally {
     globalThis.caches = real;
@@ -436,7 +436,7 @@ test('GET /api/latest/summary: {} with no rows, then id: start, score, at, by', 
   assert.equal(r0.body, '{}');
   await push(w, US, '1-1', [1, 2, 3]);
   const r = await w.get('/api/latest/summary');
-  assert.equal(r.headers.get('cache-control'), 'public, max-age=15');
+  assert.equal(r.headers.get('cache-control'), 'public, max-age=5');
   assert.deepEqual(JSON.parse(r.body), { '1-1': { start: NA_START, score: 6, at: Math.floor(w.now / 1000), by: US } });
   w.advance(11 * MIN);
   assert.equal((await w.get('/api/latest/summary')).status, 200, 'the summary never says 503');
@@ -450,7 +450,7 @@ test('GET /api/latest/summary: {} with no rows, then id: start, score, at, by', 
     await new Promise((r) => setImmediate(r));
     assert.deepEqual(globalThis.caches.puts, ['https://wvwrelink.com/api/latest/summary']);
     const hit = await w.get('/api/latest/summary?x=2', 'GET', { waitUntil() {} });
-    assert.equal(hit.headers.get('cache-control'), 'public, max-age=15', 'a hit keeps the route\'s max-age');
+    assert.equal(hit.headers.get('cache-control'), 'public, max-age=5', 'a hit keeps the route\'s max-age');
     assert.equal(hit.body, kept.body);
   } finally {
     globalThis.caches = real;

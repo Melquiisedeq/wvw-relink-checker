@@ -629,12 +629,12 @@ async function loadStandings(origin = 'cycle') {
 }
 
 // Between the five-minute refreshes, the readers' summary (~0.2 KB on the
-// wire, kept 15 s by Cloudflare) is read while the tab is visible: every
+// wire, kept SUMMARY_MAX_AGE by Cloudflare, worker/index.mjs) is read while the tab is visible: every
 // PEEK_MS while the visitor is using the page, doubling to PEEK_IDLE_MAX_MS
 // while not (the readers move every minute, so "it moved" would never let it
 // slow down); never under PEEK_SAVE_MS less a few seconds with Save-Data on.
 // Once a summary has been read the delay is spent to land PEEK_AFTER_MS after
-// the newest `at` it gave, a whole number of minutes on (see peekWait): the
+// the newest `at` it gave, by the server's clock (Date.now() less ownClockLead), a whole number of minutes on (see peekWait): the
 // readers write once a minute and /api shows it only after the cache and the
 // way to the database; a moved minute mark is followed. Hidden, it stops; it
 // runs at once when the tab comes back,
@@ -650,8 +650,8 @@ const PEEK_IDLE_MAX_MS = 120 * 1000;
 const PEEK_SAVE_MS = 60 * 1000;
 const PEEK_ACTIVE_MS = 2 * 60 * 1000;   // input this recent counts as using the page
 const PEEK_BEHIND_MS = 30 * 1000;
-const PEEK_AFTER_MS = 25 * 1000;
-const PEEK_RETRY_MS = 10 * 1000;   // an aligned peek that saw no newer `at` (a clock ahead of the server's) asks once more
+const PEEK_AFTER_MS = 12 * 1000;
+const PEEK_RETRY_MS = 10 * 1000;   // an aligned peek that saw no newer `at` (the database or the edge slow) asks once more
 let peekStill = false;          // the last peek read a summary whose newest `at` had not moved
 let peekAligned = false;        // the peek now due was armed by peekWait, not by a show or an input
 let peekLoadedAt = 0;           // a load the peek asked for: one per PEEK_BEHIND_MS, if /api fails
@@ -714,7 +714,7 @@ function peekWait(delay, now) {
   return t - now;
 }
 
-// An aligned peek that read no newer `at` (a clock ahead of the server's) is
+// An aligned peek that read no newer `at` (the database or the edge slow) is
 // followed by one more after PEEK_RETRY_MS, never under Save-Data; that one is
 // not aligned, so it is not followed in turn. The timer alone reads two a minute
 // at most on average (an aligned read and its retry per minute mark); a show or
@@ -770,7 +770,7 @@ async function runPeek() {
   peekDelay = using ? floor : Math.min(Math.max(peekDelay * 2, floor), PEEK_IDLE_MAX_MS);
   if (document.visibilityState !== 'hidden') {
     clearTimeout(peekTimer);   // a show or an input during the peek may have armed one
-    peekTimer = setTimeout(runPeek, peekNext(peekDelay, Date.now()));
+    peekTimer = setTimeout(runPeek, peekNext(peekDelay, Date.now() - ownClockLead));
   }
 }
 

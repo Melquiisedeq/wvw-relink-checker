@@ -2,7 +2,8 @@
 // (/api/latest/summary, which the peek reads about once a minute) shows the
 // map's match further along than the page holds, and then at once. With the
 // visitor's whole group behind (copyBehindAll), each new body of the copy
-// reaches the map within 35 s of being written, a copy that answers late
+// reaches the map within 22 s of being written (the peek at `at` + 12 s,
+// PEEK_AFTER_MS, plus a STEP and a settle), a copy that answers late
 // included, the copy read once per minute mark; with the group in step (playing), the game's own answer is as far
 // along as the summary and the copy is not read at all.
 import { test, expect } from './support/fixtures.mjs';
@@ -44,10 +45,10 @@ async function watch(page, wvw, minutes) {
 }
 
 // Map open, from the first summary read, 5 min watched in STEP jumps: each
-// new body of the copy on the map within 35 s of its minute mark, and the
+// new body of the copy on the map within 22 s of its minute mark, and the
 // copy reads. `refused`: every match read of the game's fails from the open map on;
 // `within`: how soon after its minute mark a new body is on the map.
-async function behindWatched(page, wvw, { refused = false, within = 35 * 1000 } = {}) {
+async function behindWatched(page, wvw, { refused = false, within = 22 * 1000 } = {}) {
   test.setTimeout(150 * 1000);   // six minutes of the page's clock, each STEP settled
   await mapOpen(page, wvw);
   if (refused) await fail(page, wvw, GAME, 429);
@@ -88,7 +89,7 @@ async function behindWatched(page, wvw, { refused = false, within = 35 * 1000 } 
 test.describe("the visitor's whole group behind", () => {
   test.use({ timeline: copyBehindAll(10, 30) });
 
-  const title = 'each new body of the copy is on the map within 35 s; once the summary is read, the copy reads are 55 s apart or more';
+  const title = 'each new body of the copy is on the map within 22 s; once the summary is read, the copy reads are 55 s apart or more';
   test(title, async ({ page, wvw }) => { await behindWatched(page, wvw); });
 
   // Past LATEST_WAIT_MS (js/api.js) the map's read paints the game's body;

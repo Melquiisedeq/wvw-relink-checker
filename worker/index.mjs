@@ -47,8 +47,8 @@ const SCORE_SLACK = 2000;
 const LATEST_KEY = 'https://wvwrelink.com/api/latest';
 const SUMMARY_KEY = 'https://wvwrelink.com/api/latest/summary';
 // The max-age of each read, both in its answer and on a copy served from the cache.
-const LATEST_MAX_AGE = 30;
-const SUMMARY_MAX_AGE = 15;
+const LATEST_MAX_AGE = 5;
+const SUMMARY_MAX_AGE = 5;
 // The scripts make 128 hex characters. Anything much shorter was pasted in
 // half, and a weak secret that works is worse than one that fails loudly.
 const MIN_SECRET = 64;
@@ -579,7 +579,7 @@ const READS = {
     return json(JSON.stringify({ window: r.window_at, published: r.published }), 60);
   },
 
-  // One query, and the answer kept for 30 s by Cloudflare's cache under a fixed
+  // One query, and the answer kept by Cloudflare's cache under a fixed
   // key, so a query string cannot make a request of its own: a visitor costs D1
   // nothing while the copy lives.
   '/api/latest': (env, ctx) => cached(ctx, LATEST_KEY, LATEST_MAX_AGE, async () => {
