@@ -68,9 +68,11 @@ function withFight(body) {
   } catch { return body; }
 }
 
-const fulfil = (route, status, type, body) => route.fulfill({
+// `date`: the servers' time (ms) for the Date header, whole seconds as HTTP has them.
+const fulfil = (route, status, type, body, date) => route.fulfill({
   status, body,
-  headers: { 'Content-Type': type || 'application/octet-stream', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' },
+  headers: { 'Content-Type': type || 'application/octet-stream', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store',
+    ...(date === undefined ? {} : { Date: new Date(Math.floor(date / 1000) * 1000).toUTCString() }) },
 });
 
 // The page.route handler for every request of a page served at `base`.
@@ -86,7 +88,7 @@ export function answerFrom(base, problem, own = null) {
       if (own && request.method() === 'GET' && (url.startsWith(base + '/api/') || !url.startsWith(base + '/'))) {
         const hit = await own(url);
         if (hit === 'hang') return;
-        if (hit) return await fulfil(route, hit.status, hit.type, hit.body);
+        if (hit) return await fulfil(route, hit.status, hit.type, hit.body, hit.date);
       }
       if (url.startsWith(base + '/api/')) {
         const path = url.slice(base.length);

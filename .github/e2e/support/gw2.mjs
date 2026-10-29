@@ -583,17 +583,17 @@ class Server {
       if (down === 'hang') return 'hang';
       if (down) {
         this.#planted.add(url);
-        return json(down, { error: 'down' });
+        return { ...json(down, { error: 'down' }), date: pageNow };
       }
       const up = Math.min(this.#tl.lastUp(t), this.#tl.heldAt(t));
       // `at`, in seconds as the Worker gives it: when the body's score last rose.
       const at = id => Math.floor(this.#tl.changedAt(id, up) / 1000);
       const bodies = ids.map(id => this.#body(id, up, anchor + up, false));
       if (path === '/api/latest/summary') {
-        return json(200, Object.fromEntries(bodies.map(b => [b.id, { start: Date.parse(b.start_time), score: sum(b.scores), at: at(b.id), by: 'a' }])));
+        return { ...json(200, Object.fromEntries(bodies.map(b => [b.id, { start: Date.parse(b.start_time), score: sum(b.scores), at: at(b.id), by: 'a' }]))), date: pageNow };
       }
-      return json(200, { matches: bodies.map(b => ({ id: b.id, start: Date.parse(b.start_time), score: sum(b.scores), at: at(b.id), by: 'a',
-        gz: gzipSync(Buffer.from(JSON.stringify(b))).toString('base64') })) });
+      return { ...json(200, { matches: bodies.map(b => ({ id: b.id, start: Date.parse(b.start_time), score: sum(b.scores), at: at(b.id), by: 'a',
+        gz: gzipSync(Buffer.from(JSON.stringify(b))).toString('base64') })) }), date: pageNow };
     }
     if (path === '/api/kills') return json(200, { rows: this.#rows(t) });
     return null;

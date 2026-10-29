@@ -60,12 +60,19 @@ async function fetchJson(url, attempt = 0, cacheMode = 'no-store', timeoutMs = R
 // try, no retry: the caller's retry is the sheet. Throws on anything but a
 // 200 carrying JSON. `cache`: 'no-store' for our copy and its summary, which
 // the Worker sends with a max-age the browser would answer a repeat from.
+// A 'no-store' answer also sets ownClockLead: this device's clock minus the
+// answer's Date header (whole seconds, so up to 1 s over), 0 with no Date.
+let ownClockLead = 0;
 async function fetchOwnApi(url, cache = 'default') {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), OWN_API_TIMEOUT_MS);
   try {
     const res = await fetch(url, { signal: controller.signal, cache });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (cache === 'no-store') {
+      const lead = Date.now() - Date.parse(res.headers.get('Date'));
+      ownClockLead = Number.isFinite(lead) ? lead : 0;
+    }
     return await res.json();
   } finally {
     clearTimeout(timer);
