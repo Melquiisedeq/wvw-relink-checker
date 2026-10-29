@@ -157,11 +157,11 @@ const LIVE_PROJECT_AFTER = 0.375;  // 45 of the 120 minutes
 // hours each from the match start, and the API publishes the running one beside
 // the finished ones with the score so far: comparing the last entry to the
 // others compares a part to wholes.
-function skirmishProgress(match) {
+function skirmishProgress(match, at = Date.now()) {
   const start = Date.parse(match.start_time);
   if (!Number.isFinite(start)) return null;
   const end = Date.parse(match.end_time);
-  const now = Math.min(Date.now(), Number.isFinite(end) ? end : Infinity);
+  const now = Math.min(at, Number.isFinite(end) ? end : Infinity);
   const hours = (now - start) / 3600000;
   if (!(hours >= 0)) return null;
   return { index: Math.floor(hours / 2) + 1, fraction: (hours % 2) / 2 };
@@ -200,6 +200,12 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
   const stalled = !!progress && total >= 1 && progress.index > total
     && dataAt > 0 && dataAt <= lastEnd;
   const cut = scored || stalled ? total - 1 : total;
+  // The score is the body's, which may be minutes behind the clock: the pace
+  // divides by how far into the block the body was. A body from before this
+  // block says nothing of it, so it is at the start; the clock's fraction caps it.
+  const dp = live && dataAt > 0 ? skirmishProgress(match, dataAt) : null;
+  let dataFraction = progress ? progress.fraction : 0;
+  if (dp) dataFraction = dp.index < progress.index ? 0 : Math.min(dp.fraction, progress.fraction);
   for (const side of sides) side.done = side.series.slice(0, cut);
 
   const mine = sides.find((x) => x.color === color);
@@ -362,11 +368,11 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
       body.textContent = stalled
         ? `The game's data stopped partway through block ${total}`
         : "ArenaNet hasn't published this block yet";
-    } else if (progress.fraction >= LIVE_PROJECT_AFTER) {
+    } else if (dataFraction >= LIVE_PROJECT_AFTER) {
       // Two segments, not three: the projection is read against the Average card
       // above. In the first hours of a week there is no Average and the pace stands alone.
       body.innerHTML = `<b>${running.toLocaleString()}</b> so far · on pace for `
-        + `<b>${Math.round(running / progress.fraction).toLocaleString()}</b>`;
+        + `<b>${Math.round(running / dataFraction).toLocaleString()}</b>`;
     } else {
       body.innerHTML = `<b>${running.toLocaleString()}</b> so far · too early to project`;
     }
