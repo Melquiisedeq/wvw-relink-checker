@@ -617,8 +617,14 @@ test('skirmish trend pace: the fraction of the body\'s instant, not the clock\'s
       renderSkirmishTrendPopoverContent(el, 'X', m, 'red');
       return el.textContent;
     };
+    const RealDate = Date;
+    const fixed = blockStart + 60 * 60000;
+    globalThis.Date = new Proxy(RealDate, { get: (t, p) => (p === 'now' ? () => fixed : Reflect.get(t, p, t)) });
     try {
       return {
+        edgeOver: render(fixed - 6 * 60000 - 1000),
+        lateEarly: render(blockStart + 40 * 60000),
+        odd: render(blockStart + 48.4 * 60000),
         behind: render(blockStart + 54 * 60000),
         frozen: render(blockStart + 50 * 60000),
         early: render(blockStart + 10 * 60000),
@@ -626,12 +632,17 @@ test('skirmish trend pace: the fraction of the body\'s instant, not the clock\'s
         ahead: render(Date.now() + 30 * 60000),
         unknown: render(0),
       };
-    } finally { kept.at = keptAt; }
+    } finally { kept.at = keptAt; globalThis.Date = RealDate; }
   });
   expect(out.behind, 'body 6 min behind: 500 at 54 of 120').toMatch(/on pace for\s*1,111/);
+  expect(out.behind, 'exactly the margin behind: still "so far"').toMatch(/500 so far · on pace/);
   expect(out.frozen, 'body 10 min behind').toMatch(/on pace for\s*1,200/);
+  expect(out.frozen, 'past the margin: the body\'s own minute').toMatch(/500 by minute 50 · on pace for\s*1,200/);
+  expect(out.lateEarly, 'early and past the margin: the body\'s minute').toMatch(/500 by minute 40 · too early to project/);
+  expect(out.odd, 'the pace follows the minute shown, not the exact fraction').toMatch(/500 by minute 48 · on pace for\s*1,250/);
+  expect(out.edgeOver, 'a second past the margin: its minute').toMatch(/500 by minute 54 · on pace for/);
   expect(out.early, 'body at 10 min: too early, never a division by a sliver').toMatch(/too early to project/);
   expect(out.before, 'a body from before the block is at its start: too early, not a low pace').toMatch(/20 so far · too early to project/);
-  expect(out.ahead, 'a body ahead of the clock: capped at it').toMatch(/on pace for\s*1,000/);
-  expect(out.unknown, 'time unknown: the clock\'s fraction').toMatch(/on pace for\s*1,000/);
+  expect(out.ahead, 'a body ahead of the clock: capped at it').toMatch(/so far · on pace for\s*1,000/);
+  expect(out.unknown, 'time unknown: the clock\'s fraction').toMatch(/so far · on pace for\s*1,000/);
 });
