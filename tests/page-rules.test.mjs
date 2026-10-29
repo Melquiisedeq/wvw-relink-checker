@@ -748,6 +748,21 @@ test('runPeek: a show during the peek leaves one pending timer, not two (js/stan
   assert.equal(pending.size, 1);
 });
 
+test('runPeek: the next peek lands PEEK_AFTER_MS after a minute mark on the server\'s clock, whatever this device\'s (js/standings.js)', async () => {
+  const page = fresh();
+  const MIN = 60000, anchor = 1000 * MIN + 3000, lead = 20000;
+  const device = anchor + 5 * MIN + 40000 + lead;   // the server's clock reads 40 s past the mark: this device's, 20 s more
+  const delays = [];
+  page.ctx.setTimeout = (fn, ms) => { delays.push(ms); return delays.length; };
+  page.ctx.clearTimeout = () => {};
+  page.ctx.document = { visibilityState: 'visible' };
+  page.ctx.Date = { now: () => device };
+  page.run(`peekLatest = async () => {}; peekAnchor = ${anchor}; ownClockLead = ${lead}`);
+  await page.run('runPeek()');
+  assert.equal(delays.length, 1);
+  assert.equal((device - lead + delays[0] - anchor - page.run('PEEK_AFTER_MS')) % MIN, 0, 'on the server\'s mark, not this device\'s');
+});
+
 test('emberField: stop then start in the same frame leaves one frame chain (js/boot.js)', () => {
   const src = fs.readFileSync(new URL('../site/js/boot.js', import.meta.url), 'utf8');
   const a = src.indexOf('const emberField = (function () {');
@@ -880,13 +895,13 @@ test('the aligned peek: lands PEEK_AFTER_MS after the minute mark of the summary
   const page = fresh();
   const nav = { connection: { saveData: false } };
   page.ctx.navigator = nav;
-  const MIN = 60000, mark = 1000 * MIN + 3000, aligned = (k) => mark + 25000 + k * MIN;
+  const MIN = 60000, mark = 1000 * MIN + 3000, aligned = (k) => mark + 12000 + k * MIN;
   const wait = (anchor, delay, now) => { page.ctx.__a = anchor; return page.run(`peekAnchor = __a; peekWait(${delay}, ${now})`); };
   assert.equal(page.run('PEEK_BEHIND_MS'), 30000);
-  assert.equal(page.run('PEEK_AFTER_MS'), 25000);
+  assert.equal(page.run('PEEK_AFTER_MS'), 12000);
   assert.equal(wait(0, 30000, 5), 30000, 'no summary read yet: the delay as it was');
   for (const delay of [30000, 120000]) {
-    for (const from of [0, 4000, 25000, 59000, 61000, 90000]) {
+    for (const from of [0, 4000, 12000, 59000, 61000, 90000]) {
       const now = 1000 * MIN + 9 * MIN + from;
       const at = now + wait(mark, delay, now);
       assert.equal((at - aligned(0)) % MIN, 0, `delay ${delay} from ${from}: on the mark`);
@@ -905,7 +920,7 @@ test('the aligned peek: lands PEEK_AFTER_MS after the minute mark of the summary
   nav.connection.saveData = false;
   // A mark that moved 10 s later is followed.
   const moved = mark + 10000, now = 1000 * MIN + 5 * MIN + 25000;
-  assert.equal((now + wait(moved, 30000, now) - moved - 25000) % MIN, 0);
+  assert.equal((now + wait(moved, 30000, now) - moved - 12000) % MIN, 0);
 });
 
 test('the aligned peek: a summary that did not move gets one more ask, and reads stay at two a minute (js/standings.js)', () => {
@@ -925,14 +940,14 @@ test('the aligned peek: a summary that did not move gets one more ask, and reads
   nav.connection.saveData = true;
   assert.equal(next(true, true)[0] > 10000, true, 'Save-Data never asks under its floor');
   nav.connection.saveData = false;
-  // Ten minutes of a clock that never sees the summary move, with a show (the real peekSoon) every `every` ms:
-  // reads stay at 20 or under. Shows 40-50 s apart are where a show that left peekAligned set reads past that.
+  // Ten minutes of a clock that never sees the summary move, a show (the real peekSoon) every `every` ms:
+  // never more than three reads in a minute (the aligned one, its retry, a show), whatever the phase.
   for (const every of [40000, 50000, 75000, 100000]) {
     page.run('peekAnchor = 1000 * 60000 + 3000; peekAligned = true');
-    let now = 1000 * 60000 + 9 * 60000, reads = 0, lastSoon = now;
-    const end = now + 10 * 60000;
+    let now = 1000 * 60000 + 9 * 60000, lastSoon = now;
+    const end = now + 10 * 60000, times = [];
     while (now < end) {
-      reads++;
+      times.push(now);
       page.run(`peekAt = ${now}; peekStill = true`);
       const wait = page.run(`peekNext(30000, ${now})`);
       if (now + wait > lastSoon + every) {   // a popover closes before that peek
@@ -940,7 +955,9 @@ test('the aligned peek: a summary that did not move gets one more ask, and reads
         now = Math.max(lastSoon, now + 30000);   // peekSoon: not before the floor after the last peek
       } else now += wait;
     }
-    assert.ok(reads <= 20, `a show every ${every / 1000} s: ${reads} reads in 10 min`);
+    const reads = times.length;
+    assert.ok(times.every((t) => times.filter((u) => u >= t && u < t + 60000).length <= 3), `a show every ${every / 1000} s: more than three reads in a minute`);
+    assert.ok(reads <= 21, `a show every ${every / 1000} s: ${reads} reads in 10 min`);
   }
 });
 
