@@ -14,6 +14,7 @@
 //     .latestHeld(true)                   // our copy keeps this moment's bodies
 //     .freeze(40)                         // 40 min, nothing new from the API
 //     .status(503).advance(8).status(null)      // the game moves, the API is down
+//     .status(429, { visitor: true })     // only the visitor's reads refused
 //     .latestStatus(503)                  // /api/latest down (or 'hang': never answers)
 //
 // Immutable: every method returns a new timeline. Time is in minutes after the
@@ -158,9 +159,12 @@ class Timeline {
   // From here on, every match URL answers `code` (503, 429) or never ('hang');
   // null ends it. /api/latest keeps the last body read before (our readers
   // read the same API); /api/kills gets no rows meanwhile.
-  status(code) {
+  // `visitor`: only the visitor's reads (their server group down, their IP
+  // refused); our readers, on the other group, go on, and so do /api/latest
+  // and /api/kills.
+  status(code, { visitor = false } = {}) {
     if (code !== null && code !== 'hang' && !(code >= 400 && code < 600)) throw new Error(`gw2: status ${code}`);
-    return this.#with([{ kind: 'status', at: this.#cursor, code }]);
+    return this.#with([{ kind: 'status', at: this.#cursor, code, visitor }]);
   }
 
   // From here on, /api/kills gets no rows while the API goes on (our readers
@@ -292,13 +296,19 @@ class Timeline {
     return w && w.code !== null ? w.code : null;
   }
 
+  // What our readers' reads answer at t: null when up.
+  readersStatusAt(t) {
+    const w = this.#windowAt(this.#compile().statuses, t);
+    return w && w.code !== null && !w.visitor ? w.code : null;
+  }
+
   // The newest time at or before t the API was up: what our readers last read.
   lastUp(t) {
     const list = this.#compile().statuses;
     let down = null;
     for (const w of list) {
       if (w.at > t) break;
-      if (w.code === null) down = null;
+      if (w.code === null || w.visitor) down = null;
       else if (down === null) down = w.at;
     }
     return down === null ? t : down;
@@ -598,7 +608,7 @@ class Server {
     const rows = baseBodies().rows.filter(r => r[0] - anchor > from && r[0] - anchor <= t);
     for (const id of ids) {
       for (const f of frames.get(id)) {
-        if (!(f.at > from && f.at <= t) || this.#tl.statusAt(f.at) !== null || !this.#tl.historyAt(f.at)
+        if (!(f.at > from && f.at <= t) || this.#tl.readersStatusAt(f.at) !== null || !this.#tl.historyAt(f.at)
           || this.#tl.heldAt(f.at) !== f.at) continue;
         const k = this.#tl.killsByMap(id, f.at);
         rows.push([anchor + f.at, id, ...MAPS.map(type => k[type] || 0)]);

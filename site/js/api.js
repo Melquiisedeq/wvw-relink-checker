@@ -220,8 +220,10 @@ const newestMatches = new Map();
 // of our copy can be older than the moment it wins here.
 const latestBodyAt = new WeakMap();
 // When this page last got an answer for each match, any body, a frozen repeat
-// included (newestMatches keeps only when the score rose): the map's "checked".
+// included (newestMatches keeps only when the score rose).
 const matchAnsweredAt = new Map();
+// The same for the game's own answers only, our copy's left out: the map's "checked".
+const gameAnsweredAt = new Map();
 // Longer without an answer is a gap; answers closer than the burst are one read.
 const MATCH_GAP_MS = 2 * STANDINGS_REFRESH_MS;
 const GAP_BURST_MS = 5000;
@@ -251,6 +253,7 @@ function keepNewestMatch(match) {
   if (!match || typeof match.id !== 'string') return match;
   const answeredBefore = matchAnsweredAt.get(match.id);
   matchAnsweredAt.set(match.id, Date.now());
+  if (!latestBodyAt.has(match)) gameAnsweredAt.set(match.id, Date.now());
   const kept = newestMatches.get(match.id);
   // Every offer, a frozen repeat included, with the body it would replace:
   // the maps' "What happened" summary (js/maps-early.js, loaded after this file).
@@ -625,7 +628,12 @@ async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
   const early = regions.length ? (latestAsked && !latestMissed ? null : startLatest())
     : (one && !latestTold(Date.now()) && latestWanted([one]) ? startLatest() : null);
   const latestGap = () => (latestGapOver(Date.now()) ? startLatest() : null);
-  const raw = await fetchJson(url, 0, 'no-store', timeoutMs);
+  let raw;
+  try {
+    raw = await fetchJson(url, 0, 'no-store', timeoutMs);
+  } catch (err) {
+    return latestInstead(one, early, err);
+  }
   if (!Array.isArray(raw)) {
     const known = isMatchBody(raw) && newestMatches.has(raw.id);
     const logged = isMatchBody(raw) && !known && loggedAheadAt(raw) > 0;
@@ -668,6 +676,24 @@ async function fetchMatches(url, timeoutMs = REQUEST_TIMEOUT_MS, regions = []) {
   ageBehindLog(logged);
   for (const region of regions) weekStoreRegion(region, list);
   return list;
+}
+
+// The game's read failed (the visitor's server group down, or the IP refused)
+// while our readers, on both groups, may go on: for one match this visit
+// already read, our copy stands in when it is further along, dated by its own
+// `at`. Otherwise `err` is thrown, and a copy asked beside is offered for the
+// next paint (offerLate).
+async function latestInstead(one, early, err) {
+  const was = one && newestMatches.get(one);
+  if (!was) {
+    if (early) early.then(offerLate);
+    throw err;
+  }
+  const reading = early || (latestWanted([one], true) ? startLatest() : null);
+  if (reading) await mergeLatest([was.match], reading);
+  const kept = newestMatches.get(one).match;
+  if (!matchIsBehind(was.match, kept)) throw err;
+  return kept;
 }
 
 // ---- /api/latest: a second read of the matches ------------------------

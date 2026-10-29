@@ -64,6 +64,12 @@ export const skirmishAway = (min = 100, lag = 5, id) => opened(id).olderPool(lag
 export const apiDown = (min = 10, code = 503, id) =>
   opened(id).advance(4).status(code).advance(min).status(null).advance(12);
 
+// The visitor's server group down (or their IP refused, `code` 429) for `min`
+// minutes, after 4 of play, then 12 more with it back; our readers, on the
+// other group, go on, so /api/latest and /api/kills stay current.
+export const visitorDown = (min = 10, code = 503, id) =>
+  opened(id).advance(4).status(code, { visitor: true }).advance(min).status(null).advance(12);
+
 // The game goes on and its API answers, but /api/kills gets no rows for `gap`
 // minutes (our readers stopped): `before` minutes of play, the gap, `after`
 // more, and the page opens then, with no log of its own to fill the hole.

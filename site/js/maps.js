@@ -962,7 +962,7 @@ function buildMapCorners(wrap, matchId) {
       // Past the limit the sign is the signal, never the colour alone.
       put(mark, isStale ? '⚠ ' : '');
       put(val, hhmm(at));
-      const answered = matchAnsweredAt.get(matchId);
+      const answered = gameAnsweredAt.get(matchId);
       setTip('when', whenBtn, `${answered ? `Checked ${ageWords(Date.now() - answered)} ago` : 'Not checked yet'}:`
         + " this page asks the game's API every 30 s."
         + ` Data from ${hhmm(at)}: when this match's score last changed there${isStale ? `, ${ageWords(age)} ago` : ''}.`
@@ -2849,7 +2849,12 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     try {
       // Never behind what this page has already seen: see fetchMatches.
       fresh = await fetchMatches(`${API_BASE}/wvw/matches?id=${encodeURIComponent(match.id)}`);
-    } catch { firstReadDone = true; return; }
+    } catch {
+      // A body further along than the one on show, come while the game's
+      // read failed (our copy, late: offerLate), is painted all the same.
+      const kept = newestMatches.get(match.id);
+      if (kept && matchIsBehind(liveMatch, kept.match)) fresh = kept.match;
+    }
     firstReadDone = true;
     if (seq !== pullSeq) return;
     if (activeTrigger !== triggerEl || !fresh || !Array.isArray(fresh.maps)) return;

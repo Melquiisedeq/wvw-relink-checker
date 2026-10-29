@@ -6,11 +6,13 @@
 // included, the copy read once per minute mark; with the group in step (playing), the game's own answer is as far
 // along as the summary and the copy is not read at all.
 import { test, expect } from './support/fixtures.mjs';
+import { fail } from './support/faults.mjs';
 import { FOCUS, MIN, copyBehindAll, playing } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, clock: 'playwright' });
 const PLOT = ".info-popover .wvw-plot g[role='button']";
 const COPY = /\/api\/latest$/;
+const GAME = /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches/;
 const sum = m => ['red', 'blue', 'green'].reduce((n, c) => n + m.scores[c], 0);
 // Under OWN_API_TIMEOUT_MS (js/config.js): a jump past it aborts a read still in flight.
 const STEP = 3000;
@@ -42,10 +44,12 @@ async function watch(page, wvw, minutes) {
 
 // Map open, from the first summary read, 5 min watched in STEP jumps: each
 // new body of the copy on the map within 35 s of its minute mark, and the
-// copy reads.
-async function behindWatched(page, wvw) {
+// copy reads. `refused`: every match read of the game's fails from the open map on;
+// `within`: how soon after its minute mark a new body is on the map.
+async function behindWatched(page, wvw, { refused = false, within = 35 * 1000 } = {}) {
   test.setTimeout(150 * 1000);   // six minutes of the page's clock, each STEP settled
   await mapOpen(page, wvw);
+  if (refused) await fail(page, wvw, GAME, 429);
   // Before the first summary the map's read behind the kept body asks the
   // copy by the rule without one (js/api.js, latestWanted), under a minute
   // before the first minute mark's: the watch starts after it.
@@ -66,10 +70,10 @@ async function behindWatched(page, wvw) {
     marks++;
     const by = key => { const s = samples.find(x => x.t >= m && x[key] >= v); return s ? s.t - m : Infinity; };
     const held = by('held'), shown = by('shown');
-    if (shown > 35 * 1000) late.push(`${(m - wvw.recordedAt) / MIN} min: held ${held / 1000} s, shown ${shown / 1000} s`);
+    if (shown > within) late.push(`${(m - wvw.recordedAt) / MIN} min: held ${held / 1000} s, shown ${shown / 1000} s`);
   }
   expect(marks, 'minute marks watched').toBeGreaterThanOrEqual(minutes - 1);
-  expect(late, 'new bodies of the copy on the map later than 35 s').toEqual([]);
+  expect(late, `new bodies of the copy on the map later than ${within / 1000} s`).toEqual([]);
   // A read is due once per minute mark (the peek, aligned to the summary's
   // `at`), but fires at the end of the jump that passes its due time, and is
   // timed by the sample after it, a settle later: reads a minute apart can show
@@ -91,6 +95,24 @@ test.describe("the visitor's whole group behind", () => {
   test(`a copy that answers in 2 s: ${title}`, async ({ page, wvw }) => {
     await page.route(COPY, async route => { await new Promise(r => setTimeout(r, 2000)); return route.fallback(); });
     await behindWatched(page, wvw);
+  });
+});
+
+// The visitor's reads refused (their group down, their IP barred) while our
+// readers go on: the copy stands in for the game's answer, on time or late.
+test.describe("the visitor's match reads refused", () => {
+  test.use({ timeline: playing() });
+
+  // The copy is asked once the game's refusals and their two retries (js/api.js, fetchJson) are spent.
+  test('each new body of the copy is on the map within 40 s; the copy reads are 55 s apart or more', async ({ page, wvw }) => {
+    await behindWatched(page, wvw, { refused: true, within: 40 * 1000 });
+  });
+
+  // The map's read again, once the late copy lands (offerLate), first waits
+  // out the game's refusals and their retries (js/api.js, fetchJson).
+  test(`a copy that answers in 2 s: each new body of the copy is on the map within 45 s; the copy reads are 55 s apart or more`, async ({ page, wvw }) => {
+    await page.route(COPY, async route => { await new Promise(r => setTimeout(r, 2000)); return route.fallback(); });
+    await behindWatched(page, wvw, { refused: true, within: 45 * 1000 });
   });
 });
 

@@ -558,14 +558,19 @@ async function loadStandings(origin = 'cycle') {
     let idList, naMatches, euMatches;
     // A load the peek asked for reads /api when the summary is ahead, and not
     // the game's ~97 KB again; with nothing newer in hand it leaves the board be.
-    const all = origin === 'peek' ? await latestBoard(peekCopy) : await fetchAllMatches(timeoutMs);
+    let all = origin === 'peek' ? await latestBoard(peekCopy) : await fetchAllMatches(timeoutMs);
     if (!all && origin === 'peek') return;
+    if (!all) {
+      try {
+        [idList, naMatches, euMatches] = await loadStandingsByRegion();
+      } catch (err) {
+        all = await copyBoard(err);
+      }
+    }
     if (all) {
       idList = all.map((m) => m.id);
       naMatches = all.filter((m) => m.id.startsWith('1-'));
       euMatches = all.filter((m) => m.id.startsWith('2-'));
-    } else {
-      [idList, naMatches, euMatches] = await loadStandingsByRegion();
     }
     const answered = [...(naMatches || []), ...(euMatches || [])];
 
@@ -670,6 +675,20 @@ async function latestBoard(copy) {
   const board = shown.map((m) => (newestMatches.has(m.id) ? newestMatches.get(m.id).match : m));
   if (!bodies.length && board.every((m, i) => m === shown[i])) return null;
   return board.sort((a, b) => byId(a.id, b.id));
+}
+
+// The game's reads failed (the visitor's server group down, or the IP
+// refused): our copy draws the board when one of its bodies rose within
+// HUD_STALE_MS, by its own `at`. A copy empty, down or stopped throws `err`,
+// and the failure stands.
+async function copyBoard(err) {
+  const shown = [...matchDataCache.values()];
+  const reading = shown.length ? startLatest() : null;
+  const bodies = reading ? await reading : [];
+  offerLatest(bodies);
+  const now = Date.now();
+  if (!bodies.some((b) => now - (latestBodyAt.get(b) || 0) <= HUD_STALE_MS)) throw err;
+  return shown.map((m) => (newestMatches.has(m.id) ? newestMatches.get(m.id).match : m)).sort((a, b) => byId(a.id, b.id));
 }
 
 // The newest `at` of a summary in ms, 0 when none is a number.

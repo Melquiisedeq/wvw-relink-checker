@@ -7,6 +7,7 @@
 //   tab hidden 2 h, then back              missed(120, 6), hidden() / visible()
 //   laptop waking after 30 min             playing(40), wake(): every due timer once
 //   map open while the API is down         apiDown(12), the map never closed
+//   the visitor's group down, copy current visitorDown(20), the map open, then closed
 //   our copy ahead of the visitor's, old   copyAheadOld(20) and (2), the map open
 //   kills in steps, the score rising       killSteps(7, 12, 42), the map open
 //
@@ -22,7 +23,7 @@
 // holds every flip, its count is the flips', its kills are the timeline's.
 import { test, expect } from './support/fixtures.mjs';
 import { gw2 } from './support/gw2.mjs';
-import { FOCUS, HOUR, MIN, apiDown, copyAheadOld, copyBehindAll, frozen, hidden, killSteps, missed, playing, twoPools, visible, wake } from './support/scenarios.mjs';
+import { FOCUS, HOUR, MIN, apiDown, copyAheadOld, copyBehindAll, frozen, hidden, killSteps, missed, playing, twoPools, visible, visitorDown, wake } from './support/scenarios.mjs';
 
 const STALE_MS = 6 * MIN;
 // How long the page may take to read the API again: the open map asks every
@@ -321,6 +322,72 @@ test.describe('map open while the API is down', () => {
     const seen = r.looks[r.looks.length - 1];
     expect(seen.map.stale, 'the state: current again').toBe(false);
     expect(seen.map.tabs.some(b => b.hot && b.active), 'the state: swords on the open tab').toBe(true);
+  });
+});
+
+// Every read of the visitor's refused while our readers go on: our copy stands
+// in for the game, on the open map and then on the list, dated by its own time.
+test.describe("the visitor's server group down, our copy current", () => {
+  test.use({ timeline: visitorDown(20) });
+  test('the map and the list show the copy, without a warning', async ({ page, wvw }) => {
+    const r = rower(page, wvw);
+    const activity = s => s.sides.reduce((n, x) => n + (x.activity || 0), 0);
+    // As r.pass, but settled before each jump as well: a copy read that the check's
+    // last second started would be cut by the jump (OWN_API_TIMEOUT_MS).
+    const walk = async (min, what, read) => {
+      for (let done = 0; done < min; done += 2) {
+        await wvw.settle();
+        await page.clock.fastForward(2 * MIN);
+        await r.check(`${what}, +${done + 2} min`, read);
+      }
+    };
+    await r.load();
+    await r.open();
+    await walk(4, 'playing', READ_OPEN_MS);
+    await walk(10, 'visitor down', READ_OPEN_MS);
+    let seen = r.looks[r.looks.length - 1];
+    expect(wvw.timeline.statusAt(seen.now - wvw.recordedAt), 'the state: the visitor\'s reads refused').not.toBeNull();
+    expect(seen.map.stale, `the corner "${seen.map.ago}" on our copy, current`).toBe(false);
+    // A 2 min step, and the read after it.
+    expect(seen.now - seen.map.at, '"data from": the copy\'s time, within 3 min').toBeLessThan(2 * MIN + READ_OPEN_MS);
+    const drawn = activity(seen);
+    await r.close();
+    await walk(6, 'visitor down, map closed');
+    await wvw.settle();
+    seen = await look(page);
+    expect(wvw.timeline.statusAt(seen.now - wvw.recordedAt), 'the state: still refused').not.toBeNull();
+    expect(activity(seen), 'the list drew the copy\'s body').toBeGreaterThan(drawn);
+    await expect(page.locator('.standings-alert .retry-btn'), 'no "Trying again" while the copy draws the list').toHaveCount(0);
+    // A 5 min load right after one drawn from the copy, before the copy moves.
+    await page.evaluate(async () => { await loadStandings(); await loadStandings(); });
+    await wvw.settle();
+    await expect(page.locator('.standings-alert .retry-btn'), 'no "Trying again" on a copy that has not moved since the last load').toHaveCount(0);
+  });
+});
+
+// The same with our readers stopped as the visitor's group went down: the copy
+// draws the list once, with the body it holds, and then the failure stands;
+// the corner warns on the old data.
+test.describe("the visitor's server group down, our copy stopped", () => {
+  test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().advance(4).latestHeld(true).status(503, { visitor: true }).advance(20) });
+  test('the list says it is trying again', async ({ page, wvw }) => {
+    const r = rower(page, wvw);
+    await r.load();
+    await r.open();
+    for (let i = 0; i < 6; i++) {
+      await wvw.settle();
+      await page.clock.fastForward(2 * MIN);
+    }
+    const seen = await r.check('copy stopped', READ_OPEN_MS);
+    expect(seen.map.stale, `the corner "${seen.map.ago}" on data 8 min old`).toBe(true);
+    await r.close();
+    // The read owed at the close, then the next 5 min tick.
+    for (let i = 0; i < 6; i++) {
+      await wvw.settle();
+      await page.clock.fastForward(2 * MIN);
+    }
+    await wvw.settle();
+    await expect(page.locator('.standings-alert .retry-btn').first(), 'the list\'s "Trying again"').toBeAttached();
   });
 });
 
