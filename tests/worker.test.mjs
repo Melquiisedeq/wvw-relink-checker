@@ -321,6 +321,33 @@ test('/api/kills finds the move inside a late batch older than the last window',
     'the base, the row before the move, the move (40, not 31), the newest');
 });
 
+// The earlier rebuild is held at its write until the later one has written.
+test('/api/kills keeps the rebuild that began later when two meet in one second', async () => {
+  const w = setup();
+  const realDb = w.env.DB;
+  let release, reached;
+  const gate = new Promise((r) => { release = r; });
+  const atWrite = new Promise((r) => { reached = r; });
+  let held = 0;
+  w.env.DB = {
+    prepare(q) {
+      const st = realDb.prepare(q);
+      if (!q.startsWith('INSERT INTO recent') || held++) return st;
+      const hold = { bind: (...a) => { st.bind(...a); return hold; }, run: async () => { reached(); await gate; return st.run(); } };
+      return hold;
+    }
+  };
+  const early = w.post('kills', { rows: w.rows(w.now) });
+  await atWrite;
+  w.advance(500);
+  const later = w.now;
+  assert.equal(await w.post('kills', { rows: w.rows(later) }), 200);
+  release();
+  assert.equal(await early, 200);
+  const got = JSON.parse((await w.get('/api/kills')).body).rows;
+  assert.equal(Math.max(...got.map((r) => r[0])), later, 'the body is the later rebuild\'s');
+});
+
 // The body of the deploy before held no move: the first rebuild after it
 // finds the move within 2.5 h is not the body's and walks to it.
 test('/api/kills walks to the move once, from a body that held none', async () => {
@@ -332,7 +359,7 @@ test('/api/kills walks to the move once, from a body that held none', async () =
   for (const [m, k] of [[60, 100], [50, 110], [40, 110], [20, 110], [10, 110]]) ins.run('1-1', t(m), k, 0, 0, 0, week);
   // As the deploy before built it: the window and its base, no move.
   const old = [40, 20, 10].map((m) => [t(m), '1-1', 110, 0, 0, 0]);
-  w.sql.prepare('INSERT INTO recent (id, at, rows) VALUES (1, ?, ?)').run(Math.floor(t(1) / 1000), JSON.stringify(old));
+  w.sql.prepare('INSERT INTO recent (id, at, rows) VALUES (1, ?, ?)').run(t(1), JSON.stringify(old));
   assert.equal(await w.post('kills', { rows: [[w.now, '2-1', 1, 0, 0, 0, week]] }), 200);
   const got = JSON.parse((await w.get('/api/kills')).body).rows;
   assert.deepEqual(got.filter((r) => r[1] === '1-1').map((r) => (w.now - r[0]) / min), [60, 50, 40, 20, 10],

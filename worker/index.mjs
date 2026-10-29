@@ -321,6 +321,7 @@ function toBase64(bytes) {
 // the readers are up). Every query reads kills by its key, `at` bounded as
 // well as the match; a test checks their plans and the rows they hand back.
 async function rebuildRecent(db, now) {
+  const started = Date.now();
   const nowMs = now * 1000;
   const cut = nowMs - RECENT_MS;
   const floor = cut - BASE_MS;
@@ -333,7 +334,7 @@ async function rebuildRecent(db, now) {
   // newest row before the window is one the last body did not hold: then
   // the match is walked. A row of the week before is dropped from the body by
   // design, so it is no sign of a late batch.
-  const carried = last && last.at * 1000 >= cut ? JSON.parse(last.rows) : null;
+  const carried = last && last.at >= cut ? JSON.parse(last.rows) : null;
   const held = new Set(carried ? carried.map((r) => r[1] + ' ' + r[0]) : []);
   const { results } = await db.prepare(windowSql).bind(cut, floor, ...MATCHES).all();
   const plan = new Map();
@@ -399,11 +400,12 @@ async function rebuildRecent(db, now) {
     out.push(...add.values());
   }
   out.sort((a, b) => a[0] - b[0]);
-  // A rebuild that started earlier writes nothing over a later one.
+  // `at` is the start in milliseconds: two readers push in the same second, and
+  // the one that began earlier writes nothing over the one that began later.
   await db.prepare(
     'INSERT INTO recent (id, at, rows) VALUES (1, ?1, ?2) ' +
     'ON CONFLICT (id) DO UPDATE SET at = excluded.at, rows = excluded.rows WHERE excluded.at >= recent.at'
-  ).bind(now, JSON.stringify(out)).run();
+  ).bind(started, JSON.stringify(out)).run();
 }
 
 function sum(r) {
@@ -563,7 +565,7 @@ const READS = {
 
   '/api/kills': async (env) => {
     const r = await env.DB.prepare('SELECT at, rows FROM recent WHERE id = 1').first();
-    if (!r || nowS() - r.at > STALE_KILLS_S || r.rows === '[]') return text(503, 'stale');
+    if (!r || Date.now() - r.at > STALE_KILLS_S * 1000 || r.rows === '[]') return text(503, 'stale');
     // Built by rebuildRecent from rows the entrance checked, as JSON by SQLite.
     return json('{"rows":' + r.rows + '}', 60);
   },
