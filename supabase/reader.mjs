@@ -51,6 +51,9 @@ const SCORE_SLACK = 2000;
 const MAPS = ['Center', 'RedHome', 'BlueHome', 'GreenHome'];
 const TEAMS = ['red', 'blue', 'green'];
 const RESET = { 1: { day: 6, hour: 2 }, 2: { day: 5, hour: 18 } };
+const SKIRMISH_MS = 2 * 3600e3;
+const SKIRMISHES = 84;
+const MAX_VP_PER_SKIRMISH = 60;
 
 const isInt = (x) => Number.isInteger(x) && x >= 0 && x <= 1e7;
 
@@ -73,7 +76,7 @@ function plain(x, depth, count) {
   return Object.keys(x).every((k) => /^[a-z_0-9]{1,32}$/.test(k) && plain(x[k], depth + 1, count));
 }
 
-// One match of the API, whole. Returns {id, start, scores, kills, text} or null.
+// One match of the API, whole. Returns {id, start, scores, kills, text, board} or null.
 export function checkMatch(m, nowMs) {
   if (!m || typeof m !== 'object' || Array.isArray(m)) return null;
   if (typeof m.id !== 'string' || !/^[12]-[1-9]$/.test(m.id)) return null;
@@ -109,7 +112,25 @@ export function checkMatch(m, nowMs) {
   if (score > MAX_SCORE_PER_MIN * Math.max(0, (nowMs - start) / 60e3) + SCORE_SLACK) return null;
   const text = JSON.stringify(m);
   if (new TextEncoder().encode(text).length > MAX_RAW) return null;
-  return { id: m.id, start, scores, score, kills, text };
+  return { id: m.id, start, scores, score, kills, text, board: boardOf(m, start, nowMs) };
+}
+
+// The Worker's board (checkBoard): the match's VP so far and its last two
+// skirmishes, [id, red, blue, green], the running one last. Null when they do
+// not pass the Worker's limits; the match then goes without them.
+export function boardOf(m, start, nowMs) {
+  const list = m.skirmishes;
+  if (!Array.isArray(list) || !list.length || list.length > SKIRMISHES) return null;
+  const last = list.slice(-2).map((x) => (x && x.scores ? [x.id, ...TEAMS.map((t) => x.scores[t])] : [null]));
+  if (!last.every((x) => x.length === 4 && x.every(isInt))) return null;
+  // The ids run 1, 2, ... up to the running one.
+  const id = last[last.length - 1][0];
+  if (id !== list.length || id > Math.floor((nowMs - start + 300e3) / SKIRMISH_MS) + 1) return null;
+  if (last.length === 2 && last[0][0] !== id - 1) return null;
+  if (last.some((x) => x[1] + x[2] + x[3] > MAX_SCORE_PER_MIN * SKIRMISH_MS / 60e3 + SCORE_SLACK)) return null;
+  const vp = TEAMS.map((t) => m.victory_points[t]);
+  if (vp.some((v) => v > MAX_VP_PER_SKIRMISH * id)) return null;
+  return { vp, skirmishes: last };
 }
 
 // The whole read or nothing: not a list of 1-18 is an error string; a match
@@ -168,7 +189,8 @@ export async function buildBody(matches) {
     if (gz.length > MAX_SLICE) continue;
     entries.push({
       id: m.id, start: m.start, scores: m.scores, kills: m.kills,
-      bytes: gz.length, raw: raw.length, sha256: hex(await crypto.subtle.digest('SHA-256', gz))
+      bytes: gz.length, raw: raw.length, sha256: hex(await crypto.subtle.digest('SHA-256', gz)),
+      ...m.board
     });
     slices.push(gz);
   }

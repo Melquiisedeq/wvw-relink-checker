@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { fakeD1 } from './fake-d1.mjs';
 import { postSigned, signHeaders } from './signed.mjs';
 import {
-  REGIONS, regionFor, checkMatch, checkRead, checkSummaryBody, pickNewer, buildBody, sign, sameSecret, handle
+  REGIONS, regionFor, checkMatch, checkRead, checkSummaryBody, pickNewer, buildBody, sign, sameSecret, handle, boardOf
 } from '../supabase/reader.mjs';
 
 // 2026-10-03 is a Saturday: the NA week began 02:00Z, 10 hours before this clock.
@@ -401,4 +401,59 @@ test('a match too big once gzipped is not sent, the others are', async () => {
   const head = JSON.parse(new TextDecoder().decode(built.body.subarray(0, built.body.indexOf(10))));
   assert.deepEqual(head.matches.map((m) => m.id), ['1-1']);
   assert.equal(await buildBody([read.matches[1]]), null);
+});
+
+// ---- board: the last finished skirmish, the running one and the VP, for the Worker's table.
+const trio = (a, b, c) => ({ red: a, blue: b, green: c });
+// NOW is 10 hours into the NA week: skirmish 6 runs.
+const skirmishes = (n) => Array.from({ length: n }, (_, i) => ({ id: i + 1, scores: trio(10 * i, 20 * i, 30 * i), map_scores: [] }));
+const head = (built) => JSON.parse(new TextDecoder().decode(built.body.subarray(0, built.body.indexOf(10))));
+
+test('the reader sends the last finished skirmish, the running one and the VP, and the Worker keeps the finished one', async () => {
+  const m = apiMatch('1-1', { over: { skirmishes: skirmishes(6), victory_points: trio(130, 110, 90) } });
+  const built = await buildBody(checkRead([m, apiMatch('1-2')], NOW).matches);
+  const [one, two] = head(built).matches;
+  assert.deepEqual(one.vp, [130, 110, 90]);
+  assert.deepEqual(one.skirmishes, [[5, 40, 80, 120], [6, 50, 100, 150]]);
+  assert.deepEqual(two.skirmishes, [[1, 1, 2, 3]], 'skirmish 1 running: nothing finished yet');
+  const w = door();
+  const r = await w.push('us-east-1', built.body);
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual({ ...w.sql.prepare('SELECT match, skirmish, red, blue, green, vp_red, vp_blue, vp_green FROM board').get() },
+    { match: '1-1', skirmish: 5, red: 40, blue: 80, green: 120, vp_red: 130, vp_blue: 110, vp_green: 90 });
+  assert.equal(w.sql.prepare('SELECT count(*) n FROM board').get().n, 1);
+});
+
+test('skirmishes the Worker would refuse leave the match without them, and the match still goes', async () => {
+  const edit = (f) => { const m = apiMatch('1-1', { over: { skirmishes: skirmishes(6) } }); f(m); return m; };
+  const bad = {
+    'no skirmishes': edit((m) => { delete m.skirmishes; }),
+    'an empty list': edit((m) => { m.skirmishes = []; }),
+    'a gap in the ids': edit((m) => { m.skirmishes.splice(4, 1); }),
+    'an early skirmish missing': edit((m) => { m.skirmishes.splice(1, 1); }),
+    'the last two out of order': edit((m) => { m.skirmishes.push(m.skirmishes.splice(4, 1)[0]); }),
+    'a skirmish that has not begun': edit((m) => { m.skirmishes = skirmishes(7); }),
+    'a skirmish without scores': edit((m) => { delete m.skirmishes[5].scores; }),
+    'a score as text': edit((m) => { m.skirmishes[4].scores.red = '1'; }),
+    'a skirmish past 1000 a minute': edit((m) => { m.skirmishes[4].scores = trio(122001, 0, 0); }),
+    'a null skirmish': edit((m) => { m.skirmishes[5] = null; }),
+    'a vp past 60 a skirmish': edit((m) => { m.victory_points = trio(361, 0, 0); })
+  };
+  for (const [what, m] of Object.entries(bad)) {
+    const ok = checkMatch(m, NOW);
+    assert.ok(ok, what);
+    assert.equal(ok.board, null, what);
+  }
+  const built = await buildBody(checkRead(Object.values(bad).map((m, i) => ({ ...m, id: '1-' + (i + 1) })), NOW).matches);
+  assert.ok(head(built).matches.every((e) => !('vp' in e) && !('skirmishes' in e)));
+  const w = door();
+  assert.equal((await w.push('us-east-1', built.body)).status, 200);
+  assert.equal(w.sql.prepare('SELECT count(*) n FROM board').get().n, 0);
+  // The edges the other way: the largest skirmish score, and skirmish 7 five minutes before it begins.
+  const big = edit((m) => { m.skirmishes[4].scores = trio(122000, 0, 0); });
+  assert.deepEqual(checkMatch(big, NOW).board.skirmishes[0], [5, 122000, 0, 0]);
+  assert.deepEqual(checkMatch(edit((m) => { m.victory_points = trio(360, 0, 0); }), NOW).board.vp, [360, 0, 0]);
+  const start = Date.parse(NA_START);
+  assert.equal(boardOf({ skirmishes: skirmishes(7), victory_points: trio(0, 0, 0) }, start, start + 12 * 3600e3 - 300e3 - 1), null);
+  assert.ok(boardOf({ skirmishes: skirmishes(7), victory_points: trio(0, 0, 0) }, start, start + 12 * 3600e3 - 300e3));
 });

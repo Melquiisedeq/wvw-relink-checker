@@ -1,7 +1,7 @@
 -- The database behind wvwrelink.com/api, D1 "wvwrelink". Run in the D1
 -- console ONE STATEMENT PER EXECUTE: given the whole file it ran only the last
 -- one and said "Executed 1/1". A change to it is a new file of statements, run
--- the same way.
+-- the same way: this file, then schema-002 to schema-005, in order.
 
 -- The last accepted message from each script, by the time it signed. A message
 -- signed at or before this one is a replay and is refused.
