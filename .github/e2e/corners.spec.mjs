@@ -565,3 +565,43 @@ test('skirmish trend stalled: a block cut off midway is not the last block', asy
   expect(out.current).toMatch(/64 of 84 finished/);
   expect(out.current).not.toMatch(/stopped partway/);
 });
+
+// The pace of the block being played divides by how far into it the body was,
+// not by the clock: a body 6 min behind at 60 min into the block, 500 points.
+test('skirmish trend pace: the fraction of the body\'s instant, not the clock\'s', async ({ page, wvw }) => {
+  await load(page, wvw);
+  const out = await page.evaluate(() => {
+    const id = [...newestMatches.keys()][0];
+    const kept = newestMatches.get(id);
+    const keptAt = kept.at;
+    const H = 3600000;
+    const start = Date.now() - (128 * H + 1 * H);
+    const blockStart = start + 128 * H;
+    const sk = n => ({ scores: { red: n, blue: n, green: n } });
+    const match = { id, start_time: new Date(start).toISOString(), end_time: new Date(start + 168 * H).toISOString(),
+      skirmishes: [...Array(64).fill(1000), 500].map(sk) };
+    const opening = { ...match, skirmishes: [...Array(64).fill(1000), 20].map(sk) };
+    const render = (at, m = match) => {
+      kept.at = at;
+      const el = document.createElement('div');
+      renderSkirmishTrendPopoverContent(el, 'X', m, 'red');
+      return el.textContent;
+    };
+    try {
+      return {
+        behind: render(blockStart + 54 * 60000),
+        frozen: render(blockStart + 50 * 60000),
+        early: render(blockStart + 10 * 60000),
+        before: render(blockStart - 30 * 60000, opening),
+        ahead: render(Date.now() + 30 * 60000),
+        unknown: render(0),
+      };
+    } finally { kept.at = keptAt; }
+  });
+  expect(out.behind, 'body 6 min behind: 500 at 54 of 120').toMatch(/on pace for\s*1,111/);
+  expect(out.frozen, 'body 10 min behind').toMatch(/on pace for\s*1,200/);
+  expect(out.early, 'body at 10 min: too early, never a division by a sliver').toMatch(/too early to project/);
+  expect(out.before, 'a body from before the block is at its start: too early, not a low pace').toMatch(/20 so far · too early to project/);
+  expect(out.ahead, 'a body ahead of the clock: capped at it').toMatch(/on pace for\s*1,000/);
+  expect(out.unknown, 'time unknown: the clock\'s fraction').toMatch(/on pace for\s*1,000/);
+});
