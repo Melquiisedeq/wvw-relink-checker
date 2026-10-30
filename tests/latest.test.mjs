@@ -316,6 +316,47 @@ test('kills lines: enter when the score rose, not when the match did not win, no
   });
 });
 
+test('kills lines of the readers: two readings 30 s apart with the kills still write one line; moved kills, or 55 s, write the next', async () => {
+  const w = setup();
+  const kills = (k) => ({ entry: { kills: k } });
+  const send = (scores, k) => w.post(US, body([match('1-1', { scores, ...kills(k) })]));
+  await send([1000, 1000, 1000], [1, 2, 3, 4]);
+  assert.equal(w.count('kills'), 1);
+  w.advance(30e3);
+  await send([1010, 1000, 1000], [1, 2, 3, 4]);
+  assert.equal(w.count('kills'), 1, 'the score rose, the kills did not, 30 s on: no line');
+  assert.equal(w.row('1-1').score, 3010, 'the copy still takes the reading');
+  w.advance(30e3);
+  await send([1020, 1000, 1000], [1, 2, 3, 4]);
+  assert.equal(w.count('kills'), 2, '60 s after the newest line: a line');
+  w.advance(30e3);
+  await send([1030, 1000, 1000], [2, 2, 3, 4]);
+  assert.equal(w.count('kills'), 3, 'the kills moved: a line at 30 s');
+  w.advance(54e3);
+  await send([1040, 1000, 1000], [2, 2, 3, 4]);
+  assert.equal(w.count('kills'), 3, '54 s: still none');
+  w.advance(1e3);
+  await send([1050, 1000, 1000], [2, 2, 3, 4]);
+  assert.equal(w.count('kills'), 4, '55 s: a line');
+  for (const [i, k] of [[0, [3, 2, 3, 4]], [1, [3, 3, 3, 4]], [2, [3, 3, 4, 4]], [3, [3, 3, 4, 5]]]) {
+    w.advance(30e3);
+    await send([1060 + i, 1000, 1000], k);
+    assert.equal(w.count('kills'), 5 + i, `only kills ${['Center', 'Red', 'Blue', 'Green'][i]} moved, 30 s on: a line`);
+  }
+  // The sheet's lines are not thinned.
+  w.advance(1e3);
+  assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 3, 3, 4, 5, NA_START]] }), 200);
+  assert.equal(w.count('kills'), 9, 'a sheet line with the same kills, 1 s on: enters');
+});
+
+test('kills lines of the readers: a new week writes its first line at once, kills equal', async () => {
+  const w = setup();
+  await w.post(US, body([match('1-1', { entry: { start: NA_PREV } })]));
+  w.advance(30e3);
+  await w.post(US, body([match('1-1')]));
+  assert.equal(w.count('kills'), 2);
+});
+
 test('two lines of one match in one batch, both above the newest, both enter', async () => {
   const w = setup();
   const s = NA_START;

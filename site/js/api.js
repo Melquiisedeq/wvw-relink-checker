@@ -724,7 +724,7 @@ const LATEST_URL = '/api/latest';
 const LATEST_SUMMARY_URL = '/api/latest/summary';
 const LATEST_QUIET_MS = 90 * 1000;
 const LATEST_GAP_MS = 30 * 1000;
-// The peek reads the summary about once a minute with a map open; past this,
+// The peek reads the summary every 30 s with a map open; past this,
 // the quiet rule above judges instead.
 const LATEST_SUMMARY_FRESH_MS = 90 * 1000;
 const LATEST_WAIT_MS = 1200;           // how long a read holds the paint; a late answer waits for the next one

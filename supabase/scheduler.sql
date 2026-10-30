@@ -54,9 +54,10 @@ end;
 $$;
 revoke all on function public.call_reader(text) from public, anon, authenticated;
 
--- 4. Every minute, both sides; and a daily cleanup of the beat.
-select cron.schedule('reader-us', '* * * * *', $$select public.call_reader('us-east-1')$$);
-select cron.schedule('reader-eu', '* * * * *', $$select public.call_reader('eu-central-1')$$);
+-- 4. Every 30 seconds (pg_cron 1.5 or later; site/js/standings.js PEEK_EVERY_MS follows it), both
+-- sides; and a daily cleanup of the beat.
+select cron.schedule('reader-us', '30 seconds', $$select public.call_reader('us-east-1')$$);
+select cron.schedule('reader-eu', '30 seconds', $$select public.call_reader('eu-central-1')$$);
 select cron.schedule('heartbeat-cleanup', '17 3 * * *',
   $$delete from public.heartbeat where at < now() - interval '7 days'$$);
 

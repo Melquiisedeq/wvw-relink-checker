@@ -1,5 +1,5 @@
 // An open map and our copy (/api/latest): the copy is read when the summary
-// (/api/latest/summary, which the peek reads about once a minute) shows the
+// (/api/latest/summary, which the peek reads every 30 s) shows the
 // map's match further along than the page holds, and then at once. With the
 // visitor's whole group behind (copyBehindAll), each new body of the copy
 // reaches the map within 22 s of being written (the peek at `at` + 12 s,
