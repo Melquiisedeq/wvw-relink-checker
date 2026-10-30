@@ -229,6 +229,7 @@ test('the function fails with a generic answer when the game API is wrong', asyn
 });
 
 // ---- What the function does with each thing the outside can get wrong.
+const MAP_TYPES = ['Center', 'RedHome', 'BlueHome', 'GreenHome'];
 const LOCK = 'k'.repeat(128);
 const GAME = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
 
@@ -274,9 +275,9 @@ test('the function: a game API that fails, lies or is too big gives a generic 50
   }));
   const cases = {
     'HTTP 503': [new Response('x', { status: 503 }), 502],
-    'declared length past the cap': [new Response(JSON.stringify(ok), { headers: { 'content-length': String(1024 * 1024 + 1) } }), 502],
-    'a stream one byte past the cap, no length': [chunked(1024 * 1024 + 1), 502],
-    'a stream exactly at the cap is read': [chunked(1024 * 1024), 200],
+    'declared length past the cap': [new Response(JSON.stringify(ok), { headers: { 'content-length': String(4 * 1024 * 1024 + 1) } }), 502],
+    'a stream one byte past the cap, no length': [chunked(4 * 1024 * 1024 + 1), 502],
+    'a stream exactly at the cap is read': [chunked(4 * 1024 * 1024), 200],
     'JSON that is not a list': [json({ id: '1-1' }), 502],
     'an empty list': [json([]), 502],
     'nineteen entries': [json(new Array(19).fill(apiMatch('1-1'))), 502],
@@ -291,6 +292,35 @@ test('the function: a game API that fails, lies or is too big gives a generic 50
   const net = await callReader({ [GAME]: new Error('boom') });
   assert.equal(net.status, 500);
   assert.ok(net.lines.every((l) => !l.includes('boom')), 'the error text is not logged');
+});
+
+test('the function: ten matches with all 84 skirmishes, a body past 1 MiB, are read and sent', async () => {
+  const trio = (a, b, c) => ({ red: a, blue: b, green: c });
+  const r9 = () => Math.floor(Math.random() * 9000);
+  const skirmishes = Array.from({ length: 84 }, (_, i) => ({
+    id: i + 1, scores: trio(r9(), r9(), r9()),
+    map_scores: MAP_TYPES.map((type) => ({ type, scores: trio(r9(), r9(), r9()) }))
+  }));
+  const objectives = Array.from({ length: 40 }, (_, j) => ({
+    id: '38-' + j, type: 'Camp', owner: 'Green', last_flipped: '2026-10-03T11:00:00Z', claimed_by: 'ABCDEF01-1234-5678-9ABC-DEF012345678',
+    claimed_at: '2026-10-03T11:00:00Z', points_tick: 5, points_capture: 10, yaks_delivered: j
+  }));
+  const maps = MAP_TYPES.map((type, k) => ({
+    id: 38, type, scores: trio(r9(), r9(), r9()), bonuses: [{ type: 'Bloodlust', owner: 'Red' }], objectives,
+    deaths: trio(1, 1, 1), kills: trio(k + 1, k + 1, k + 1)
+  }));
+  const ids = ['1-1', '1-2', '1-3', '1-4', '1-5', '2-1', '2-2', '2-3', '2-4', '2-5'];
+  const list = ids.map((id) => apiMatch(id, { over: { skirmishes, maps } }));
+  const big = JSON.stringify(list, null, 2);
+  assert.ok(big.length > 1024 * 1024, 'the body is past the old cap: ' + big.length);
+  const r = await callReader({ [GAME]: new Response(big), [SUMMARY]: empty, [INGEST]: () => json({ applied: [] }) });
+  assert.equal(r.status, 200);
+  const push = r.asked.find((a) => a.url === INGEST);
+  assert.ok(push, 'pushed');
+  const head = JSON.parse(new TextDecoder().decode(push.init.body).split('\n')[0]);
+  assert.equal(head.matches.length, 10);
+  assert.ok(push.init.body.length <= 256 * 1024, 'the send is within the Worker\'s limits');
+  assert.ok(head.matches.every((m) => m.bytes <= 16 * 1024 && m.raw <= 256 * 1024), 'each slice is within the Worker\'s limits');
 });
 
 test('the function: the Worker\'s summary that fails, is too big or is the wrong shape gives 502 before any push', async () => {
