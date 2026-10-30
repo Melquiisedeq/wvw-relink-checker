@@ -2,7 +2,7 @@
 // (/api/latest/summary, which the peek reads every 30 s) shows the
 // map's match further along than the page holds, and then at once. With the
 // visitor's whole group behind (copyBehindAll), each new body of the copy
-// reaches the map within 22 s of being written (the peek at `at` + 12 s,
+// reaches the map within 22 s of being written (the peek at `at` + 11 s,
 // PEEK_AFTER_MS, plus a STEP and a settle), a copy that answers late
 // included, the copy read once per minute mark; with the group in step (playing), the game's own answer is as far
 // along as the summary and the copy is not read at all.
