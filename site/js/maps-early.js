@@ -305,6 +305,18 @@ function sumKills(n) {
   return t;
 }
 
+// Each map's kills at their highest in `body` and the readings: inside a week
+// kills only rise, so that is the newest count of each.
+function killHighs(body, list) {
+  const out = {};
+  for (const type in body) {
+    let high = Number(body[type]) || 0;
+    for (const s of list) high = Math.max(high, Number(s.n[type]) || 0);
+    out[type] = high;
+  }
+  return out;
+}
+
 // Which map is busy, and how much the corner may say, in one place: the
 // map's corner, the tab's swords and the tier button's badge all read this,
 // so they cannot part. `types`: the maps to pick from, in the order a tie
@@ -318,7 +330,7 @@ const HOT_FLOOR = 50;      // kills per ten minutes: a real fight, not API noise
 
 function killView(match, types, now = Date.now()) {
   const view = { clock: 0, atLeast: false, silence: 0, prevRun: Infinity, rates: null, pace: 0,
-    strange: false, frozen: false, alive: false, hot: null, jumpHeld: false, noWindow: 'data', counting: null, long: false, longOk: false, gap: null, still: false, upTo: 0 };
+    strange: false, frozen: false, alive: false, hot: null, jumpHeld: false, noWindow: 'data', counting: null, long: false, longOk: false, gap: null, still: false, upTo: 0, high: null };
   // Nothing is claimed on a match that is not running: between the reset
   // and the API publishing the new one, the rest of the popover is neutral.
   if (!match || !matchIsLive(match)) return view;
@@ -342,6 +354,7 @@ function killView(match, types, now = Date.now()) {
     series.push({ at: rose > 0 ? Math.min(seen.at, rose) : seen.at, total: bodyTotal });
     series.sort((a, b) => a.at - b.at);
   }
+  view.high = killHighs(body, list);
   const top = Math.max(bodyTotal, listTop);
   const first = series.findIndex((s) => s.total >= top);
   view.clock = series[first].at;
@@ -389,10 +402,7 @@ function killView(match, types, now = Date.now()) {
     const per = new Map();
     let moved = 0;
     for (const type in body) {
-      // Inside a week kills only rise: the highest reading of a map is its newest.
-      let high = body[type];
-      for (const s of list) high = Math.max(high, Number(s.n[type]) || 0);
-      const d = Math.max(0, high - (Number(base.n[type]) || 0));
+      const d = Math.max(0, view.high[type] - (Number(base.n[type]) || 0));
       moved += d;
       per.set(type, d * (600000 / span));
     }
@@ -439,8 +449,9 @@ function hotMapOf(match, types) {
 // on asking (a "pause"), and this tab hidden past MISSED_AWAY_MS (a
 // "return"). Either way it is the body kept before the gap against the
 // first one after it: the objectives that changed hands, as chips, and the
-// kills between the two. Nothing changed, nothing shows. Every body passes
-// through missedMatchOffered, called from keepNewestMatch in api.js.
+// kills from the gap up to the newest data (missedView). Nothing changed,
+// nothing shows. Every body passes through missedMatchOffered, called from
+// keepNewestMatch in api.js.
 const MISSED_SHOW_MS = 10 * 60 * 1000;      // the summary stays this long after the data came back
 const MISSED_RING_MS = 7 * 1000;            // four pulses of the ring (css/maps.css)
 const MISSED_ASLEEP_MS = 3 * 60 * 1000;     // no read for this long: the page was not asking (a laptop asleep)
@@ -550,7 +561,6 @@ function missedPeriod(before, after, since, back, changes = []) {
     sure = i > 0 && (total(list[i]) === need || list[i].at - list[i - 1].at <= MISSED_BOUND_MS
       || list[i].at >= since - MISSED_BOUND_MS);
   }
-  if (typeof labMissedStart === 'function') ({ start, sure } = labMissedStart(list, need, start, sure)); // LAB (never merged)
   let oldest = Infinity;
   let newest = -Infinity;
   for (const c of changes) {
@@ -569,39 +579,74 @@ function missedPeriod(before, after, since, back, changes = []) {
   return { start, end: Math.max(end, newest), sure };
 }
 
+// The summary's period never reaches back further than this, a skirmish:
+// over a longer stretch most objectives have changed hands and the list is
+// the map as it stands, not what changed.
+const MISSED_SPAN_MAX_MS = 2 * 60 * 60 * 1000;
+// A start moved by that limit counts kills from a reading at most this far
+// before it, the history's own pace. With none, the summary gives no number.
+const MISSED_BASE_MS = 5 * 60 * 1000;
+
 function missedMakeNote(before, after, since, back, kind, endAt = back) {
-  const changes = missedOwnerChanges(before, after).slice(0, MISSED_CHANGES_MAX);
+  if (typeof labTodayMakeNote === 'function' && labTodayMakeNote(before, after, since, back, kind, endAt)) return; // LAB (never merged)
+  const all = missedOwnerChanges(before, after);
+  const flippedAt = (c) => (Number.isFinite(c.flipped) ? c.flipped : -Infinity);
+  const newest = new Set([...all].sort((a, b) => (flippedAt(b) - flippedAt(a)) || 0).slice(0, MISSED_CHANGES_MAX));
+  const listed = all.filter((c) => newest.has(c));
   const name = (c) => {
     const id = COLORS.includes(c) ? matchTeamId(after, c) : null;
     return id ? getTeamName(id) : 'Neutral';
   };
-  for (const c of changes) { c.toName = name(c.to); c.fromName = name(c.from); }
-  // The whole match, before against after: the number a reader can check.
-  const kills = Math.max(0, missedKillTotal(after) - missedKillTotal(before));
-  // The same difference map by map, the maps that moved, in the tabs' order.
-  const was = new Map(missedMaps(before).map((m) => [m && m.type, colorSum(m && m.kills)]));
+  for (const c of listed) { c.toName = name(c.to); c.fromName = name(c.from); }
+  // The start is fixed here: the readings that prove it can age out of this
+  // browser's log moments later.
+  const period = missedPeriod(before, after, since, endAt, listed);
+  const note = { kind, back, before, rawSince: since, after, endAt, listed, period,
+    until: back + MISSED_SHOW_MS, open: false, wideOpen: true, moreMaps: new Set(),
+    get since() { return missedView(note).since; },
+    get end() { return missedView(note).end; },
+    get sure() { return missedView(note).sure; },
+    get changes() { return missedView(note).changes; },
+    get kills() { return missedView(note).kills; },
+    get perMap() { return missedView(note).perMap; } };
+  missedNotes.set(after.id, note);
+  if (endAt === back) missedRingFor(after.id, missedView(note).changes);
+}
+
+// What the summary says now: the history moves under it without a new body.
+// The end is the map corner's own (killView's clock and per-map highs), so the
+// two count to the same point; only the start differs.
+function missedView(note) {
+  const { before, after, rawSince, endAt, listed, period } = note;
+  const kept = newestMatches.get(after.id);
+  const body = kept && kept.match.start_time === after.start_time
+    && missedKillTotal(kept.match) > missedKillTotal(after) ? kept.match : after;
+  const corner = killView(body);
+  let start = period.start;
+  let sure = period.sure;
+  let end = Math.max(corner.clock || period.end, start,
+    ...listed.map((c) => (c.flipped <= endAt ? c.flipped : -Infinity)));
+  const capped = end - start > MISSED_SPAN_MAX_MS;
+  if (capped) { start = end - MISSED_SPAN_MAX_MS; sure = true; }
+  const changes = capped ? listed.filter((c) => c.flipped >= start && c.flipped <= end) : listed;
+
+  const list = fightSamples(after);
+  let base = null;
+  if (!capped) {
+    base = killHighs(fightTotals(before), list.filter((s) => s.at <= start));
+  } else {
+    const near = [...list, { at: rawSince, n: fightTotals(before) }]
+      .filter((s) => s.at <= start && start - s.at <= MISSED_BASE_MS);
+    if (near.length) base = killHighs({}, near);
+  }
+  const high = corner.high || killHighs(fightTotals(body), list);
   const order = Object.keys(MAP_TAB_NAME);
-  const perMap = missedMaps(after)
-    .map((m) => ({ type: m && m.type, n: Math.max(0, colorSum(m && m.kills) - (was.get(m && m.type) || 0)) }))
-    .filter((m) => m.n > 0 && typeof m.type === 'string')
+  const perMap = !base ? [] : Object.keys(high)
+    .map((type) => ({ type, n: Math.max(0, high[type] - (Number(base[type]) || 0)) }))
+    .filter((m) => m.n > 0)
     .sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
-  const period = missedPeriod(before, after, since, endAt, changes);
-  // The body is kept only after this call: until then the end is the period's,
-  // then the time the kept body's data is from, which the history may still
-  // move earlier. A later body moves that time on, so the earliest end
-  // seen stands (missedMatchOffered reads it before keepNewestMatch writes).
-  const newest = Math.max(period.start, ...changes.map((c) => (c.flipped <= endAt ? c.flipped : -Infinity)));
-  let earliest = period.end;
-  const end = () => {
-    const kept = newestMatches.get(after.id);
-    if (kept && !missedBodyChanged(kept.match, after)) earliest = Math.min(earliest, kept.at);
-    return Math.max(earliest, newest);
-  };
-  missedNotes.set(after.id, { kind, since: period.start, get end() { return end(); }, sure: period.sure, back,
-    before, rawSince: since, after,
-    until: back + MISSED_SHOW_MS, changes, kills, perMap,
-    open: false, wideOpen: true, moreMaps: new Set() });
-  if (endAt === back) missedRingFor(after.id, changes);
+  const kills = perMap.reduce((n, m) => n + m.n, 0);
+  return { since: start, end, sure, changes, perMap, kills };
 }
 
 // A newer body while the summary is up (the first answer after a gap may come
@@ -609,6 +654,7 @@ function missedMakeNote(before, after, since, back, kind, endAt = back) {
 // one, so the kills and the period follow the newest data. What the reader
 // opened or folded stays, and so does the time it goes away.
 function missedRefreshNote(match, now) {
+  if (typeof labHoldNote === 'function' && labHoldNote(match)) return false; // LAB (never merged)
   const note = missedNoteFor(match.id);
   if (!note || !note.before || !missedBodyChanged(note.after, match)) return false;
   const old = note;
@@ -620,12 +666,10 @@ function missedRefreshNote(match, now) {
 
 // Called by keepNewestMatch with every body offered and the one kept before it.
 function missedMatchOffered(match, kept) {
+  if (typeof labTodayOffered === 'function' && labTodayOffered(match, kept)) return; // LAB (never merged)
   const now = Date.now();
   const lastOffer = missedLastOffer.get(match.id) || 0;
   missedLastOffer.set(match.id, now);
-  const standing = missedNotes.get(match.id);
-  // Reading the end fixes it before keepNewestMatch moves `at` on.
-  if (standing) void standing.end;
   if (!kept || matchIsBehind(match, kept.match)) return;
   if (match.start_time !== kept.match.start_time || !matchIsLive(match)) return;
   if (missedReturn && now - missedReturn.back > MISSED_RETURN_WAIT_MS) missedReturn = null;

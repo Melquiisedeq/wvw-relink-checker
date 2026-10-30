@@ -943,7 +943,6 @@ function buildMapCorners(wrap, matchId) {
       }
     }
     setTip('fights', fightsBtn, text);
-    if (typeof labPaintKills === 'function') labPaintKills({ matchId, view, type, line, two, old, odd, hole, text, big, smallTail, smallSep, smallMins, smallLong, smallShort, lead, smallMark, smallTime, line2, left, put, hhmm, tip: (t) => setTip('fights', fightsBtn, t) }); // LAB (never merged)
   };
   let stale = null;
   const state = {
@@ -2180,9 +2179,11 @@ function missedChip(c, here, goTo, spot) {
 // The block itself, at the top of the right-hand column. view: { matchId,
 // side, tabs, type, goTo, spot, repaint }. Rebuilt only when what it shows moved.
 function paintMissed(view) {
+  if (typeof labTodayPaint === 'function' && labTodayPaint(view)) return; // LAB (never merged)
   const note = missedNoteFor(view.matchId);
+  const shown = note && missedView(note);
   let box = view.side.querySelector('.wvw-missed:not(.is-leaving)');
-  if (!note || (!note.changes.length && !note.kills)) {
+  if (!note || (!shown.changes.length && !shown.kills)) {
     if (box) {
       box.classList.add('is-leaving');
       setTimeout(() => box.remove(), 200);
@@ -2192,7 +2193,8 @@ function paintMissed(view) {
   const narrow = window.matchMedia(MISSED_NARROW).matches;
   // Folded on a phone until asked; open beside the map until hidden.
   const open = narrow ? note.open : note.wideOpen;
-  const key = JSON.stringify([view.type, note.since, note.end, note.sure, narrow, open, [...note.moreMaps].sort()]);
+  const key = JSON.stringify([view.type, shown.since, shown.end, shown.sure, narrow, open, [...note.moreMaps].sort(),
+    shown.perMap, shown.changes.map((c) => c.id)]);
   if (box && box.dataset.key === key) return;
   if (!box) {
     box = missedEl('section', 'wvw-missed');
@@ -2204,16 +2206,12 @@ function paintMissed(view) {
   box.classList.toggle('is-open', open);
 
   const away = note.kind === 'return';
-  const span = note.sure ? missedSpan(note.since, note.end) : `since before ${missedHhmm(note.since)}`;
-  const changes = note.changes;
+  const span = shown.sure ? missedSpan(shown.since, shown.end) : `since before ${missedHhmm(shown.since)}`;
+  const changes = shown.changes;
 
   const head = missedEl('button', 'wvw-missed-head');
   head.type = 'button';
   head.setAttribute('aria-expanded', open ? 'true' : 'false');
-  head.title = (away
-    ? `What changed in the match while this tab was in the background, ${span}.`
-    : `The game's API repeated an old answer; this is what changed in the match, ${span}.`)
-    + ' Shown for 10 minutes after the data came back.';
   const title = missedEl('span', 'wvw-group wvw-missed-title');
   title.append(`${away ? 'What you missed' : 'What happened'} · `, missedEl('span', 'wvw-missed-time', span));
   head.appendChild(title);
@@ -2233,11 +2231,11 @@ function paintMissed(view) {
   if (!open) return;
 
   const sub = missedEl('p', 'wvw-missed-sub',
-    away ? 'While this tab was in the background' : "While the game's API was behind");
+    away ? 'While this tab was in the background' : 'While the game sent no updates');
   // One row per map that had a change or a kill, in the tabs' order: the map's
   // name (a button to its tab) and its kills, then the chips of that map.
   // The open map's chips are normal, the others a little quieter.
-  const kills = new Map(note.perMap.map((m) => [m.type, m.n]));
+  const kills = new Map(shown.perMap.map((m) => [m.type, m.n]));
   const rows = [];
   for (const type of Object.keys(MAP_TAB_NAME)) {
     const list = changes.filter((c) => c.map === type);

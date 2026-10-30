@@ -1,34 +1,17 @@
-// LAB (never merged). Card 38-0: the kills' window on the map's corner and in
-// "What you missed". Loaded just before js/boot.js. Hooks in the site, one line
-// each: fightSamples and killView's body (js/maps-early.js) take the simulated
-// history; missedPeriod asks labMissedStart for the start; paintKills
-// (js/maps.js) hands its corner to labPaintKills. Everything shown goes through
-// textContent; no request of its own.
+// LAB (never merged). Card 38-0, round 2: "What you missed" counts its kills
+// to the same end as the map's corner. A switch runs main's summary ("Today",
+// verbatim copies below) or the site's new one ("New"); two buttons hold an
+// invented kill history. Hooks in the site, one line each: fightSamples and
+// killView's body take the simulation; missedMakeNote, missedMatchOffered and
+// paintMissed hand over to the copies under "Today"; missedRefreshNote leaves
+// a simulated summary alone. Everything shown goes through textContent; no
+// request of its own.
 
 const LAB_KEY = 'wvw-lab-38-0';
-const LAB_VERSION = 1;
-const LAB_SIM_MS = 6 * 60 * 1000;
+const LAB_VERSION = 2;
+const LAB_SIM_MS = 10 * 60 * 1000;
 const LAB_MAPS = ['Center', 'RedHome', 'BlueHome', 'GreenHome'];
-
-const LAB_ITEMS = [
-  { type: 'section', label: 'A · Same interval, same count' },
-  { type: 'radio', key: 'a', label: 'A', options: {
-    today: 'Today',
-    start: 'Missed starts at the first step the page did not have',
-    steps: '…and the corner lists the steps',
-  }, value: 'today' },
-  { type: 'button', label: 'Simulate 29/10: step at the edge + tab hidden (invented numbers)', run: () => labSimulate('edge') },
-  { type: 'section', label: 'B · After a data gap' },
-  { type: 'radio', key: 'b', label: 'B', options: { today: 'Today ("81 kills in 63 min")', jump: 'The jump ("+74 at 10:47")' }, value: 'today' },
-  { type: 'button', label: 'Simulate a 55-min gap (invented numbers)', run: () => labSimulate('gap') },
-  { type: 'section', label: 'D · "data up to"' },
-  { type: 'radio', key: 'd', label: 'D', options: { today: 'Today (from 5.5 min)', always: 'Always' }, value: 'today' },
-  { type: 'section', label: 'S · "no new kills since"' },
-  { type: 'radio', key: 's', label: 'S', options: { today: 'Match time (today)', own: "Each map's own time" }, value: 'today' },
-  { type: 'button', label: 'Simulate a quiet borderland (invented numbers)', run: () => labSimulate('quiet') },
-  { type: 'section', label: 'Simulation' },
-  { type: 'button', label: 'Back to live data', run: () => labEndSim('Back to live data.') },
-];
+const LAB_MODES = { today: 'Today', new: 'New' };
 
 const labEl = (tag, cls, text) => {
   const e = document.createElement(tag);
@@ -38,28 +21,18 @@ const labEl = (tag, cls, text) => {
 };
 
 function labReadPrefs() {
-  const p = { open: false };
-  for (const it of LAB_ITEMS) if ('key' in it) p[it.key] = it.type === 'check' ? !!it.on : it.value;
+  const p = { open: false, mode: 'new' };
   try {
     const v = JSON.parse(localStorage.getItem(LAB_KEY) || 'null');
     if (!v || v.v !== LAB_VERSION) return p;
     if (typeof v.open === 'boolean') p.open = v.open;
-    for (const it of LAB_ITEMS) {
-      if (it.type === 'check' && typeof v[it.key] === 'boolean') p[it.key] = v[it.key];
-      if (it.type === 'radio' && Object.prototype.hasOwnProperty.call(it.options, v[it.key])) p[it.key] = v[it.key];
-    }
+    if (Object.prototype.hasOwnProperty.call(LAB_MODES, v.mode)) p.mode = v.mode;
   } catch { /* storage off or corrupt: the defaults */ }
   return p;
 }
 const labPrefs = labReadPrefs();
 function labSave() {
   try { localStorage.setItem(LAB_KEY, JSON.stringify({ v: LAB_VERSION, ...labPrefs })); } catch { /* fine */ }
-}
-let labLastA = labPrefs.a;
-function labChanged() {
-  labSave();
-  labPaintPanel();
-  if (labPrefs.a !== labLastA) { labLastA = labPrefs.a; labRemakeNotes(); }
 }
 
 let labPanel = null;
@@ -68,69 +41,76 @@ function labStatus(text) {
   if (s) s.textContent = text;
 }
 
-// ---- the simulation ---------------------------------------------------
-// One history per live match, built at the click around the totals the page
-// held then (`body`), and served in place of the real one until it ends: the
-// next read of /api/kills changes nothing while it lasts.
-let labSim = null;      // { kind, until, timer, matches: Map(id -> { body, samples, note }) }
+// ---- Today | New ---------------------------------------------------------
+const labToday = () => labPrefs.mode === 'today';
+function labTodayMakeNote(before, after, since, back, kind, endAt) {
+  if (!labToday()) return false;
+  labMainMakeNote(before, after, since, back, kind, endAt);
+  return true;
+}
+function labTodayOffered(match, kept) {
+  if (!labToday()) return false;
+  labMainOffered(match, kept);
+  return true;
+}
+function labTodayPaint(view) {
+  if (!labToday()) return false;
+  labMainPaintMissed(view);
+  return true;
+}
+
+// Every summary up is made again under the other mode, from the same bodies.
+function labRemakeNotes() {
+  for (const [id, note] of [...missedNotes]) {
+    if (!note.before) continue;
+    missedMakeNote(note.before, note.after, note.rawSince, note.back, note.kind, note.endAt ?? Date.now());
+    const fresh = missedNotes.get(id);
+    if (fresh) Object.assign(fresh, { until: note.until, open: note.open, wideOpen: note.wideOpen, moreMaps: note.moreMaps });
+  }
+}
+
+// ---- the simulations -----------------------------------------------------
+// One history per live match, built at the click around the body the page held
+// then, served in place of the real one (fightSamples, killView's body) until
+// "Back to live data" or the summary's 10 minutes: the next read of
+// /api/kills and the next body change nothing while it holds.
+let labSim = null;      // { kind, until, timer, matches: Map(id -> { body, samples }) }
 let labSimTag = null;
 
 const labMin = (m, s = 0) => (m * 60 + s) * 1000;
+const labClone = (x) => JSON.parse(JSON.stringify(x));
 
-// Steps on a map at `t` ms from the click (negative: before it).
-const LAB_TIMELINES = {
-  // 1-1 Green BL, 29/10 (UTC 01:36-01:55), moved so the popover's moment is now.
-  edge: { from: labMin(-40), gaps: [], steps: [
-    { t: labMin(-30), map: 'GreenHome', d: 31 },
-    { t: labMin(-24, -10), map: 'GreenHome', d: 12 },
-    { t: labMin(-19, -2), map: 'GreenHome', d: 40 },
-    { t: -labMin(14, 17), map: 'GreenHome', d: 56 },
-    { t: -labMin(7, 59), map: 'GreenHome', d: 84 },
-    { t: -labMin(3, 0), map: 'GreenHome', d: 22 },
-    { t: labMin(2, 1), map: 'GreenHome', d: 83 },
-  ], hiddenAt: -labMin(7, 30), missed: 22 },
-  // EBG, 1-1, 29/10: no row for the match for 55 min, then +74 at once.
-  gap: { from: labMin(-90), gaps: [[-labMin(56), -labMin(1)]], steps: [
-    { t: -labMin(85), map: 'Center', d: 6 }, { t: -labMin(80), map: 'Center', d: 4 },
-    { t: -labMin(75), map: 'Center', d: 9 }, { t: -labMin(70), map: 'Center', d: 3 },
-    { t: -labMin(65), map: 'Center', d: 5 }, { t: -labMin(60), map: 'Center', d: 2 },
-    { t: -labMin(57), map: 'GreenHome', d: 3 },
-    { t: -labMin(1), map: 'Center', d: 74 }, { t: -labMin(1), map: 'RedHome', d: 6 },
-  ] },
-  // EBG fighting, a step every 5 min; Red BL still for 30 min.
-  quiet: { from: labMin(-60), gaps: [], steps: [] },
-};
-(() => {
-  const q = LAB_TIMELINES.quiet.steps;
-  const ebg = [38, 52, 41, 60, 47, 55, 39, 62, 44, 58, 50, 46, 57, 49];
-  for (let i = 0; i < ebg.length; i++) q.push({ t: -labMin(5 * (ebg.length - 1 - i), 40), map: 'Center', d: ebg[i] });
-  for (const t of [labMin(4, 20), labMin(9, 20)]) q.push({ t, map: 'Center', d: 45 });
-  for (const m of [-55, -50, -45, -40, -35, -30]) q.push({ t: labMin(m, -20), map: 'RedHome', d: 9 + (-m % 7) });
-  for (const m of [-38, -21, -9]) q.push({ t: labMin(m, -5), map: 'BlueHome', d: 7 });
-  q.sort((a, b) => a.t - b.t);
-})();
-
-// Readings every minute (the history's own pace) and one at each step, valued
-// so the newest reading before the click holds exactly `body`.
-function labBuildSamples(spec, body, t0) {
-  const times = new Set(spec.steps.map((s) => s.t));
-  for (let t = spec.from; t <= LAB_SIM_MS; t += 60000) times.add(t);
-  const inGap = (t) => spec.gaps.some(([a, b]) => t > a && t < b);
+// Readings every minute from `from` (the history's own pace) and one at each
+// step, valued so the newest reading before the click holds exactly `top`.
+function labBuildSamples(from, steps, top, t0) {
+  const times = new Set(steps.map((s) => s.t));
+  for (let t = from; t <= LAB_SIM_MS; t += 60000) times.add(t);
   const past = {};
   for (const m of LAB_MAPS) past[m] = 0;
-  for (const s of spec.steps) if (s.t <= 0) past[s.map] += s.d;
+  for (const s of steps) if (s.t <= 0) past[s.map] += s.d;
   const out = [];
   for (const t of [...times].sort((a, b) => a - b)) {
-    if (inGap(t)) continue;
     const n = {};
     for (const m of LAB_MAPS) {
-      let v = (Number(body[m]) || 0) - past[m];
-      for (const s of spec.steps) if (s.map === m && s.t <= t) v += s.d;
+      let v = (Number(top[m]) || 0) - past[m];
+      for (const s of steps) if (s.map === m && s.t <= t) v += s.d;
       n[m] = Math.max(0, v);
     }
     out.push({ at: t0 + t, n });
   }
   return out;
+}
+
+// Takes `d` kills off one map of a body, colour by colour.
+function labLessKills(body, type, d) {
+  const map = (body.maps || []).find((x) => x && x.type === type);
+  if (!map || !map.kills) return;
+  let left = d;
+  for (const c of ['green', 'red', 'blue']) {
+    const take = Math.min(left, Number(map.kills[c]) || 0);
+    map.kills[c] = (Number(map.kills[c]) || 0) - take;
+    left -= take;
+  }
 }
 
 function labLiveMatches() {
@@ -139,77 +119,82 @@ function labLiveMatches() {
   return out;
 }
 
+// 29/10, NA T1 Green BL: a step every 5 min, the tab hidden right after the
+// +84, and this page's copy 2 behind the shared history at the return (20
+// against 22). The +83 lands in the history 3 min after the click.
+function labSim2910(m, t0) {
+  const steps = [
+    { t: -labMin(15), map: 'GreenHome', d: 56 },
+    { t: -labMin(10), map: 'GreenHome', d: 84 },
+    { t: -labMin(5), map: 'GreenHome', d: 22 },
+    { t: labMin(3), map: 'GreenHome', d: 83 },
+  ];
+  const body = fightTotals(m);
+  const top = { ...body, GreenHome: (body.GreenHome || 0) + 2 };
+  const before = labClone(m);
+  labLessKills(before, 'GreenHome', 20);
+  return { body, samples: labBuildSamples(-labMin(40), steps, top, t0),
+    note: { before, after: m, since: t0 - labMin(9, 30) } };
+}
+
+const LAB_FLIPS = new Set(['Camp', 'Tower', 'Keep', 'Castle']);
+const LAB_OWNER_NEXT = { Red: 'Blue', Blue: 'Green', Green: 'Red' };
+
+// Away 8 h: the body before is 8 h old, every camp to castle changed hands
+// since, their flips spread over the 8 h, and the history holds the last 30
+// min as /api/kills does.
+function labSim8h(m, t0) {
+  const after = labClone(m);
+  const before = labClone(m);
+  const byMap = (after.maps || []).map((map) => (map.objectives || []).filter((o) => o && LAB_FLIPS.has(o.type)));
+  const order = [];
+  for (let i = 0; byMap.some((l) => i < l.length); i++) for (const l of byMap) if (l[i]) order.push(l[i]);
+  const span = 8 * 60 * 60 * 1000;
+  order.forEach((o, i) => { o.last_flipped = new Date(t0 - labMin(3) - Math.round(i * span / order.length)).toISOString(); });
+  const flipped = new Set(order.map((o) => o.id));
+  for (const map of before.maps || []) {
+    for (const o of map.objectives || []) if (o && flipped.has(o.id)) o.owner = LAB_OWNER_NEXT[o.owner] || 'Red';
+  }
+  const away = { Center: 900, RedHome: 420, BlueHome: 380, GreenHome: 510 };
+  for (const type of LAB_MAPS) labLessKills(before, type, away[type]);
+  const steps = [
+    { t: -labMin(16), map: 'Center', d: 40 },
+    { t: -labMin(8), map: 'Center', d: 35 },
+    { t: -labMin(7), map: 'GreenHome', d: 18 },
+    { t: -labMin(2), map: 'RedHome', d: 9 },
+  ];
+  const body = fightTotals(m);
+  return { body, samples: labBuildSamples(-labMin(30), steps, body, t0),
+    note: { before, after, since: t0 - labMin(8 * 60 + 5) } };
+}
+
+const LAB_SIMS = {
+  d2910: { make: labSim2910, done: 'Simulated on every live match: open a tier\'s maps, Green BL tab. The +83 lands in 3 min.' },
+  away8h: { make: labSim8h, done: 'Simulated on every live match: open a tier\'s maps. The summary is on every map.' },
+};
+
 function labSimulate(kind) {
   const live = labLiveMatches();
-  if (!live.length) { labStatus('No live match held yet: open the standings first.'); return; }
+  if (!live.length) { labStatus('No live match held yet: wait for the standings.'); return; }
   labEndSim(null);
-  const spec = LAB_TIMELINES[kind];
   const t0 = Date.now();
   const matches = new Map();
-  for (const m of live) {
-    const body = fightTotals(m);
-    matches.set(m.id, { body, samples: labBuildSamples(spec, body, t0), note: null });
-  }
   labSim = { kind, until: t0 + LAB_SIM_MS, matches };
+  for (const m of live) {
+    const sim = LAB_SIMS[kind].make(labClone(m), t0);
+    matches.set(m.id, sim);
+    missedNotes.delete(m.id);
+    missedMakeNote(sim.note.before, sim.note.after, sim.note.since, t0, 'return');
+  }
   labSim.timer = setTimeout(() => labEndSim('The simulation ended by itself: live data again.'), LAB_SIM_MS);
-  if (kind === 'edge') {
-    for (const m of live) labSimNote(m, t0 + spec.hiddenAt, spec.missed);
-  }
   labShowTag(true);
-  labStatus({
-    edge: 'Simulated on every live match: Green BL steps +56, +84, +22, and +83 lands in 2 min. The tab "was hidden" just after the +84: open the maps, Green BL tab.',
-    gap: 'Simulated on every live match: no kill data for 55 min, then +74 on EBG 1 min ago. Open the maps, EBG tab.',
-    quiet: 'Simulated on every live match: EBG steps every 5 min, Red BL still for 30 min. Open the maps, Red BL tab, then EBG.',
-  }[kind]);
-}
-
-// A tab-return summary whose body before is the real one minus the kills after
-// the hide, on Green BL.
-function labSimNote(after, hiddenAt, missed) {
-  const before = JSON.parse(JSON.stringify(after));
-  const map = (before.maps || []).find((x) => x && x.type === 'GreenHome');
-  if (!map || !map.kills) return;
-  let left = missed;
-  for (const c of ['green', 'red', 'blue']) {
-    const take = Math.min(left, Number(map.kills[c]) || 0);
-    map.kills[c] = (Number(map.kills[c]) || 0) - take;
-    left -= take;
-  }
-  const sim = labSim.matches.get(after.id);
-  sim.note = { before, after, since: hiddenAt, back: Date.now() };
-  labMakeSimNote(after.id);
-}
-
-function labMakeSimNote(id) {
-  const sim = labSim && labSim.matches.get(id);
-  if (!sim || !sim.note) return;
-  const { before, after, since, back } = sim.note;
-  const old = missedNotes.get(id);
-  missedMakeNote(before, after, since, back, 'return');
-  const note = missedNotes.get(id);
-  // Kept off missedRefreshNote: a real body coming in would rewrite it.
-  note.before = null;
-  note.lab = true;
-  if (old && old.lab) Object.assign(note, { open: old.open, wideOpen: old.wideOpen, moreMaps: old.moreMaps });
-}
-
-// The A choice changes the start: every summary up is made again.
-function labRemakeNotes() {
-  for (const [id, note] of [...missedNotes]) {
-    if (note.lab) { labMakeSimNote(id); continue; }
-    if (!note.before) continue;
-    missedMakeNote(note.before, note.after, note.rawSince, note.back, note.kind, note.back);
-    Object.assign(missedNotes.get(id), { until: note.until, open: note.open, wideOpen: note.wideOpen, moreMaps: note.moreMaps });
-  }
+  labStatus(LAB_SIMS[kind].done);
 }
 
 function labEndSim(message) {
   if (labSim) {
     clearTimeout(labSim.timer);
-    for (const id of labSim.matches.keys()) {
-      const n = missedNotes.get(id);
-      if (n && n.lab) missedNotes.delete(id);
-    }
+    for (const id of labSim.matches.keys()) missedNotes.delete(id);
     labSim = null;
   }
   labShowTag(false);
@@ -220,7 +205,7 @@ function labShowTag(on) {
   if (!on) { if (labSimTag) labSimTag.remove(); labSimTag = null; return; }
   if (labSimTag) return;
   labSimTag = labEl('div', 'lab-simmark', 'simulated');
-  labSimTag.title = 'Lab: the kill history on screen is invented. "Back to live data" in the Lab panel.';
+  labSimTag.title = 'Lab: the kills and the summary on screen are invented. "Back to live data" in the Lab panel.';
   document.body.appendChild(labSimTag);
 }
 
@@ -238,150 +223,15 @@ function labFightSamples(match) {
   return sim.samples.filter((s) => s.at <= now);
 }
 
-// Hook in killView: the totals held at the click, so a real body arriving
-// does not land on top of the invented history.
+// Hook in killView: the body held at the click.
 function labBody(match) {
   const sim = labSimFor(match);
   return sim ? { ...sim.body } : null;
 }
 
-// Hook in missedPeriod. A1: the start is when the first reading above the body
-// before reached us, the first step the page did not have.
-function labMissedStart(list, need, start, sure) {
-  if (labPrefs.a === 'today') return { start, sure };
-  const total = (s) => sumKills(s.n);
-  const j = list.findIndex((s) => total(s) > need);
-  // 1 ms before the reading, so missedPeriod's end (a reading after the start) can be that same reading.
-  return j >= 0 ? { start: list[j].at - 1, sure: true } : { start, sure };
-}
-
-// ---- the corner --------------------------------------------------------
-const labExtra = new WeakMap();   // left corner -> { steps, tail }
-
-function labSpans(ctx) {
-  let x = labExtra.get(ctx.left);
-  if (!x) {
-    const tail = labEl('span', 'lab-tail');
-    ctx.line2.appendChild(tail);
-    const steps = labEl('span', 'wvw-hud-small lab-steps');
-    ctx.line2.parentNode.appendChild(steps);
-    x = { tail, steps };
-    labExtra.set(ctx.left, x);
-  }
-  return x;
-}
-
-function labHistory(matchId) {
-  const kept = newestMatches.get(matchId);
-  if (!kept) return null;
-  const match = kept.match;
-  const body = labBody(match) || fightTotals(match);
-  return { list: fightSamples(match), body };
-}
-
-// The steps of one map between the window's base and the clock: the time each
-// reached the page, which is what dates the kills today.
-function labSteps(h, view, type) {
-  const base = h.list.filter((s) => s.at <= view.gap.from).pop();
-  let prev = base ? Number(base.n[type]) || 0 : 0;
-  const out = [];
-  for (const s of h.list) {
-    if (s.at <= view.gap.from || s.at > view.clock) continue;
-    const v = Number(s.n[type]) || 0;
-    if (v > prev) { out.push({ d: v - prev, at: s.at }); prev = v; }
-  }
-  const b = Number(h.body[type]) || 0;
-  if (b > prev) out.push({ d: b - prev, at: view.clock });
-  return out;
-}
-
-// When this map's own count last moved, and whether that is only "before" the
-// oldest reading.
-function labOwnClock(h, view, type) {
-  let top = Number(h.body[type]) || 0;
-  for (const s of h.list) top = Math.max(top, Number(s.n[type]) || 0);
-  const i = h.list.findIndex((s) => (Number(s.n[type]) || 0) >= top);
-  if (i < 0) return { at: view.clock, before: false };
-  return { at: h.list[i].at, before: i === 0 };
-}
-
-function labTwo(ctx) {
-  ctx.left.classList.add('is-two');
-  ctx.line2.hidden = false;
-  ctx.put(ctx.smallSep, ' in ');
-  ctx.put(ctx.smallMark, ctx.odd ? '⚠ ' : '');
-}
-
-function labPaintKills(ctx) {
-  const { view, type, line, put, hhmm } = ctx;
-  const x = labSpans(ctx);
-  let tail = '';
-  let steps = '';
-  let text = ctx.text;
-  const h = line && view && view.clock && type ? labHistory(ctx.matchId) : null;
-  if (h) {
-    const mins = (ms) => Math.round(ms / 60000);
-    let sDone = false;
-    if (labPrefs.b === 'jump' && view.long && view.gap) {
-      const s0 = h.list.filter((s) => s.at <= view.gap.from).pop();
-      const s1 = h.list.find((s) => s.at >= view.gap.to);
-      const v1 = s1 ? Number(s1.n[type]) || 0 : Number(h.body[type]) || 0;
-      const jump = Math.max(0, v1 - (s0 ? Number(s0.n[type]) || 0 : 0));
-      const hole = mins(view.gap.to - view.gap.from);
-      labTwo(ctx);
-      put(ctx.big, jump > 0 ? `+${jump}` : '0');
-      ctx.smallTail.hidden = true;
-      put(ctx.lead, 'at ');
-      put(ctx.smallTime, hhmm(view.gap.to));
-      tail = ` · after ${hole} min without data`;
-      text = `${jump} kills reached us at ${hhmm(view.gap.to)}, after ${hole} min with no kill data (${hhmm(view.gap.from)}–${hhmm(view.gap.to)}).`
-        + ` They happened at some point in those ${hole} min; exactly when is not known.`;
-      sDone = true;
-    }
-    if (!sDone && labPrefs.s === 'own' && !ctx.odd) {
-      const own = labOwnClock(h, view, type);
-      const quietMatch = ctx.old && ctx.lead.textContent.startsWith('no new kills');
-      const freshMatch = !ctx.old && !ctx.hole;
-      if (Date.now() - own.at > KILLS_QUIET_MS && (freshMatch || quietMatch)) {
-        labTwo(ctx);
-        put(ctx.lead, own.before ? 'no new kills since before ' : 'no new kills since ');
-        put(ctx.smallTime, hhmm(own.at));
-        text = `No new kills on this map since ${own.before ? 'before ' : ''}${hhmm(own.at)}`
-          + (freshMatch ? `, while other maps of the match moved (latest at ${hhmm(view.clock)}).` : ', as on a quiet map.')
-          + ` ${line.kills} kills in the ${line.mins} min up to ${hhmm(view.clock)}.`;
-        sDone = true;
-      }
-    }
-    if (!sDone && labPrefs.d === 'always' && !ctx.two) {
-      labTwo(ctx);
-      put(ctx.lead, 'data up to ');
-      put(ctx.smallTime, hhmm(view.clock));
-      text = `${line.kills} kills in the ${line.mins} min up to ${hhmm(view.clock)}, when the newest kill data reached us.`;
-    }
-    if (labPrefs.a === 'steps' && view.gap && !(labPrefs.b === 'jump' && view.long)) {
-      const list = labSteps(h, view, type);
-      if (list.length) {
-        const shown = list.slice(-3);
-        steps = (list.length > 3 ? '… ' : '') + shown.map((s) => `+${s.d} ${hhmm(s.at)}`).join(' · ');
-        text += ` Steps in this window, at the time each reached us: ${list.map((s) => `+${s.d} at ${hhmm(s.at)}`).join(', ')}.`;
-      }
-    }
-  }
-  if (x.tail.textContent !== tail) x.tail.textContent = tail;
-  if (x.steps.textContent !== steps) x.steps.textContent = steps;
-  x.steps.hidden = !steps;
-  if (text !== ctx.text) ctx.tip(text);
-}
-
-// A1 with a single step: start and end are the same minute, said once.
-if (window.MutationObserver) {
-  new MutationObserver(() => {
-    if (labPrefs.a === 'today') return;
-    for (const el of document.querySelectorAll('.wvw-missed-time')) {
-      const m = /^(.+?)\u2013(.+)$/.exec(el.textContent);
-      if (m && (m[2] === m[1] || m[2].startsWith(`${m[1]} `))) el.textContent = m[2];
-    }
-  }).observe(document.body, { childList: true, subtree: true });
+// Hook in missedRefreshNote: a real body does not replace a simulated summary.
+function labHoldNote(match) {
+  return !!labSimFor(match);
 }
 
 // ---- the panel -----------------------------------------------------------
@@ -391,35 +241,43 @@ function labBuildPanel() {
   const toggle = labEl('button', 'lab-toggle', 'Lab');
   toggle.type = 'button';
   toggle.setAttribute('aria-controls', 'lab-body');
-  toggle.addEventListener('click', () => { labPrefs.open = !labPrefs.open; labChanged(); });
+  toggle.addEventListener('click', () => { labPrefs.open = !labPrefs.open; labSave(); labPaintPanel(); });
   const body = labEl('div', 'lab-body');
   body.id = 'lab-body';
   const head = labEl('div', 'lab-head');
-  head.append(labEl('strong', null, 'Lab'), labEl('span', 'lab-muted', ' · kills window, preview only'));
+  head.append(labEl('strong', null, 'Lab'), labEl('span', 'lab-muted', ' · What you missed, preview only'));
   body.appendChild(head);
-  for (const it of LAB_ITEMS) {
-    if (it.type === 'section') body.appendChild(labEl('div', 'lab-section', it.label));
-    if (it.type === 'button') {
-      const b = labEl('button', 'lab-btn', it.label);
-      b.type = 'button';
-      b.addEventListener('click', it.run);
-      body.appendChild(b);
-    }
-    if (it.type === 'radio') {
-      const fs = labEl('fieldset', 'lab-radios lab-radios-block');
-      fs.appendChild(labEl('legend', 'lab-sr-legend', it.label));
-      for (const [k, text] of Object.entries(it.options)) {
-        const rl = labEl('label');
-        const r = labEl('input');
-        r.type = 'radio';
-        r.name = `lab-${it.key}`;
-        r.value = k;
-        r.addEventListener('change', () => { if (r.checked) { labPrefs[it.key] = k; labChanged(); } });
-        rl.append(r, ` ${text}`);
-        fs.appendChild(rl);
-      }
-      body.appendChild(fs);
-    }
+
+  const fs = labEl('fieldset', 'lab-switch');
+  fs.appendChild(labEl('legend', 'lab-sr-legend', 'Summary'));
+  for (const [k, text] of Object.entries(LAB_MODES)) {
+    const rl = labEl('label');
+    const r = labEl('input');
+    r.type = 'radio';
+    r.name = 'lab-mode';
+    r.value = k;
+    r.addEventListener('change', () => {
+      if (!r.checked || labPrefs.mode === k) return;
+      labPrefs.mode = k;
+      labSave();
+      labRemakeNotes();
+      labPaintPanel();
+    });
+    rl.append(r, labEl('span', null, text));
+    fs.appendChild(rl);
+  }
+  body.appendChild(fs);
+
+  const buttons = [
+    ['Simulate 29/10 (invented numbers)', () => labSimulate('d2910')],
+    ['Simulate 8 h away (invented numbers)', () => labSimulate('away8h')],
+    ['Back to live data', () => labEndSim('Back to live data.')],
+  ];
+  for (const [label, run] of buttons) {
+    const b = labEl('button', 'lab-btn', label);
+    b.type = 'button';
+    b.addEventListener('click', run);
+    body.appendChild(b);
   }
   const status = labEl('p', 'lab-status');
   status.setAttribute('role', 'status');
@@ -436,8 +294,179 @@ function labPaintPanel() {
   body.hidden = !labPrefs.open;
   toggle.setAttribute('aria-expanded', labPrefs.open ? 'true' : 'false');
   toggle.textContent = labPrefs.open ? 'Lab ×' : 'Lab';
-  for (const r of body.querySelectorAll('input[type=radio]')) r.checked = labPrefs[r.name.slice(4)] === r.value;
+  for (const r of body.querySelectorAll('input[type=radio]')) r.checked = labPrefs.mode === r.value;
 }
 
 labPanel = labBuildPanel();
 labPaintPanel();
+
+// ---- "Today": main's summary, verbatim ---------------------------------------
+// missedMakeNote and missedMatchOffered from js/maps-early.js, paintMissed from
+// js/maps.js, as they are on main; missedPeriod and missedRefreshNote did not
+// change and are the site's own.
+function labMainMakeNote(before, after, since, back, kind, endAt = back) {
+  const changes = missedOwnerChanges(before, after).slice(0, MISSED_CHANGES_MAX);
+  const name = (c) => {
+    const id = COLORS.includes(c) ? matchTeamId(after, c) : null;
+    return id ? getTeamName(id) : 'Neutral';
+  };
+  for (const c of changes) { c.toName = name(c.to); c.fromName = name(c.from); }
+  // The whole match, before against after: the number a reader can check.
+  const kills = Math.max(0, missedKillTotal(after) - missedKillTotal(before));
+  // The same difference map by map, the maps that moved, in the tabs' order.
+  const was = new Map(missedMaps(before).map((m) => [m && m.type, colorSum(m && m.kills)]));
+  const order = Object.keys(MAP_TAB_NAME);
+  const perMap = missedMaps(after)
+    .map((m) => ({ type: m && m.type, n: Math.max(0, colorSum(m && m.kills) - (was.get(m && m.type) || 0)) }))
+    .filter((m) => m.n > 0 && typeof m.type === 'string')
+    .sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
+  const period = missedPeriod(before, after, since, endAt, changes);
+  // The body is kept only after this call: until then the end is the period's,
+  // then the time the kept body's data is from, which the history may still
+  // move earlier. A later body moves that time on, so the earliest end
+  // seen stands (missedMatchOffered reads it before keepNewestMatch writes).
+  const newest = Math.max(period.start, ...changes.map((c) => (c.flipped <= endAt ? c.flipped : -Infinity)));
+  let earliest = period.end;
+  const end = () => {
+    const kept = newestMatches.get(after.id);
+    if (kept && !missedBodyChanged(kept.match, after)) earliest = Math.min(earliest, kept.at);
+    return Math.max(earliest, newest);
+  };
+  missedNotes.set(after.id, { kind, since: period.start, get end() { return end(); }, sure: period.sure, back,
+    before, rawSince: since, after,
+    until: back + MISSED_SHOW_MS, changes, kills, perMap,
+    open: false, wideOpen: true, moreMaps: new Set() });
+  if (endAt === back) missedRingFor(after.id, changes);
+}
+function labMainOffered(match, kept) {
+  const now = Date.now();
+  const lastOffer = missedLastOffer.get(match.id) || 0;
+  missedLastOffer.set(match.id, now);
+  const standing = missedNotes.get(match.id);
+  // Reading the end fixes it before keepNewestMatch moves `at` on.
+  if (standing) void standing.end;
+  if (!kept || matchIsBehind(match, kept.match)) return;
+  if (match.start_time !== kept.match.start_time || !matchIsLive(match)) return;
+  if (missedReturn && now - missedReturn.back > MISSED_RETURN_WAIT_MS) missedReturn = null;
+  if (missedReturn && missedReturn.bodies.has(match.id)) {
+    const before = missedReturn.bodies.get(match.id);
+    missedReturn.bodies.delete(match.id);
+    if (before.start_time === match.start_time && missedBodyChanged(before, match)) {
+      missedMakeNote(before, match, missedReturn.since, now, 'return');
+      return;
+    }
+  }
+  if (now - kept.at > HUD_STALE_MS && lastOffer > kept.at && now - lastOffer < MISSED_ASLEEP_MS
+      && missedBodyChanged(kept.match, match)) {
+    missedMakeNote(kept.match, match, kept.at, now, 'pause');
+    return;
+  }
+  if (missedRefreshNote(match, now)) return;
+  // Any other update: the ring alone, on what changed hands under your eyes.
+  missedRingFor(match.id, missedOwnerChanges(kept.match, match));
+}
+function labMainPaintMissed(view) {
+  const note = missedNoteFor(view.matchId);
+  let box = view.side.querySelector('.wvw-missed:not(.is-leaving)');
+  if (!note || (!note.changes.length && !note.kills)) {
+    if (box) {
+      box.classList.add('is-leaving');
+      setTimeout(() => box.remove(), 200);
+    }
+    return;
+  }
+  const narrow = window.matchMedia(MISSED_NARROW).matches;
+  // Folded on a phone until asked; open beside the map until hidden.
+  const open = narrow ? note.open : note.wideOpen;
+  const key = JSON.stringify([view.type, note.since, note.end, note.sure, narrow, open, [...note.moreMaps].sort()]);
+  if (box && box.dataset.key === key) return;
+  if (!box) {
+    box = missedEl('section', 'wvw-missed');
+    view.side.insertBefore(box, view.side.firstChild);
+  }
+  box.dataset.key = key;
+  box.dataset.kind = note.kind;
+  box.textContent = '';
+  box.classList.toggle('is-open', open);
+
+  const away = note.kind === 'return';
+  const span = note.sure ? missedSpan(note.since, note.end) : `since before ${missedHhmm(note.since)}`;
+  const changes = note.changes;
+
+  const head = missedEl('button', 'wvw-missed-head');
+  head.type = 'button';
+  head.setAttribute('aria-expanded', open ? 'true' : 'false');
+  head.title = (away
+    ? `What changed in the match while this tab was in the background, ${span}.`
+    : `The game's API repeated an old answer; this is what changed in the match, ${span}.`)
+    + ' Shown for 10 minutes after the data came back.';
+  const title = missedEl('span', 'wvw-group wvw-missed-title');
+  title.append(`${away ? 'What you missed' : 'What happened'} · `, missedEl('span', 'wvw-missed-time', span));
+  head.appendChild(title);
+  if (changes.length) {
+    const count = missedEl('span', 'wvw-missed-count', String(changes.length));
+    count.setAttribute('aria-label', `${changes.length} objective${changes.length === 1 ? '' : 's'} changed hands`);
+    head.appendChild(count);
+  }
+  head.appendChild(missedChevron());
+  head.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (narrow) note.open = !open; else note.wideOpen = !open;
+    note.moreMaps.clear();
+    view.repaint();
+  });
+  box.appendChild(head);
+  if (!open) return;
+
+  const sub = missedEl('p', 'wvw-missed-sub',
+    away ? 'While this tab was in the background' : "While the game's API was behind");
+  // One row per map that had a change or a kill, in the tabs' order: the map's
+  // name (a button to its tab) and its kills, then the chips of that map.
+  // The open map's chips are normal, the others a little quieter.
+  const kills = new Map(note.perMap.map((m) => [m.type, m.n]));
+  const rows = [];
+  for (const type of Object.keys(MAP_TAB_NAME)) {
+    const list = changes.filter((c) => c.map === type);
+    if (!list.length && !kills.has(type)) continue;
+    const mapName = MAP_TAB_NAME[type];
+    const here = type === view.type;
+    const row = missedEl('div', `wvw-missed-row tint-${MISSED_MAP_TINT[type] || 'neutral'}${here ? '' : ' is-other'}`);
+    const top = missedEl('div', 'wvw-missed-rowhead');
+    const name = missedEl('button', 'wvw-missed-mapname');
+    name.type = 'button';
+    name.title = `Open ${mapName}`;
+    name.appendChild(missedEl('span', `dot dot-${MISSED_MAP_TINT[type] || 'neutral'}`));
+    name.append(mapName);
+    name.addEventListener('click', (e) => { e.stopPropagation(); view.goTo(type, null, false); });
+    top.appendChild(name);
+    if (kills.has(type)) {
+      const n = kills.get(type);
+      const k = missedEl('span', 'wvw-missed-kills');
+      k.setAttribute('aria-label', `${n} kill${n === 1 ? '' : 's'} on ${mapName}`);
+      k.appendChild(missedEl('b', 'wvw-missed-killn', String(n)));
+      k.append(n === 1 ? ' kill' : ' kills');
+      top.appendChild(k);
+    }
+    row.appendChild(top);
+    if (list.length) {
+      const chips = missedEl('div', 'wvw-chips');
+      const room = note.moreMaps.has(type) ? list.length : narrow ? MISSED_CHIPS_NARROW : MISSED_CHIPS_WIDE;
+      for (const c of list.slice(0, room)) chips.appendChild(missedChip(c, here, view.goTo, view.spot));
+      const hidden = list.length - Math.min(list.length, room);
+      if (hidden > 0) {
+        const more = missedEl('button', 'wvw-chip wvw-chip-more', `+${hidden}`);
+        more.type = 'button';
+        more.setAttribute('aria-label', `Show ${hidden} more on ${mapName}`);
+        more.addEventListener('click', (e) => { e.stopPropagation(); note.moreMaps.add(type); view.repaint(); });
+        chips.appendChild(more);
+      }
+      row.appendChild(chips);
+    }
+    rows.push(row);
+  }
+  const body = missedEl('div', 'wvw-missed-body');
+  // Rows first on every width: on a phone they are what a tap opened it for.
+  const parts = narrow ? [...rows, sub] : [sub, ...rows];
+  for (const p of parts) body.appendChild(p);
+  box.appendChild(body);
+}
