@@ -3,7 +3,8 @@
 //   POST /api/ingest/kills    the kills script, after every tick
 //   POST /api/ingest/relink   the teams notice script, after every tick
 //   POST /api/ingest/latest-supa-us, latest-supa-eu
-//                              the outside readers of the game API, the newest match bodies
+//                              the outside readers of the game API, the newest match bodies,
+//                              and each match's skirmishes into board (kept for good)
 //   GET  /api/health            when each last reported; nothing else
 //   GET  /api/kills            the last 30 minutes of kills, each match's newest older row (up to 3 h back) and its kills' last move, for the map corner and swords
 //   GET  /api/relink           relink!A1 as numbers, for the teams notice
@@ -44,6 +45,10 @@ const STALE_LATEST_S = 10 * 60;
 // with room on top. A message past it is a damaged read or a stolen secret.
 const MAX_SCORE_PER_MIN = 1000;
 const SCORE_SLACK = 2000;
+// A week is 84 skirmishes of 2 hours.
+const SKIRMISH_MS = 2 * 3600e3;
+const SKIRMISHES = 84;
+const MAX_VP_PER_SKIRMISH = 60;
 const LATEST_KEY = 'https://wvwrelink.com/api/latest';
 const SUMMARY_KEY = 'https://wvwrelink.com/api/latest/summary';
 // The max-age of each read, both in its answer and on a copy served from the cache.
@@ -219,6 +224,18 @@ async function acceptLatest(env, source, body, t, now) {
   }
   if (lost.length) await logJumps(env.DB, source, lost, now);
 
+  // Every match of the message, applied or not: the other reader may have the
+  // same score and the same skirmish. Its failure only logs: without
+  // schema-005 the message still goes in.
+  const off = ms.filter((m) => typeof m.board === 'string');
+  if (off.length) console.log(JSON.stringify({ source, board: 'left out', why: off.map((m) => m.id + ' ' + m.board) }));
+  let board = null;
+  try {
+    board = await boardInsert(env.DB, ms, Date.now());
+  } catch (e) {
+    console.log(JSON.stringify({ source, board: 'failed', why: String(e) }));
+  }
+
   // The kills lines of the matches that moved, through the same rule as the
   // sheet's. Stamped by the Worker's clock: a reader's runs up to 5 min off, and
   // a line in its future would keep out every source's lines until then.
@@ -228,7 +245,7 @@ async function acceptLatest(env, source, body, t, now) {
     const rows = applied.map((m) => [m.id, at, ...m.kills, m.start, m.score]);
     entered = (await killsInsert(env.DB, rows).run()).meta.changes;
   }
-  console.log(JSON.stringify({ source, ok: true, applied: applied.length, lost: lost.length }));
+  console.log(JSON.stringify({ source, ok: true, applied: applied.length, lost: lost.length, board }));
   if (entered) {
     try {
       await rebuildRecent(env.DB, now);
@@ -279,11 +296,58 @@ function checkSummary(s, nowMs, rest) {
     const score = m.scores[0] + m.scores[1] + m.scores[2];
     // Independent of what is stored: a week that has just begun cannot hold a big score.
     if (score > MAX_SCORE_PER_MIN * Math.max(0, (nowMs - m.start) / 60e3) + SCORE_SLACK) return 'score for the week';
+    // A board field out of shape leaves only the board out (the reason, a string, is logged).
+    const board = checkBoard(m, nowMs);
     total += m.bytes;
-    out.push({ id: m.id, start: m.start, score, kills: m.kills.slice(), bytes: m.bytes, raw: m.raw, sha256: m.sha256 });
+    out.push({ id: m.id, start: m.start, score, kills: m.kills.slice(), bytes: m.bytes, raw: m.raw, sha256: m.sha256, board });
   }
   if (total !== rest) return 'bytes do not add up';
   return out;
+}
+
+// vp [red, blue, green] and skirmishes [[id, red, blue, green], ...], both or
+// neither (a reader older than them sends neither). The last of skirmishes is
+// the running one, the one before it the last finished. Returns the rows to
+// keep, null, or the reason they are not kept.
+function checkBoard(m, nowMs) {
+  if (m.vp === undefined && m.skirmishes === undefined) return null;
+  if (!isIntList(m.vp, 3)) return 'vp';
+  const s = m.skirmishes;
+  if (!Array.isArray(s) || !s.length || s.length > 2 || !s.every((x) => isIntList(x, 4))) return 'skirmishes';
+  const id = s[s.length - 1][0];
+  // Not one that has not begun by the Worker's clock, with the signature's 5 minutes of room.
+  if (id < 1 || id > SKIRMISHES || id > Math.floor((nowMs - m.start + MAX_SKEW_S * 1000) / SKIRMISH_MS) + 1) return 'skirmish';
+  if (s.length !== Math.min(2, id) || (s.length === 2 && s[0][0] !== id - 1)) return 'skirmish order';
+  if (s.some((x) => x[1] + x[2] + x[3] > MAX_SCORE_PER_MIN * SKIRMISH_MS / 60e3 + SCORE_SLACK)) return 'skirmish score';
+  // A row only rises, so a VP no week can reach would stay: a skirmish gives a team far less than this.
+  if (m.vp.some((v) => v > MAX_VP_PER_SKIRMISH * id)) return 'vp for the week';
+  const rows = s.length === 2 ? [s[0].slice()] : [];
+  // The week's last may never be shown finished: it is kept while it runs.
+  if (id === SKIRMISHES) rows.push(s[1].slice());
+  return { vp: m.vp.slice(), rows };
+}
+
+// One statement for the whole message. Two readers, or one sending the same
+// finished skirmish over its two hours, make one row; it changes only
+// when the score (the week's last skirmish, still running) or the VP (should it
+// come a read after the skirmish list) rose and neither fell, so a repeat
+// changes nothing. Returns the run's meta, for the log.
+async function boardInsert(db, ms, at) {
+  const rows = [];
+  for (const m of ms) if (m.board && typeof m.board === 'object') for (const s of m.board.rows) rows.push([m.id, m.start, ...s, ...m.board.vp]);
+  if (!rows.length) return null;
+  const sum = (t, p) => t + '.' + p + 'red + ' + t + '.' + p + 'blue + ' + t + '.' + p + 'green';
+  const r = await db.prepare(
+    'INSERT INTO board (match, start, skirmish, red, blue, green, vp_red, vp_blue, vp_green, at) SELECT ' +
+    [0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => "json_extract(value, '$[" + i + "]')").join(', ') +
+    ', ?2 FROM json_each(?1) WHERE true ' +
+    'ON CONFLICT (match, start, skirmish) DO UPDATE SET red = excluded.red, blue = excluded.blue, ' +
+    'green = excluded.green, vp_red = excluded.vp_red, vp_blue = excluded.vp_blue, vp_green = excluded.vp_green, ' +
+    'at = excluded.at WHERE ' + sum('excluded', '') + ' >= ' + sum('board', '') + ' AND ' +
+    sum('excluded', 'vp_') + ' >= ' + sum('board', 'vp_') + ' AND (' + sum('excluded', '') + ' > ' + sum('board', '') +
+    ' OR ' + sum('excluded', 'vp_') + ' > ' + sum('board', 'vp_') + ')'
+  ).bind(JSON.stringify(rows), at).run();
+  return { changes: r.meta.changes, rows_written: r.meta.rows_written };
 }
 
 function isIntList(a, n) {
