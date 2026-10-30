@@ -681,6 +681,51 @@ test('a reader\'s rebuild sees a match the body does not hold, its rows put in b
   assert.deepEqual(got.map((r) => (at0 - r[0]) / 60e3), [100, 60, 20], 'the first line of the still stretch, the one before the window, the one in it');
 });
 
+test('a reader\'s rebuild that cannot go on from the last body is the full read, and says why', async () => {
+  const key = 'a'.repeat(128);
+  const start = Date.parse('2026-09-26T02:00:00Z');
+  const gz = gzipSync(Buffer.from('{"x":1}'));
+  const msg = (kills) => {
+    const entry = { id: '1-1', start, scores: [200, 0, 0], kills, bytes: gz.length, raw: 10, sha256: createHash('sha256').update(gz).digest('hex') };
+    return Buffer.concat([Buffer.from(JSON.stringify({ v: 1, matches: [entry] }) + '\n'), gz]);
+  };
+  const cases = {
+    'no body': { prep: async () => {}, gap: 0, kills: [1, 2, 3, 4] },
+    'body does not join up': { prep: async (w) => { await w.post('kills', { rows: [[w.now, '1-1', 1, 2, 3, 4, start, 100]] }); }, gap: 40 * 60e3, kills: [1, 2, 3, 4] },
+    'new slot': { prep: async (w) => { await w.post('kills', { rows: [[w.now, '1-1', 1, 2, 3, 4, start, 100]] }); }, gap: 11 * 60e3, kills: [1, 2, 3, 4] },
+    // The reader's second is the one before the body's own millisecond.
+    'clock behind the body': { first: 900, prep: async (w) => { await w.post('kills', { rows: [[w.now, '1-1', 1, 2, 3, 4, start, 100]] }); }, gap: 50, kills: [2, 2, 3, 4] },
+    // The line the body holds is gone from the table, so its week cannot be read.
+    'line missing': { prep: async (w) => {
+      w.sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,?,?,?,?,?)').run('1-1', w.now - 40 * 60e3, 1, 2, 3, 4, start);
+      await w.post('kills', { rows: [[w.now, '1-1', 1, 2, 3, 4, start, 100]] });
+      w.sql.prepare('DELETE FROM kills WHERE at = ?').run(w.now - 40 * 60e3);
+    }, gap: 2 * 60e3, kills: [1, 2, 3, 4] }
+  };
+  const run = async (c, twin) => {
+    const w = setup({ env: { INGEST_LATEST_SUPA_US: key } });
+    const lines = [];
+    const log = console.log;
+    console.log = (x) => lines.push(x);
+    try {
+      if (c.first) w.advance(c.first);
+      await c.prep(w);
+      w.advance(c.gap);
+      if (twin) w.sql.prepare('DELETE FROM recent').run();
+      assert.equal(await w.post('latest-supa-us', msg(c.kills), { key }), 200);
+    } finally {
+      console.log = log;
+    }
+    const full = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((l) => l && l.recent === 'full');
+    return { rows: w.sql.prepare('SELECT rows FROM recent').get().rows, full };
+  };
+  for (const [why, c] of Object.entries(cases)) {
+    const got = await run(c, false), twin = await run(c, true);
+    assert.deepEqual(got.full, [{ recent: 'full', why }], why);
+    assert.equal(got.rows, twin.rows, why + ': the same body as the full read');
+  }
+});
+
 // A small seeded generator (mulberry32), so a sequence is the same on every run.
 function mulberry32(a) {
   return () => {

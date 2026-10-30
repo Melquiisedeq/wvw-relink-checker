@@ -507,7 +507,7 @@ async function rebuildRecent(db, now, incremental = false) {
 // for the two rows that need it. null: a row to read is not there.
 async function incrementalWindow(db, carried, cut, floor) {
   const newest = new Map();
-  for (const r of carried) if (!(newest.get(r[1]) >= r[0])) newest.set(r[1], r[0]);
+  for (const r of carried) newest.set(r[1], r[0]);
   const { results: fresh } = await db.prepare(newSql)
     .bind(JSON.stringify(MATCHES.map((m) => [m, newest.get(m) ?? floor]))).all();
   const have = new Map(MATCHES.map((m) => [m, []]));
