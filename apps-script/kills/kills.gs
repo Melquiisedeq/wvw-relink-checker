@@ -7,8 +7,9 @@
  * enemy player. deaths is left out on purpose - it also counts whoever dies to
  * a lord, a guard or a fall, which is a roamer soloing a camp, and that would
  * inflate exactly the empty borderland.
- * The site reads columns 0 to 5; the 7th is for this script only; the 8th is
- * the match score sum, written by run_ and sent to /api, not read by the page.
+ * The site reads columns 0 to 5 and the 8th; the 7th is for this script only;
+ * the 8th is the match score sum, written by run_ and sent to /api, and read by
+ * the page only from the sheet, when /api is out.
  *
  * A match's row is written only when its score has risen since its last
  * written row. The GW2 API serves old answers for stretches (a whole match

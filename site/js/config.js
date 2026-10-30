@@ -99,9 +99,10 @@ const COMMUNITY_SHEET_TTL_MS = 5 * 60 * 1000;
 // Kills history: an Apps Script snapshot every five minutes over a rolling two
 // hours. The shape is this project's own: change it at the source.
 // Columns, in this order, no header row:
-//   epoch ms | match id | Center | RedHome | BlueHome | GreenHome
+//   epoch ms | match id | Center | RedHome | BlueHome | GreenHome | start_time | score sum
 // The four numbers are player kills summed over all three sides (fightTotals
-// in js/maps-early.js says why deaths are left out).
+// in js/maps-early.js says why deaths are left out). The page reads the eighth
+// column (score sum); /api/kills does not carry it.
 const KILLS_SHEET_ID = '1Lh6dGhlYVvvKlXT_tofEUKZhYGW71Jij1IstbdPF2fg';
 const KILLS_SHEET_URL =
   `https://docs.google.com/spreadsheets/d/${KILLS_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=kills`;
