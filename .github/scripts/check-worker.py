@@ -49,6 +49,8 @@ MATCH_RE = re.compile(r'^[12]-[1-9]$')
 # silences them with no fault of ours: same 90 minutes as kills.
 LATEST_REQUIRED = ('latest-supa-us', 'latest-supa-eu')
 LATEST_STALE = 90 * 60
+# The cleanup runs daily (worker/wrangler.jsonc, crons); 2 h of slack.
+CLEANUP_STALE = 26 * 3600
 # The summary may lead a stale read of the game's API by at most 600 points a
 # minute for the 70 minutes the API can lag; past it, a score the game never
 # had, which only a stolen signing secret could send.
@@ -121,6 +123,7 @@ def check_feeds(problems, notes):
         return
     now = int(time.time())
     check_latest_feeds(data, now, problems, notes)
+    check_cleanup(data, now, problems, notes)
     kills_at = data.get('kills')
     if is_int(kills_at) and kills_at:
         kills_age[0] = now - kills_at
@@ -159,6 +162,18 @@ def check_latest_feeds(data, now, problems, notes):
                 'Check the Supabase reader; a frozen game API passes on its own.'))
         else:
             notes.append('%-34s %d min ago' % (source + ' last delivered', (now - at) // 60))
+
+
+def check_cleanup(data, now, problems, notes):
+    at = data.get('cleanup')
+    if not is_int(at) or at == 0:
+        notes.append('%-34s not yet' % 'cleanup last ran')
+    elif now - at > CLEANUP_STALE:
+        problems.append(
+            'The daily cleanup last ran %d hours ago (limit %d). Check its cron '
+            'on the Worker wvwrelink-api.' % ((now - at) // 3600, CLEANUP_STALE // 3600))
+    else:
+        notes.append('%-34s %d h ago' % ('cleanup last ran', (now - at) // 3600))
 
 
 def game_scores():
