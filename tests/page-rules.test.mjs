@@ -895,12 +895,14 @@ test('the aligned peek: lands PEEK_AFTER_MS after a 30 s mark of the summary, ne
   const page = fresh();
   const nav = { connection: { saveData: false } };
   page.ctx.navigator = nav;
-  const MIN = 60000, HALF = 30000, mark = 1000 * MIN + 3000, aligned = (k) => mark + 12000 + k * MIN;
+  const MIN = 60000, HALF = 30000, mark = 1000 * MIN + 3000, aligned = (k) => mark + 11000 + k * MIN;
   const wait = (anchor, delay, now) => { page.ctx.__a = anchor; return page.run(`peekAnchor = __a; peekWait(${delay}, ${now})`); };
   assert.equal(page.run('PEEK_BEHIND_MS'), 30000);
-  assert.equal(page.run('PEEK_AFTER_MS'), 12000);
+  assert.equal(page.run('PEEK_AFTER_MS'), 11000);
   assert.equal(page.run('PEEK_EVERY_MS'), HALF);
   assert.equal(wait(0, 30000, 5), 30000, 'no summary read yet: the delay as it was');
+  assert.equal(wait(mark, 30000, mark + 11000), 30000, 'asked at its own peek: the next mark, 30 s on');
+  assert.equal(wait(mark, 30000, mark), 41000, 'asked on the mark: +11 s is under the floor less its slack, so the next mark, +41 s');
   for (const delay of [30000, 120000]) {
     for (const from of [0, 4000, 12000, 59000, 61000, 90000]) {
       const now = 1000 * MIN + 9 * MIN + from;
@@ -921,7 +923,7 @@ test('the aligned peek: lands PEEK_AFTER_MS after a 30 s mark of the summary, ne
   nav.connection.saveData = false;
   // A mark that moved 10 s later is followed.
   const moved = mark + 10000, now = 1000 * MIN + 5 * MIN + 25000;
-  assert.equal((now + wait(moved, 30000, now) - moved - 12000) % HALF, 0);
+  assert.equal((now + wait(moved, 30000, now) - moved - 11000) % HALF, 0);
 });
 
 test('the aligned peek: a summary that did not move gets one more ask, and reads stay at four a minute (js/standings.js)', () => {
@@ -940,7 +942,7 @@ test('the aligned peek: a summary that did not move gets one more ask, and reads
   assert.equal(next(false, true)[0] > 10000, true, 'moved: the rhythm');
   // The retry sits 20 s short of the next mark: the peek after it takes that mark, it does not skip to the one after.
   page.run('peekAnchor = 1000 * 60000 + 3000; peekAligned = true; peekStill = true');
-  const mark = 1000 * 60000 + 3000 + 12000 + 9 * 60000;
+  const mark = 1000 * 60000 + 3000 + 11000 + 9 * 60000;
   assert.equal(page.run(`peekNext(30000, ${mark})`), 10000);
   assert.equal(page.run(`peekStill = false; peekNext(30000, ${mark + 10500})`), 19500, 'after the retry: the next mark');
   nav.connection.saveData = true;
