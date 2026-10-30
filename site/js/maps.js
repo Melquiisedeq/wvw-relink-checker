@@ -2133,6 +2133,14 @@ function missedImg(src, size) {
 }
 
 // A 16 px chevron, pointing down; the CSS turns it up while the block is open.
+// A tower in the badge's own colour: the game's tower icon is a grey disc at this size.
+function missedTower() {
+  const svg = svgEl('svg', { viewBox: '0 0 16 16', width: 12, height: 12, 'aria-hidden': 'true' });
+  svg.appendChild(svgEl('path', { fill: 'currentColor', 'fill-rule': 'evenodd',
+    d: 'M3 1.5h2.4v2h1.4v-2h2.4v2h1.4v-2H13v4.2l-1.6 1.4V15H4.6V7.1L3 5.7zM6.8 15v-3.2a1.2 1.2 0 0 1 2.4 0V15z' }));
+  return svg;
+}
+
 function missedChevron() {
   const svg = svgEl('svg', { class: 'wvw-missed-chev', viewBox: '0 0 16 16', width: 16, height: 16, 'aria-hidden': 'true' });
   svg.appendChild(svgEl('path', { d: 'M3.5 6 8 10.5 12.5 6', fill: 'none', stroke: 'currentColor',
@@ -2215,23 +2223,23 @@ function paintMissed(view) {
   const title = missedEl('span', 'wvw-group wvw-missed-title');
   title.append(`${away ? 'What you missed' : 'What happened'} · `, missedEl('span', 'wvw-missed-time', span));
   head.appendChild(title);
-  // Two counts, told apart by colour and icon: the objectives that changed
-  // hands (a tower) and the kills (the swords of the map's kills corner).
+  // Two counts, told apart by their icon: the kills (the swords of the map's
+  // kills corner) and the objectives that changed hands (a tower).
   // They ride at the end of the title's text, so on a narrow column they move
   // to its next line together instead of squeezing the title.
   const counts = missedEl('span', 'wvw-missed-counts');
   const badge = (n, cls, icon, words) => {
     const b = missedEl('span', `wvw-missed-count ${cls}`);
-    b.appendChild(missedImg(icon, 12));
+    b.appendChild(icon ? missedImg(icon, 12) : missedTower());
     b.append(String(n));
     b.setAttribute('aria-label', words);
     counts.appendChild(b);
   };
+  if (shown.kills) badge(shown.kills, 'is-kills', 'assets/icons/Event_Swords.webp', `${shown.kills} kill${shown.kills === 1 ? '' : 's'}`);
   if (changes.length) {
-    badge(changes.length, 'is-objectives', 'assets/icons/Event_Tower.webp',
+    badge(changes.length, 'is-objectives', null,
       `${changes.length} objective${changes.length === 1 ? '' : 's'} changed hands`);
   }
-  if (shown.kills) badge(shown.kills, 'is-kills', 'assets/icons/Event_Swords.webp', `${shown.kills} kill${shown.kills === 1 ? '' : 's'}`);
   if (counts.firstChild) title.append(' ', counts);
   head.appendChild(missedChevron());
   head.addEventListener('click', (e) => {

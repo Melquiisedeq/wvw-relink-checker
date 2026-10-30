@@ -721,8 +721,7 @@
   background:rgba(127,214,242,.18);color:var(--accent);font-size:.64rem;font-weight:800;
   gap:3px;white-space:nowrap;font-variant-numeric:tabular-nums;letter-spacing:0;
 }
-.wvw-missed-count img{display:block;flex:none;}
-.wvw-missed-count.is-kills{background:rgba(255,176,112,.16);color:#ffb070;}
+.wvw-missed-count img,.wvw-missed-count svg{display:block;flex:none;}
 .wvw-missed-chev{display:block;flex:none;color:var(--accent);transition:transform .2s ease;}
 .wvw-missed.is-open .wvw-missed-chev{transform:rotate(180deg);}
 .wvw-missed-sub{margin:2px 0 7px;color:#8d97a6;font-size:.68rem;line-height:1.35;}

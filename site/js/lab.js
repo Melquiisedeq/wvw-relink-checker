@@ -9,11 +9,10 @@
 // alone. Everything shown goes through textContent; no request of its own.
 
 const LAB_KEY = 'wvw-lab-38-0';
-const LAB_VERSION = 3;
+const LAB_VERSION = 4;
 const LAB_SIM_MS = 10 * 60 * 1000;
 const LAB_MAPS = ['Center', 'RedHome', 'BlueHome', 'GreenHome'];
 const LAB_MODES = { today: 'Today', new: 'New' };
-const LAB_BADGES = { colour: 'Colour', icons: 'Icons', both: 'Both' };
 
 const labEl = (tag, cls, text) => {
   const e = document.createElement(tag);
@@ -23,13 +22,12 @@ const labEl = (tag, cls, text) => {
 };
 
 function labReadPrefs() {
-  const p = { open: false, mode: 'new', badges: 'both' };
+  const p = { open: false, mode: 'new' };
   try {
     const v = JSON.parse(localStorage.getItem(LAB_KEY) || 'null');
     if (!v || v.v !== LAB_VERSION) return p;
     if (typeof v.open === 'boolean') p.open = v.open;
     if (Object.prototype.hasOwnProperty.call(LAB_MODES, v.mode)) p.mode = v.mode;
-    if (Object.prototype.hasOwnProperty.call(LAB_BADGES, v.badges)) p.badges = v.badges;
   } catch { /* storage off or corrupt: the defaults */ }
   return p;
 }
@@ -64,12 +62,6 @@ function labTodayPaint(view) {
 // main has no fold on a click on the map.
 function labTodayFold() {
   return labToday();
-}
-
-// Colour, Icons or Both: the site draws both; lab.css takes one away.
-function labApplyBadges() {
-  const root = document.documentElement;
-  for (const k of Object.keys(LAB_BADGES)) root.classList.toggle(`lab-badges-${k}`, labPrefs.badges === k);
 }
 
 // Every summary up is made again under the other mode, from the same bodies.
@@ -301,26 +293,6 @@ function labBuildPanel() {
   }
   body.appendChild(fs);
 
-  body.appendChild(labEl('span', 'lab-muted', 'The two counts in the header'));
-  const fb = labEl('fieldset', 'lab-switch');
-  fb.appendChild(labEl('legend', 'lab-sr-legend', 'The two counts in the header'));
-  for (const [k, text] of Object.entries(LAB_BADGES)) {
-    const rl = labEl('label');
-    const r = labEl('input');
-    r.type = 'radio';
-    r.name = 'lab-badges';
-    r.value = k;
-    r.addEventListener('change', () => {
-      if (!r.checked) return;
-      labPrefs.badges = k;
-      labSave();
-      labPaintPanel();
-    });
-    rl.append(r, labEl('span', null, text));
-    fb.appendChild(rl);
-  }
-  body.appendChild(fb);
-
   const buttons = [
     ['Simulate 29/10 (invented numbers)', () => labSimulate('d2910')],
     ['Simulate short absence, 5 min (invented numbers)', () => labSimulate('short')],
@@ -349,8 +321,6 @@ function labPaintPanel() {
   toggle.setAttribute('aria-expanded', labPrefs.open ? 'true' : 'false');
   toggle.textContent = labPrefs.open ? 'Lab ×' : 'Lab';
   for (const r of body.querySelectorAll('input[name=lab-mode]')) r.checked = labPrefs.mode === r.value;
-  for (const r of body.querySelectorAll('input[name=lab-badges]')) r.checked = labPrefs.badges === r.value;
-  labApplyBadges();
 }
 
 labPanel = labBuildPanel();
