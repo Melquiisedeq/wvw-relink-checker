@@ -43,7 +43,9 @@ export function regionFor(sbRegion, xRegion) {
   return REGIONS[sbRegion];
 }
 
-export const MAX_API_BYTES = 1024 * 1024; // the whole read is ~500 KB
+// Past this the read is refused whole (502, nothing stored) and our copy stops for the rest of the week: the
+// game's body grows with every skirmish and every match, and must stay under the function's memory.
+export const MAX_API_BYTES = 4 * 1024 * 1024;
 const MAX_SLICE = 16 * 1024;
 const MAX_RAW = 256 * 1024;
 const MAX_SCORE_PER_MIN = 1000;
