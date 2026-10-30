@@ -39,7 +39,7 @@ apps-script/   the two Google Apps Script projects behind the spreadsheets:
                pasted from
 supabase/      the two readers, one per API server pool, that push the newest
                match bodies to the Worker every 30 seconds
-tests/          unit/: the Worker's and the Supabase readers' rules, and the page's
+tests/         unit/: the Worker's and the Supabase readers' rules, and the page's
                rules with its scripts in a node:vm, run by node --test;
                e2e/: the browser tests (Playwright Test, monocart-coverage-reports)
 .github/       the checks and the workflows that run them
@@ -150,7 +150,7 @@ One concern each. A fix and a redesign on the same branch means neither can be
 taken without the other, and the small one ends up waiting on the big one.
 
 A change in what the page does brings its test in the same pull request: a
-rule in `tests/`, or a browser test in `tests/e2e/`. A bug fix brings a test
+rule in `tests/unit/`, or a browser test in `tests/e2e/`. A bug fix brings a test
 that fails before the fix and passes after it.
 
 If a change is visible on the page, say what it looks like — a screenshot
