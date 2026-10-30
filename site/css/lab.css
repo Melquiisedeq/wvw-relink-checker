@@ -1,4 +1,5 @@
-/* LAB (never merged). Card 38-0, round 2: the panel and the "simulated" mark. */
+/* LAB (never merged). Card 38-0, round 3: the panel, the "simulated" mark and
+   the header counts told apart by colour only or by icons only. */
 .lab-panel{
   position:fixed;right:12px;bottom:12px;z-index:80;
   display:flex;flex-direction:column;align-items:flex-end;gap:6px;
@@ -44,3 +45,5 @@
   background:rgba(15,18,22,.85);border:1px solid rgba(154,164,178,.3);color:#9aa4b2;
   font-size:.62rem;font-weight:700;letter-spacing:.08em;text-transform:lowercase;
 }
+.lab-badges-colour .wvw-missed-count img{display:none;}
+.lab-badges-icons .wvw-missed-count.is-kills{background:rgba(127,214,242,.18);color:var(--accent);}

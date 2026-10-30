@@ -2183,7 +2183,7 @@ function paintMissed(view) {
   const note = missedNoteFor(view.matchId);
   const shown = note && missedView(note);
   let box = view.side.querySelector('.wvw-missed:not(.is-leaving)');
-  if (!note || (!shown.changes.length && !shown.kills)) {
+  if (!note || !shown.born || (!shown.changes.length && !shown.kills)) {
     if (box) {
       box.classList.add('is-leaving');
       setTimeout(() => box.remove(), 200);
@@ -2194,7 +2194,7 @@ function paintMissed(view) {
   // Folded on a phone until asked; open beside the map until hidden.
   const open = narrow ? note.open : note.wideOpen;
   const key = JSON.stringify([view.type, shown.since, shown.end, shown.sure, narrow, open, [...note.moreMaps].sort(),
-    shown.perMap, shown.changes.map((c) => c.id)]);
+    shown.perMap, shown.changes.map((c) => c.id), shown.kills]);
   if (box && box.dataset.key === key) return;
   if (!box) {
     box = missedEl('section', 'wvw-missed');
@@ -2215,11 +2215,24 @@ function paintMissed(view) {
   const title = missedEl('span', 'wvw-group wvw-missed-title');
   title.append(`${away ? 'What you missed' : 'What happened'} · `, missedEl('span', 'wvw-missed-time', span));
   head.appendChild(title);
+  // Two counts, told apart by colour and icon: the objectives that changed
+  // hands (a tower) and the kills (the swords of the map's kills corner).
+  // They ride at the end of the title's text, so on a narrow column they move
+  // to its next line together instead of squeezing the title.
+  const counts = missedEl('span', 'wvw-missed-counts');
+  const badge = (n, cls, icon, words) => {
+    const b = missedEl('span', `wvw-missed-count ${cls}`);
+    b.appendChild(missedImg(icon, 12));
+    b.append(String(n));
+    b.setAttribute('aria-label', words);
+    counts.appendChild(b);
+  };
   if (changes.length) {
-    const count = missedEl('span', 'wvw-missed-count', String(changes.length));
-    count.setAttribute('aria-label', `${changes.length} objective${changes.length === 1 ? '' : 's'} changed hands`);
-    head.appendChild(count);
+    badge(changes.length, 'is-objectives', 'assets/icons/Event_Tower.webp',
+      `${changes.length} objective${changes.length === 1 ? '' : 's'} changed hands`);
   }
+  if (shown.kills) badge(shown.kills, 'is-kills', 'assets/icons/Event_Swords.webp', `${shown.kills} kill${shown.kills === 1 ? '' : 's'}`);
+  if (counts.firstChild) title.append(' ', counts);
   head.appendChild(missedChevron());
   head.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -2654,6 +2667,9 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     if (l) l.classList.toggle('is-cold', current !== hotType);
   };
 
+  // A pick made from a list (the summary's chips, the captures) leaves the
+  // summary as it is: only a click on the map itself folds it.
+  let listPick = false;
   const draw = (type, sectors) => {
     focusSpot = null;
     // The freshest body, not the one this popover opened with: that one
@@ -2665,6 +2681,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
         selected = p;
         renderObjectiveDetail(detail, p, m);
         detail.scrollTop = 0;
+        if (!listPick) { missedFold(match.id); paintNote(); }
         showPane('objective');
       })
       : null;
@@ -2724,7 +2741,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     if (id == null) return;
     const pick = () => {
       if (activeTrigger !== triggerEl || current !== type || !plotWrap) return;
-      if (select) plotWrap.selectObjective(id);
+      if (select) { listPick = true; plotWrap.selectObjective(id); listPick = false; }
       spotlight({ ids: [id] }, { ms: FOCUS_TAP_MS });
     };
     if (sectorsByType.get(type)) pick(); else pendingSectors.get(type).then(pick);

@@ -1,17 +1,19 @@
-// LAB (never merged). Card 38-0, round 2: "What you missed" counts its kills
-// to the same end as the map's corner. A switch runs main's summary ("Today",
-// verbatim copies below) or the site's new one ("New"); two buttons hold an
-// invented kill history. Hooks in the site, one line each: fightSamples and
-// killView's body take the simulation; missedMakeNote, missedMatchOffered and
-// paintMissed hand over to the copies under "Today"; missedRefreshNote leaves
-// a simulated summary alone. Everything shown goes through textContent; no
-// request of its own.
+// LAB (never merged). Card 38-0, round 3: "What you missed" shows only past
+// the corner's 10 minutes, with no time limit, folded past 2 h and on a click
+// on the map. A switch runs main's summary ("Today", verbatim copies below) or
+// the site's new one ("New"); a second picks how the header's two counts are
+// told apart; three buttons hold an invented kill history. Hooks in the site,
+// one line each: fightSamples and killView's body take the simulation;
+// missedMakeNote, missedMatchOffered, paintMissed and missedFold hand over to
+// main's behaviour under "Today"; missedRefreshNote leaves a simulated summary
+// alone. Everything shown goes through textContent; no request of its own.
 
 const LAB_KEY = 'wvw-lab-38-0';
-const LAB_VERSION = 2;
+const LAB_VERSION = 3;
 const LAB_SIM_MS = 10 * 60 * 1000;
 const LAB_MAPS = ['Center', 'RedHome', 'BlueHome', 'GreenHome'];
 const LAB_MODES = { today: 'Today', new: 'New' };
+const LAB_BADGES = { colour: 'Colour', icons: 'Icons', both: 'Both' };
 
 const labEl = (tag, cls, text) => {
   const e = document.createElement(tag);
@@ -21,12 +23,13 @@ const labEl = (tag, cls, text) => {
 };
 
 function labReadPrefs() {
-  const p = { open: false, mode: 'new' };
+  const p = { open: false, mode: 'new', badges: 'both' };
   try {
     const v = JSON.parse(localStorage.getItem(LAB_KEY) || 'null');
     if (!v || v.v !== LAB_VERSION) return p;
     if (typeof v.open === 'boolean') p.open = v.open;
     if (Object.prototype.hasOwnProperty.call(LAB_MODES, v.mode)) p.mode = v.mode;
+    if (Object.prototype.hasOwnProperty.call(LAB_BADGES, v.badges)) p.badges = v.badges;
   } catch { /* storage off or corrupt: the defaults */ }
   return p;
 }
@@ -58,6 +61,16 @@ function labTodayPaint(view) {
   labMainPaintMissed(view);
   return true;
 }
+// main has no fold on a click on the map.
+function labTodayFold() {
+  return labToday();
+}
+
+// Colour, Icons or Both: the site draws both; lab.css takes one away.
+function labApplyBadges() {
+  const root = document.documentElement;
+  for (const k of Object.keys(LAB_BADGES)) root.classList.toggle(`lab-badges-${k}`, labPrefs.badges === k);
+}
 
 // Every summary up is made again under the other mode, from the same bodies.
 function labRemakeNotes() {
@@ -65,7 +78,7 @@ function labRemakeNotes() {
     if (!note.before) continue;
     missedMakeNote(note.before, note.after, note.rawSince, note.back, note.kind, note.endAt ?? Date.now());
     const fresh = missedNotes.get(id);
-    if (fresh) Object.assign(fresh, { until: note.until, open: note.open, wideOpen: note.wideOpen, moreMaps: note.moreMaps });
+    if (fresh) fresh.until = note.until;
   }
 }
 
@@ -119,22 +132,41 @@ function labLiveMatches() {
   return out;
 }
 
-// 29/10, NA T1 Green BL: a step every 5 min, the tab hidden right after the
-// +84, and this page's copy 2 behind the shared history at the return (20
-// against 22). The +83 lands in the history 3 min after the click.
+// 29/10, NA T1 Green BL: a step every 5 min, the tab hidden 12 min from just
+// after the +84, and this page's copy 2 behind the shared history at the
+// return. At the return the data covers exactly the corner's 10 min, so "New"
+// waits; the +61, 2:50 after the click, makes the period longer and the
+// summary is born, its kills above the corner's.
 function labSim2910(m, t0) {
   const steps = [
-    { t: -labMin(15), map: 'GreenHome', d: 56 },
-    { t: -labMin(10), map: 'GreenHome', d: 84 },
-    { t: -labMin(5), map: 'GreenHome', d: 22 },
-    { t: labMin(3), map: 'GreenHome', d: 83 },
+    { t: -labMin(17, 10), map: 'GreenHome', d: 56 },
+    { t: -labMin(12, 10), map: 'GreenHome', d: 84 },
+    { t: -labMin(7, 10), map: 'GreenHome', d: 22 },
+    { t: -labMin(2, 10), map: 'GreenHome', d: 83 },
+    { t: labMin(2, 50), map: 'GreenHome', d: 61 },
   ];
   const body = fightTotals(m);
   const top = { ...body, GreenHome: (body.GreenHome || 0) + 2 };
   const before = labClone(m);
-  labLessKills(before, 'GreenHome', 20);
+  labLessKills(before, 'GreenHome', 22 + 83 - 2);
   return { body, samples: labBuildSamples(-labMin(40), steps, top, t0),
-    note: { before, after: m, since: t0 - labMin(9, 30) } };
+    note: { before, after: m, since: t0 - labMin(12) } };
+}
+
+// Away 5 min on a busy EBG: the data covers less than the corner's 10 min,
+// and the steps after the return were seen live, so "New" shows nothing.
+function labSimShort(m, t0) {
+  const steps = [
+    { t: -labMin(6, 20), map: 'Center', d: 40 },
+    { t: -labMin(1, 20), map: 'Center', d: 30 },
+    { t: labMin(3, 40), map: 'Center', d: 25 },
+    { t: labMin(8, 40), map: 'Center', d: 20 },
+  ];
+  const body = fightTotals(m);
+  const before = labClone(m);
+  labLessKills(before, 'Center', 30);
+  return { body, samples: labBuildSamples(-labMin(30), steps, body, t0),
+    note: { before, after: m, since: t0 - labMin(5) } };
 }
 
 const LAB_FLIPS = new Set(['Camp', 'Tower', 'Keep', 'Castle']);
@@ -169,7 +201,8 @@ function labSim8h(m, t0) {
 }
 
 const LAB_SIMS = {
-  d2910: { make: labSim2910, done: 'Simulated on every live match: open a tier\'s maps, Green BL tab. The +83 lands in 3 min.' },
+  d2910: { make: labSim2910, done: 'Simulated on every live match: open a tier\'s maps, Green BL tab. Under New the summary comes with the next kills, in 3 min.' },
+  short: { make: labSimShort, done: 'Simulated on every live match: open a tier\'s maps. Under New no summary, under Today one.' },
   away8h: { make: labSim8h, done: 'Simulated on every live match: open a tier\'s maps. The summary is on every map.' },
 };
 
@@ -268,8 +301,29 @@ function labBuildPanel() {
   }
   body.appendChild(fs);
 
+  body.appendChild(labEl('span', 'lab-muted', 'The two counts in the header'));
+  const fb = labEl('fieldset', 'lab-switch');
+  fb.appendChild(labEl('legend', 'lab-sr-legend', 'The two counts in the header'));
+  for (const [k, text] of Object.entries(LAB_BADGES)) {
+    const rl = labEl('label');
+    const r = labEl('input');
+    r.type = 'radio';
+    r.name = 'lab-badges';
+    r.value = k;
+    r.addEventListener('change', () => {
+      if (!r.checked) return;
+      labPrefs.badges = k;
+      labSave();
+      labPaintPanel();
+    });
+    rl.append(r, labEl('span', null, text));
+    fb.appendChild(rl);
+  }
+  body.appendChild(fb);
+
   const buttons = [
     ['Simulate 29/10 (invented numbers)', () => labSimulate('d2910')],
+    ['Simulate short absence, 5 min (invented numbers)', () => labSimulate('short')],
     ['Simulate 8 h away (invented numbers)', () => labSimulate('away8h')],
     ['Back to live data', () => labEndSim('Back to live data.')],
   ];
@@ -294,7 +348,9 @@ function labPaintPanel() {
   body.hidden = !labPrefs.open;
   toggle.setAttribute('aria-expanded', labPrefs.open ? 'true' : 'false');
   toggle.textContent = labPrefs.open ? 'Lab ×' : 'Lab';
-  for (const r of body.querySelectorAll('input[type=radio]')) r.checked = labPrefs.mode === r.value;
+  for (const r of body.querySelectorAll('input[name=lab-mode]')) r.checked = labPrefs.mode === r.value;
+  for (const r of body.querySelectorAll('input[name=lab-badges]')) r.checked = labPrefs.badges === r.value;
+  labApplyBadges();
 }
 
 labPanel = labBuildPanel();

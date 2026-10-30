@@ -450,8 +450,8 @@ function hotMapOf(match, types) {
 // "return"). Either way it is the body kept before the gap against the
 // first one after it: the objectives that changed hands, as chips, and the
 // kills from the gap up to the newest data (missedView). Nothing changed,
-// nothing shows. Every body passes through missedMatchOffered, called from
-// keepNewestMatch in api.js.
+// or a period the map's corner already covers, nothing shows. Every body
+// passes through missedMatchOffered, called from keepNewestMatch in api.js.
 const MISSED_SHOW_MS = 10 * 60 * 1000;      // the summary stays this long after the data came back
 const MISSED_RING_MS = 7 * 1000;            // four pulses of the ring (css/maps.css)
 const MISSED_ASLEEP_MS = 3 * 60 * 1000;     // no read for this long: the page was not asking (a laptop asleep)
@@ -579,13 +579,9 @@ function missedPeriod(before, after, since, back, changes = []) {
   return { start, end: Math.max(end, newest), sure };
 }
 
-// The summary's period never reaches back further than this, a skirmish:
-// over a longer stretch most objectives have changed hands and the list is
-// the map as it stands, not what changed.
-const MISSED_SPAN_MAX_MS = 2 * 60 * 60 * 1000;
-// A start moved by that limit counts kills from a reading at most this far
-// before it, the history's own pace. With none, the summary gives no number.
-const MISSED_BASE_MS = 5 * 60 * 1000;
+// A summary over this long is born folded: a list of hours reads as the
+// map as it stands, so it opens only when asked.
+const MISSED_FOLD_MS = 2 * 60 * 60 * 1000;
 
 function missedMakeNote(before, after, since, back, kind, endAt = back) {
   if (typeof labTodayMakeNote === 'function' && labTodayMakeNote(before, after, since, back, kind, endAt)) return; // LAB (never merged)
@@ -602,7 +598,7 @@ function missedMakeNote(before, after, since, back, kind, endAt = back) {
   // browser's log moments later.
   const period = missedPeriod(before, after, since, endAt, listed);
   const note = { kind, back, before, rawSince: since, after, endAt, listed, period,
-    until: back + MISSED_SHOW_MS, open: false, wideOpen: true, moreMaps: new Set(),
+    until: back + MISSED_SHOW_MS, born: false, open: false, wideOpen: true, moreMaps: new Set(),
     get since() { return missedView(note).since; },
     get end() { return missedView(note).end; },
     get sure() { return missedView(note).sure; },
@@ -615,38 +611,36 @@ function missedMakeNote(before, after, since, back, kind, endAt = back) {
 
 // What the summary says now: the history moves under it without a new body.
 // The end is the map corner's own (killView's clock and per-map highs), so the
-// two count to the same point; only the start differs.
+// two count to the same point; only the start differs, and the kills count
+// from the body before. `born`: the summary shows only once its period is
+// longer than the corner's HOT_WANT_MS, so its kills are never fewer than the
+// corner's and never nest inside them; data that came after `back` was seen
+// live and does not lengthen it. Once born it stays until `until`: a corner
+// clock moved back by the history does not take it away again.
 function missedView(note) {
-  const { before, after, rawSince, endAt, listed, period } = note;
+  const { before, after, back, endAt, listed, period } = note;
   const kept = newestMatches.get(after.id);
   const body = kept && kept.match.start_time === after.start_time
     && missedKillTotal(kept.match) > missedKillTotal(after) ? kept.match : after;
   const corner = killView(body);
-  let start = period.start;
-  let sure = period.sure;
-  let end = Math.max(corner.clock || period.end, start,
+  const start = period.start;
+  const end = Math.max(corner.clock || period.end, start,
     ...listed.map((c) => (c.flipped <= endAt ? c.flipped : -Infinity)));
-  const capped = end - start > MISSED_SPAN_MAX_MS;
-  if (capped) { start = end - MISSED_SPAN_MAX_MS; sure = true; }
-  const changes = capped ? listed.filter((c) => c.flipped >= start && c.flipped <= end) : listed;
+  if (!note.born && Math.min(end, back) - start > HOT_WANT_MS) {
+    note.born = true;
+    if (end - start > MISSED_FOLD_MS) note.wideOpen = false;
+  }
 
   const list = fightSamples(after);
-  let base = null;
-  if (!capped) {
-    base = killHighs(fightTotals(before), list.filter((s) => s.at <= start));
-  } else {
-    const near = [...list, { at: rawSince, n: fightTotals(before) }]
-      .filter((s) => s.at <= start && start - s.at <= MISSED_BASE_MS);
-    if (near.length) base = killHighs({}, near);
-  }
+  const base = killHighs(fightTotals(before), list.filter((s) => s.at <= start));
   const high = corner.high || killHighs(fightTotals(body), list);
   const order = Object.keys(MAP_TAB_NAME);
-  const perMap = !base ? [] : Object.keys(high)
+  const perMap = Object.keys(high)
     .map((type) => ({ type, n: Math.max(0, high[type] - (Number(base[type]) || 0)) }))
     .filter((m) => m.n > 0)
     .sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
   const kills = perMap.reduce((n, m) => n + m.n, 0);
-  return { since: start, end, sure, changes, perMap, kills };
+  return { born: note.born, since: start, end, sure: period.sure, changes: listed, perMap, kills };
 }
 
 // A newer body while the summary is up (the first answer after a gap may come
@@ -660,7 +654,8 @@ function missedRefreshNote(match, now) {
   const old = note;
   missedMakeNote(old.before, match, old.rawSince, old.back, old.kind, now);
   const fresh = missedNotes.get(match.id);
-  Object.assign(fresh, { until: old.until, open: old.open, wideOpen: old.wideOpen, moreMaps: old.moreMaps });
+  fresh.until = old.until;
+  if (old.born) Object.assign(fresh, { born: true, open: old.open, wideOpen: old.wideOpen, moreMaps: old.moreMaps });
   return true;
 }
 
@@ -701,6 +696,14 @@ document.addEventListener('visibilitychange', () => {
   }
   missedHidden = null;
 });
+
+// A click on an objective of the map folds the summary on every width, so the
+// objective's tab has the room; it stays folded until the reader opens it.
+function missedFold(matchId) {
+  if (typeof labTodayFold === 'function' && labTodayFold()) return; // LAB (never merged)
+  const note = missedNotes.get(matchId);
+  if (note) { note.open = false; note.wideOpen = false; }
+}
 
 function missedNoteFor(matchId) {
   const note = missedNotes.get(matchId);
