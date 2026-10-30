@@ -248,7 +248,7 @@ async function acceptLatest(env, source, body, t, now) {
   console.log(JSON.stringify({ source, ok: true, applied: applied.length, lost: lost.length, board }));
   if (entered) {
     try {
-      await rebuildRecent(env.DB, now);
+      await rebuildRecent(env.DB, now, true);
     } catch (e) {
       console.log(JSON.stringify({ source, recent: 'failed', why: String(e) }));
     }
@@ -368,6 +368,10 @@ function toBase64(bytes) {
 
 const KILLS_LINE_MS = 55e3;
 
+// The readers' rebuilds go on from the last body within one slot of this
+// length; the first of the next slot is the full read, so an error does not last.
+const FULL_EVERY_MS = 10 * 60e3;
+
 // The one row GET /api/kills reads. Built here, once per tick, so a read
 // costs one row of D1's 5 million a day however many there are: the cheapest
 // query over the kills table itself costs ~60, and the Worker's own limit of
@@ -386,7 +390,18 @@ const KILLS_LINE_MS = 55e3;
 // shows one, or a late batch reached behind this window (kills.gs down while
 // the readers are up). Every query reads kills by its key, `at` bounded as
 // well as the match; a test checks their plans and the rows they hand back.
-async function rebuildRecent(db, now) {
+//
+// With `incremental` (the readers' entrance) the window is not read again: it
+// is the last body, its rows since the cut, plus the lines newer than the
+// body's newest of each match. That holds only because killsInsert lets in
+// nothing behind the newest line of a match, kills.gs included; if it did, the
+// line would be missing from the body until the next slot. The rest below runs
+// on it unchanged, and the differential test of the readers' entrance proves
+// the body is the full read's. The full read instead (logged with its reason):
+// no body, one that does not join up, one from another slot, a line to read
+// missing, a write another rebuild overtook. kills.gs never asks for it: its
+// batches reach behind the window.
+async function rebuildRecent(db, now, incremental = false) {
   const started = Date.now();
   const nowMs = now * 1000;
   const cut = nowMs - RECENT_MS;
@@ -402,7 +417,12 @@ async function rebuildRecent(db, now) {
   // design, so it is no sign of a late batch.
   const carried = last && last.at >= cut ? JSON.parse(last.rows) : null;
   const held = new Set(carried ? carried.map((r) => r[1] + ' ' + r[0]) : []);
-  const { results } = await db.prepare(windowSql).bind(cut, floor, ...MATCHES).all();
+  let why = !last ? 'no body' : !carried ? 'body does not join up' : nowMs < last.at ? 'clock behind the body'
+    : Math.floor(last.at / FULL_EVERY_MS) !== Math.floor(started / FULL_EVERY_MS) ? 'new slot' : null;
+  const fast = incremental && !why ? await incrementalWindow(db, carried, cut, floor) : null;
+  if (incremental && !why && !fast) why = 'line missing';
+  if (incremental && why) console.log(JSON.stringify({ recent: 'full', why }));
+  const results = fast || (await db.prepare(windowSql).bind(cut, floor, ...MATCHES).all()).results;
   const plan = new Map();
   for (const m of MATCHES) {
     const own = results.filter((r) => r.match === m);
@@ -466,12 +486,49 @@ async function rebuildRecent(db, now) {
     out.push(...add.values());
   }
   out.sort((a, b) => a[0] - b[0]);
+  if (fast) {
+    const w = await db.prepare('UPDATE recent SET at = ?1, rows = ?2 WHERE id = 1 AND at = ?3')
+      .bind(started, JSON.stringify(out), last.at).run();
+    if (w.meta && w.meta.changes === 1) return;
+    console.log(JSON.stringify({ recent: 'full', why: 'write overtaken' }));
+    return rebuildRecent(db, now);
+  }
   // `at` is the start in milliseconds: two readers push in the same second, and
   // the one that began earlier writes nothing over the one that began later.
   await db.prepare(
     'INSERT INTO recent (id, at, rows) VALUES (1, ?1, ?2) ' +
     'ON CONFLICT (id) DO UPDATE SET at = excluded.at, rows = excluded.rows WHERE excluded.at >= recent.at'
   ).bind(started, JSON.stringify(out)).run();
+}
+
+// What windowSql gives, from the last body: per match its rows after the cut,
+// the newest at or before it (after the floor), and the lines of the table
+// newer than the body's newest of the match. The week (`start`) is read only
+// for the two rows that need it. null: a row to read is not there.
+async function incrementalWindow(db, carried, cut, floor) {
+  const newest = new Map();
+  for (const r of carried) newest.set(r[1], r[0]);
+  const { results: fresh } = await db.prepare(newSql)
+    .bind(JSON.stringify(MATCHES.map((m) => [m, newest.get(m) ?? floor]))).all();
+  const have = new Map(MATCHES.map((m) => [m, []]));
+  for (const r of carried) have.get(r[1]).push({ at: r[0], match: r[1], center: r[2], red: r[3], blue: r[4], green: r[5] });
+  for (const r of fresh) have.get(r.match).push(r);
+  const out = [], asks = [];
+  for (const rows of have.values()) {
+    rows.sort((a, b) => a.at - b.at);
+    const inside = rows.filter((r) => r.at > cut);
+    const bat = rows.findLast((r) => r.at <= cut && r.at > floor);
+    const own = bat ? [bat, ...inside] : inside;
+    for (const r of [bat, own[own.length - 1]]) if (r && r.start === undefined) asks.push([r.match, r.at]);
+    out.push(...own);
+  }
+  if (asks.length) {
+    const { results } = await db.prepare(startSql).bind(JSON.stringify(asks)).all();
+    const weeks = new Map(results.map((r) => [r.match + ' ' + r.at, r.start]));
+    for (const [m, at] of asks) if (!weeks.has(m + ' ' + at)) return null;
+    for (const r of out) if (r.start === undefined && weeks.has(r.match + ' ' + r.at)) r.start = weeks.get(r.match + ' ' + r.at);
+  }
+  return out.sort((a, b) => a.at - b.at);
 }
 
 function sum(r) {
@@ -515,6 +572,14 @@ const windowSql = 'WITH ids(m) AS (VALUES ' + MATCHES.map((_, i) => '(?' + (i + 
     'SELECT k.* FROM ids JOIN kills k ON k.match = ids.m AND k.at = ' +
       '(SELECT at FROM kills WHERE match = ids.m AND at <= ?1 AND at > ?2 ORDER BY at DESC LIMIT 1)' +
   ') ORDER BY at';
+
+// Per [match, at]: that match's lines after `at`.
+const newSql = 'WITH a(m, t) AS (SELECT json_extract(j.value, \'$[0]\'), json_extract(j.value, \'$[1]\') FROM json_each(?1) j) ' +
+  'SELECT k.at, k.match, k.center, k.red, k.blue, k.green, k.start FROM a JOIN kills k ON k.match = a.m AND k.at > a.t';
+
+// Per [match, at]: the week of that line.
+const startSql = 'SELECT k.at, k.match, k.start FROM json_each(?1) j JOIN kills k ' +
+  "ON k.match = json_extract(j.value, '$[0]') AND k.at = json_extract(j.value, '$[1]')";
 
 const ask = (i) => "json_extract(j.value, '$[" + i + "]')";
 const rowsAtSql = 'WITH a(m, t, op) AS (SELECT ' + ask(0) + ', ' + ask(1) + ', ' + ask(2) + ' FROM json_each(?1) j), ' +
