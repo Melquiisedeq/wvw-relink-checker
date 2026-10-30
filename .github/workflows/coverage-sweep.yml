@@ -1,4 +1,4 @@
-# The committed coverage (.github/e2e/coverage.json) is the minimum per file over
+# The committed coverage (tests/e2e/coverage.json) is the minimum per file over
 # several runs, because a few lines and branches are covered by luck of timing
 # (real timers, an aborted read). This runs the whole e2e job N times at once,
 # lists what some runs covered and others did not, and fails if anything did, so the
@@ -57,7 +57,7 @@ jobs:
         index: ${{ fromJSON(needs.plan.outputs.indexes) }}
     defaults:
       run:
-        working-directory: .github/e2e
+        working-directory: tests/e2e
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -86,7 +86,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-${{ matrix.index }}
-          path: .github/e2e/sweep-out/
+          path: tests/e2e/sweep-out/
           retention-days: 1
           if-no-files-found: error
 
@@ -105,7 +105,7 @@ jobs:
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: coverage-*
-          path: .github/e2e/sweep-in
+          path: tests/e2e/sweep-in
 
       # A run that failed has no report; the sweep says so and fails, then lists
       # what the others show. The report reads JSON only: no npm ci.
@@ -114,7 +114,7 @@ jobs:
           PLAN: ${{ needs.plan.result }}
           RUN: ${{ needs.run.result }}
         run: |
-          cd .github/e2e
+          cd tests/e2e
           arrived=$(ls -d sweep-in/coverage-* 2>/dev/null | wc -l)
           echo "Runs that reached the report: $arrived (plan $PLAN, run $RUN)" | tee -a "$GITHUB_STEP_SUMMARY"
           code=0

@@ -1,11 +1,11 @@
 // The latest entrance and its reads (worker/index.mjs) against a real SQLite:
 // what the readers may push, which body is kept, and what GET /api/latest gives.
-// Run: node --test "tests/*.test.mjs"
+// Run: node --test "tests/unit/*.test.mjs"
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
-import worker from '../worker/index.mjs';
+import worker from '../../worker/index.mjs';
 import { fakeD1 } from './fake-d1.mjs';
 import { signHeaders } from './signed.mjs';
 

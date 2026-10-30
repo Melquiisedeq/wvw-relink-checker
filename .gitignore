@@ -34,8 +34,8 @@ _teste
 CLAUDE.md
 .claude
 
-# The browser tests' dependencies (.github/e2e), installed by npm ci from the
+# The browser tests' dependencies (tests/e2e), installed by npm ci from the
 # lockfile, and what a run leaves behind: traces and the JSON report.
 node_modules
-.github/e2e/test-results
-.github/e2e/sweep-results
+tests/e2e/test-results
+tests/e2e/sweep-results

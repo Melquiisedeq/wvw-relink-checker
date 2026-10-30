@@ -271,7 +271,7 @@ function keepNewestMatch(match) {
   }
   // An answer that does not move the data still ends a gap - a read asked
   // before a sleep can land after it - so the rise after it in the same burst
-  // happened inside the gap too: it keeps `gapFrom` (tests/page-rules.test.mjs).
+  // happened inside the gap too: it keeps `gapFrom` (tests/unit/page-rules.test.mjs).
   const gapped = !(Date.now() - answeredBefore <= MATCH_GAP_MS);
   if (kept && matchIsBehind(match, kept.match)) {
     if (gapped) kept.gapFrom = answeredBefore;

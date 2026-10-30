@@ -12,9 +12,9 @@ import { answer, fail } from './support/faults.mjs';
 import { phone, recordedJson, load, firstTier, openMap, later } from './support/steps.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { FOCUS, killRows } from './support/scenarios.mjs';
-import { signHeaders, postSigned } from '../../tests/signed.mjs';
+import { signHeaders, postSigned } from '../unit/signed.mjs';
 import worker from '../../worker/index.mjs';
-import { fakeD1 } from '../../tests/fake-d1.mjs';
+import { fakeD1 } from '../unit/fake-d1.mjs';
 
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
 

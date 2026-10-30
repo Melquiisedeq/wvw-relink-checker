@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
 
-const ico = readFileSync(new URL('../site/favicon.ico', import.meta.url));
+const ico = readFileSync(new URL('../../site/favicon.ico', import.meta.url));
 
 // Frames of an ICO: 6-byte header, 16-byte entries, each frame a PNG here.
 function frames(buf) {

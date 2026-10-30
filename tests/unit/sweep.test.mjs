@@ -1,8 +1,8 @@
-// The rules of the coverage sweep (.github/e2e/support/sweep.mjs): what oscillates between runs,
+// The rules of the coverage sweep (tests/e2e/support/sweep.mjs): what oscillates between runs,
 // what no run covers, and the minimum per file. Reports made by hand, istanbul's shape.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addedLines, compareRuns, mdCode, minimumOf, sweepText, untestedLines, untestedText } from '../.github/e2e/support/sweep.mjs';
+import { addedLines, compareRuns, mdCode, minimumOf, sweepText, untestedLines, untestedText } from '../e2e/support/sweep.mjs';
 
 const at = line => ({ start: { line } });
 // Statements on lines 1, 2, 3; one if on line 2 with two arms (lines 2 and 3).

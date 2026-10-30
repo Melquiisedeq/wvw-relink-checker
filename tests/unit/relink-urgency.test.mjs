@@ -1,7 +1,7 @@
 // The hours that make a region's relink urgent (js/relink.js regionIsUrgent):
 // the edges of each of its three ways in, which a browser test would have to
 // wait out to the minute. What the bar shows for them is tests in
-// .github/e2e/banners.spec.mjs.
+// tests/e2e/banners.spec.mjs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadPage } from './page-harness.mjs';

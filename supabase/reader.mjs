@@ -1,7 +1,7 @@
 // @ts-nocheck
 // Supabase Edge Function (Deno), one of the outside readers of the game API.
 // Paste the whole file into the dashboard editor as index.ts of the function reader:
-// one file, no imports. Under Node (tests/reader.test.mjs) it is imported as it is;
+// one file, no imports. Under Node (tests/unit/reader.test.mjs) it is imported as it is;
 // only the last lines touch Deno.
 // The scheduler (scheduler.sql) calls it with x-region us-east-1 or eu-central-1;
 // that header only routes the call to a region. What picks the secret that signs,

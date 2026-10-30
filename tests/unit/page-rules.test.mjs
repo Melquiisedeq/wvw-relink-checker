@@ -1,6 +1,6 @@
 // The page's own rules, run in Node without a browser: the scripts of site/js
-// load into a node:vm (tests/page-harness.mjs) and the rules are fed bodies
-// from the e2e recording (.github/e2e/recordings.json.gz), mutated by a fixed-seed PRNG (a missing
+// load into a node:vm (tests/unit/page-harness.mjs) and the rules are fed bodies
+// from the e2e recording (tests/e2e/recordings.json.gz), mutated by a fixed-seed PRNG (a missing
 // field, null, a garbage date, a frozen body, an older body in between).
 // Each test names the file holding the rule it pins down.
 import test from 'node:test';
@@ -764,7 +764,7 @@ test('runPeek: the next peek lands PEEK_AFTER_MS after a 30 s mark on the server
 });
 
 test('emberField: stop then start in the same frame leaves one frame chain (js/boot.js)', () => {
-  const src = fs.readFileSync(new URL('../site/js/boot.js', import.meta.url), 'utf8');
+  const src = fs.readFileSync(new URL('../../site/js/boot.js', import.meta.url), 'utf8');
   const a = src.indexOf('const emberField = (function () {');
   const b = src.indexOf('\n})();', a);
   assert.ok(a >= 0 && b > a);

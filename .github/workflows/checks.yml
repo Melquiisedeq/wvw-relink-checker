@@ -3,7 +3,7 @@
 # ordered list in index.html, a host missing from the Content Security Policy,
 # a syntax error in a file nothing parses until a browser does - and the e2e
 # job (Playwright Test) opens it in a real Chrome and fails on whatever the
-# browser objects to. The rules job runs the unit tests (tests/), among them
+# browser objects to. The rules job runs the unit tests (tests/unit/), among them
 # the Worker behind /api, the page's own functions in a node:vm, and the Apps
 # Script setup() of the teams notice against a fake spreadsheet. Five jobs;
 # four are required (structure, syntax, rules, page), and page passes only if
@@ -80,15 +80,15 @@ jobs:
       # The runner's own Node, no setup step and nothing installed: node:test
       # is built in, and node:sqlite (the fake D1) needs 22.13 or later, which
       # the image carries (Node 22; the step prints the exact version).
-      # The page's own rules (tests/page-rules.test.mjs: the scripts in a
+      # The page's own rules (tests/unit/page-rules.test.mjs: the scripts in a
       # node:vm, no browser) and the notice's Apps Script setup() ride along.
       # The dot reporter keeps the log to the failures.
-      - name: The unit tests (tests/*.test.mjs)
+      - name: The unit tests (tests/unit/*.test.mjs)
         run: |
           node --version
-          node --test --test-reporter=dot "tests/*.test.mjs"
+          node --test --test-reporter=dot "tests/unit/*.test.mjs"
 
-  # Playwright Test (.github/e2e): the repository's dependencies (with monocart-coverage-reports,
+  # Playwright Test (tests/e2e): the repository's dependencies (with monocart-coverage-reports,
   # below), for the tests only - the exact versions of the lockfile, no install scripts, no
   # browser downloaded (the image's Google Chrome), no secret, the same
   # read-only token. The API and the sheets answer from a recording, so a GW2
@@ -99,7 +99,7 @@ jobs:
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: .github/e2e
+        working-directory: tests/e2e
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -149,7 +149,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-traces
-          path: .github/e2e/test-results/
+          path: tests/e2e/test-results/
           retention-days: 3
           if-no-files-found: ignore
 

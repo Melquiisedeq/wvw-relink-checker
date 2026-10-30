@@ -1,7 +1,7 @@
 // Playwright Test for the page in site/. The site has no dependencies; these
 // tests have two (Playwright Test, monocart-coverage-reports), kept here, away from what is published.
 //
-//   cd .github/e2e && npm ci --ignore-scripts && npx playwright test
+//   cd tests/e2e && npm ci --ignore-scripts && npx playwright test
 //
 // No browser is downloaded. CHROME names the executable to drive; without it,
 // the cloud sandbox's /opt/pw-browsers/chromium when it exists, else the
