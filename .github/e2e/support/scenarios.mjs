@@ -99,6 +99,18 @@ export const missed = (min = 5, flips = 3, id) => opened(id).advance(min, { flip
 // of the absence: the body a tab comes back to is that old.
 export const missedStopped = (min = 67, flips = 6, stopped = 23, id) => missed(min, flips, id).freeze(stopped);
 
+// A long absence's world: `min` minutes of a slow fight (`pace` kills a minute
+// on EBG) with `flips` objectives changing hands, from the opening.
+export const missedLong = (min = 480, flips = 40, pace = 3, id) =>
+  opened(id).advance(min, { kills: { Center: pace }, flips });
+
+// A slow fight (`pace` kills a minute on EBG) for `min` minutes from the
+// opening, the visitor's whole group `lag` minutes behind and /api/latest
+// down: every body the page keeps is a few kills behind the shared kill
+// history, the one a tab comes back to included.
+export const missedBehind = (min = 40, lag = 1, pace = 2, id) =>
+  opened(id).latestStatus(503).olderPool(lag, { every: true }).advance(min, { kills: { Center: pace }, flips: 2 });
+
 // The world as of an absolute instant (`iso`, UTC) instead of minutes after the
 // recording: the recorded weeks rolled over to the one that holds it, twelve
 // minutes of a fight ending at most a minute before it. The fixture installs

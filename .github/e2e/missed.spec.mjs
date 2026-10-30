@@ -1,20 +1,22 @@
 // "What happened" over a tier's map: the rules straight on missedMatchOffered, then
 // the block a visitor sees after a gap.
 //
-// Rules: bodies made from a kept match, no clicks, no clock, nothing that can be
-// late. A summary only for a real gap (the score still past 6 min, the page
-// reading through it, something changed) or a return to the tab; never for the
-// same body, one behind, a new week, a laptop asleep, a short stop, or a gap the
-// page did not read through; Ruins and Spawn never chips; kills never below 0;
-// gone after 10 min; a fault in the hook never costs keepNewestMatch its body.
+// Rules: bodies made from a kept match, no clicks, nothing that can be late; no
+// clock but the page's own, held still where an absence is timed to the
+// millisecond. A summary only for a real gap (no new body for over 10 min, the page
+// reading through it, something changed) or a return to the tab after over
+// 10 min; never for the same body, one behind, a new week, a laptop asleep, a
+// stop or an absence of 10 min or less, or a gap the page did not read through;
+// Ruins and Spawn never chips; kills never below 0; gone after 10 min; a fault
+// in the hook never costs keepNewestMatch its body.
 //
-// Block: a match answered with the same body for over 6 min while the page kept
-// asking, then a body with two objectives taken (one on the open map, one on
-// another) and a known number of kills more.
+// Block: a match answered with the same body for over 10 min while the page
+// kept asking, then a body with two objectives taken (one on the open map, one
+// on another) and a known number of kills more.
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
 import { phone, load, firstTier, openMap, later, keptMatch, iso } from './support/steps.mjs';
-import { FOCUS, MIN, hidden, missedStopped, visible } from './support/scenarios.mjs';
+import { FOCUS, MIN, hidden, missed, missedBehind, missedStopped, visible } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
 
@@ -56,18 +58,41 @@ function rulesInPage(group) {
   try {
     if (group === 'when') {
       const a = after();
-      n = offer(a.m, 7 * MIN, 30000);
+      n = offer(a.m, 12 * MIN, 30000);
       check('a real gap raised no summary', !!n && n.kind === 'pause');
       check('a real gap listed other changes', !!n && n.changes.length === 2 && a.taken.every(x => n.changes.some(c => c.id === x)), n && n.changes.map(c => c.id).join(','));
       check('a real gap counted kills other than after minus before', !!n && n.kills === 50, n && n.kills);
-      check('the same body again raised a summary', !offer(clone(), 7 * MIN, 30000));
+      check('the same body again raised a summary', !offer(clone(), 12 * MIN, 30000));
       const behind = clone(); behind.scores.red -= 50; behind.maps[0].kills.red += 5;
-      check('a body behind raised a summary', !offer(behind, 7 * MIN, 30000));
+      check('a body behind raised a summary', !offer(behind, 12 * MIN, 30000));
       const week = after().m; week.start_time = new Date(Date.parse(M0.start_time) + 7 * 86400000).toISOString();
-      check('a new week raised a summary', !offer(week, 7 * MIN, 30000));
+      check('a new week raised a summary', !offer(week, 12 * MIN, 30000));
       check('a laptop asleep raised a summary', !offer(after().m, 20 * MIN, 5 * MIN));
-      check('a 3-minute stop raised a summary', !offer(after().m, 3 * MIN, 30000));
-      check('a gap with no read in it raised a summary', !offer(after().m, 7 * MIN, 8 * MIN));
+      check('a 7-minute stop raised a summary', !offer(after().m, 7 * MIN, 30000));
+      check('a gap with no read in it raised a summary', !offer(after().m, 12 * MIN, 13 * MIN));
+    }
+    if (group === 'absence') {
+      // The page's clock held still, so 10 min is 10 min to the millisecond.
+      const DateWas = Date;
+      const hiddenWas = missedHidden;
+      globalThis.Date = new Proxy(DateWas, { get: (t, p) => (p === 'now' ? () => now : Reflect.get(t, p, t)) });
+      try {
+        check('a stop of exactly 10 min raised a summary', !offer(after().m, 10 * MIN, 30000));
+        n = offer(after().m, 10 * MIN + 1000, 30000);
+        check('a stop of 10 min and 1 s raised none', !!n && n.kind === 'pause');
+        const back = ms => {
+          reset();
+          missedHidden = { at: now - ms, bodies: new Map([[id, clone()]]) };
+          document.dispatchEvent(new Event('visibilitychange'));
+          return missedReturn;
+        };
+        check('the page is not visible, the absence cannot be tried', document.visibilityState === 'visible');
+        check('a tab hidden exactly 10 min was taken as away', !back(10 * MIN));
+        check('a tab hidden 10 min and 1 s was not taken as away', !!back(10 * MIN + 1000));
+      } finally {
+        globalThis.Date = DateWas;
+        missedHidden = hiddenWas;
+      }
     }
     if (group === 'return') {
       reset();
@@ -98,7 +123,7 @@ function rulesInPage(group) {
       killSheet = new Map([[id, [sample(now - 40 * MIN, M0), sample(now - 36 * MIN, stalled)]]]);
       reset();
       missedLastOffer.set(id, now - 30000);
-      missedMatchOffered(longer.m, { match: stalled, at: now - 7 * MIN });
+      missedMatchOffered(longer.m, { match: stalled, at: now - 12 * MIN });
       n = missedNotes.get(id);
       check('a body stopped 36 min did not start the period at the stop', !!n && n.since === now - 36 * MIN && n.sure === true, n && (n.since - now) / MIN);
       check('the period ended before the page read the new body', !!n && n.end >= n.since && n.end <= Date.now() + 1000);
@@ -112,7 +137,7 @@ function rulesInPage(group) {
       killSheet = new Map([[id, [sample(now - 40 * MIN, M0), sample(now - 36 * MIN, stalled), sample(now - 2 * MIN, longer.m)]]]);
       reset();
       missedLastOffer.set(id, now - 30000);
-      missedMatchOffered(longer.m, { match: stalled, at: now - 7 * MIN });
+      missedMatchOffered(longer.m, { match: stalled, at: now - 12 * MIN });
       n = missedNotes.get(id);
       check('the period did not end where the new total first showed', !!n && n.sure && n.end === now - 2 * MIN, n && (n.end - now) / MIN);
       // A return: the body before is older than the tab's hiding.
@@ -126,26 +151,26 @@ function rulesInPage(group) {
       // (the page read another copy 30 s after the row under it).
       const lower = clone(); lower.maps[0].kills.red += 190;
       const upper = clone(); upper.maps[0].kills.red += 210;
-      killSheet = new Map([[id, [sample(now - 9 * MIN, lower), sample(now - 8 * MIN, lower), sample(now - 7 * MIN + 30000, upper), sample(now - 6 * MIN, upper)]]]);
+      killSheet = new Map([[id, [sample(now - 14 * MIN, lower), sample(now - 13 * MIN, lower), sample(now - 12 * MIN + 30000, upper), sample(now - 11 * MIN, upper)]]]);
       reset();
       missedLastOffer.set(id, now - 30000);
-      missedMatchOffered(longer.m, { match: stalled, at: now - 7 * MIN });
+      missedMatchOffered(longer.m, { match: stalled, at: now - 12 * MIN });
       n = missedNotes.get(id);
-      check('a normal return between rows was not sure', !!n && n.sure === true && n.since === now - 7 * MIN, n && (n.since - now) / MIN + ' ' + n.sure);
+      check('a normal return between rows was not sure', !!n && n.sure === true && n.since === now - 12 * MIN, n && (n.since - now) / MIN + ' ' + n.sure);
       // The oldest reading there is only bounds the start: not sure, never later.
       killSheet = new Map([[id, [sample(now - 36 * MIN, stalled)]]]);
       reset();
       missedLastOffer.set(id, now - 30000);
-      missedMatchOffered(longer.m, { match: stalled, at: now - 7 * MIN });
+      missedMatchOffered(longer.m, { match: stalled, at: now - 12 * MIN });
       n = missedNotes.get(id);
       check('an oldest reading was taken as the exact start', !!n && n.sure === false && n.since === now - 36 * MIN, n && (n.since - now) / MIN + ' ' + n.sure);
       // No reading of that total at all: the page's own time, not sure.
       killSheet = new Map();
       reset();
       missedLastOffer.set(id, now - 30000);
-      missedMatchOffered(longer.m, { match: stalled, at: now - 7 * MIN });
+      missedMatchOffered(longer.m, { match: stalled, at: now - 12 * MIN });
       n = missedNotes.get(id);
-      check('no history claimed a sure start', !!n && n.sure === false && n.since <= now - 7 * MIN, n && n.sure);
+      check('no history claimed a sure start', !!n && n.sure === false && n.since <= now - 12 * MIN, n && n.sure);
     }
     if (group === 'flips') {
       // A listed flip older than the period the history proves: the period
@@ -162,7 +187,7 @@ function rulesInPage(group) {
       check('a return with a flip 2 h old started later than the flip', !!n && n.kind === 'return' && n.since === now - 120 * MIN && n.sure === true, n && (n.since - now) / MIN + ' ' + n.sure);
       reset();
       missedLastOffer.set(id, now - 30000);
-      missedMatchOffered(old.m, { match: clone(), at: now - 7 * MIN });
+      missedMatchOffered(old.m, { match: clone(), at: now - 12 * MIN });
       n = missedNotes.get(id);
       check('a pause with a flip 2 h old started later than the flip', !!n && n.kind === 'pause' && n.since === now - 120 * MIN && n.sure === true, n && (n.since - now) / MIN + ' ' + n.sure);
       // The history showed the new total 5 min ago, a listed flip came 1 min ago:
@@ -171,20 +196,33 @@ function rulesInPage(group) {
       killSheet = new Map([[id, [sample(now - 40 * MIN, M0), sample(now - 5 * MIN, old.m)]]]);
       reset();
       missedLastOffer.set(id, now - 30000);
-      missedMatchOffered(old.m, { match: clone(), at: now - 7 * MIN });
+      missedMatchOffered(old.m, { match: clone(), at: now - 12 * MIN });
       n = missedNotes.get(id);
       check('the period ended before a flip it lists', !!n && n.end >= now - MIN, n && (n.end - now) / MIN);
+    }
+    if (group === 'cut') {
+      // Every camp, tower and keep taken, each a minute older than the next in
+      // map order: the oldest come first, and only the newest 40 are listed.
+      const m = clone(); const order = [];
+      for (const map of m.maps) for (const o of map.objectives) if (['Camp', 'Tower', 'Keep'].includes(o.type)) { o.owner = flipTo(o.owner); order.push(o); }
+      order.forEach((o, i) => { o.last_flipped = new Date(now - (order.length - i) * MIN).toISOString(); });
+      m.maps[0].kills.red += 5;
+      check('the state: over 40 objectives to take', order.length > 40, order.length);
+      n = offer(m, 12 * MIN, 30000);
+      const want = order.slice(-40).map(o => o.id);
+      check('the 40 listed were not the newest, in map order', !!n && JSON.stringify(n.changes.map(c => c.id)) === JSON.stringify(want),
+        n && n.changes.slice(0, 3).map(c => c.id).join(',') + ' vs ' + want.slice(0, 3).join(','));
     }
     if (group === 'chips') {
       const ruins = clone();
       for (const map of ruins.maps) for (const o of map.objectives) if (o.type === 'Ruins' || o.type === 'Spawn') o.owner = flipTo(o.owner);
       ruins.maps[0].kills.red += 5;
-      n = offer(ruins, 7 * MIN, 30000);
+      n = offer(ruins, 12 * MIN, 30000);
       check('Ruins or Spawn became chips', !!n && n.changes.length === 0, n && n.changes.map(c => c.type).join(','));
       const fewer = after().m; fewer.maps[0].kills.red -= 500;
-      n = offer(fewer, 7 * MIN, 30000);
+      n = offer(fewer, 12 * MIN, 30000);
       check('kills went below 0', !n || n.kills >= 0, n && n.kills);
-      n = offer(after().m, 7 * MIN, 30000);
+      n = offer(after().m, 12 * MIN, 30000);
       if (n) n.until = Date.now() - 1;
       check('a summary outlived its 10 minutes', missedNoteFor(id) === null);
     }
@@ -212,9 +250,11 @@ function rulesInPage(group) {
 test.describe('what happened rules', () => {
   const groups = {
     when: 'a summary only for a real gap; never for the same body, one behind, a new week, a laptop asleep, a short stop, a gap with no read',
+    absence: 'a stop or a hidden tab of 10 min or less raises none, one of over 10 min does',
     return: 'a return to the tab raises one when something changed, follows a newer body, none when nothing changed',
     period: "the period is the data's: the history says when the total before first appeared",
     flips: 'a listed flip older than the period starts it, a future one is skipped, a recent one is reached',
+    cut: 'over 40 objectives taken: the newest 40 by their flip are listed',
     chips: 'Ruins and Spawn never chips; kills never below 0; gone after 10 min',
     hook: 'a fault in the hook never costs keepNewestMatch its body',
   };
@@ -234,17 +274,23 @@ const NAMES = { Center: 'EBG', RedHome: 'Red BL', BlueHome: 'Blue BL', GreenHome
 const OWNERS = ['Red', 'Blue', 'Green'];
 const BLOCK = '.info-popover .wvw-missed:not(.is-leaving)';
 const LIT = ".info-popover .wvw-marker.is-lit";
+// The block's title as words, without the count badges riding at its end.
+const titleText = (page, sel = BLOCK) => page.evaluate(s => {
+  const t = document.querySelector(`${s} .wvw-missed-title`);
+  return t ? [...t.childNodes].filter(n => !(n.classList && n.classList.contains('wvw-missed-counts'))).map(n => n.textContent).join('').trim() : null;
+}, sel);
 
-// The map opened on the first tier, the same body served for 400 s (the block
-// must not show), then the body with an objective taken here and one on another
-// map, and kills on both, served and pulled 31 s on.
+// The map opened on the first tier, the same body served for 700 s (over the
+// 10 min a summary needs; the block must not show), then the body with an
+// objective taken here and one on another map 30 min ago, and kills on both,
+// served and pulled 31 s on.
 async function gap(page, wvw) {
   await load(page, wvw);
   const tier = await firstTier(page);
   const before = await keptMatch(page, tier.id);
   const same = await answer(page, tier.url, before);
   await openMap(page, wvw, tier.button);
-  for (let i = 0; i < 4; i++) await later(page, wvw, 100000);
+  for (let i = 0; i < 7; i++) await later(page, wvw, 100000);
   const here = await page.locator('.info-popover .wvw-tab.is-active').getAttribute('data-type');
   const other = before.maps.map(m => m.type).find(type => type !== here);
   const takeable = m => (m?.objectives || []).filter(o => ['Camp', 'Tower', 'Keep'].includes(o.type) && OWNERS.includes(o.owner) && /^\d+-\d+$/.test(o.id));
@@ -254,7 +300,7 @@ async function gap(page, wvw) {
   expect(a && b, `a camp, tower or keep held on ${here} and ${other} to take`).toBeTruthy();
   const after = JSON.parse(JSON.stringify(before));
   const KILLS = { [here]: ['red', 37], [other]: ['blue', 15] };
-  const taken = new Date(Date.parse(before.start_time) + 60000).toISOString().replace('.000Z', 'Z');
+  const taken = iso(await wvw.now() - 30 * MIN);
   for (const m of after.maps) {
     for (const o of m.objectives) if (o.id === a.id || o.id === b.id) { o.owner = OWNERS[(OWNERS.indexOf(o.owner) + 1) % 3]; o.last_flipped = taken; }
     const k = KILLS[m.type];
@@ -266,13 +312,13 @@ async function gap(page, wvw) {
 }
 
 test.describe('what happened', () => {
-  test('the same body for 400 s shows no block', async ({ page, wvw }) => {
+  test('the same body for 700 s shows no block', async ({ page, wvw }) => {
     await load(page, wvw);
     const tier = await firstTier(page);
     const same = await answer(page, tier.url, await keptMatch(page, tier.id));
     await openMap(page, wvw, tier.button);
-    for (let i = 0; i < 4; i++) await later(page, wvw, 100000);
-    expect(same.reads, 'pulls of the map over 400 s').toBeGreaterThanOrEqual(4);
+    for (let i = 0; i < 7; i++) await later(page, wvw, 100000);
+    expect(same.reads, 'pulls of the map over 700 s').toBeGreaterThanOrEqual(7);
     await expect(page.locator(BLOCK), 'the block showed while the body stood still').toHaveCount(0);
   });
 
@@ -281,7 +327,7 @@ test.describe('what happened', () => {
     await g.afterTheGap();
     await expect(page.locator(BLOCK)).toBeAttached();
     const seen = await page.evaluate(sel => { const b = document.querySelector(sel);
-      return { title: b.querySelector('.wvw-missed-title').textContent, open: b.classList.contains('is-open'),
+      return { open: b.classList.contains('is-open'),
         top: b === b.parentElement.firstElementChild && b.parentElement.classList.contains('wvw-side'),
         chips: [...b.querySelectorAll('.wvw-chip[data-obj]')].map(c => c.dataset.obj + ' ' + c.dataset.map),
         kills: [...b.querySelectorAll('.wvw-missed-row')].map(r => r.querySelector('.wvw-missed-mapname').textContent + ' ' + (r.querySelector('.wvw-missed-kills')?.textContent || '')),
@@ -291,6 +337,7 @@ test.describe('what happened', () => {
       chips: [[g.a.id, g.here], [g.b.id, g.other]].sort((x, y) => TABS.indexOf(x[1]) - TABS.indexOf(y[1])).map(([id, ty]) => `${id} ${ty}`),
       kills: TABS.filter(ty => g.KILLS[ty]).map(ty => `${NAMES[ty]} ${g.KILLS[ty][1]} kills`), rings: [g.a.id], dots: [],
     };
+    seen.title = await titleText(page);
     expect(seen.title, 'the block title').toMatch(/^What happened · \S/);
     expect(seen.open && seen.top, `the block reads "${seen.title}", open ${seen.open}, at the top of the column ${seen.top}`).toBe(true);
     for (const k of Object.keys(want)) expect(seen[k], k).toEqual(want[k]);
@@ -327,6 +374,36 @@ test.describe('what happened', () => {
     await expect.poll(lit, { message: `${g.b.id} lit a moment after its chip is pressed` }).toBe(g.b.id);
   });
 
+  test('two badges after the title: the kills first, then the objectives, each with its icon and words', async ({ page, wvw }) => {
+    const g = await gap(page, wvw);
+    await g.afterTheGap();
+    await expect(page.locator(BLOCK)).toBeAttached();
+    const badges = await page.evaluate(sel => [...document.querySelectorAll(`${sel} .wvw-missed-title .wvw-missed-counts > *`)].map(b => ({
+      cls: b.className, text: b.textContent, label: b.getAttribute('aria-label'),
+      icon: b.querySelector('img') ? b.querySelector('img').getAttribute('src') : b.querySelector('svg') ? 'svg' : null })), BLOCK);
+    const kills = g.KILLS[g.here][1] + g.KILLS[g.other][1];
+    expect(badges).toEqual([
+      { cls: 'wvw-missed-count is-kills', text: String(kills), label: `${kills} kills`, icon: 'assets/icons/Event_Swords.webp' },
+      { cls: 'wvw-missed-count is-objectives', text: '2', label: '2 objectives changed hands', icon: 'svg' },
+    ]);
+    await expect(page.locator(`${BLOCK} .wvw-missed-head`), 'no tooltip on the title').not.toHaveAttribute('title', /./);
+  });
+
+  test('a chip leaves the block open; a click on an objective of the map folds it', async ({ page, wvw }) => {
+    const g = await gap(page, wvw);
+    await g.afterTheGap();
+    const block = page.locator(BLOCK);
+    await expect(block).toHaveClass(/is-open/);
+    await page.locator(`.info-popover .wvw-chip[data-obj="${g.b.id}"]`).click();
+    await expect(page.locator(`.info-popover .wvw-marker.is-selected[data-obj="${g.b.id}"]`)).toBeAttached();
+    await expect(block, 'open after a chip').toHaveClass(/is-open/);
+    const other = await page.evaluate(id => [...document.querySelectorAll('.info-popover .wvw-marker')].map(m => m.dataset.obj).find(o => o !== id), g.b.id);
+    await page.locator(`.info-popover .wvw-marker[data-obj="${other}"]`).click();
+    await expect(page.locator(`.info-popover .wvw-marker.is-selected[data-obj="${other}"]`)).toBeAttached();
+    await expect(block, 'folded after a click on the map').not.toHaveClass(/is-open/);
+    await expect(block.locator('.wvw-chip')).toHaveCount(0);
+  });
+
   test('on a phone it starts folded, the title alone, and opens on a tap', async ({ page, wvw }) => {
     const g = await gap(page, wvw);
     await g.afterTheGap();
@@ -360,7 +437,7 @@ test.describe('what happened', () => {
 // ---- The block, other shapes ------------------------------------------------
 // The same gap as above, made of what the test says: `flips` objectives taken
 // on the open map (the first one from nobody when `fromNeutral`), `kills` more
-// kills on it. The flips are stamped 60 s after the match began, or 31 s from now with
+// kills on it. The flips are stamped 30 min ago, before the gap, or 31 s from now with
 // `stampNow` (the page then sees them as just made); `noHistory` clears the kept readings
 // of the old total before the new body is served.
 async function scene(page, wvw, { flips = 1, kills = 0, fromNeutral = false, stampNow = false, noHistory = false }) {
@@ -376,9 +453,9 @@ async function scene(page, wvw, { flips = 1, kills = 0, fromNeutral = false, sta
   const taken = held.slice(0, flips).map(o => o.id);
   if (fromNeutral) for (const o of before.maps.find(m => m.type === here).objectives) if (o.id === taken[0]) o.owner = 'Neutral';
   const same = await answer(page, tier.url, before);
-  for (let i = 0; i < 4; i++) await later(page, wvw, 100000);
+  for (let i = 0; i < 7; i++) await later(page, wvw, 100000);
   const after = JSON.parse(JSON.stringify(before));
-  const at = stampNow ? iso(await wvw.now() + 31000) : iso(Date.parse(before.start_time) + 60000);
+  const at = stampNow ? iso(await wvw.now() + 31000) : iso(await wvw.now() - 30 * MIN);
   const map = after.maps.find(m => m.type === here);
   for (const o of map.objectives) if (taken.includes(o.id)) {
     o.owner = fromNeutral && o.id === taken[0] ? 'Red' : OWNERS[(OWNERS.indexOf(o.owner) + 1) % 3];
@@ -402,8 +479,9 @@ test.describe('what happened, other shapes', () => {
     const s = await scene(page, wvw, { flips: 1 });
     await expect(page.locator(`${BLOCK} .wvw-chip[data-obj="${s.taken[0]}"]`)).toBeAttached();
     await expect(kills(page)).toHaveCount(0);
-    await expect(page.locator(`${BLOCK} .wvw-missed-count`)).toHaveText('1');
-    await expect(page.locator(`${BLOCK} .wvw-missed-count`)).toHaveAttribute('aria-label', '1 objective changed hands');
+    await expect(page.locator(`${BLOCK} .wvw-missed-count.is-objectives`)).toHaveText('1');
+    await expect(page.locator(`${BLOCK} .wvw-missed-count.is-objectives`)).toHaveAttribute('aria-label', '1 objective changed hands');
+    await expect(page.locator(`${BLOCK} .wvw-missed-count.is-kills`)).toHaveCount(0);
   });
 
   test('one kill and nothing taken: the block says "1 kill", singular', async ({ page, wvw }) => {
@@ -412,13 +490,15 @@ test.describe('what happened, other shapes', () => {
     await expect(kills(page)).toHaveText('1 kill');
     await expect(kills(page)).toHaveAttribute('aria-label', /^1 kill on /);
     await expect(page.locator(`${BLOCK} .wvw-chip`)).toHaveCount(0);
-    await expect(page.locator(`${BLOCK} .wvw-missed-count`)).toHaveCount(0);
+    await expect(page.locator(`${BLOCK} .wvw-missed-count.is-objectives`)).toHaveCount(0);
+    await expect(page.locator(`${BLOCK} .wvw-missed-count.is-kills`)).toHaveAttribute('aria-label', '1 kill');
   });
 
   test('two kills: "2 kills", plural', async ({ page, wvw }) => {
     await scene(page, wvw, { flips: 1, kills: 2 });
     await expect(kills(page)).toHaveText('2 kills');
     await expect(kills(page)).toHaveAttribute('aria-label', /^2 kills on /);
+    await expect(page.locator(`${BLOCK} .wvw-missed-count.is-kills`)).toHaveAttribute('aria-label', '2 kills');
   });
 
   for (const [flips, shown, more] of [[4, 4, 0], [5, 4, 1], [6, 4, 2]]) {
@@ -469,7 +549,7 @@ test.describe('what you missed, the API stopped at the end of the absence', () =
     await visible(page);
     await openMap(page, wvw, page.locator(`.tier-map-btn[aria-label*="NA Tier ${FOCUS.split('-')[1]}"]`));
     await expect(page.locator(BLOCK)).toBeAttached();
-    const title = () => page.locator(`${BLOCK} .wvw-missed-title`).textContent();
+    const title = () => titleText(page);
     const hhmm = t => new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
     // The kill history dates the body a moment after the block shows; the title
     // settles on the data's end, and the return's time never comes back.
@@ -484,7 +564,7 @@ test.describe('what you missed, the API stopped at the end of the absence', () =
 test.describe('what you missed, the end once the data is dated', () => {
   const TIER_BUTTON = page => page.locator(`.tier-map-btn[aria-label*="NA Tier ${FOCUS.split('-')[1]}"]`);
   const hhmm = t => new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
-  const titleOf = page => page.locator(`${BLOCK} .wvw-missed-title`).textContent();
+  const titleOf = page => titleText(page);
 
   test.describe('the score rises after the return', () => {
     test.use({ timeline: missedStopped().advance(5, { kills: {} }) });
@@ -520,7 +600,7 @@ test.describe('what you missed, the end once the data is dated', () => {
           const p = read().then(v => v);
           p.then(() => queueMicrotask(() => queueMicrotask(() => {
             const t = document.querySelector('.info-popover .wvw-missed:not(.is-leaving) .wvw-missed-title');
-            window.__titles.push(t ? t.textContent : null);
+            window.__titles.push(t ? [...t.childNodes].filter(n => !(n.classList && n.classList.contains('wvw-missed-counts'))).map(n => n.textContent).join('').trim() : null);
           })));
           return p;
         };
@@ -532,5 +612,81 @@ test.describe('what you missed, the end once the data is dated', () => {
       const titles = (await page.evaluate(() => window.__titles)).filter(Boolean);
       expect(titles[0], 'the title when the history landed').toContain(`–${hhmm(openedAt + 67 * MIN)}`);
     });
+  });
+});
+
+// ---- The same end as the map's corner -------------------------------------
+// The visitor's group a minute behind (two kills on EBG a minute), the tab
+// hidden 12 min: the body it comes back to is two kills behind the shared kill
+// history. The summary counts to the corner's end, the newest data, whichever
+// body brought it.
+test.describe('what you missed, the body behind the kill history', () => {
+  test.use({ timeline: missedBehind() });
+  test('the summary counts to the corner\'s end, not to the body', async ({ page, wvw }) => {
+    await load(page, wvw);
+    await later(page, wvw, 2 * MIN);
+    await hidden(page, wvw, 12 * MIN);
+    await visible(page);
+    await openMap(page, wvw, page.locator(`.tier-map-btn[aria-label*="NA Tier ${FOCUS.split('-')[1]}"]`));
+    await expect(page.locator(BLOCK)).toBeAttached();
+    await later(page, wvw, 0);
+    await page.waitForTimeout(1500); // the popover's one-second repaint
+    const seen = await page.evaluate(([sel, id]) => {
+      const kept = newestMatches.get(id).match;
+      const note = missedNotes.get(id);
+      const box = document.querySelector(sel);
+      const history = Math.max(0, ...fightSamples(kept).map(s => sumKills(s.n)));
+      return {
+        behind: history - missedKillTotal(kept),
+        want: Math.max(history, missedKillTotal(kept)) - missedKillTotal(note.before),
+        kills: [...box.querySelectorAll('.wvw-missed-killn')].reduce((n, b) => n + Number(b.textContent), 0),
+        title: [...box.querySelector('.wvw-missed-title').childNodes].filter(n => !(n.classList && n.classList.contains('wvw-missed-counts'))).map(n => n.textContent).join(''),
+        end: missedHhmm(killView(kept).clock),
+      };
+    }, [BLOCK, FOCUS]);
+    expect(seen.behind, 'the state: the body kept is behind the kill history').toBeGreaterThan(0);
+    expect(seen.kills, 'the kills from the body before up to the newest data').toBe(seen.want);
+    expect(seen.title, 'the title ends at the corner\'s time').toContain(`–${seen.end}`);
+  });
+});
+
+// ---- How long an absence -----------------------------------------------------
+// Play with objectives changing hands from the opening; the tab away for 9 min
+// (the corner's ten minutes already cover it: nothing) or for over 2 h (the
+// block comes folded, its two badges in the title, and opens on a tap).
+test.describe('what you missed, by how long the tab was away', () => {
+  test.use({ timeline: missed(150, 30) });
+  const TIER_BUTTON = page => page.locator(`.tier-map-btn[aria-label*="NA Tier ${FOCUS.split('-')[1]}"]`);
+
+  test('away 9 min: no block, though objectives changed hands', async ({ page, wvw }) => {
+    await load(page, wvw);
+    const from = await wvw.now();
+    await hidden(page, wvw, 9 * MIN);
+    await visible(page);
+    const to = await wvw.now();
+    expect(wvw.timeline.flipsBetween(FOCUS, from - wvw.recordedAt, to - wvw.recordedAt).length, 'the state: flips while away').toBeGreaterThan(0);
+    await openMap(page, wvw, TIER_BUTTON(page));
+    await later(page, wvw, 0);
+    await page.waitForTimeout(1500); // the popover's one-second repaint
+    expect(await page.evaluate(([sel, id]) => !!document.querySelector(sel) || missedNotes.has(id), [BLOCK, FOCUS]),
+      'a summary after 9 min away').toBe(false);
+  });
+
+  test('away over 2 h: the block comes folded with both badges, and opens on a tap', async ({ page, wvw }) => {
+    test.slow();
+    await load(page, wvw);
+    await hidden(page, wvw, 2 * 60 * MIN + 10 * MIN);
+    await visible(page);
+    await openMap(page, wvw, TIER_BUTTON(page));
+    const block = page.locator(BLOCK);
+    await expect(block).toBeAttached();
+    await expect(block).not.toHaveClass(/is-open/);
+    await expect(block.locator('.wvw-missed-head')).toHaveAttribute('aria-expanded', 'false');
+    await expect(block.locator('.wvw-chip')).toHaveCount(0);
+    await expect(block.locator('.wvw-missed-count.is-kills')).toHaveAttribute('aria-label', /^\d+ kills$/);
+    await expect(block.locator('.wvw-missed-count.is-objectives')).toHaveAttribute('aria-label', /^\d+ objectives changed hands$/);
+    await block.locator('.wvw-missed-head').click();
+    await expect(block).toHaveClass(/is-open/);
+    await expect(block.locator('.wvw-chip[data-obj]').first()).toBeAttached();
   });
 });
