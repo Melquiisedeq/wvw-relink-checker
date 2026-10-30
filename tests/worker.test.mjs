@@ -500,6 +500,187 @@ test('carrying the move gives the body a rebuild from scratch gives', async () =
   assert.ok(steadyWalks.n < ticks / 4, `the steady side walked on ${steadyWalks.n} of ${ticks} ticks`);
 });
 
+test('the readers\' rebuild from the last body gives the body a rebuild from scratch gives', async () => {
+  const seqs = Number(process.env.EQUIV_SEQUENCES) || 60;
+  const min = 60e3;
+  const t0 = Date.parse('2026-10-09T22:00:00Z');
+  const NA_NEW = Date.parse('2026-10-10T02:00:00Z');
+  const EU_START = Date.parse('2026-10-09T18:00:00Z');
+  const keys = { kills: KILLS_KEY, 'latest-supa-us': 'a'.repeat(128), 'latest-supa-eu': 'b'.repeat(128) };
+  const envKeys = { INGEST_KILLS: keys.kills, INGEST_LATEST_SUPA_US: keys['latest-supa-us'], INGEST_LATEST_SUPA_EU: keys['latest-supa-eu'] };
+  const gz = gzipSync(Buffer.from('{"x":1}'));
+  const sha = createHash('sha256').update(gz).digest('hex');
+  const side = (stat) => {
+    const { sql } = fakeD1();
+    const cache = new Map();
+    const prep = (q) => cache.get(q) || cache.set(q, sql.prepare(q)).get(q);
+    class Statement {
+      constructor(q) { this.q = q; this.args = []; }
+      bind(...args) { this.args = args; return this; }
+      async run() {
+        if (stat && /^UPDATE recent/.test(this.q)) stat.updates++;
+        return { meta: { changes: Number(prep(this.q).run(...this.args).changes) } };
+      }
+      async all() {
+        const results = prep(this.q).all(...this.args);
+        if (stat && /(FROM|JOIN) kills/.test(this.q)) stat.read += results.length;
+        if (stat && /^WITH a\(m, t\)/.test(this.q)) stat.fresh += results.length;
+        if (stat && /UNION ALL/.test(this.q)) stat.fullReads++;
+        return { results };
+      }
+      async first() { return prep(this.q).get(...this.args) ?? null; }
+    }
+    const body = sql.prepare('SELECT at, rows FROM recent');
+    return { sql, body: () => { const r = body.get(); return r ? r.at + ' ' + r.rows : ''; },
+      env: { DB: { prepare: (q) => new Statement(q) }, ...envKeys } };
+  };
+  const post = (env, source, now, buf) => {
+    const t = Math.floor(now / 1000);
+    return worker.fetch(new Request('https://wvwrelink.com/api/ingest/' + source,
+      { method: 'POST', body: buf, headers: signHeaders(keys[source], t, '/api/ingest/' + source, buf) }), env);
+  };
+  const reader = (rows) => {
+    const entries = rows.map((r) => ({ id: r.id, start: r.start, scores: [r.score, 0, 0], kills: r.k, bytes: gz.length, raw: 10, sha256: sha }));
+    return Buffer.concat([Buffer.from(JSON.stringify({ v: 1, matches: entries }) + '\n'), ...entries.map(() => gz)]);
+  };
+
+  const plans = [];
+  const seen = { readerSends: 0, gsSends: 0, resets: 0, stops: 0, gaps: 0, freezes: 0 };
+  for (let seed = 1; seed <= seqs; seed++) {
+    const rnd = mulberry32(seed);
+    const pick = (a, b) => a + Math.floor(rnd() * (b - a + 1));
+    const ids = ['1-1', '2-1', '1-2'].slice(0, pick(1, 3));
+    const m = ids.map((id) => ({ id, start: id[0] === '1' ? Date.parse('2026-10-03T02:00:00Z') : EU_START - 7 * 86400e3,
+      k: [pick(0, 5000), pick(0, 3000), pick(0, 3000), pick(0, 3000)], score: pick(1000, 90000), still: 0, fight: 0, reset: false, frozen: 0 }));
+    const sends = new Map();
+    let now = t0, backlog = [], gsDown = 0, gap = 0;
+    const end = t0 + pick(4, 8) * 60 * min;
+    while (now < end) {
+      now += pick(1, 6) * min;
+      const fresh = [];
+      for (const s of m) {
+        if (s.id[0] === '1' && !s.reset && now >= NA_NEW) { s.reset = true; s.start = NA_NEW; s.k = [0, 0, 0, 0]; s.score = 0; seen.resets++; }
+        if (!s.still && !s.fight) {
+          if (rnd() < 0.5) s.fight = now + pick(3, 60) * min;
+          else { s.still = now + [pick(5, 40), pick(40, 150), pick(150, 270)][pick(0, 2)] * min; seen.stops++; }
+        }
+        if (s.fight && now >= s.fight) s.fight = 0;
+        if (s.still && now >= s.still) s.still = 0;
+        // The game's API can stand still for hours: no line for the match at all.
+        if (!s.frozen && rnd() < 0.02) { s.frozen = now + pick(30, 300) * min; seen.freezes++; }
+        if (s.frozen && now >= s.frozen) s.frozen = 0;
+        if (!s.frozen && rnd() < 0.8) {
+          s.score += pick(1, 40);
+          if (s.fight) for (let i = 0; i < 4; i++) if (rnd() < 0.4) s.k[i] += pick(1, 12);
+          fresh.push({ id: s.id, start: s.start, k: s.k.slice(), score: s.score, at: now });
+        }
+      }
+      backlog.push(...fresh);
+      if (gap > now) continue;
+      const roll = rnd();
+      if (roll < 0.015) { gap = now + pick(31, 90) * min; seen.gaps++; continue; }
+      if (roll < 0.05) gsDown = now + pick(5, 44) * min;
+      // kills.gs sends what it has not yet, up to 44 minutes back; the readers send the current lines.
+      if (gsDown <= now && rnd() < 0.3) {
+        const rows = backlog.filter((r) => r.at > now - 44 * min).map((r) => [r.at, r.id, ...r.k, r.start, r.score]);
+        backlog = [];
+        if (rows.length) { sends.set(now, { source: 'kills', buf: Buffer.from(JSON.stringify({ rows })) }); seen.gsSends++; }
+      } else if (rnd() < 0.75 && fresh.length) {
+        sends.set(now, { source: rnd() < 0.5 ? 'latest-supa-us' : 'latest-supa-eu', buf: reader(fresh) });
+        seen.readerSends++;
+      }
+    }
+    const stat = { updates: 0, read: 0, fresh: 0, fullReads: 0 }, plain = { updates: 0, read: 0, fresh: 0, fullReads: 0 };
+    plans.push({ seed, sends, stat, plain, steady: side(stat), scratch: side(plain) });
+  }
+  const realNow = Date.now, realLog = console.log;
+  console.log = () => {};
+  let ticks = 0;
+  try {
+    for (let now = t0; now <= t0 + 8 * 60 * min + 6 * min; now += min) {
+      const due = plans.filter((p) => p.sends.has(now));
+      if (!due.length) continue;
+      Date.now = () => now;
+      for (const p of due) {
+        const { source, buf } = p.sends.get(now);
+        await post(p.steady.env, source, now, buf);
+        p.scratch.sql.prepare('DELETE FROM recent').run();
+        await post(p.scratch.env, source, now, buf);
+        ticks++;
+        const a = p.steady.body(), b = p.scratch.body();
+        if (a !== b) assert.equal(a, b, `seed ${p.seed}, ${source} at ${new Date(now).toISOString()}`);
+      }
+    }
+  } finally {
+    Date.now = realNow;
+    console.log = realLog;
+  }
+  const updates = plans.reduce((n, p) => n + p.stat.updates, 0);
+  const sum = (key, of) => plans.reduce((n, p) => n + p[of][key], 0);
+  console.log(JSON.stringify({ readersEquivalence: { sequences: seqs, ticks, fromTheLastBody: updates,
+    rowsReadSteady: sum('read', 'stat'), rowsReadScratch: sum('read', 'plain'), newLinesRead: sum('fresh', 'stat'), ...seen } }));
+  if (seqs >= 30) for (const [what, n] of Object.entries(seen)) assert.ok(n > 0, `no sequence had ${what}`);
+  // The point of going on from the last body: it does not read the window again.
+  assert.ok(sum('read', 'stat') < sum('read', 'plain') * 0.6, 'the steady side read as many rows as the scratch side');
+  // And what it does read is the lines since the body: a few per message, not the window.
+  assert.ok(sum('fresh', 'stat') > 0 && sum('fresh', 'stat') <= 4 * updates, `${sum('fresh', 'stat')} new lines read`);
+  assert.ok(updates > seen.readerSends / 3, `only ${updates} of ${seen.readerSends} reader messages went on from the last body`);
+});
+
+test('a reader\'s rebuild that another rebuild overtook is made again from the table', async () => {
+  const key = 'a'.repeat(128);
+  const w = setup({ env: { INGEST_LATEST_SUPA_US: key } });
+  const start = Date.parse('2026-09-26T02:00:00Z');
+  const gz = gzipSync(Buffer.from('{"x":1}'));
+  const reader = (score) => {
+    const entry = { id: '1-1', start, scores: [score, 0, 0], kills: [1, 2, 3, 4], bytes: gz.length, raw: 10, sha256: createHash('sha256').update(gz).digest('hex') };
+    return Buffer.concat([Buffer.from(JSON.stringify({ v: 1, matches: [entry] }) + '\n'), gz]);
+  };
+  const log = console.log;
+  console.log = () => {};
+  try {
+    assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 1, 2, 3, 4, start, 100]] }), 200);
+    w.advance(120e3);
+    // Another rebuild writes between this one's read of the body and its write.
+    const real = w.env.DB.prepare;
+    let overtaken = false;
+    w.env.DB = { prepare: (q) => {
+      if (q.startsWith('UPDATE recent') && !overtaken) { overtaken = true; w.sql.prepare('UPDATE recent SET at = at + 1').run(); }
+      return real(q);
+    } };
+    assert.equal(await w.post('latest-supa-us', reader(200), { key }), 200);
+    assert.ok(overtaken);
+  } finally {
+    console.log = log;
+  }
+  const got = JSON.parse((await w.get('/api/kills')).body).rows;
+  assert.equal(got.length, 2, 'the new line is in the body');
+  assert.ok(w.ran.some((s) => s.q.startsWith('INSERT INTO recent') && s.args[0] >= w.now), 'made again');
+});
+
+test('a reader\'s rebuild sees a match the body does not hold, its rows put in by kills.gs without a rebuild', async () => {
+  const key = 'a'.repeat(128);
+  const w = setup({ env: { INGEST_LATEST_SUPA_US: key } });
+  const start = Date.parse('2026-09-26T02:00:00Z');
+  const gz = gzipSync(Buffer.from('{"x":1}'));
+  const entry = { id: '1-1', start, scores: [200, 0, 0], kills: [1, 2, 3, 4], bytes: gz.length, raw: 10, sha256: createHash('sha256').update(gz).digest('hex') };
+  const msg = Buffer.concat([Buffer.from(JSON.stringify({ v: 1, matches: [entry] }) + '\n'), gz]);
+  const at0 = w.now;
+  const log = console.log;
+  console.log = () => {};
+  try {
+    assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 1, 2, 3, 4, start, 100]] }), 200);
+    const ins = w.sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,?,?,?,?,?)');
+    for (const back of [100, 60, 20]) ins.run('1-2', w.now - back * 60e3, 5, 5, 5, 5, start);
+    w.advance(120e3);
+    assert.equal(await w.post('latest-supa-us', msg, { key }), 200);
+  } finally {
+    console.log = log;
+  }
+  const got = JSON.parse((await w.get('/api/kills')).body).rows.filter((r) => r[1] === '1-2');
+  assert.deepEqual(got.map((r) => (at0 - r[0]) / 60e3), [100, 60, 20], 'the first line of the still stretch, the one before the window, the one in it');
+});
+
 // A small seeded generator (mulberry32), so a sequence is the same on every run.
 function mulberry32(a) {
   return () => {
