@@ -249,6 +249,7 @@ async function readKillSheet() {
 // is which. Only the match's own week: kills restart at the reset, and a
 // line from last week as a baseline would read as no fight at all.
 function fightSamples(match) {
+  if (typeof labFightSamples === 'function') { const lab = labFightSamples(match); if (lab) return lab; } // LAB (never merged)
   const id = match && match.id;
   const local = readFightLog()[id] || [];
   const shared = (killSheet && killSheet.get(id)) || [];
@@ -327,7 +328,7 @@ function killView(match, types, now = Date.now()) {
   view.alive = !!kept && !!kept.rose && now - kept.at <= KILLS_ALIVE_MS;
 
   const list = fightSamples(match);
-  const body = fightTotals(match);
+  const body = typeof labBody === 'function' ? labBody(match) || fightTotals(match) : fightTotals(match); // LAB (never merged)
   const bodyTotal = sumKills(body);
   const series = list.map((s) => ({ at: s.at, total: sumKills(s.n) }));
   const listTop = series.reduce((m, s) => Math.max(m, s.total), 0);
@@ -549,6 +550,7 @@ function missedPeriod(before, after, since, back, changes = []) {
     sure = i > 0 && (total(list[i]) === need || list[i].at - list[i - 1].at <= MISSED_BOUND_MS
       || list[i].at >= since - MISSED_BOUND_MS);
   }
+  if (typeof labMissedStart === 'function') ({ start, sure } = labMissedStart(list, need, start, sure)); // LAB (never merged)
   let oldest = Infinity;
   let newest = -Infinity;
   for (const c of changes) {

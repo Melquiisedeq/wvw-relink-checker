@@ -943,6 +943,7 @@ function buildMapCorners(wrap, matchId) {
       }
     }
     setTip('fights', fightsBtn, text);
+    if (typeof labPaintKills === 'function') labPaintKills({ matchId, view, type, line, two, old, odd, hole, text, big, smallTail, smallSep, smallMins, smallLong, smallShort, lead, smallMark, smallTime, line2, left, put, hhmm, tip: (t) => setTip('fights', fightsBtn, t) }); // LAB (never merged)
   };
   let stale = null;
   const state = {
