@@ -71,7 +71,7 @@ const look = page => page.evaluate(id => {
   const missed = box ? {
     title: box.querySelector('.wvw-missed-title')?.textContent || '',
     time: box.querySelector('.wvw-missed-time')?.textContent || '',
-    count: Number(box.querySelector('.wvw-missed-count')?.textContent) || 0,
+    count: Number(box.querySelector('.wvw-missed-count.is-objectives')?.textContent) || 0,
     chips: [...box.querySelectorAll('.wvw-chip[data-obj]')].map(c => c.dataset.obj),
     kills: [...box.querySelectorAll('.wvw-missed-killn')].reduce((n, b) => n + Number(b.textContent), 0),
   } : null;
@@ -270,7 +270,12 @@ test.describe('tab hidden 2 h, then back', () => {
     await visible(page);
     const backAt = await wvw.now();
     await r.check('back');
-    const seen = await r.peek('back, map opened');
+    // A period over 2 h comes folded: opened to read its chips and kills.
+    await r.open();
+    const head = page.locator('.info-popover .wvw-missed:not(.is-leaving) .wvw-missed-head');
+    if (await head.getAttribute('aria-expanded') === 'false') await head.click();
+    const seen = await r.check('back, map opened');
+    await r.close();
     const tl = wvw.timeline;
     const from = hiddenAt - wvw.recordedAt, to = backAt - wvw.recordedAt;
     const flips = tl.flipsBetween(FOCUS, from, to);

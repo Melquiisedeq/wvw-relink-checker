@@ -2132,6 +2132,14 @@ function missedImg(src, size) {
   return img;
 }
 
+// A silver tower: the game's tower icon is a grey disc at this size.
+function missedTower() {
+  const svg = svgEl('svg', { viewBox: '0 0 16 16', width: 12, height: 12, 'aria-hidden': 'true' });
+  svg.appendChild(svgEl('path', { fill: 'currentColor', 'fill-rule': 'evenodd',
+    d: 'M3 1.5h2.4v2h1.4v-2h2.4v2h1.4v-2H13v4.2l-1.6 1.4V15H4.6V7.1L3 5.7zM6.8 15v-3.2a1.2 1.2 0 0 1 2.4 0V15z' }));
+  return svg;
+}
+
 // A 16 px chevron, pointing down; the CSS turns it up while the block is open.
 function missedChevron() {
   const svg = svgEl('svg', { class: 'wvw-missed-chev', viewBox: '0 0 16 16', width: 16, height: 16, 'aria-hidden': 'true' });
@@ -2180,8 +2188,9 @@ function missedChip(c, here, goTo, spot) {
 // side, tabs, type, goTo, spot, repaint }. Rebuilt only when what it shows moved.
 function paintMissed(view) {
   const note = missedNoteFor(view.matchId);
+  const shown = note && missedView(note);
   let box = view.side.querySelector('.wvw-missed:not(.is-leaving)');
-  if (!note || (!note.changes.length && !note.kills)) {
+  if (!note || (!shown.changes.length && !shown.kills)) {
     if (box) {
       box.classList.add('is-leaving');
       setTimeout(() => box.remove(), 200);
@@ -2191,7 +2200,8 @@ function paintMissed(view) {
   const narrow = window.matchMedia(MISSED_NARROW).matches;
   // Folded on a phone until asked; open beside the map until hidden.
   const open = narrow ? note.open : note.wideOpen;
-  const key = JSON.stringify([view.type, note.since, note.end, note.sure, narrow, open, [...note.moreMaps].sort()]);
+  const key = JSON.stringify([view.type, shown.since, shown.end, shown.sure, narrow, open, [...note.moreMaps].sort(),
+    shown.perMap, shown.changes.map((c) => c.id), shown.kills]);
   if (box && box.dataset.key === key) return;
   if (!box) {
     box = missedEl('section', 'wvw-missed');
@@ -2203,24 +2213,29 @@ function paintMissed(view) {
   box.classList.toggle('is-open', open);
 
   const away = note.kind === 'return';
-  const span = note.sure ? missedSpan(note.since, note.end) : `since before ${missedHhmm(note.since)}`;
-  const changes = note.changes;
+  const span = shown.sure ? missedSpan(shown.since, shown.end) : `since before ${missedHhmm(shown.since)}`;
+  const changes = shown.changes;
 
   const head = missedEl('button', 'wvw-missed-head');
   head.type = 'button';
   head.setAttribute('aria-expanded', open ? 'true' : 'false');
-  head.title = (away
-    ? `What changed in the match while this tab was in the background, ${span}.`
-    : `The game's API repeated an old answer; this is what changed in the match, ${span}.`)
-    + ' Shown for 10 minutes after the data came back.';
   const title = missedEl('span', 'wvw-group wvw-missed-title');
   title.append(`${away ? 'What you missed' : 'What happened'} · `, missedEl('span', 'wvw-missed-time', span));
   head.appendChild(title);
+  const counts = missedEl('span', 'wvw-missed-counts');
+  const badge = (n, cls, icon, words) => {
+    const b = missedEl('span', `wvw-missed-count ${cls}`);
+    b.appendChild(icon ? missedImg(icon, 12) : missedTower());
+    b.append(String(n));
+    b.setAttribute('aria-label', words);
+    counts.appendChild(b);
+  };
+  if (shown.kills) badge(shown.kills, 'is-kills', 'assets/icons/Event_Swords.webp', `${shown.kills} kill${shown.kills === 1 ? '' : 's'}`);
   if (changes.length) {
-    const count = missedEl('span', 'wvw-missed-count', String(changes.length));
-    count.setAttribute('aria-label', `${changes.length} objective${changes.length === 1 ? '' : 's'} changed hands`);
-    head.appendChild(count);
+    badge(changes.length, 'is-objectives', null,
+      `${changes.length} objective${changes.length === 1 ? '' : 's'} changed hands`);
   }
+  if (counts.firstChild) title.append(' ', counts);
   head.appendChild(missedChevron());
   head.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -2232,11 +2247,11 @@ function paintMissed(view) {
   if (!open) return;
 
   const sub = missedEl('p', 'wvw-missed-sub',
-    away ? 'While this tab was in the background' : "While the game's API was behind");
+    away ? 'While this tab was in the background' : 'While the game sent no updates');
   // One row per map that had a change or a kill, in the tabs' order: the map's
   // name (a button to its tab) and its kills, then the chips of that map.
   // The open map's chips are normal, the others a little quieter.
-  const kills = new Map(note.perMap.map((m) => [m.type, m.n]));
+  const kills = new Map(shown.perMap.map((m) => [m.type, m.n]));
   const rows = [];
   for (const type of Object.keys(MAP_TAB_NAME)) {
     const list = changes.filter((c) => c.map === type);
@@ -2655,6 +2670,9 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     if (l) l.classList.toggle('is-cold', current !== hotType);
   };
 
+  // A pick made from a list (the summary's chips, the captures) leaves the
+  // summary as it is: only a click on the map itself folds it.
+  let listPick = false;
   const draw = (type, sectors) => {
     focusSpot = null;
     // The freshest body, not the one this popover opened with: that one
@@ -2666,6 +2684,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
         selected = p;
         renderObjectiveDetail(detail, p, m);
         detail.scrollTop = 0;
+        if (!listPick) { missedFold(match.id); paintNote(); }
         showPane('objective');
       })
       : null;
@@ -2725,7 +2744,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     if (id == null) return;
     const pick = () => {
       if (activeTrigger !== triggerEl || current !== type || !plotWrap) return;
-      if (select) plotWrap.selectObjective(id);
+      if (select) { listPick = true; plotWrap.selectObjective(id); listPick = false; }
       spotlight({ ids: [id] }, { ms: FOCUS_TAP_MS });
     };
     if (sectorsByType.get(type)) pick(); else pendingSectors.get(type).then(pick);

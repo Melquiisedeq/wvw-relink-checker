@@ -304,6 +304,18 @@ function sumKills(n) {
   return t;
 }
 
+// Each map's kills at their highest in `body` and the readings: inside a week
+// kills only rise, so that is the newest count of each.
+function killHighs(body, list) {
+  const out = {};
+  for (const type in body) {
+    let high = Number(body[type]) || 0;
+    for (const s of list) high = Math.max(high, Number(s.n[type]) || 0);
+    out[type] = high;
+  }
+  return out;
+}
+
 // Which map is busy, and how much the corner may say, in one place: the
 // map's corner, the tab's swords and the tier button's badge all read this,
 // so they cannot part. `types`: the maps to pick from, in the order a tie
@@ -317,7 +329,7 @@ const HOT_FLOOR = 50;      // kills per ten minutes: a real fight, not API noise
 
 function killView(match, types, now = Date.now()) {
   const view = { clock: 0, atLeast: false, silence: 0, prevRun: Infinity, rates: null, pace: 0,
-    strange: false, frozen: false, alive: false, hot: null, jumpHeld: false, noWindow: 'data', counting: null, long: false, longOk: false, gap: null, still: false, upTo: 0 };
+    strange: false, frozen: false, alive: false, hot: null, jumpHeld: false, noWindow: 'data', counting: null, long: false, longOk: false, gap: null, still: false, upTo: 0, high: null };
   // Nothing is claimed on a match that is not running: between the reset
   // and the API publishing the new one, the rest of the popover is neutral.
   if (!match || !matchIsLive(match)) return view;
@@ -341,6 +353,7 @@ function killView(match, types, now = Date.now()) {
     series.push({ at: rose > 0 ? Math.min(seen.at, rose) : seen.at, total: bodyTotal });
     series.sort((a, b) => a.at - b.at);
   }
+  view.high = killHighs(body, list);
   const top = Math.max(bodyTotal, listTop);
   const first = series.findIndex((s) => s.total >= top);
   view.clock = series[first].at;
@@ -388,10 +401,7 @@ function killView(match, types, now = Date.now()) {
     const per = new Map();
     let moved = 0;
     for (const type in body) {
-      // Inside a week kills only rise: the highest reading of a map is its newest.
-      let high = body[type];
-      for (const s of list) high = Math.max(high, Number(s.n[type]) || 0);
-      const d = Math.max(0, high - (Number(base.n[type]) || 0));
+      const d = Math.max(0, view.high[type] - (Number(base.n[type]) || 0));
       moved += d;
       per.set(type, d * (600000 / span));
     }
@@ -434,16 +444,19 @@ function hotMapOf(match, types) {
 
 // ---- what happened while the data was away -----------------------------
 // Two gaps get a summary at the top of the maps' right-hand column: the
-// game's API answering the same body past HUD_STALE_MS while this page went
-// on asking (a "pause"), and this tab hidden past MISSED_AWAY_MS (a
+// game's API answering no new body for over MISSED_AWAY_MS while this page
+// went on asking (a "pause"), and this tab hidden for over MISSED_AWAY_MS (a
 // "return"). Either way it is the body kept before the gap against the
 // first one after it: the objectives that changed hands, as chips, and the
-// kills between the two. Nothing changed, nothing shows. Every body passes
-// through missedMatchOffered, called from keepNewestMatch in api.js.
+// kills from the gap up to the newest data (missedView). Nothing changed,
+// nothing shows. Every body passes through missedMatchOffered, called from
+// keepNewestMatch in api.js.
 const MISSED_SHOW_MS = 10 * 60 * 1000;      // the summary stays this long after the data came back
 const MISSED_RING_MS = 7 * 1000;            // four pulses of the ring (css/maps.css)
 const MISSED_ASLEEP_MS = 3 * 60 * 1000;     // no read for this long: the page was not asking (a laptop asleep)
-const MISSED_AWAY_MS = 3 * 60 * 1000;       // a tab hidden this long gets the summary on its return
+// The corner's own window: an absence no longer than it is what the corner
+// already counts, and a summary of it would read as a map without kills.
+const MISSED_AWAY_MS = HOT_WANT_MS;
 const MISSED_RETURN_WAIT_MS = 2 * 60 * 1000;
 const MISSED_CHANGES_MAX = 40;
 const MISSED_CHIPS_WIDE = 4;   // per map
@@ -567,39 +580,61 @@ function missedPeriod(before, after, since, back, changes = []) {
   return { start, end: Math.max(end, newest), sure };
 }
 
+// A summary over this long is born folded: a list of hours reads as the
+// map as it stands, so it opens only when asked.
+const MISSED_FOLD_MS = 2 * 60 * 60 * 1000;
+
 function missedMakeNote(before, after, since, back, kind, endAt = back) {
-  const changes = missedOwnerChanges(before, after).slice(0, MISSED_CHANGES_MAX);
+  const all = missedOwnerChanges(before, after);
+  const flippedAt = (c) => (Number.isFinite(c.flipped) ? c.flipped : -Infinity);
+  const newest = new Set([...all].sort((a, b) => (flippedAt(b) - flippedAt(a)) || 0).slice(0, MISSED_CHANGES_MAX));
+  const listed = all.filter((c) => newest.has(c));
   const name = (c) => {
     const id = COLORS.includes(c) ? matchTeamId(after, c) : null;
     return id ? getTeamName(id) : 'Neutral';
   };
-  for (const c of changes) { c.toName = name(c.to); c.fromName = name(c.from); }
-  // The whole match, before against after: the number a reader can check.
-  const kills = Math.max(0, missedKillTotal(after) - missedKillTotal(before));
-  // The same difference map by map, the maps that moved, in the tabs' order.
-  const was = new Map(missedMaps(before).map((m) => [m && m.type, colorSum(m && m.kills)]));
+  for (const c of listed) { c.toName = name(c.to); c.fromName = name(c.from); }
+  // The start is fixed here: the readings that prove it can age out of this
+  // browser's log moments later.
+  const period = missedPeriod(before, after, since, endAt, listed);
+  const note = { kind, back, before, rawSince: since, after, endAt, listed, period,
+    until: back + MISSED_SHOW_MS, open: false, wideOpen: true, moreMaps: new Set(),
+    get since() { return missedView(note).since; },
+    get end() { return missedView(note).end; },
+    get sure() { return missedView(note).sure; },
+    get changes() { return missedView(note).changes; },
+    get kills() { return missedView(note).kills; },
+    get perMap() { return missedView(note).perMap; } };
+  missedNotes.set(after.id, note);
+  const view = missedView(note);
+  if (view.end - view.since > MISSED_FOLD_MS) note.wideOpen = false;
+  if (endAt === back) missedRingFor(after.id, view.changes);
+}
+
+// What the summary says now: the history moves under it without a new body.
+// The end is the map corner's own (killView's clock and per-map highs), so the
+// two count to the same point; only the start differs. The kills count from
+// each map's higher of the body before and the readings at or before the start.
+function missedView(note) {
+  const { before, after, endAt, listed, period } = note;
+  const kept = newestMatches.get(after.id);
+  const body = kept && kept.match.start_time === after.start_time
+    && missedKillTotal(kept.match) > missedKillTotal(after) ? kept.match : after;
+  const corner = killView(body);
+  const start = period.start;
+  const end = Math.max(corner.clock || period.end, start,
+    ...listed.map((c) => (c.flipped <= endAt ? c.flipped : -Infinity)));
+
+  const list = fightSamples(after);
+  const base = killHighs(fightTotals(before), list.filter((s) => s.at <= start));
+  const high = corner.high || killHighs(fightTotals(body), list);
   const order = Object.keys(MAP_TAB_NAME);
-  const perMap = missedMaps(after)
-    .map((m) => ({ type: m && m.type, n: Math.max(0, colorSum(m && m.kills) - (was.get(m && m.type) || 0)) }))
-    .filter((m) => m.n > 0 && typeof m.type === 'string')
+  const perMap = Object.keys(high)
+    .map((type) => ({ type, n: Math.max(0, high[type] - (Number(base[type]) || 0)) }))
+    .filter((m) => m.n > 0)
     .sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
-  const period = missedPeriod(before, after, since, endAt, changes);
-  // The body is kept only after this call: until then the end is the period's,
-  // then the time the kept body's data is from, which the history may still
-  // move earlier. A later body moves that time on, so the earliest end
-  // seen stands (missedMatchOffered reads it before keepNewestMatch writes).
-  const newest = Math.max(period.start, ...changes.map((c) => (c.flipped <= endAt ? c.flipped : -Infinity)));
-  let earliest = period.end;
-  const end = () => {
-    const kept = newestMatches.get(after.id);
-    if (kept && !missedBodyChanged(kept.match, after)) earliest = Math.min(earliest, kept.at);
-    return Math.max(earliest, newest);
-  };
-  missedNotes.set(after.id, { kind, since: period.start, get end() { return end(); }, sure: period.sure, back,
-    before, rawSince: since, after,
-    until: back + MISSED_SHOW_MS, changes, kills, perMap,
-    open: false, wideOpen: true, moreMaps: new Set() });
-  if (endAt === back) missedRingFor(after.id, changes);
+  const kills = perMap.reduce((n, m) => n + m.n, 0);
+  return { since: start, end, sure: period.sure, changes: listed, perMap, kills };
 }
 
 // A newer body while the summary is up (the first answer after a gap may come
@@ -621,9 +656,6 @@ function missedMatchOffered(match, kept) {
   const now = Date.now();
   const lastOffer = missedLastOffer.get(match.id) || 0;
   missedLastOffer.set(match.id, now);
-  const standing = missedNotes.get(match.id);
-  // Reading the end fixes it before keepNewestMatch moves `at` on.
-  if (standing) void standing.end;
   if (!kept || matchIsBehind(match, kept.match)) return;
   if (match.start_time !== kept.match.start_time || !matchIsLive(match)) return;
   if (missedReturn && now - missedReturn.back > MISSED_RETURN_WAIT_MS) missedReturn = null;
@@ -635,7 +667,7 @@ function missedMatchOffered(match, kept) {
       return;
     }
   }
-  if (now - kept.at > HUD_STALE_MS && lastOffer > kept.at && now - lastOffer < MISSED_ASLEEP_MS
+  if (now - kept.at > MISSED_AWAY_MS && lastOffer > kept.at && now - lastOffer < MISSED_ASLEEP_MS
       && missedBodyChanged(kept.match, match)) {
     missedMakeNote(kept.match, match, kept.at, now, 'pause');
     return;
@@ -655,6 +687,13 @@ document.addEventListener('visibilitychange', () => {
   }
   missedHidden = null;
 });
+
+// A click on an objective of the map folds the summary on every width, so the
+// objective's tab has the room; it stays folded until the reader opens it.
+function missedFold(matchId) {
+  const note = missedNotes.get(matchId);
+  if (note) { note.open = false; note.wideOpen = false; }
+}
 
 function missedNoteFor(matchId) {
   const note = missedNotes.get(matchId);

@@ -700,7 +700,9 @@
 @keyframes wvw-missed-out{from{opacity:1;}to{opacity:0;}}
 /* Stacked narrow, under the map and over the tabs (.wvw-subtabs). */
 @media (max-width:760px){ .wvw-missed{order:1;} }
-/* The whole header row is the button: the count in a small circle and a
+/* The whole header row is the button: the title, the counts at the end of
+   its text in small pills (kills, then objectives, each after its icon; the
+   pair moves to the next line as one, centred on the capitals), and a
    chevron that turns. */
 .wvw-missed-head{
   display:flex;align-items:center;gap:6px;width:100%;margin:0;padding:3px 4px;
@@ -712,11 +714,15 @@
 .wvw-missed.is-open > .wvw-missed-head{margin-bottom:4px;}
 .wvw-missed-head .wvw-group{flex:1 1 auto;min-width:0;margin:0;padding:0;border:0;line-height:1.4;}
 .wvw-missed-time{color:var(--accent);}
+.wvw-missed-counts{display:inline-flex;gap:4px;margin-left:2px;vertical-align:-2px;white-space:nowrap;}
 .wvw-missed-count{
   flex:none;min-width:18px;height:18px;padding:0 5px;border-radius:9px;
   display:inline-flex;align-items:center;justify-content:center;
   background:rgba(127,214,242,.18);color:var(--accent);font-size:.64rem;font-weight:800;
+  gap:3px;white-space:nowrap;font-variant-numeric:tabular-nums;letter-spacing:0;
 }
+.wvw-missed-count img,.wvw-missed-count svg{display:block;flex:none;}
+.wvw-missed-count.is-objectives svg{color:#c9d1d9;}
 .wvw-missed-chev{display:block;flex:none;color:var(--accent);transition:transform .2s ease;}
 .wvw-missed.is-open .wvw-missed-chev{transform:rotate(180deg);}
 .wvw-missed-sub{margin:2px 0 7px;color:#8d97a6;font-size:.68rem;line-height:1.35;}
