@@ -355,9 +355,20 @@ test.describe("the visitor's server group down, our copy current", () => {
     const btn = page.locator('.info-popover .wvw-hud-r .wvw-hud-btn');
     const note = page.locator('.info-popover .wvw-hud-note');
     const said = async () => { await wvw.settle(); await page.clock.fastForward(1000); return note.textContent(); };
-    const want = await page.evaluate(t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), seen.map.at);
+    // The corner's time and the balloon read in one go: a newer copy can land between the
+    // step and the click, and both then move together.
+    const shown = () => page.evaluate(() => {
+      const at = new Date(document.querySelector('.info-popover .wvw-hud-ago').dateTime);
+      return {
+        tip: document.querySelector('.info-popover .wvw-hud-note').textContent,
+        want: at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        at: at.getTime(),
+      };
+    });
     await btn.click();
-    let tip = await said();
+    await said();
+    let { tip, want, at } = await shown();
+    expect(at, 'the corner is not older than the copy first seen').toBeGreaterThanOrEqual(seen.map.at);
     expect(tip, 'the balloon on the copy').toMatch(/^Score last changed at .*, read by our server\. The game last answered this page \d+ min ago\.$/);
     expect(Number(/answered this page (\d+) min/.exec(tip)[1]), 'the game silent since the visitor went down').toBeGreaterThanOrEqual(9);
     expect(tip).toContain(`Score last changed at ${want}, read by our server.`);
