@@ -180,6 +180,7 @@ function renderGuildsPopoverContent(popover, teamName, data, triggerEl) {
   link.textContent = 'Open sheet';
   footer.appendChild(link);
   popover.appendChild(footer);
+  if (typeof labDecorate === 'function') labDecorate(popover); // LAB (never merged)
 }
 
 async function toggleGuildsPopover(teamName, triggerEl) {

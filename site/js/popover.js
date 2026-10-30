@@ -105,6 +105,7 @@ function setPopoverExpanded(popover, triggerEl, expand) {
     positionPopover(popover, triggerEl);
   }
 
+  if (typeof labDecorate === 'function') labDecorate(popover); // LAB (never merged)
   const grid = popover.querySelector('.alliance-grid');
   if (grid && popover.__allianceData) layoutAllianceGrid(grid, popover.__allianceData, expand);
 }

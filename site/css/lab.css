@@ -1,0 +1,65 @@
+/* LAB - never merged. The toggle panel; copy to site/css/lab.css on the lab branch. */
+/* ---- the panel ---------------------------------------------------- */
+.lab-panel{
+  position:fixed;right:12px;bottom:12px;z-index:80;
+  display:flex;flex-direction:column;align-items:flex-end;gap:6px;
+  font-size:.78rem;color:var(--text);
+}
+.lab-toggle{
+  padding:4px 12px;border-radius:999px;border:1px solid rgba(127,214,242,.35);
+  background:rgba(15,18,22,.88);color:var(--accent);font:inherit;font-weight:700;
+  letter-spacing:.06em;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.45);
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+}
+.lab-toggle:hover{color:var(--accent-bright);border-color:rgba(127,214,242,.6);}
+.lab-body{
+  width:min(270px, calc(100vw - 24px));max-height:calc(100vh - 70px);overflow-y:auto;
+  padding:10px 12px;border-radius:10px;border:1px solid var(--border);
+  background:rgba(23,27,33,.97);box-shadow:0 10px 30px rgba(0,0,0,.55);
+  display:flex;flex-direction:column;gap:5px;
+}
+.lab-body[hidden]{display:none;}
+.lab-head{margin-bottom:2px;color:var(--accent);}
+.lab-head strong{text-transform:uppercase;letter-spacing:.06em;font-size:.74rem;}
+.lab-check{display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;margin-top:4px;}
+.lab-check input,.lab-radios input{accent-color:var(--accent);margin:0;}
+.lab-sub{padding-left:20px;display:flex;flex-direction:column;gap:4px;}
+.lab-sub-row{flex-direction:row;align-items:center;flex-wrap:wrap;gap:4px 10px;}
+.lab-radios{border:0;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:2px 8px;}
+.lab-radios label{display:inline-flex;align-items:center;gap:3px;cursor:pointer;}
+.lab-sr-legend{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+.lab-btn{
+  align-self:flex-start;margin:2px 0;padding:3px 10px;border-radius:6px;
+  border:1px solid rgba(127,214,242,.3);background:var(--accent-soft);color:var(--accent);
+  font:inherit;font-size:.74rem;cursor:pointer;
+}
+.lab-btn:hover{color:var(--accent-bright);background:rgba(127,214,242,.24);}
+.lab-status{margin:4px 0 0;color:var(--muted);font-size:.7rem;min-height:1em;}
+.lab-muted{color:var(--muted);}
+.lab-cyan{color:var(--accent);}
+.lab-section{
+  margin-top:8px;padding-top:6px;border-top:1px solid var(--border);
+  font-size:.62rem;font-weight:800;color:#a3adbb;text-transform:uppercase;letter-spacing:.09em;
+}
+.lab-check-small{font-weight:500;font-size:.74rem;margin-top:2px;}
+/* "sim": the simulated summaries, said once and small. */
+.lab-simtag{
+  display:inline-block;margin-left:4px;padding:0 4px;border-radius:3px;
+  background:rgba(154,164,178,.16);color:#7e8899;font-size:.56rem;font-weight:700;
+  letter-spacing:.06em;text-transform:lowercase;vertical-align:1px;
+}
+
+.lab-note{font-size:.7rem;line-height:1.3;}
+/* 40-1: the popover's button row. */
+.lab-g-bar{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px;}
+.lab-g-bar[hidden],.lab-g-btn[hidden]{display:none;}
+.lab-g-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  min-height:32px;min-width:44px;padding:4px 12px;border-radius:6px;
+  border:1px solid rgba(127,214,242,.35);background:var(--accent-soft);color:var(--accent);
+  font:inherit;font-size:.82rem;font-weight:700;cursor:pointer;box-shadow:none;text-shadow:none;
+}
+.lab-g-btn:hover{color:var(--accent-bright);background:rgba(127,214,242,.24);}
+.lab-g-btn:disabled{opacity:.45;cursor:default;}
+.lab-g-btn svg{width:15px;height:15px;}
+@media (max-width:600px){ .lab-g-btn{min-height:44px;flex:1 1 0;} }

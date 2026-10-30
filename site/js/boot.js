@@ -212,7 +212,8 @@ const emberField = (function () {
       const p = ((clock + e.phase) % e.dur) / e.dur;
       // ember-rise: opacity 0 -> .85 at 12% -> .5 at 70% -> 0. The
       // transform has ends only, so it runs straight across.
-      const a = p < .12 ? (p / .12) * .85
+      const a = typeof labEmberAlpha === 'function' ? labEmberAlpha(p) // LAB (never merged)
+            : p < .12 ? (p / .12) * .85
               : p < .70 ? .85 - ((p - .12) / .58) * .35
               :           .50 - ((p - .70) / .30) * .50;
       const y = H + 10.5 - H * 1.02 * p;      // bottom:-12px, then -102vh
@@ -234,7 +235,7 @@ const emberField = (function () {
       }
       if (a <= 0) continue;
       put(e.cold ? LOOK.rise.cold : LOOK.rise.warm,
-          x + e.ox, y, .6 + p * .55, a);
+          x + e.ox, y, typeof labEmberK === 'function' ? labEmberK(p) : .6 + p * .55, a); // LAB (never merged)
     }
 
     for (let i = blasting.length - 1; i >= 0; i--) {

@@ -78,6 +78,7 @@ three are a single value each that gets overwritten.
 | `wvw-weeks-v1` | The week's team line-up per tier, so a reload on a relink night does not bring back last week's while the API catches up |
 | `wvw-rail-first` | Which region's standings column you put on the left, `na` or `eu` |
 | `wvw-relink-checker:teams-notice` | Which relink's "the new teams are out" notice you dismissed, so it stays dismissed until the next one |
+| `wvw-lab-40-1-39-3` | Lab preview only (never merged): the Lab panel's choices |
 
 <details>
 <summary><b>About the visit counter</b></summary>
