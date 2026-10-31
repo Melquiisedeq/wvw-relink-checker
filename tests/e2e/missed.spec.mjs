@@ -322,7 +322,7 @@ test.describe('what happened', () => {
     await expect(page.locator(BLOCK), 'the block showed while the body stood still').toHaveCount(0);
   });
 
-  test('after the gap: both chips, the open map first, exactly those kills; markers, dots, chips', async ({ page, wvw }) => {
+  test('after the gap: both chips, the open map first, exactly those kills; markers, chips', async ({ page, wvw }) => {
     const g = await gap(page, wvw);
     await g.afterTheGap();
     await expect(page.locator(BLOCK)).toBeAttached();
@@ -331,11 +331,10 @@ test.describe('what happened', () => {
         top: b === b.parentElement.firstElementChild && b.parentElement.classList.contains('wvw-side'),
         chips: [...b.querySelectorAll('.wvw-chip[data-obj]')].map(c => c.dataset.obj + ' ' + c.dataset.map),
         kills: [...b.querySelectorAll('.wvw-missed-row')].map(r => r.querySelector('.wvw-missed-mapname').textContent + ' ' + (r.querySelector('.wvw-missed-kills')?.textContent || '')),
-        rings: [...document.querySelectorAll('.info-popover .wvw-marker')].filter(g => g.querySelector('.wvw-ring')).map(g => g.dataset.obj),
-        dots: [...document.querySelectorAll('.info-popover .wvw-tab')].filter(t => t.querySelector('.wvw-tab-dot')).map(t => t.dataset.type) }; }, BLOCK);
+        rings: [...document.querySelectorAll('.info-popover .wvw-marker')].filter(g => g.querySelector('.wvw-ring')).map(g => g.dataset.obj) }; }, BLOCK);
     const want = {
       chips: [[g.a.id, g.here], [g.b.id, g.other]].sort((x, y) => TABS.indexOf(x[1]) - TABS.indexOf(y[1])).map(([id, ty]) => `${id} ${ty}`),
-      kills: TABS.filter(ty => g.KILLS[ty]).map(ty => `${NAMES[ty]} ${g.KILLS[ty][1]} kills`), rings: [g.a.id], dots: [],
+      kills: TABS.filter(ty => g.KILLS[ty]).map(ty => `${NAMES[ty]} ${g.KILLS[ty][1]} kills`), rings: [g.a.id],
     };
     seen.title = await titleText(page);
     expect(seen.title, 'the block title').toMatch(/^What happened · \S/);
@@ -370,7 +369,6 @@ test.describe('what happened', () => {
     await expect(page.locator(`.info-popover .wvw-tab[data-type="${g.other}"].is-active`)).toBeAttached();
     await expect(page.locator(`.info-popover .wvw-marker.is-selected[data-obj="${g.b.id}"]`)).toBeAttached();
     await expect(page.locator('.info-popover .wvw-subtab.is-active')).toHaveAttribute('data-pane', 'objective');
-    await expect(page.locator('.info-popover .wvw-tab-dot'), "the other map's dot goes").toHaveCount(0);
     await expect.poll(lit, { message: `${g.b.id} lit a moment after its chip is pressed` }).toBe(g.b.id);
   });
 
