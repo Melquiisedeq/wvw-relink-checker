@@ -43,17 +43,18 @@ test('the relink bar halves slide on a swap, and none does on a swap undone befo
   await wvw.settle();
 });
 
-// The recorded body repeated for 1600 s puts no .tier-age on any tier, and at
+// The recorded body repeated for 1600 s leaves no swords badge on any tier, and at
 // 320 px no tier box or title row spills over.
 test('no tier wears a mark after 1600 s of the same body, and at 320 px none spills', async ({ page, wvw }) => {
   await page.goto(wvw.url);
   await expect(page.locator('#standingsGridNA > .standing-match').first()).toBeVisible();
   await wvw.settle();
+  expect(await page.locator('.tier-map-badge').count(), 'tiers wearing the swords badge before the gap').toBeGreaterThan(0);
   await wvw.skew(1600000);
   await page.evaluate(() => { localStorage.removeItem('wvw-fight-v1'); return loadStandings(); });
   await wvw.settle();
   expect(await page.locator('.standing-match').count(), 'tiers in the standings').toBeGreaterThan(0);
-  expect(await page.locator('.tier-age').count(), 'tiers wearing a mark after 1600 s of the same body').toBe(0);
+  expect(await page.locator('.tier-map-badge').count(), 'tiers wearing a mark after 1600 s of the same body').toBe(0);
   await phone(page, 320, { exact: false });
   await wvw.settle();
   const spill = await page.evaluate(() => ({
