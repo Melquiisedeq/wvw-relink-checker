@@ -1,7 +1,6 @@
-/* Translucent, with the blur keeping text legible over the artwork. Relief comes
-   from three things, none of them the fill: a top-down gradient, a bright inner
-   top edge against a dark inner bottom one, and a shadow underneath. Without
-   them a translucent panel reads as a sticker. */
+/* Translucent, with the blur keeping text legible over the artwork. Relief comes from a
+   top-down gradient, a bright inner top edge against a dark inner bottom one, and a shadow
+   underneath; without them a translucent panel reads as a sticker. */
 .card{
   background:linear-gradient(180deg, rgba(38,45,55,.52), rgba(18,22,28,.40));
   -webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
@@ -24,15 +23,13 @@ textarea{
 }
 textarea:focus{outline:2px solid var(--accent);}
 .row{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap;}
-/* Both start hidden and are shown by JS setting style.display. ID
-   selectors rather than a class: .row above already sets display:flex,
-   and at equal specificity the winner would be whichever file loads
-   last. An inline style still beats an id, which is what the JS needs. */
+/* Both start hidden and JS sets style.display. ID selectors, not a class: .row above
+   sets display:flex, and at equal specificity the later file would win. An inline style
+   still beats an id. */
 #resultCard{display:none;}
 #copyRow{padding-top:14px;border-top:1px solid var(--border);display:none;}
-/* The most raised surface on the page: a flat button on a lifted card
-   reads as painted onto it. Same recipe as the cards, in the accent's
-   hue. */
+/* The most raised surface on the page, in the accent's hue: a flat button on a lifted
+   card reads as painted onto it. */
 button{
   background:linear-gradient(180deg,#a3e2f6,#7fd6f2 46%,#57b6d6);
   color:#062733;border:none;border-radius:8px;
@@ -46,8 +43,7 @@ button{
   transition:filter .15s ease, transform .08s ease, box-shadow .08s ease;
 }
 button:hover{filter:brightness(1.08);}
-/* Travels down onto the surface and loses its shadow, rather than
-   shrinking in place. */
+/* Travels down onto the surface and loses its shadow. */
 button:active{
   transform:translateY(2px);
   box-shadow:
@@ -55,11 +51,10 @@ button:active{
     inset 0 -1px 0 rgba(255,255,255,.12),
     0 1px 1px rgba(0,0,0,.3);
 }
-/* The sink leaves the top 2px of the button's place to whatever is behind it,
-   and a press there would release on that and lose the click: this strip,
-   carried down with the button, keeps the 2px. The zero-specificity position
-   gives it a box to hang from and yields to any class that sets its own
-   (e2e/press.spec.mjs sweeps every button for it). */
+/* The sink leaves the top 2px of the button's place to whatever is behind, and a press
+   there would release on that and lose the click: this strip, carried down with the
+   button, keeps the 2px. The zero-specificity position gives it a box to hang from and
+   yields to any class that sets its own (e2e/press.spec.mjs sweeps every button). */
 :where(button:active){position:relative;}
 button:active::after{
   content:"";position:absolute;left:0;right:0;top:-2px;height:2px;

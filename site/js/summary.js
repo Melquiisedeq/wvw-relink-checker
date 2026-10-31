@@ -117,10 +117,8 @@ async function buildSummaryText(entries) {
       continue;
     }
 
-    // A week that has ended says nothing about the tier anyone is in now or who
-    // they are fighting, so both drop out of the block until the new one is
-    // published. Two things survive: the team, which comes from wvw/guilds and
-    // turns over with the relink, and the community sheet, which is edited by hand.
+    // A week that has ended says nothing about the tier or the opponents, so both drop out
+    // of the block until the new one is published; the team and the community sheet survive.
     const live = matchIsLive(match);
     const [regionCode, tierNum] = match.id.split('-');
     const regionName = REGION_NAMES[regionCode] || `Region ${regionCode}`;

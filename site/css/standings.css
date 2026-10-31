@@ -2,8 +2,8 @@
 .standings-card{background:rgba(255,255,255,.015);border-color:rgba(255,255,255,.06);}
 .standings-header{margin-bottom:12px;display:flex;align-items:center;gap:8px;}
 .standings-header-left{display:flex;align-items:center;gap:6px;}
-/* A window control, not part of the title: in the card's top-left corner, small
-   and white like the popovers' close and expand (cyan icons open a popover). */
+/* A window control, not part of the title: small and white like the popovers' close and
+   expand. */
 .standings-card{position:relative;}
 .rail-swap{
   position:absolute;top:4px;left:6px;
@@ -14,8 +14,8 @@
 .rail-swap:hover{color:var(--text);background:rgba(255,255,255,.06);}
 .rail-swap svg{display:block;filter:drop-shadow(0 1px .5px rgba(0,0,0,.6));}
 .standings-status{margin-left:auto;display:inline-flex;align-items:center;gap:6px;position:relative;top:-3px;}
-/* A failed load's message and its button: a compact strip at the top of the card,
-   right of the swap button, so the title keeps its row. Empty, it takes no room. */
+/* A failed load's message and button: a strip beside the swap button; empty, it takes
+   no room. */
 .standings-alert{display:none;}
 .standings-alert:not(:empty){
   display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:2px 6px;
@@ -41,9 +41,8 @@
   transition:opacity .15s ease, background .15s ease,
              color .15s ease, box-shadow .15s ease;
 }
-/* The icon buttons are bare glyphs, so their glow is a drop-shadow tracing the
-   outline; inside a filled 22px disc the same filter bleeds into its own
-   background. A box-shadow is the body-shaped version. */
+/* A drop-shadow glow bleeds into a filled disc's background; a box-shadow suits the
+   round body. */
 .leaderboard-link:hover{
   opacity:1;
   background:rgba(127,214,242,.28);
@@ -63,24 +62,21 @@
 }
 .standing-side{
   display:flex;flex-direction:column;gap:2px;font-size:.8rem;
-  /* Small enough to do nothing on a flat background, but it gives each
-     glyph its own edge wherever the photo underneath is busy. */
+  /* Gives each glyph an edge over a busy photo. */
   text-shadow:0 1px 2px rgba(0,0,0,.6);
 }
 .standing-side-top{display:flex;align-items:center;gap:7px;}
 .standing-vp{margin-left:auto;font-size:.72rem;white-space:nowrap;flex-shrink:0;}
 .standing-vp .stat-label{color:#8d97a6;opacity:1;font-weight:400;}
 .standing-vp .stat-value{color:#ffffff;font-weight:800;font-size:.85rem;}
-/* Read-only marks get the opposite relief to the buttons: engraved, not raised
-   (a bright top reads as pressable). */
+/* Engraved, not raised: a bright top reads as pressable. */
 .movement-indicator{
   display:inline-flex;align-items:center;justify-content:center;
   width:20px;margin-left:7px;flex-shrink:0;
   font-size:1rem;line-height:1;
   vertical-align:middle;cursor:default;
 }
-/* Saturated rather than tinted: at this size a muted colour reads as grey, and
-   the mark must be caught without stopping on it. */
+/* Saturated: a muted colour reads as grey at this size. */
 .movement-up{
   color:var(--green-ink);text-shadow:0 1px 1px rgba(0,0,0,.85);
   transform:translateY(-6px);
@@ -89,10 +85,8 @@
   color:var(--red-ink);text-shadow:0 1px 1px rgba(0,0,0,.85);
   transform:translateY(1px);
 }
-/* Optical centring: a triangle carries its weight at the base, so the up arrow
-   reads low and the down arrow high, while the bar reads true - transforms on
-   the first two only. Set by eye. Keep them small, or on a phone the mark lands
-   on the stats line under it. */
+/* Optical centring: transforms on the arrows only, kept small or on a phone the mark
+   lands on the stats line. */
 /* "Stays" is the absence of movement, so it keeps no hue: the eye skips it. */
 .movement-bar{
   display:inline-block;width:14px;height:3px;border-radius:1.5px;
@@ -100,9 +94,8 @@
 }
 .standing-side-top .rank-badge{width:20px;height:20px;font-size:.64rem;}
 .standing-side-top .dot{width:8px;height:8px;box-shadow:0 0 0 1px rgba(0,0,0,.35);}
-/* "Lutgardis Conservatory" is the longest team name in play; wrapping it breaks
-   the row rhythm down the rail. It gets the leftover space and shrinks a step
-   rather than wrapping; the VP block beside it never shrinks. */
+/* The longest team name must not wrap: it takes the leftover space and shrinks; the VP
+   block never shrinks. */
 .standing-side-name{
   font-weight:600;color:#f2f6fa;min-width:0;flex:0 1 auto;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
@@ -110,11 +103,9 @@
 @media (max-width:1499px){
   .standing-side-name{font-size:.96em;}
 }
-/* Well clear of --muted, with no extra opacity on the labels: the grey that reads
-   fine on the page reads thin inside a tinted card over a photograph. */
+/* Well clear of --muted, with no opacity on the labels: thin text over a tinted card on
+   the photo. */
 .standing-side-stats{color:#8d97a6;font-size:.72rem;padding-left:27px;}
-/* The label names the number; the number is the point: the label dim and small,
-   the value bright and heavy, not a shared tone. */
 .stat-label{color:#8d97a6;opacity:1;font-weight:400;}
 .stat-value{color:#f2f6fa;font-weight:700;}
 .sep{opacity:.4;margin:0 2px;}
@@ -124,17 +115,14 @@
   display:flex;align-items:center;justify-content:center;
   font-size:.78rem;font-weight:800;font-family:Cambria,Georgia,serif;
   background:#0c0f13;border:1px solid var(--border);color:var(--muted);
-  /* Anchors the first-place sheen to the badge; otherwise the sweep's
-     absolutely-positioned box falls back to the card and becomes a card-wide
-     white band. */
+  /* Anchors the first-place sheen to the badge, not the card. */
   position:relative;
 }
 .rank-1{background:linear-gradient(160deg,#fff3c4,#c99a2e 65%);color:#3a2a05;}
 .rank-2{background:linear-gradient(160deg,#eef2f7,#a9b4c0 65%);color:#22262c;}
 .rank-3{background:linear-gradient(160deg,#f0c9a0,#a9673a 65%);color:#2b1704;}
 
-/* Shared base for small icon-only buttons (guild list, K/D, activity).
-   Each subclass below only sets width/height/color. */
+/* Shared base for small icon-only buttons; each subclass sets width/height/color. */
 .icon-btn{
   display:inline-flex;align-items:center;justify-content:center;
   padding:0;margin-left:1px;flex-shrink:0;line-height:1;
@@ -142,29 +130,25 @@
   opacity:.95;cursor:pointer;
   transition:opacity .15s ease, transform .15s ease, color .15s ease;
 }
-/* Rest is --accent, hover is --accent-bright, on every one of them: the lift
-   alone says "this moved", never "this is lit", and bright cyan at rest leaves
+/* Rest is --accent, hover --accent-bright, on every one: bright cyan at rest leaves
    nothing for the hover. */
 .icon-btn:hover,.icon-btn.active{
   opacity:1;transform:scale(1.15);color:var(--accent-bright);
 }
-/* An icon can only be relieved along its outline. The offset is what makes it
-   safe: a drop-shadow with no offset closes into a disc at this size; pushed
-   straight down with almost no blur, it traces the shape. */
+/* An offset drop-shadow traces the shape; with no offset it closes into a disc at this
+   size. */
 .icon-btn svg{
   display:block;
   filter:drop-shadow(0 1px .5px rgba(0,0,0,.65));
   transition:filter .15s ease;
 }
-/* The halo, spent on hover only: at rest it is a permanent disc around a 14px
-   glyph. The offset shadow stays first so the glyph keeps its outline against the
-   photo. */
+/* Hover only: at rest it is a permanent disc around the glyph. The offset shadow stays
+   first. */
 .icon-btn:hover svg,.icon-btn.active svg{
   filter:drop-shadow(0 1px .5px rgba(0,0,0,.65))
          drop-shadow(0 0 4px rgba(127,214,242,.45));
 }
-/* The three small ones get more of it: the same blur on a 14px glyph covers a
-   fraction of the ink a 19px one does. Matched by eye against the shield. */
+/* The small three get more: the same blur covers less ink on a 14px glyph. */
 .map-kd-btn:hover svg,.map-kd-btn.active svg,
 .activity-btn:hover svg,.activity-btn.active svg,
 .activity-info-btn:hover svg,.activity-info-btn.active svg{
@@ -173,21 +157,17 @@
 }
 .icon-btn:active{transform:translateY(1px) scale(1.05);}
 
-/* No chip: it would be the only button on the page with a body. Accent colour and
-   the shared hover lift do the job in the language of the rest. */
+/* No chip: it would be the only button with a body. */
 .tier-map-btn{height:18px;gap:2px;color:var(--accent);}
-/* Reads brighter than the other cyan glyphs at rest because it carries more ink
-   (largest at 18px, an outline enclosing the whole box) beside a muted grey word.
-   Pulled back on opacity, not hue: a duller cyan stops meaning "you can touch
-   it". */
+/* More ink than the other glyphs, so pulled back on opacity, not hue: a duller cyan
+   stops meaning touchable. */
 .tier-map-btn svg{
   width:18px;height:18px;
   opacity:.82;
   transition:opacity .15s ease, filter .15s ease;
 }
 .tier-map-btn:hover svg,.tier-map-btn.active svg{opacity:1;}
-/* The swords on the corner of the icon say a map of this tier is busy;
-   they take the place of the dot, which would only sit under them. */
+/* The swords say a map of this tier is busy; they take the dot's place. */
 .tier-map-btn{position:relative;}
 .tier-map-badge{
   position:absolute;right:-6px;top:-5px;display:block;
@@ -195,34 +175,29 @@
 }
 .tier-map-badge img{display:block;}
 .tier-map-btn.has-badge svg circle{display:none;}
-/* Same as .stat-label on purpose. The size is fixed rather than inherited: the
-   button appears at .72rem in the standings card and .95rem in the panel header. */
+/* Same as .stat-label. Fixed size: the button sits at .72rem in the card and .95rem in
+   the panel header. */
 .tier-map-label{
   font-size:.64rem;font-weight:400;color:#8d97a6;
   line-height:1;
-  /* Optical, not geometric: flex centres the label's box, but "Maps" has a
-     descender, so its ink sits high. Nudged until the cap height lands on the
-     glyph's centre. */
+  /* Optical: "Maps" has a descender, so its ink sits high. */
   transform:translateY(1px);
 }
-/* The word is what lights up. The glyph is already accent and has its
-   own brighten below, so the control answers as one piece. */
+/* The word lights up; the glyph already has its own brighten. */
 .tier-map-btn:hover .tier-map-label,
 .tier-map-btn.active .tier-map-label{color:var(--text);}
-/* The shared 1.15 lift is sized for a bare 17px glyph; on a word it
-   reads as the text going soft rather than as the control rising. */
+/* The 1.15 lift is sized for a bare glyph; on a word it reads as the text going soft.
+   */
 .tier-map-btn:hover,.tier-map-btn.active{
   color:var(--accent-bright);transform:scale(1.06);
 }
 
 /* Community guild list: small icon next to NA server names, opens a popover */
 .server-guilds-btn{width:19px;height:21px;color:var(--accent);}
-/* Pulled back over the row's 7px gap: the shield belongs to the name it sits
-   beside, not to the row. */
+/* Over the row's 7px gap: the shield belongs to the name. */
 .standing-side-top .server-guilds-btn{margin-left:-5px;}
-/* The one opaque surface on the page: at 92-94% the Check button still reads
-   through it, and no blur fixes a large bright shape behind small text. Opaque
-   retires the backdrop-filter too. */
+/* The one opaque surface: translucency lets the Check button read through and no blur
+   fixes it. Opaque retires the backdrop-filter too. */
 .info-popover{
   position:fixed;z-index:60;width:280px;max-height:min(340px, 70vh);overflow-y:auto;
   overscroll-behavior:contain; /* without it a swipe at the end scrolls the page behind */
@@ -235,8 +210,7 @@
     inset 0 -1px 0 rgba(0,0,0,.5),
     0 18px 44px -12px rgba(0,0,0,.85);
 }
-/* Guild/alliance list only: often long, so it gets more default room and
-   a manual resize handle. The other popovers stay compact. */
+/* Guild/alliance list: often long, so more room and a resize handle. */
 .info-popover--guilds{width:300px;max-height:85vh;min-height:120px;resize:vertical;}
 .info-popover-header{
   display:flex;align-items:center;justify-content:space-between;
@@ -278,9 +252,8 @@
 .info-popover--expanded .info-popover-body{
   display:flex;flex-direction:column;gap:16px;
 }
-/* Column containers are built in JS (see layoutAllianceGrid), which
-   measures real card heights and bin-packs them. These rules just
-   style whatever columns the script builds. */
+/* Columns are built in JS (layoutAllianceGrid, which bin-packs them); these rules style
+   them. */
 .info-popover--expanded .alliance-grid{
   display:flex;gap:12px;align-items:flex-start;
 }
@@ -314,14 +287,11 @@
 .map-kd-label--gbl,.pop-bar-label.map-kd-label--gbl{color:var(--green-ink);}
 .map-kd-label--bbl,.pop-bar-label.map-kd-label--bbl{color:var(--blue);}
 .map-kd-label--rbl,.pop-bar-label.map-kd-label--rbl{color:var(--red-ink);}
-/* EBG is nobody's map, so it takes a colour no team owns: the lockout banner's
-   amber. Not cyan: cyan means something you can touch. Not three team colours
-   across three letters: blended it washes out, split it reads as a ransom note. */
+/* EBG is nobody's map: the lockout banner's amber, not cyan (cyan means touchable) and
+   not team colours. */
 .map-kd-label--ebg,.pop-bar-label.map-kd-label--ebg{color:var(--warn);}
 
-/* The skirmish-score chart and the buttons that open these popovers. One rule
-   for the chart's height: a second rule further down would override it and
-   editing this one would do nothing. */
+/* The chart's height is set once here; a second rule further down would override it. */
 .activity-btn,.activity-info-btn{width:14px;height:15px;color:var(--accent);vertical-align:middle;}
 .activity-chart{width:100%;height:132px;display:block;margin-top:2px;}
 /* A colour means a team: the chosen side is in its own colour, told apart by weight. */
@@ -333,19 +303,15 @@
 .activity-dot--blue{fill:var(--blue);}
 .activity-dot--green{fill:var(--green);}
 .activity-dot{stroke:rgba(10,13,17,.85);stroke-width:1.2;}
-/* The popovers that carry a chart or a breakdown, rather than three
-   lines of text: they get room the compact ones do not need. */
+/* Popovers with a chart or breakdown get more room. */
 .info-popover--trend{
   width:430px;max-height:min(680px, 88vh);padding:14px 17px;
 }
 .info-popover--data{width:470px;max-height:min(560px, 86vh);padding:13px 16px;}
 @media (max-width:520px){ .info-popover--data{width:calc(100vw - 24px);} }
-/* On a narrow screen it takes the width it can get rather than
-   overflowing it. */
 @media (max-width:520px){ .info-popover--trend{width:calc(100vw - 24px);} }
 
-/* Headline figures, label over value. The base is two columns; every
-   popover on the page uses the three-column variant under it. */
+/* Headline figures, label over value; every popover uses the three-column variant. */
 .pop-figures{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
 .pop-figures--three{grid-template-columns:repeat(3,1fr);gap:8px;}
 .pop-figures--three .pop-figure{padding:8px 9px;}
@@ -361,15 +327,13 @@
   text-transform:uppercase;letter-spacing:.08em;margin-bottom:1px;
 }
 .pop-figure-value{font-size:1.2rem;color:var(--text);font-variant-numeric:tabular-nums;}
-/* K/D is the only figure that takes a tone, and it is the figure the cards outside
-   carry, so the same green and red down to the value (--ok and --err would put
-   three reds on screen for one number). */
+/* K/D is the only toned figure, in the same green and red as the cards outside (--ok
+   and --err would add a third red). */
 .pop-figure--good .pop-figure-value{color:var(--green-ink);}
 .pop-figure--bad .pop-figure-value{color:var(--red-ink);}
 
 
-/* The other two sides, for scale. Thin and dim on purpose: they are
-   there to say whether a dip was this server or the whole tier. */
+/* The other two sides, for scale: thin and dim. */
 .trend-line{fill:none;stroke-width:1.4;opacity:.6;}
 .trend-line--red{stroke:var(--red);}
 .trend-line--blue{stroke:var(--blue);}
@@ -414,9 +378,8 @@
   text-transform:uppercase;letter-spacing:.08em;
 }
 .pop-section-title{flex:1 1 auto;min-width:0;}
-/* The column words, on the heading's own line. A size down from it, and
-   each one carrying its column's width from the rows below - which is
-   what puts a word over its own number instead of near it. */
+/* The column words, a size down, each carrying its column's width so it sits over its
+   own number. */
 .pop-section .pop-bar-value,.pop-section .pop-bar-pct,
 .pop-section .pop-kd-kills,.pop-section .pop-kd-deaths{
   color:var(--muted);font-size:.6rem;font-weight:700;letter-spacing:.07em;
@@ -424,15 +387,13 @@
 .pop-section .pop-kd-nums{flex:0 0 auto;}
 .pop-bar-row{display:flex;align-items:center;gap:11px;padding:5px 0;font-size:.78rem;}
 .pop-bar-label{font-weight:700;flex:0 0 68px;}
-/* Wide enough for the longest team name (Lutgardis Conservatory, 22 characters),
-   so the ellipsis is the exception. */
+/* Wide enough for the longest team name, so the ellipsis is the exception. */
 .pop-bar-label--wide{
   flex:0 0 146px;color:var(--text);font-weight:600;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
-/* The row you opened: a rail and a tint in the page's accent, not a colour that
-   would claim to be a team. The negative margin is paid back by the padding, so
-   the label starts where the other rows' labels start. */
+/* The row you opened: an accent rail and tint, not a team colour. The negative margin
+   is paid back by the padding. */
 .pop-bar-row.is-mine{
   margin:0 -8px;padding:5px 8px;border-radius:6px;
   background:rgba(127,214,242,.07);
@@ -452,11 +413,8 @@
   font-variant-numeric:tabular-nums;
 }
 .pop-bar-pct{flex:0 0 36px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;}
-/* The number the rows add up to, at the foot of the column they add up in: the
-   eye goes down the values adding them, and the total closes it. */
-/* Baseline, not centre: the label is .66rem and the number .78rem, and centring
-   two sizes leaves their baselines a pixel apart. The empty track has no text to
-   have a baseline, so it keeps centring. */
+/* Baseline, not centre: two sizes centred leave their baselines apart; the empty track
+   keeps centring. */
 .pop-bar-total{
   align-items:baseline;
   margin-top:6px;padding:4px 0 0;border-top:1px solid var(--border);
@@ -467,8 +425,7 @@
 }
 .pop-bar-total .pop-bar-track{background:none;box-shadow:none;align-self:center;}
 
-/* Five things in this row and nothing may wrap. The numbers are sized to their
-   content and grouped; the bar takes what is left. */
+/* Nothing in this row may wrap; the bar takes what the sized numbers leave. */
 .pop-kd-row{gap:10px;white-space:nowrap;}
 .pop-kd-row .pop-bar-label{flex:0 0 62px;}
 .pop-bar-track--slim{flex:1 1 auto;min-width:40px;height:8px;}
@@ -479,13 +436,10 @@
   display:inline-flex;align-items:center;justify-content:flex-end;gap:4px;
 }
 .pop-kd-ratio{width:38px;text-align:right;font-weight:700;}
-/* The words over the three numbers, on the same grid as the rows so
-   each sits above what it names. The label and track slots are empty
-   and are here to hold the columns, not to draw anything. */
-/* Vector, not emoji: different system fonts have different ascents. The nudge is
-   not a fudge: align-items:center puts the icon's middle 0.414em above the
-   baseline in Segoe UI, while digits centre at 0.35em; that 0.064em makes a
-   centred icon float above the number. */
+/* The words sit on the rows' grid; the empty label and track slots only hold the
+   columns. */
+/* Vector, not emoji. The nudge is load-bearing: align-items:center puts the icon's
+   middle above the digits' centre, so a centred icon floats above the number. */
 .glyph-sword,.glyph-skull{
   display:block;flex:0 0 auto;opacity:.85;
   transform:translateY(0.064em);
@@ -518,10 +472,9 @@
   text-decoration-color:var(--accent);text-underline-offset:3px;
 }
 
-/* A side that overtakes slides over the one it passes (js/panels.js, slideRun). z-index
-   needs a positioned element: the cards are, the guild-found strip is not until here,
-   and without it the climber's strip would pass under the card it overtakes. The shadow
-   is its own layer: the card's clip-path would cut a box-shadow. */
+/* js/panels.js, slideRun: z-index needs a positioned element, and the guild-found strip
+   is not one until here. The shadow is its own layer: the card's clip-path would cut a
+   box-shadow. */
 .slide-host{position:relative;}
 .slide-over,.slide-under{position:relative;}
 .slide-over{z-index:3;}

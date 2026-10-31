@@ -15,21 +15,16 @@
 // A message is signed by its script with a secret of its own:
 //   x-wvw-time  epoch seconds
 //   x-wvw-sig   hex HMAC-SHA256 of  time + "\n" + path + "\n" + body
-// The path is in the signature so a message for one source cannot be replayed
-// against the other, and each source has its own secret so one leaking does
-// not open the other.
+// The path is signed so a message cannot be replayed against another source.
 //
-// The latest entrance never opens a match body (the free plan gives 10 ms of CPU
-// a request, and unpacking whole match bodies does not fit): it decides by the signed summary
-// that comes before the bodies and by the match's score, never by a reader's clock.
+// The latest entrance never opens a match body (CPU time per request is limited): it decides
+// by the signed summary and the match's score, never by a reader's clock.
 
-const MAX_BYTES = 64 * 1024;      // kills sends at most 30 min of rows, ~4 KB
+const MAX_BYTES = 64 * 1024;
 const MAX_BYTES_LATEST = 256 * 1024; // at most one gzipped body per id in MATCHES
 const MAX_SKEW_S = 300;
 // The Worker never opens a slice, so these bound what a page may be handed to
-// unpack: a gzip bomb of 16 KB still unpacks to ~16 MB, and the page stops at raw.
-// Both sit well above a real body: one over either refuses the reader's
-// whole push.
+// unpack. (MAX_RAW matches LATEST_BODY_MAX in js/api.js). One over either refuses the reader's whole push.
 const MAX_SLICE = 16 * 1024;
 const MAX_RAW = 256 * 1024;
 const SOURCES = {
@@ -55,35 +50,25 @@ const SUMMARY_KEY = 'https://wvwrelink.com/api/latest/summary';
 // The max-age of each read, both in its answer and on a copy served from the cache.
 const LATEST_MAX_AGE = 5;
 const SUMMARY_MAX_AGE = 5;
-// The scripts make 128 hex characters. Anything much shorter was pasted in
-// half, and a weak secret that works is worse than one that fails loudly.
+// The scripts make 128 hex characters; a short secret fails loudly rather than work weakly.
 const MIN_SECRET = 64;
-// The daily cleanup deletes kills older than this: two weeks keeps the running
-// match and the one before it. Raising it keeps more from then on; what was
-// already deleted does not come back.
+// The daily cleanup deletes kills older than this: two weeks keeps the running match and the one before it.
 const KEEP_DAYS = 14;
-// What GET /api/kills carries in full. The page wants the newest reading at
-// least ten minutes old, which with a tick every five is 10-15 minutes back;
-// the rest is room for a late tick. But kills.gs writes a match only when its
-// score rose and the GW2 API can freeze one for about an hour, so each match
-// also carries its newest older row, up to BASE_MS back.
+// What GET /api/kills carries in full: the page wants a reading at least ten minutes old, and the
+// rest is room for a late tick. kills.gs writes a match only when its score rose, so a frozen
+// match also carries its newest older row, up to BASE_MS back.
 const RECENT_MS = 30 * 60e3;
 const BASE_MS = 3 * 3600e3;
 // The page's kills window: it counts from a reading this much older than the
 // match's clock, so a stopped match also needs one that far behind its newest.
 const KILLS_WINDOW_MS = 10 * 60e3;
-// How far back the kills' last move is sent. The page drops a reading over
-// 3 hours old (FIGHT_STALE_MS in js/maps.js) and the base goes first, up to 15
-// minutes before the move; 2.5 hours leaves room for the body's 5 minutes of
-// age and the 6 the page keeps it.
+// How far back the kills' last move is sent: under the page's FIGHT_STALE_MS in js/maps-early.js,
+// less the base's lead and the body's age.
 const MOVE_MS = 2.5 * 3600e3;
-// Past these a source counts as stopped, and the reads answer 503 so the
-// page goes to the sheet rather than show a copy that stopped moving. Kills
-// and relink both tick every 5 minutes.
+// Past these a source counts as stopped, and the reads answer 503 so the page goes to the sheet.
 const STALE_KILLS_S = 20 * 60;
 const STALE_RELINK_S = 45 * 60;
-// Every match id the entrance accepts, so the rebuild and the cleanup below read the kills
-// table by its key. By time alone it would scan the whole table.
+// Every match id the entrance accepts, so the rebuild and the cleanup read the kills table by its key.
 const MATCHES = [];
 for (const r of [1, 2]) for (let t = 1; t <= 9; t++) MATCHES.push(r + '-' + t);
 
@@ -127,8 +112,7 @@ async function accept(request, env, source, path) {
   if (!secret) return refuse(404, source, 'unknown source or no secret');
   if (secret.length < MIN_SECRET) return refuse(404, source, 'secret too short');
 
-  // Everything up to the signature costs no database access, so an unsigned
-  // flood costs CPU milliseconds and nothing else.
+  // Nothing up to the signature touches the database.
   const t = request.headers.get('x-wvw-time') || '';
   const sig = request.headers.get('x-wvw-sig') || '';
   if (!/^\d{10}$/.test(t) || !/^[0-9a-f]{64}$/.test(sig)) return refuse(401, source, 'no signature');
@@ -153,8 +137,7 @@ async function accept(request, env, source, path) {
 
   if (source.startsWith('latest-')) return acceptLatest(env, source, body, Number(t), now);
 
-  // Signed from here on, so a failure below is our bug or Google's, not an
-  // attack - but it is still never written.
+  // Signed from here on, so a failure below is our bug or Google's; it is still never written.
   let data;
   try {
     data = JSON.parse(new TextDecoder().decode(body));
@@ -334,11 +317,8 @@ function checkBoard(m, nowMs) {
   return { vp: m.vp.slice(), rows };
 }
 
-// One statement for the whole message. Two readers, or one sending the same
-// finished skirmish over its two hours, make one row; it changes only
-// when the score (the week's last skirmish, still running) or the VP (should it
-// come a read after the skirmish list) rose and neither fell, so a repeat
-// changes nothing. Returns the run's meta, for the log.
+// One statement for the whole message. A row changes only when its score or VP rose
+// and neither fell, so a repeat from either reader changes nothing. Returns the run's meta, for the log.
 async function boardInsert(db, ms, at) {
   const rows = [];
   for (const m of ms) if (m.board && typeof m.board === 'object') for (const s of m.board.rows) rows.push([m.id, m.start, ...s, ...m.board.vp]);
@@ -365,8 +345,7 @@ function toHex(buf) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Text, not a BLOB: D1 and node:sqlite hand BLOBs back differently, and a
-// read can put the string straight into JSON.
+// Text, not a BLOB: D1 and node:sqlite hand BLOBs back differently.
 function toBase64(bytes) {
   let s = '';
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
@@ -379,35 +358,25 @@ const KILLS_LINE_MS = 55e3;
 // length; the first of the next slot is the full read, so an error does not last.
 const FULL_EVERY_MS = 10 * 60e3;
 
-// The one row GET /api/kills reads. Built here, once per tick, so a read
-// costs one row of D1's 5 million a day however many there are: the cheapest
-// query over the kills table itself costs ~60, and the Worker's own limit of
-// 100,000 requests a day would pass it and stop every query, writes included,
-// until midnight UTC.
+// The one row GET /api/kills reads, built once per tick so a read costs one D1 row.
 // Per match, of its newest week: the last RECENT_MS; the newest row before
-// that (at most BASE_MS back), so a frozen match keeps a base; and, so a match
-// whose score keeps rising while its kills stand still has something to count
-// from, the first row with the newest total (the kills' last move), the row
-// before it, and the newest at least KILLS_WINDOW_MS before the move. When
-// the row before the move is past MOVE_MS, the first row within MOVE_MS instead.
-// The move is carried forward from the last body, not looked for on every
-// tick: the walk back over a still stretch reads every row of it. The walk
-// (walkSql) runs only when there is no last body to carry from, it does not
-// join up with this one (a gap of over RECENT_MS), it holds no move where kills
-// shows one, or a late batch reached behind this window (kills.gs down while
-// the readers are up). Every query reads kills by its key, `at` bounded as
-// well as the match; a test checks their plans and the rows they hand back.
+// that (at most BASE_MS back), so a frozen match keeps a base; and the kills' last
+// move: the first row with the newest total, the row before it, and the newest at
+// least KILLS_WINDOW_MS before the move. When the row before the move is past
+// MOVE_MS, the first row within MOVE_MS instead.
+// The move is carried forward from the last body, because the walk back over a still
+// stretch reads every row of it. The walk (walkSql) runs only when there is no last
+// body, it does not join up with this one (a gap of over RECENT_MS), it holds no move
+// where kills shows one, or a late batch reached behind this window. Every query reads
+// kills by its key, `at` bounded as well as the match; a test checks their plans.
 //
-// With `incremental` (the readers' entrance) the window is not read again: it
-// is the last body, its rows since the cut, plus the lines newer than the
-// body's newest of each match. That holds only because killsInsert lets in
-// nothing behind the newest line of a match, kills.gs included; if it did, the
-// line would be missing from the body until the next slot. The rest below runs
-// on it unchanged, and the differential test of the readers' entrance proves
-// the body is the full read's. The full read instead (logged with its reason):
-// no body, one that does not join up, one from another slot, a line to read
-// missing, a write another rebuild overtook. kills.gs never asks for it: its
-// batches reach behind the window.
+// With `incremental` (the readers' entrance) the window is the last body, its rows
+// since the cut, plus the lines newer than the body's newest of each match. That holds
+// only because killsInsert lets in nothing behind the newest line of a match, kills.gs
+// included. The full read runs instead (logged with its reason) when there is no body,
+// it does not join up, it is from another slot, a line to read is missing, or a write
+// another rebuild overtook. kills.gs never asks for it: its batches reach behind the window.
+// tests/unit/worker.test.mjs checks the body equals the full read's.
 async function rebuildRecent(db, now, incremental = false) {
   const started = Date.now();
   const nowMs = now * 1000;
@@ -415,13 +384,10 @@ async function rebuildRecent(db, now, incremental = false) {
   const floor = cut - BASE_MS;
   const reach = nowMs - MOVE_MS;
   const last = await db.prepare('SELECT at, rows FROM recent WHERE id = 1').first();
-  // The last body joins up when its window reaches this one's: every row since
-  // its window began is then in one of the two, or came late (kills.gs sends a
-  // batch up to 45 minutes back, killsStatement). A late row is newer than the
-  // match's newest when it entered, so if one is older than this window, the
-  // newest row before the window is one the last body did not hold: then
-  // the match is walked. A row of the week before is dropped from the body by
-  // design, so it is no sign of a late batch.
+  // The last body joins up when its window reaches this one's. A late row (kills.gs sends
+  // batches up to 45 minutes back, killsStatement) older than this window means the newest
+  // row before the window is one the last body did not hold: then the match is walked.
+  // A row of the week before is dropped from the body by design, so it is no sign of one.
   const carried = last && last.at >= cut ? JSON.parse(last.rows) : null;
   const held = new Set(carried ? carried.map((r) => r[1] + ' ' + r[0]) : []);
   let why = !last ? 'no body' : !carried ? 'body does not join up' : nowMs < last.at ? 'clock behind the body'
@@ -630,11 +596,9 @@ async function readCapped(request, max) {
 
 // Rows as the sheet has them: [at, match, center, red, blue, green, start] and
 // optionally [..., score] (a line without a score is the sheet's older script).
-// Anything off is the whole message refused rather than the row skipped, so a
-// change of shape on the Google side is seen at once and not as a thin history.
-// One statement for all of them, through json_each: a batch of one INSERT per
-// row would reach the 50 queries a free invocation may make after an outage,
-// and then fail on every retry, since the backlog only grows.
+// Anything off refuses the whole message, so a change of shape on the Google side is seen at once.
+// One statement for all of them, through json_each: one INSERT per row could pass
+// the per-invocation query limit after an outage and then fail on every retry.
 function killsStatement(db, data, t) {
   const rows = data && data.rows;
   if (!Array.isArray(rows) || !rows.length || rows.length > 300) return 'rows';
@@ -753,8 +717,7 @@ async function cached(ctx, key, maxAge, make) {
   if (cache) {
     const hit = await cache.match(key);
     if (hit) {
-      // A hit comes back with max-age=14400, probably the zone's Browser Cache
-      // TTL (the docs do not say so). The route's own max-age is put back here.
+      // The route's own max-age is put back here: a cached copy can carry another one.
       const out = new Response(hit.body, { status: hit.status, statusText: hit.statusText, headers: hit.headers });
       out.headers.set('cache-control', 'public, max-age=' + maxAge);
       return out;

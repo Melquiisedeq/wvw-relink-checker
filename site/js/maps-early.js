@@ -1,43 +1,32 @@
 'use strict';
-// The part of the tier maps the page needs before anyone opens one: the map
-// buttons and their swords badge, the fight log every standings refresh
-// writes, and the "What happened" bookkeeping every match body passes
-// through. The drawing code is js/maps.js, which index.html does not load:
-// loadMapsScript asks for it as the first standings are drawn, or at the
-// first click on a map button, whichever comes first. maps.js reads what
-// this file declares, so this file stays where index.html loads it
-// (check-structure.py fails if the quoted path is missing).
+// The tier maps' early half: map buttons and swords badge, the fight log, the
+// "What happened" bookkeeping. The drawing code is js/maps.js, loaded by
+// loadMapsScript; it reads what this file declares, so this file stays where
+// index.html loads it (check-structure.py fails if the quoted path is missing).
 
-// Tab order. Red last: it is the heaviest of the three, and sitting second
-// it fought EBG for the eye.
+// Tab order. Red last: it is the heaviest of the three, and second it fights EBG for the eye.
 const MAP_PANEL_ORDER = ['Center', 'BlueHome', 'GreenHome', 'RedHome'];
 const MAP_TAB_NAME = Object.freeze({
   Center: 'EBG', RedHome: 'Red BL', BlueHome: 'Blue BL', GreenHome: 'Green BL',
 });
-// How often open tier maps re-read their own match. One match is 82KB, and
-// this runs only while the maps are open and the page is visible. A faster
-// read only catches sooner the update of the copy this IP gets; a copy that
-// lags is fetchMatches' job (js/api.js).
+// How often open tier maps re-read their own match. A copy that lags is
+// fetchMatches' job (js/api.js), not a reason to poll faster.
 const MAP_REFRESH_MS = 30 * 1000;
 // Past this, the corner stops calling the map "updated" and says how long
-// its data has not moved, frozen or unanswered: one 5-min score tick
-// missed, plus a minute. Not lower without checking a quiet tier at night.
+// its data has not moved. Not lower without checking a quiet tier at night.
 const HUD_STALE_MS = 6 * 60 * 1000;
 
 // ---- the fight log --------------------------------------------------
-// What puts the crossed swords on a map tab. The API publishes kills only
-// as running totals for the week, so which map is busy takes two readings,
-// apart in time. Every standings refresh (wvw/matches) drops a snapshot
-// here on its way past; no extra request. It survives a reload; the swords
-// stay off until two samples exist. The other half comes from the kills
-// sheet - see KILLS_SHEET_ID in js/config.js.
+// What puts the crossed swords on a map tab. Kills are running totals for
+// the week, so a busy map takes two readings apart in time; every standings
+// refresh drops a snapshot here. The shared half is the kills sheet
+// (KILLS_SHEET_ID in js/config.js).
 const FIGHT_KEY = 'wvw-fight-v1';
 const FIGHT_KEEP_MS = 40 * 60 * 1000;
 const FIGHT_MAX_SAMPLES = 12;
 const FIGHT_MIN_GAP_MS = 60 * 1000;
-// A sample older than this is not a baseline, it is history. Guards
-// against a dead sheet: its rows would keep ageing and the rate computed
-// off them would look plausible and be meaningless.
+// A sample older than this is not a baseline: a dead sheet's rows keep ageing
+// and would give a plausible, meaningless rate.
 const FIGHT_STALE_MS = 3 * 60 * 60 * 1000;
 
 // Player kills per map, and only those: deaths also count everyone who
@@ -53,8 +42,7 @@ function fightTotals(match) {
 }
 
 function readFightLog() {
-  // A private window, cleared site data or a browser set to block
-  // storage all throw here rather than returning null.
+  // Blocked storage throws rather than returning null.
   try {
     const raw = localStorage.getItem(FIGHT_KEY);
     const obj = raw ? JSON.parse(raw) : null;
@@ -62,12 +50,10 @@ function readFightLog() {
   } catch { return {}; }
 }
 
-// The earliest reading this browser logged for the match's week, under
-// FIGHT_KEEP_MS old, with more kills on some map than `match`: the body is
-// from before it. A reload forgets newestMatches but not this log, so it
-// lets fetchMatches catch a first body from the group behind (js/api.js,
-// matchesToReread). 0 when there is none. The log is text anything on this
-// origin can write: whatever is malformed counts as no reading.
+// The earliest logged reading of the match's week, under FIGHT_KEEP_MS old,
+// with more kills on some map than `match` (the body is from before it), or 0.
+// Lets fetchMatches catch a stale first body (js/api.js, matchesToReread).
+// The log is writable by anything on this origin: malformed counts as no reading.
 function fightLogAheadAt(match) {
   if (!match || typeof match.id !== 'string' || !matchIsLive(match)) return 0;
   const log = readFightLog();
@@ -89,13 +75,10 @@ function fightLogAheadAt(match) {
   return first;
 }
 
-// Called by whoever holds fresh match data, with `asked`: when the request
-// went out. A body is stamped with that, not with the moment it is written
-// - a slow answer or a sleeping computer would otherwise carry the time of
-// the waking up. Only bodies whose score this page watched rise since
-// `asked` are written: a first sight may be the copy of the group that is
-// behind at that moment and would become the window's base. It declines
-// samples that arrive too close together.
+// `asked` is when the request went out; the sample is stamped with it, not
+// with the write time (a sleeping computer would carry the waking-up time).
+// Only bodies whose score this page watched rise since `asked` are written: a
+// first sight may be the lagging group's copy. Samples too close are declined.
 function recordFightSamples(matches, asked) {
   const log = readFightLog();
   const now = Date.now();
@@ -112,9 +95,8 @@ function recordFightSamples(matches, asked) {
       && (!last || asked - last.at >= FIGHT_MIN_GAP_MS)) kept.push({ at: asked, n: fightTotals(match) });
     log[match.id] = kept.slice(-FIGHT_MAX_SAMPLES);
   }
-  // Matches this call did not mention are only dropped once they age out,
-  // not immediately: the maps popover records a single match at a time
-  // and must not wipe the other eight.
+  // Unmentioned matches drop only once they age out: the maps popover records
+  // one match at a time.
   for (const id of Object.keys(log)) {
     if (seen.has(id)) continue;
     const kept = log[id].filter((s) => s && now - s.at <= FIGHT_KEEP_MS);
@@ -124,20 +106,16 @@ function recordFightSamples(matches, asked) {
 }
 
 
-// The shared half of the fight log: snapshots taken whether or not anyone
-// was looking - half an hour from this project's API, two hours from the
-// sheet when that fails - which is the only way a first-ever visitor
-// can be told which map is busy. Cached, so tab switches and the
-// thirty-second poll never refetch it.
+// The shared half of the fight log, taken whether or not anyone was looking:
+// how a first-ever visitor learns which map is busy. Cached, never refetched
+// by tab switches or the poll.
 let killSheet = null;
 let killSheetAt = 0;
 let killSheetInFlight = null;
 
-// A match whose only age is "first seen here" is backdated to the history's
-// newest line for it, so opening during a freeze is amber at once. Only when
-// the history itself is alive: a general freeze and a stopped trigger look
-// the same from here, and without certainty nothing is claimed. A body
-// with fewer kills than the history's newest line is backdated either way.
+// A first-seen match is backdated to the history's newest line, only while the
+// history itself is alive (a general freeze and a stopped trigger look alike).
+// A body with fewer kills than that line is backdated either way.
 const HISTORY_LIVE_MS = 10 * 60 * 1000;
 
 function ageFromHistory(byMatch) {
@@ -163,8 +141,7 @@ async function getKillSheet() {
       ageFromHistory(killSheet);
       if (fromSheet) ageByScoreSum(killSheet);
     } catch {
-      // The local log still answers for anyone who has been here a
-      // while; only the cold visit loses out, and it loses quietly.
+      // The local log still answers; only a cold visit loses out.
       if (!killSheet) killSheet = new Map();
     }
     killSheetInFlight = null;
@@ -184,10 +161,8 @@ function addKillSample(by, at, id, counts, score) {
   by.get(id).push(sample);
 }
 
-// /api/kills does not carry the score sum; the sheet's eighth column does. A
-// body whose `at` is just a first sight is dated by the oldest line of its week
-// with the same sum, as the line is written when the score rises to it. No such
-// line leaves `at` as it is.
+// /api/kills carries no score sum; the sheet's eighth column does. A first-sight
+// body is dated by the oldest line of its week with the same sum.
 function ageByScoreSum(byMatch) {
   for (const [id, kept] of newestMatches) {
     if (kept.rose) continue;
@@ -203,10 +178,8 @@ function sortKillSamples(by) {
   return by;
 }
 
-// The last thirty minutes, as [at, match, Center, RedHome, BlueHome,
-// GreenHome] - the sheet's columns, as numbers. An empty answer is a
-// failure too: the Worker says 503 when its copy stops moving, and nothing
-// at all is no better.
+// Rows as [at, match, Center, RedHome, BlueHome, GreenHome], the sheet's
+// columns. An empty answer is a failure too, so the sheet is the fallback.
 async function readOwnKills() {
   const data = await fetchOwnApi(OWN_KILLS_URL);
   const rows = data && data.rows;
@@ -221,11 +194,8 @@ async function readOwnKills() {
 }
 
 async function readKillSheet() {
-  // The deadline every other request on this page already gets. A
-  // connection that accepts and then goes quiet would leave this
-  // pending for good - and killSheetInFlight hands that same promise to
-  // every later caller, so the shared history would be gone for the
-  // rest of the session with nothing having failed.
+  // Without a deadline a silent connection leaves killSheetInFlight pending
+  // for every later caller.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -243,19 +213,13 @@ async function readKillSheet() {
   }
 }
 
-// Both halves as one series. The sheet covers the cold visit at
-// five-minute resolution, localStorage covers an open session at thirty
-// seconds; sorted together, picking a baseline never has to care which
-// is which. Only the match's own week: kills restart at the reset, and a
-// line from last week as a baseline would read as no fight at all.
+// Both halves as one sorted series, only the match's own week: kills restart
+// at the reset, so last week's line would read as no fight.
 function fightSamples(match) {
   const id = match && match.id;
   const local = readFightLog()[id] || [];
   const shared = (killSheet && killSheet.get(id)) || [];
-  // Anything older than this is thrown away rather than used as a
-  // baseline. If the sheet's trigger ever dies, its newest row keeps
-  // ageing, and a rate taken over three days would be a number that
-  // looks real and means nothing. Better to show no swords at all.
+  // Older than FIGHT_STALE_MS is dropped: better no swords than a stale rate.
   const week = Date.parse(match && match.start_time);
   const floor = Math.max(Date.now() - FIGHT_STALE_MS, Number.isFinite(week) ? week : 0);
   return [...shared, ...local]
@@ -263,39 +227,32 @@ function fightSamples(match) {
     .sort((a, b) => a.at - b.at);
 }
 
-// When a match's kills last moved: the time of the first reading - the
-// shared history, this browser's log, or the body in hand - whose total over
-// the four maps had reached the newest total. The API moves the four in the
-// same answer, so it is one clock per match. The body counts as a reading
-// from when this page first saw its total, not from every repaint.
+// When a match's kills last moved: the time of the first reading (shared
+// history, this browser's log, or the body in hand) whose total over the four
+// maps reached the newest total. The body counts from when this page first
+// saw its total, not from every repaint.
 const killFirstSeen = new Map(); // match id -> { total, at }
 const killCountingSince = new Map(); // match id -> when killView first found no window for it
 
-// Silent past this, the corner says only how far the kill data goes ("data
-// up to HH:MM"): no claim yet about why.
+// Silent past this, the corner says only how far the kill data goes.
 const KILLS_QUIET_MS = 5.5 * 60 * 1000;
-// A silence up to this long can still be one of the API's own kill steps,
-// which come while the score rises every minute, plus the delay before this
-// page learns of the next (js/api.js, LATEST_QUIET_MS + LATEST_GAP_MS).
-// "Quiet map" and the late-kills warning (view.strange), which also puts the
-// swords out, start only past it.
+// A silence up to this long can still be one of the API's own kill steps plus
+// the delay before this page learns of the next (js/api.js, LATEST_QUIET_MS +
+// LATEST_GAP_MS). "Quiet map" and the late-kills warning (view.strange) start
+// only past it.
 const KILLS_STEP_MS = 9 * 60 * 1000;
-// "Quiet map" is claimed only when the game's API is known to be moving:
-// this page saw the match's score go up within this long. A stopped API
-// freezes the kills and the score together, and from outside that looks
-// exactly like a quiet map; a live match's score rises far more often.
+// "Quiet map" is claimed only when the API is known to be moving: this page
+// saw the match's score go up within this long. A stopped API looks like a
+// quiet map from outside.
 const KILLS_ALIVE_MS = 3 * 60 * 1000;
-// Past KILLS_STEP_MS plus the time the match takes to make this many kills
-// at its own pace in the window: silent longer, and the kills are late, not
-// the map quiet. 15 raises no false alarm on the recorded history.
+// Past KILLS_STEP_MS plus the time the match takes to make this many kills at
+// its own pace, silence means late kills, not a quiet map.
 const KILLS_LATE_KILLS = 15;
-// A step that lands after more than this of still kills is the source
-// catching up: when it happened is unknown, so it lights no swords until the
-// next step...
+// A step after more than this of still kills is the source catching up: when
+// it happened is unknown, so no swords until the next step...
 const KILLS_CATCHUP_MS = 10 * 60 * 1000;
-// ...unless the stall was short and the jump is big even spread over all of
-// it: up to this, the swords light when the kills over the longer of the
-// window and the stall still reach HOT_FLOOR per 10 min.
+// ...unless the stall was no longer than this and the jump spread over the
+// longer of window and stall still reaches HOT_FLOOR per 10 min.
 const KILLS_CATCHUP_MAX_MS = 20 * 60 * 1000;
 
 function sumKills(n) {
@@ -316,11 +273,9 @@ function killHighs(body, list) {
   return out;
 }
 
-// Which map is busy, and how much the corner may say, in one place: the
-// map's corner, the tab's swords and the tier button's badge all read this,
-// so they cannot part. `types`: the maps to pick from, in the order a tie
-// keeps. The rates window aims at 10 min back, never under 8 nor over 15
-// (the history has a line every 5 min).
+// Which map is busy and how much the corner may say: the corner, the swords
+// and the badge all read this, so they cannot part. `types`: the maps to pick
+// from, in tie order. The rates window aims at 10 min back, within 8 to 15.
 const HOT_WANT_MS = 10 * 60 * 1000;
 const WINDOW_MIN_MS = 8 * 60 * 1000;
 const WINDOW_MAX_MS = 15 * 60 * 1000;
@@ -330,8 +285,7 @@ const HOT_FLOOR = 50;      // kills per ten minutes: a real fight, not API noise
 function killView(match, types, now = Date.now()) {
   const view = { clock: 0, atLeast: false, silence: 0, prevRun: Infinity, rates: null, pace: 0,
     strange: false, frozen: false, alive: false, hot: null, jumpHeld: false, noWindow: 'data', counting: null, long: false, longOk: false, gap: null, still: false, upTo: 0, high: null };
-  // Nothing is claimed on a match that is not running: between the reset
-  // and the API publishing the new one, the rest of the popover is neutral.
+  // Nothing is claimed on a match that is not running.
   if (!match || !matchIsLive(match)) return view;
   const rose = matchScoreRoseAt(match.id);
   view.frozen = now - rose > HUD_STALE_MS;
@@ -378,8 +332,8 @@ function killView(match, types, now = Date.now()) {
     // Right after the reset or a relink there is nothing earlier to count from.
     if (Number.isFinite(start) && view.clock - start < WINDOW_MAX_MS + HOT_WANT_MS) view.noWindow = 'reset';
     else if (view.atLeast && list.length && list[list.length - 1].at - view.clock >= HOT_WANT_MS) {
-      // Every reading holds the newest total, over 10 minutes or more: none in
-      // them, and the last kill came before the oldest, when is unknown.
+      // Every reading holds the newest total for 10 minutes or more: the last
+      // kill came before the oldest, when is unknown.
       killCountingSince.delete(match.id);
       view.still = true;
       view.upTo = series[series.length - 1].at;
@@ -420,8 +374,7 @@ function killView(match, types, now = Date.now()) {
     const pick = types || MAP_PANEL_ORDER.filter((t) => (match.maps || []).some((m) => m.type === t));
     let bestN = 0;
     let rawBest = 0;
-    // Taken on a strict win, so a tie keeps whichever map comes first rather
-    // than swapping the swords on every refresh.
+    // A strict win, so a tie keeps the first map and the swords do not flip.
     for (const type of pick) {
       const raw = view.rates.per.get(type) || 0;
       rawBest = Math.max(rawBest, raw);
@@ -443,13 +396,10 @@ function hotMapOf(match, types) {
 
 
 // ---- what happened while the data was away -----------------------------
-// Two gaps get a summary at the top of the maps' right-hand column: the
-// game's API answering no new body for over MISSED_AWAY_MS while this page
-// went on asking (a "pause"), and this tab hidden for over MISSED_AWAY_MS (a
-// "return"). Either way it is the body kept before the gap against the
-// first one after it: the objectives that changed hands, as chips, and the
-// kills from the gap up to the newest data (missedView). Nothing changed,
-// nothing shows. Every body passes through missedMatchOffered, called from
+// A summary tops the maps' right-hand column after a "pause" (no new body for
+// over MISSED_AWAY_MS while the page kept asking) or a "return" (tab hidden
+// that long): the body before the gap against the first after it, as chips and
+// kills (missedView). Every body passes through missedMatchOffered, called from
 // keepNewestMatch in api.js.
 const MISSED_SHOW_MS = 10 * 60 * 1000;      // the summary stays this long after the data came back
 const MISSED_RING_MS = 7 * 1000;            // four pulses of the ring (css/maps.css)

@@ -8,53 +8,37 @@
 }
 .wrap{width:100%;max-width:720px;order:0;}
 .rail{width:100%;max-width:720px;}
-/* At least a screen tall before the standings arrive: empty columns leave the
-   footer mid-screen, and filling them throws it off the bottom (most of the
-   page's layout shift). Filled, they are taller. */
+/* A screen tall before the standings arrive, so filling them does not shift the footer. */
 .rail{min-height:100vh;}
-/* While the swap slides a column across, it passes under the centre
-   column instead of over it; the bar's halves need to be boxes to move,
-   and pre keeps the space each ends with (js/standings.js, swapRails). */
+/* swapRails (js/standings.js): the column passes under the centre one; the bar's halves need boxes, pre keeps their spaces. */
 .rail.is-swapping{position:relative;z-index:-1;}
 .relink-banner .is-swapping{display:inline-block;white-space:pre;}
 .rail-left{order:1;}
 .rail-right{order:2;}
-/* EU first, before placeRails() has moved the columns in the DOM: this
-   only covers the first paint, see js/region.js. */
+/* First paint only, before placeRails() moves the columns (js/region.js). */
 html[data-rail-first="eu"]:not(.rails-placed) .rail-left{order:2;}
 html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:1;}
 @media (min-width:1400px){
   .page{flex-direction:row;justify-content:center;align-items:flex-start;}
-  /* Deliberately NOT sticky. These rails hold every tier, so they are always
-     taller than the viewport, and position:sticky on an element taller than its
-     scrollport pins to a different edge depending on scroll direction, which
-     drifts NA and EU out of line on the way up. */
+  /* Not sticky: rails taller than the viewport pin to a different edge by scroll direction and drift out of line. */
   .rail{width:372px;flex:0 0 372px;max-width:none;margin-top:-40px;}
   .rail-left{order:-1;}
   .rail-right{order:1;}
   html[data-rail-first="eu"]:not(.rails-placed) .rail-left{order:1;}
   html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:-1;}
   .wrap{order:0;}
-  /* The columns rise beside the relink bar. With no bar (nothing to show, or
-     the API unreachable) there is nothing to rise beside, and the same pull
-     put their tops under the notice bar, or off the screen. updateRelinkBanner
-     writes that inline display itself. */
+  /* With no bar there is nothing to rise beside; updateRelinkBanner writes that inline display. */
   #relinkBanner[style*="display: none"] + .page .rail{margin-top:0;}
 }
 .title-row{display:flex;align-items:center;gap:12px;margin-bottom:8px;}
 #matchPanelsContainer{display:flex;flex-direction:column;gap:16px;}
-/* A card, not a full-bleed strip, and still a bar: shrink-wrapped to its
-   contents it is a small deformed lozenge. The closed contour is also what the
-   urgency pulse travels around. */
+/* The closed contour is what the urgency pulse travels around. */
 .relink-banner{
-  /* Shown from the first paint at the weekly bar's height, so its arrival
-     does not push the page down; updateRelinkBanner sets style.display
-     itself from then on, none only when there is nothing to show. */
+  /* Shown from first paint at the bar's height so its arrival does not shift the page; updateRelinkBanner takes over display. */
   display:block;min-height:50px;
   position:relative;z-index:1;
   width:100%;max-width:720px;
   margin:12px auto 0;padding:8px 22px;border-radius:10px;
-  /* Denser, like the team sides: a near-transparent wash puts thin text straight onto the photo. */
   background:linear-gradient(180deg, rgba(44,76,90,.62), rgba(20,34,43,.52));
   -webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
   border:1px solid var(--accent-soft);
@@ -68,33 +52,23 @@ html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:1;}
 .relink-inner{
   display:flex;align-items:center;justify-content:center;
 }
-/* No cap: the two stats share the bar's width evenly through their own flex:1, so
-   the bar reads as full, not as a small island in the middle. */
 .relink-stat{
   flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:2px;
   cursor:help;
 }
-/* Relief here is typographic: labels pushed into the surface, numbers
-   lifted off it, same top-lit direction as the cards. */
 .relink-stat-title{
   font-size:.66rem;font-weight:700;color:#8d97a6;
   text-transform:uppercase;letter-spacing:.1em;
   text-shadow:0 1px 0 rgba(0,0,0,.55);
 }
-/* tabular-nums: these digits are replaced every minute, and proportional figures
-   re-centre the whole line each time one changes width. */
+/* tabular-nums: proportional digits re-centre the line when one changes width. */
 .relink-stat-value{
   font-size:.94rem;color:#f2f6fa;
   font-variant-numeric:tabular-nums;
   text-shadow:0 1px 2px rgba(0,0,0,.6);
 }
-/* Same split as the team cards: the label names the number, the number
-   is the point. NA/EU is a label wearing a number's clothes, so it goes
-   down with the rest of them. */
 .relink-stat-value .region{color:#8d97a6;font-weight:400;}
 .relink-stat-value .time{font-weight:700;color:#f2f6fa;}
-/* A groove, not a line: one dark pixel with a lit one beside it is the
-   whole trick to making a separator look cut rather than drawn. */
 .relink-divider{
   width:2px;height:26px;margin:0 20px;border-radius:1px;
   background:linear-gradient(90deg, rgba(0,0,0,.5), rgba(180,225,245,.13));
@@ -103,8 +77,6 @@ html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:1;}
   color:var(--accent);
   text-shadow:0 1px 0 rgba(0,0,0,.6);
 }
-/* The one number on the page that is allowed to glow: it is the
-   deadline everything else on the bar is judged against. */
 .relink-stat--primary .relink-stat-value{
   font-size:1.18rem;font-weight:700;color:var(--accent);letter-spacing:.2px;
   text-shadow:0 1px 2px rgba(0,0,0,.7), 0 0 14px rgba(127,214,242,.35);
@@ -117,13 +89,8 @@ html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:1;}
   }
 }
 /* ---- The teams notice ------------------------------------------- */
-/* A bar across the very top of the window, edge to edge, sticking there once the
-   page scrolls past it. The one thing here that is not taste is the position:
-   see index.html, where the element sits, and check-structure.py, which asserts it. */
+/* The element's position in index.html is asserted by check-structure.py. */
 .teams-notice{
-  /* The bar spans the window, so its contents are not held to the 720px column of
-     the rest of the page: at 1040 the sentence fits on one line on a desktop, and
-     one line keeps the bar shallow. */
   --teams-notice-width:1040px;
   --teams-notice-pad-y:8px;
   --teams-notice-letter:.02em;
@@ -132,33 +99,17 @@ html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:1;}
   display:none; /* until updateTeamsNotice sets it to block */
   position:sticky;top:0;z-index:40;
   width:100%;
-  /* Symmetric on purpose. 46px is clearance for the close button, which is
-     absolutely positioned and takes no space of its own, but .teams-notice-inner
-     below is centred with `margin:0 auto` and auto margins split what is left of
-     the CONTENT box: asymmetric padding shifts the sentence off the middle of a bar
-     whose background is lit at exactly 50%. The mobile rule at the bottom keeps
-     its asymmetry on purpose; see there. */
+  /* Symmetric on purpose: 46px clears the close button, and asymmetric padding shifts the centred sentence off the middle. */
   padding:0 46px;
-  /* Radial rather than a straight sweep down: the page's own background is a radial
-     from the top, so the bar belongs to it, and the light lands where the sentence
-     is. */
   background:radial-gradient(120% 220% at 50% 0%,
     rgba(38,44,54,.97) 0%, rgba(20,24,30,.97) 55%, rgba(11,13,17,.97) 100%);
-  /* No backdrop-filter here, and the absence is the decision. The surface is .97
-     opaque, so three per cent of the backdrop shows through, and a blur is a GPU
-     pass per frame over whatever moves behind it (here the ember canvas). Same
-     rule as css/standings.css: "Opaque retires the backdrop-filter too." The
-     other blurred surfaces (relink banner at .62/.52, controls, panels) keep
-     theirs because they are genuinely translucent. */
+  /* No backdrop-filter on purpose: the surface is .97 opaque, so a blur only costs a GPU pass over the ember canvas. */
   border-bottom:1px solid #2c333d;
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.05),
     0 8px 24px -12px rgba(0,0,0,.9);
 }
 .teams-notice-inner{
-  /* Two centrings: the auto margins centre the 1040px column in the window, and
-     this centres the sentence inside the column, which it does not fill. Free on
-     a narrow window, where no space is left to distribute. */
   display:flex;align-items:center;justify-content:center;gap:13px;
   width:100%;max-width:var(--teams-notice-width);margin:0 auto;
   padding:var(--teams-notice-pad-y) 0;
@@ -166,9 +117,6 @@ html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:1;}
 .teams-notice-mark{
   display:flex;flex-shrink:0;color:var(--muted);
 }
-/* letter-spacing rather than a bigger size or more padding: tracking gives a line
-   room horizontally without any vertically, and the bar is meant to be shallow.
-   Small values only: past about .04em a sentence reads as a label. */
 .teams-notice-text{
   margin:0;
   font-size:var(--teams-notice-size);
@@ -177,33 +125,21 @@ html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:1;}
   text-shadow:0 1px 2px rgba(0,0,0,.45);
 }
 .teams-notice-text strong{color:#fff;font-weight:700;}
-/* The page's two answers, set in the accent and left alone: recognised on the
-   way past, not clicked. buildTeamsNotice says why they are neither links nor
-   buttons. */
 .teams-notice-ref{
   color:var(--accent);font-weight:700;
 }
 .teams-notice-ref--icon{
-  /* Two pixels lower than at 13px: the box grew by two, and it is the mark inside
-     it that has to line up with the sentence, not the box. */
   display:inline-flex;align-items:center;vertical-align:-4px;
 }
-/* Read out, never seen: the word the shield stands for. The icon is a noun in the
-   middle of a sentence, and a screen reader that skips it reads "or open the,
-   beside any NA team". Not display:none and not visibility:hidden: both take the
-   text out of the accessibility tree too. nowrap, or a clipped box one pixel wide
-   wraps the phrase into a column of single letters that some screen readers read
-   as letters. */
+/* Read out, never seen: the word the shield stands for. Not display:none or
+   visibility:hidden (both drop it from the accessibility tree); nowrap keeps a
+   one-pixel box from wrapping the phrase into single letters. */
 .teams-notice-spoken{
   position:absolute;width:1px;height:1px;
   margin:-1px;padding:0;border:0;
   overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);
   white-space:nowrap;
 }
-/* Findable without being loud: no rim and no fill at rest (a faint glyph is
-   missed, a rimmed circle is a lozenge parked on the bar), a target 30px square
-   for the finger, and a soft square of light under it on hover. The stroke is
-   drawn; buildTeamsNotice says why a × character cannot be centred in a box. */
 .teams-notice-close{
   position:absolute;top:50%;right:8px;transform:translateY(-50%);
   width:30px;height:30px;padding:0;
@@ -217,28 +153,19 @@ html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:1;}
 .teams-notice-close:hover{
   background:rgba(255,255,255,.07);color:#fff;filter:none;
 }
-/* button:active would depress it and stamp the page's inset shadows on a
-   transparent square. It outranks the rule above on its own. */
+/* Overrides the global button:active, which would stamp inset shadows on a transparent square. */
 .teams-notice-close:active{transform:translateY(-50%);box-shadow:none;}
-/* A bar that looks trim on a desktop can take a fifth of a phone's screen.
-   The tracking goes first, because it is the one thing here that costs height
-   on a narrow window. */
 @media (max-width:600px){
   .teams-notice{
     --teams-notice-letter:0;
     --teams-notice-size:.78rem;
-    /* Still asymmetric here, where the base rule is not: symmetric would spend 26px
-       of a phone's width on a centring nobody can see (the sentence fills the
-       line and wraps, so there is no free space to centre in), and that is a
-       chance of one more line, which this whole block is tuned against. */
+    /* Asymmetric on purpose: symmetric padding would cost width, and a chance of one more line. */
     padding:0 38px 0 12px;
   }
   .teams-notice-close{width:28px;height:28px;right:5px;}
 }
 
-/* Low on purpose: the crest carries its own highlight, so a stronger halo reads as
-   haze. The footer copy has no filter at all and is the reference for how much
-   is enough. */
+/* Low on purpose: the crest has its own highlight; a stronger halo reads as haze. */
 .title-row svg{flex-shrink:0;filter:drop-shadow(0 0 5px rgba(140,224,255,.36));}
 h1{
   font-family:Cambria,Georgia,'Times New Roman',serif;
@@ -246,13 +173,8 @@ h1{
   background:linear-gradient(100deg,#e7ebf0 20%,var(--accent) 55%,#e7ebf0 85%);
   -webkit-background-clip:text;background-clip:text;color:transparent;
 }
-/* The colour scanning across the top of the page. A transform, not
-   background-position: the compositor cannot take background-position, so the
-   browser would repaint the whole strip on the main thread every frame. The
-   strip is painted once and then only slid. The gradient lives on a child wide
-   enough to slide: 600% holds two of the 300%-wide tiles, and travelling one
-   tile lands the pattern exactly where it started, which keeps the seam
-   invisible. */
+/* A transform, not background-position, which would repaint every frame. The
+   600% child holds two tiles; sliding one lands the pattern where it started. */
 .header-rule{
   position:relative;overflow:hidden;
   height:2px;border-radius:2px;margin:0 0 22px;opacity:.55;
@@ -264,10 +186,7 @@ h1{
   animation:rule-scan 3.5s linear infinite;
 }
 @keyframes rule-scan{0%{transform:translateX(0);}100%{transform:translateX(-50%);}}
-/* The one time the scan stands down: while the banner is raising an alarm. Two
-   things pulsing read as decoration, not a warning, and the scan is the one that
-   means nothing. The sibling combinator reaches it because the banner and .page
-   are both children of <body>, so this needs no JavaScript. */
+/* The scan stands down while the banner raises an alarm (banner and .page are siblings in <body>). */
 .relink-banner.is-urgent ~ .page .header-rule::before,
 .relink-banner.is-relink-week ~ .page .header-rule::before,
 .relink-banner.is-rebuild ~ .page .header-rule::before,

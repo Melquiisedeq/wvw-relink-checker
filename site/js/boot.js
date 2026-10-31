@@ -16,11 +16,8 @@ startPeeking(); // /api ahead of the board: load it now (js/standings.js)
 standingsTick = schedulePeriodicRefresh(refreshStandings, STANDINGS_REFRESH_MS);
 schedulePeriodicRefresh(fetchTimers, TIMERS_REFRESH_MS);
 
-// Embers drifting up the page: 46 of them, one in four cyan instead of warm, each
-// with its own column, duration and sideways drift. One canvas, not an element per
-// ember (each element is its own compositor layer and draw call). The cost: the
-// timing curves below are the CSS keyframes written out by hand, and pausing while
-// nobody is watching is this file's job.
+// Embers on one canvas. The timing curves below are the CSS keyframes written out by hand,
+// and pausing while nobody is watching is this file's job.
 const emberField = (function () {
   const canvas = document.getElementById('fxEmbers');
   if (!canvas || !canvas.getContext) return { start() {}, stop() {}, blast() {} };
@@ -31,18 +28,11 @@ const emberField = (function () {
   // The glow's shape: sigma is the blur's standard deviation, spread how far
   // the lit disc grows before blurring, alpha how strong the halo is.
   const GLOW = { sigma: 3.5, spread: 1, alpha: .75 };
-  // The wind. `eddy` is how wide a gust is in pixels, `churn` how fast
-  // the field itself changes, `push` how hard it shoves, `drag` how much
-  // sideways speed survives a second.
-  // `gust` is the exponent that makes it long calm, brief shove: the noise
-  // is raised to it, so small values collapse. At 1 it is an even breeze,
-  // and push is large to compensate because interpolated noise only reaches
-  // about a third of the way out.
+  // The wind: `eddy` gust width in px, `churn` how fast the field changes, `push` shove strength,
+  // `drag` sideways speed kept per second, `gust` the exponent on the noise (long calm, brief shove).
   const WIND = { eddy: 220, churn: .08, push: 280, gust: 4, drag: .45 };
 
-  // Value noise: a lattice of hashed numbers with smooth interpolation. All that
-  // matters is that neighbouring samples agree, so two embers in the same patch of
-  // air drift together; a sum of sines cannot fake that.
+  // Value noise: neighbouring samples agree, so two embers in the same patch of air drift together.
   function hash(x, y, z) {
     let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 1274126177);
     h = Math.imul(h ^ (h >>> 13), 1274126177);
@@ -65,17 +55,10 @@ const emberField = (function () {
   // Anything higher is a shrink on every draw. Set from resize().
   let SS = 1;
 
-  // The halo, and only the halo, rasterised once per colour and size. The core is
-  // drawn live in put(): an ember is at two thirds of its size when brightest, and
-  // a bitmap shrunk by a third loses that peak.
-  //
-  // blur(3.5px) and not 7: a box-shadow radius is twice the standard deviation,
-  // and ctx.filter takes the deviation. Not shadowBlur: the spec leaves the
-  // algorithm and the meaning of the number to the engine.
-  //
-  // CAN_BLUR because Safari has never shipped ctx.filter (desktop or iOS). The
-  // assignment fails silently there and the halo is a hard-edged disc, so it is
-  // set and read back rather than trusted.
+  // The halo only, rasterised once per colour and size; the core is drawn live in put().
+  // The core stays live: brightest at two thirds of its size, a bitmap shrunk by a third loses that peak. Not shadowBlur: the spec leaves its algorithm to the engine.
+  // blur(3.5px), not 7: ctx.filter takes the standard deviation, a box-shadow radius is twice it.
+  // CAN_BLUR is set and read back: where ctx.filter is unsupported the assignment fails silently.
   const CAN_BLUR = (() => {
     const c = document.createElement('canvas').getContext('2d');
     c.filter = 'blur(4px)';
@@ -101,14 +84,8 @@ const emberField = (function () {
     }
     return s;
   }
-  // The same halo, drawn instead of blurred.
-  //
-  // When the disc is about as wide as the blur (2.5px against 3.5), a blurred disc
-  // is indistinguishable from a Gaussian blob carrying the disc's ink. Variances
-  // add, so the blob's width is sqrt(sigma^2 + r^2/4); the worst gap from the real
-  // convolution is under one step of the canvas's 0-255 alpha. The min() covers a
-  // disc much wider than the blur, which this file does not have. 17 stops because
-  // a gradient runs straight lines between them.
+  // The same halo, drawn instead of blurred: a Gaussian blob of width sqrt(sigma^2 + r^2/4) carrying the disc's ink.
+  // Valid while the disc is about as wide as the blur; 17 stops because a gradient runs straight lines between them.
   function blob(c, m, r, colour) {
     const sd = Math.sqrt(GLOW.sigma * SS * (GLOW.sigma * SS) + r * r / 4);
     const peak = Math.min(GLOW.alpha, GLOW.alpha * r * r / (2 * sd * sd));
@@ -120,9 +97,7 @@ const emberField = (function () {
     }
     return g;
   }
-  // Three quarters of the dot's own radius: it matches the CSS .ember core's
-  // half-brightness points in all three phases (a full radius is half again too
-  // wide). The same number serves the cold ones.
+  // Three quarters of the dot's own radius: matches the CSS .ember core's half-brightness points.
   function look(colour, size) {
     return { halo: sprite(colour, size), core: colour.core,
              r: size / 2 * .75 };
@@ -134,8 +109,7 @@ const emberField = (function () {
     LOOK.blast.warm = look(WARM, 4);
     LOOK.blast.cold = look(COLD, 4);
   }
-  // cubic-bezier, solved the way the CSS engine solves it. Only the blast
-  // needs one; the standing field is linear.
+  // cubic-bezier as CSS solves it; only the blast uses one.
   function bezier(x1, y1, x2, y2) {
     const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx;
     const cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by;
@@ -174,9 +148,7 @@ const emberField = (function () {
   function resize() {
     W = canvas.clientWidth;
     H = canvas.clientHeight;
-    // No cap: zoom raises devicePixelRatio and shrinks the CSS viewport by the
-    // same factor, so clientWidth * ratio is the screen's own pixels whatever the
-    // zoom. A cap hands back fewer pixels than the display has.
+    // No cap on the ratio: it would hand back fewer pixels than the display has.
     const scale = window.devicePixelRatio || 1;
     canvas.width = Math.round(W * scale);
     canvas.height = Math.round(H * scale);
@@ -257,16 +229,11 @@ const emberField = (function () {
     }
   }
 
-  // The fastest ember climbs under two pixels a frame at 60. On Windows Chromium
-  // times its frames by the primary monitor's vblank (ui/gl/vsync_thread_win_dxgi.cc),
-  // so a window on a 60Hz screen beside a 144Hz primary is asked to draw 144 times a
-  // second and shown 60. This draws every frame at 60Hz and every second frame at 144.
+  // Caps the draw rate. 85 sits between 60 and 144: every frame is drawn at 60 Hz, every second one at 144 Hz (Windows Chromium times frames by the primary monitor's vblank, ui/gl/vsync_thread_win_dxgi.cc).
   const MIN_FRAME_MS = 1000 / 85;
 
-  // An infinite CSS animation makes the page draw a frame at every beat of the
-  // monitor, and a video in another window stutters with it. So the looping ones are
-  // paused here and moved on by these frames: the page draws only when the embers do
-  // (frames.spec.mjs). Not the loading indicators, which turn under reduced motion
+  // Looping CSS animations are paused here and moved on by these frames, so the page draws only
+  // when the embers do (frames.spec.mjs). Not the loading indicators, which turn under reduced motion
   // too. Paused through the API they no longer follow animation-play-state, so the
   // stopped clock is what holds them still while away or under reduced motion
   // (embers.spec.mjs); handed back to CSS they would restart.
@@ -357,10 +324,8 @@ const emberField = (function () {
   };
 })();
 
-// Ambient animation is for when someone is looking, and a second monitor
-// is the case that matters: the page is still visible, so
-// visibilitychange never fires and the field would draw forever. Focus is
-// what distinguishes "on screen" from "being watched".
+// Ambient animation is for when someone is looking: on a second monitor the page stays visible
+// and visibilitychange never fires, so focus decides.
 (function idleWhenUnwatched() {
   const root = document.documentElement;
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');

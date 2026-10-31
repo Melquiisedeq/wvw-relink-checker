@@ -7,24 +7,18 @@ let activeBackdrop = null;
 // Used by maps.js, declared here because closePopover runs on Escape and on
 // a resize before maps.js has loaded.
 let mapPollTimer = null;
-// Set while a tier's maps are open: pulls at once if the last pull is a poll
-// interval old, so a tab that was hidden does not come back showing a stale map
-// with its capture clocks still counting.
+// Set while a tier's maps are open: pulls at once if the last pull is a poll interval
+// old, so a hidden tab does not come back showing a stale map.
 let mapCatchUp = null;
-// Set while a tier's maps are open: given ids shown further along than this
-// page, by the summary of /api/latest (js/standings.js, peekLatest) or by a
-// late copy (js/api.js, offerLate), reads the map's match at once if it is one
-// of them.
+// Set while a tier's maps are open: reads the map's match at once if /api/latest
+// (js/standings.js, peekLatest) or a late copy (js/api.js, offerLate) shows its id further along.
 let mapAhead = null;
-// Separate from the poll on purpose: this one only rewrites the RI
-// clocks, so it can run every second without touching the refresh
-// cadence or asking the API for anything.
+// Separate from the poll: only rewrites the RI clocks, so it can run every second.
 let mapTickTimer = null;
 
 function closePopover() {
   const trigger = activeTrigger;
-  // Checked before the node is removed, since removing it moves focus to
-  // <body> and the answer would always be "no" afterwards.
+  // Checked before the node is removed: removal moves focus to <body>.
   const hadFocusInside = !!activePopover && activePopover.contains(document.activeElement);
 
   if (activePopover) activePopover.remove();
@@ -32,8 +26,7 @@ function closePopover() {
   if (trigger) {
     trigger.classList.remove('active');
     trigger.setAttribute('aria-expanded', 'false');
-    // Only reclaim focus if it was actually inside what just closed.
-    // Closing by clicking somewhere else must not yank the caret back.
+    // Only reclaim focus if it was inside what closed; a click elsewhere must not yank the caret back.
     if (hadFocusInside) trigger.focus({ preventScroll: true });
   }
   activePopover = null;
@@ -49,10 +42,8 @@ function closePopover() {
   if (trigger) setTimeout(() => { if (!activeTrigger && !readOwed()) peekSoon(); }, 0);
 }
 
-// The one place that gives every popover what keyboard users need: a role, a
-// reachable focus target, and a way back to the trigger.
-// `render` receives the empty popover element. Returns null when the call
-// merely toggled an already-open popover shut.
+// Gives every popover a role, a reachable focus target and a way back to the trigger.
+// `render` receives the empty element; returns null when the call only toggled an open popover shut.
 function openPopover(triggerEl, label, render, extraClass) {
   if (activeTrigger === triggerEl) { closePopover(); return null; }
   closePopover();
@@ -75,16 +66,13 @@ function openPopover(triggerEl, label, render, extraClass) {
   return popover;
 }
 
-// Marks a button as opening a popover, so assistive tech announces it as a
-// disclosure rather than a plain button.
 function markPopoverTrigger(btn) {
   btn.setAttribute('aria-haspopup', 'dialog');
   btn.setAttribute('aria-expanded', 'false');
 }
 
-// Toggles the guild-list popover between its anchored form and a
-// centered "expanded" modal for screenshots. Expanded mode gets its own
-// backdrop and stops following the trigger element.
+// Toggles the guild-list popover between anchored and a centered "expanded" modal
+// with its own backdrop (screenshots).
 function setPopoverExpanded(popover, triggerEl, expand) {
   popover.classList.toggle('info-popover--expanded', expand);
   const expandBtn = popover.querySelector('.info-popover-expand');
@@ -147,26 +135,22 @@ function closeUnlessExpanded() {
   }
   closePopover();
 }
-// Page scroll never reaches visualViewport's scroll event, so this follows it.
-// Deliberately not wired to closeUnlessExpanded: that
-// re-runs layoutAllianceGrid, which would reshuffle the alliance columns
-// on every scroll tick. Scrolling changes no widths.
+// Page scroll never reaches visualViewport's scroll event, so this follows it. Not
+// wired to closeUnlessExpanded: that re-runs layoutAllianceGrid, reshuffling the
+// alliance columns on every scroll tick.
 function repositionOnScroll() {
   if (!activePopover || !activeTrigger) return;
   if (activePopover.classList.contains('info-popover--expanded')) return; // centred, follows nothing
 
   const rect = activeTrigger.getBoundingClientRect();
   const { height: vh } = getViewportSize();
-  // Anchor scrolled out of sight: there is nothing left to point at, and
-  // clamping would leave the popover stranded against an edge.
+  // Anchor scrolled out of sight: clamping would strand the popover against an edge.
   if (rect.bottom < 0 || rect.top > vh) { closePopover(); return; }
   positionPopover(activePopover, activeTrigger);
 }
 
-// visualViewport fires "resize" for plenty of things that are not really
-// resizes - a scrollbar appearing as content loads, a mobile URL bar
-// sliding, a pinch settling. Acting on those snaps a popover shut while
-// it is still being read, so this only reacts to a genuine size change.
+// visualViewport resize also fires for things that are not real resizes; only a
+// genuine size change may close a popover being read.
 let lastViewportSize = getViewportSize();
 function onViewportResize() {
   const size = getViewportSize();

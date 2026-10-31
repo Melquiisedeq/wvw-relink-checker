@@ -1,12 +1,9 @@
 'use strict';
 // Stat popovers: K/D by map, the skirmish score trend chart, and what Activity means (pieces from popover-parts.js).
 
-// Drawn, not typed: as emoji the two land in different system fonts with
-// different baselines.
-//
+// Drawn, not typed: emoji land in different system fonts with different baselines.
 // "swords" and "skull" from Lucide (https://lucide.dev), ISC licence:
-// Copyright (c) 2026 Lucide Icons and Contributors. Same 24x24 grid and
-// 2px round stroke as the buttons on this page.
+// Copyright (c) 2026 Lucide Icons and Contributors.
 const GLYPH_ATTRS = ' viewBox="0 0 24 24" fill="none" stroke="currentColor" '
   + 'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
 const GLYPH_SWORD = '<svg class="glyph-sword" width="15" height="15"' + GLYPH_ATTRS
@@ -22,7 +19,7 @@ const GLYPH_SKULL = '<svg class="glyph-skull" width="15" height="15"' + GLYPH_AT
   + 'a1 1 0 0 0 1 1z"/>'
   + '<circle cx="15" cy="12" r="1"/><circle cx="9" cy="12" r="1"/></svg>';
 
-// The three column words travel as one group, like the three numbers on every row below, so a word stays over its own number.
+// The three column words travel as one group, like the numbers on every row below, so a word stays over its number.
 function kdHeadCells() {
   const nums = popCell('pop-kd-nums');
   nums.appendChild(popCell('pop-kd-kills', 'Kills'));
@@ -55,9 +52,8 @@ function renderMapKdPopoverContent(popover, serverName, match, color) {
     deaths === 0 || kills === deaths ? null : (kills > deaths ? 'good' : 'bad')));
   popover.appendChild(figures);
 
-  // One row per map: the bar says where the fighting was, the numbers how it
-  // went (a K/D alone hides a 2.0 over six fights versus six hundred). No total
-  // beside the heading: the cards at the top carry the kills and deaths.
+  // One row per map: the bar says where the fighting was, the numbers how it went
+  // (a K/D alone hides a 2.0 over six fights versus six hundred).
   popover.appendChild(popSection('Where the fighting was', [kdHeadCells()]));
   for (const r of rows) {
     const fought = r.kills + r.deaths;
@@ -66,7 +62,6 @@ function renderMapKdPopoverContent(popover, serverName, match, color) {
 
     const label = popBarLabel(MAP_LABELS[r.type], MAP_LABEL_CLASS[r.type]);
 
-    // The bar is how much of the week's fighting happened on this map, which is what the heading asks.
     const share = fought / ((kills + deaths) || 1);
     const track = document.createElement('span');
     track.className = 'pop-bar-track pop-bar-track--slim';
@@ -91,8 +86,7 @@ function renderMapKdPopoverContent(popover, serverName, match, color) {
     ratio.textContent = formatKd(r.kills, r.deaths);
     if (r.deaths > 0 && r.kills !== r.deaths) ratio.classList.add(r.kills > r.deaths ? 'kd-good' : 'kd-bad');
 
-    // The three numbers travel in their own group, so the bar takes the slack and
-    // they are not pushed to opposite ends of the row.
+    // Own group, so the bar takes the slack.
     const nums = document.createElement('span');
     nums.className = 'pop-kd-nums';
     nums.appendChild(killsEl);
@@ -110,15 +104,12 @@ function renderMapKdPopoverContent(popover, serverName, match, color) {
     + 'fighting went: above 1.00 means more kills than deaths there.'));
 }
 
-// The body each stat button opens with: the one it was built with, until a
-// score written into its card in place (patchStandingSide) gives it the new one.
+// Until patchStandingSide writes a new score into the card, the button opens with the match it was built with.
 const popoverMatches = new WeakMap(); // button -> match
 function rebindPopoverMatch(btn, match) {
   if (btn) popoverMatches.set(btn, match);
 }
 
-// Small crossed-swords icon next to the K/D value, opening a per-map breakdown.
-// The data is already in `match`: no fetch.
 function buildMapKdButton(serverName, match, color) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -149,14 +140,12 @@ function buildMapKdButton(serverName, match, color) {
   return btn;
 }
 
-// How far into a block the projection may start: the API publishes a running
-// block's score late, so an early estimate lands far too low.
+// How far into a block the projection may start: an early estimate lands far too low.
 const LIVE_PROJECT_AFTER = 0.375;  // 45 of the 120 minutes
 
-// Which skirmish block the match is in, and how far through it. Blocks are two
-// hours each from the match start, and the API publishes the running one beside
-// the finished ones with the score so far: comparing the last entry to the
-// others compares a part to wholes.
+// Which skirmish block the match is in, and how far through it (blocks are two hours
+// from the match start). The running block can sit beside finished ones, so the last
+// entry is not always a whole.
 function skirmishProgress(match, at = Date.now()) {
   const start = Date.parse(match.start_time);
   if (!Number.isFinite(start)) return null;
@@ -176,34 +165,28 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
   popover.textContent = '';
   popHeader(popover, `${serverName} · Skirmish score`);
 
-  // All three sides: a dip alone could be this server losing ground or all three
-  // going quiet. The chosen side is the solid line.
+  // All three sides: a dip alone could be this server losing ground or all three going quiet.
   const progress = skirmishProgress(match);
   const sides = COLORS.map((c) => ({ color: c, series: getSkirmishSeries(match, c) }));
   const total = sides[0].series.length;
 
-  // The last block is usually still being played and scored as it goes, so
-  // plotting it would end every chart in a cliff. It is left off the line and
-  // reported underneath.
-  //
-  // The API does not append that block to every match at the same moment, so
-  // whether a block is being played and whether its score has been published are
-  // different questions.
+  // The last block is usually still being played, so plotting it would end every chart
+  // in a cliff: it is left off the line and reported underneath. Whether a block is
+  // being played and whether its score is published are different questions.
   const live = progress && progress.index >= total && progress.fraction > 0;
   const scored = live && progress.index === total;
-  // The clock can be a block ahead of the body: the API freezes a match for
-  // half an hour or more, and its last entry is then a block cut off midway.
-  // That entry counts as finished only if the body's own time (when this
-  // page saw the score rise) is past its end. Time unknown (0) trusts it. A
-  // body that rose within HUD_STALE_MS is the API running behind the turn, not stopped.
+  // The clock can be a block ahead of the body (the API may freeze a match), leaving the
+  // last entry cut off midway. It counts as finished only if the body's own time (when
+  // this page saw the score rise) is past its end; unknown (0) trusts it. A body that
+  // rose within HUD_STALE_MS is the API running behind the turn, not stopped.
   const lastEnd = Date.parse(match.start_time) + total * 2 * 3600000;
   const dataAt = matchScoreRoseAt(match.id);
   const stalled = !!progress && total >= 1 && progress.index > total
     && dataAt > 0 && dataAt <= lastEnd && Date.now() - dataAt > HUD_STALE_MS;
   const cut = scored || stalled ? total - 1 : total;
-  // The score is the body's, which may be minutes behind the clock: the pace
-  // divides by how far into the block the body was. A body from before this
-  // block says nothing of it, so it is at the start; the clock's fraction caps it.
+  // The score is the body's, possibly behind the clock: the pace divides by how far into
+  // the block the body was. A body from before this block is at the start; the clock's
+  // fraction caps it.
   const dp = live && dataAt > 0 ? skirmishProgress(match, dataAt) : null;
   let dataFraction = progress ? progress.fraction : 0;
   if (dp) dataFraction = dp.index < progress.index ? 0 : Math.min(dp.fraction, progress.fraction);
@@ -212,22 +195,17 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
   const mine = sides.find((x) => x.color === color);
   if (!mine) return;
 
-  // How much of this can be drawn: the chart needs two finished blocks, the
-  // figures one, the band reporting the block being played none.
+  // Drawable: the chart needs two finished blocks, the figures one, the running-block band none.
   const finished = mine.done.length;
 
   if (finished >= 1) {
-    // Three figures, all about finished blocks; the running one is reported
-    // separately below. The average gives the other two their meaning.
     const avg = Math.round(mine.done.reduce((a, b) => a + b, 0) / mine.done.length);
     const figures = document.createElement('div');
     figures.className = 'pop-figures pop-figures--three';
     const fLast = popFigure('Last block', mine.done[mine.done.length - 1].toLocaleString());
     fLast.title = 'The most recent block that has finished - not the one being played now.';
-    // An average needs something to average over and a peak something to stand out
-    // from. With one finished block both would report the same score under labels
-    // promising a comparison, so they hold a dash. The cards stay: they
-    // say the tool measures this.
+    // With one finished block, average and peak would report the same score under labels
+    // promising a comparison, so they hold a dash.
     const comparable = finished >= 2;
     const waiting = 'Needs two finished blocks to mean anything. There is one so far.';
     const fAvg = popFigure('Average', comparable ? avg.toLocaleString() : '—');
@@ -253,8 +231,6 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
       }
     }
 
-    // A plot area inset from the box, so the scale numbers have somewhere
-    // to live that is not on top of the lines.
     const W = 380;
     const H = 132;
     const X0 = 50;
@@ -298,21 +274,18 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     chart.innerHTML = markup;
     popover.appendChild(chart);
 
-    // The right-hand label is about the week, not the block being played: two
-    // different clocks.
+    // The right-hand label is about the week, not the block being played.
     const hoursIn = progress ? (progress.index - 1) * 2 + progress.fraction * 2 : cut * 2;
     const weekPct = Math.min(100, Math.round((hoursIn / 168) * 100));
     const axis = document.createElement('div');
     axis.className = 'activity-axis';
-    // Counted as blocks finished, not "block N": the band below names the block in
-    // progress, and "Block 64 of 84" beside "Block 65" reads as a contradiction.
+    // Counted as blocks finished, not "block N", which would contradict the band's "Block 65".
     axis.innerHTML = '<span>Reset</span>'
       + `<span title="The chart plots finished blocks only. ${cut} of the week's 84 have `
       + `ended; the one being played is reported below.">`
       + `${cut} of 84 finished · week ${weekPct}%</span>`;
     popover.appendChild(axis);
 
-    // Which line is whose; without it the two thin lines are decoration.
     const legend = document.createElement('div');
     legend.className = 'trend-legend';
     for (const side of sides) {
@@ -323,7 +296,6 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
       dot.className = `trend-legend-dot trend-legend-dot--${side.color}`;
       item.appendChild(dot);
       item.appendChild(document.createTextNode(teamId ? getTeamName(teamId) : side.color));
-      // The lines say who is higher; this says by how much, across the whole week.
       const sideAvg = Math.round(side.done.reduce((a, b) => a + b, 0) / side.done.length);
       const val = document.createElement('b');
       val.className = 'trend-legend-val';
@@ -334,7 +306,6 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     }
     popover.appendChild(legend);
   } else {
-    // Says which panel is missing and why, so a gap does not read as a fault.
     const why = document.createElement('p');
     why.className = 'hint';
     why.style.margin = '0';
@@ -345,15 +316,13 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
   }
 
   if (live) {
-    // Reported as a pace, not a total: "697 so far" invites an unfair comparison
-    // with finished blocks. The clock is in minutes: a percentage next to
-    // "block 64" is read as the week.
+    // A pace, not a total, which would invite an unfair comparison with finished blocks;
+    // in minutes, as a percentage beside "block 64" is read as the week.
     const mins = Math.round(progress.fraction * 120);
     const running = scored ? mine.series[total - 1] : null;
     const now = document.createElement('div');
     now.className = 'trend-live';
-    // Says "the finished ones", not "the chart": this band shows from the first
-    // minutes of a week, before there is a chart.
+    // "The finished ones", not "the chart": the band shows before there is a chart.
     now.title = 'A skirmish is a 2-hour block, 84 of them from reset to reset. This one '
       + 'is still being played, so its score cannot be compared with the finished ones - '
       + 'the projection can. ArenaNet publishes a running block late, so no projection '
@@ -363,22 +332,19 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     head.innerHTML = `<i class="trend-live-dot"></i>Block ${progress.index} playing · `
       + `${mins} of 120 min`;
     const body = document.createElement('span');
-    // A body older than the corner's margin is told by its own minute, so the
-    // score, the minute beside it and the projection all describe one instant.
-    // A body from before this block has no minute in it: it keeps "so far".
+    // A body older than the corner's margin is told by its own minute, so score, minute
+    // and projection describe one instant; one from before this block keeps "so far".
     const minute = Math.round(dataFraction * 120);
     const told = minute > 0
       && Math.round((progress.fraction - dataFraction) * 120 * 60000) > HUD_STALE_MS;
     const when = told ? `by minute ${minute}` : 'so far';
     if (running === null) {
-      // The clock is ours, the score is theirs: say the block is running and whose
-      // delay the gap is, so it reads neither as "nothing is happening" nor as a fault here.
+      // The clock is ours, the score is theirs: say whose delay the gap is.
       body.textContent = stalled
         ? `The game's data stopped partway through block ${total}`
         : "ArenaNet hasn't published this block yet";
     } else if (dataFraction >= LIVE_PROJECT_AFTER) {
-      // Two segments, not three: the projection is read against the Average card
-      // above. In the first hours of a week there is no Average and the pace stands alone.
+      // Two segments: the projection is read against the Average card; early in a week the pace stands alone.
       body.innerHTML = `<b>${running.toLocaleString()}</b> ${when} · on pace for `
         + `<b>${(told ? Math.round(running * 120 / minute) : Math.round(running / dataFraction)).toLocaleString()}</b>`;
     } else {
@@ -389,9 +355,8 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     popover.appendChild(now);
   }
 
-  // Where the last finished block's points came from: a side level on the total
-  // can be getting all of it from one borderland. The block being played stands in
-  // when nothing has finished: shares of itself, unlike its total, compare fairly.
+  // Where the last finished block's points came from (a side level on the total may get
+  // all of it from one borderland); the running block stands in when nothing has finished.
   const liveOnly = cut < 1 && scored;
   const block = match.skirmishes[(liveOnly ? total : cut) - 1];
   const mapScores = (block || {}).map_scores;
@@ -420,7 +385,6 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     finished >= 2 ? `${note} The chart shows finished blocks only.` : note));
 }
 
-// Trend icon on the Skirmish stat, opening the score-over-time chart.
 function buildSkirmishTrendButton(serverName, match, color) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -455,8 +419,6 @@ function renderActivityInfoPopoverContent(popover, serverName, match, color) {
   figures.appendChild(popFigure('Activity', (kills + deaths).toLocaleString()));
   popover.appendChild(figures);
 
-  // A number of fights alone only says whether the tier is busy; against the
-  // other two it says who is showing up.
   const sides = COLORS.map((c) => ({
     color: c,
     total: Number(match.kills?.[c] ?? 0) + Number(match.deaths?.[c] ?? 0),
@@ -474,8 +436,7 @@ function renderActivityInfoPopoverContent(popover, serverName, match, color) {
     if (side.color === color) row.classList.add('is-mine');
     popover.appendChild(row);
   }
-  // "Tier total" and not "Total": the three cards at the top of this
-  // popover are one side's, and this is all three added up.
+  // "Tier total", not "Total": the cards above are one side's.
   popover.appendChild(popBarTotal('Tier total', 'pop-bar-label--wide',
     all.toLocaleString()));
 
@@ -485,8 +446,6 @@ function renderActivityInfoPopoverContent(popover, serverName, match, color) {
 }
 
 
-// Info icon on the Activity stat, explaining what that number means.
-// Distinct from the Skirmish trend icon and the K/D map icon on purpose.
 function buildActivityInfoButton(serverName, match, color) {
   const btn = document.createElement('button');
   btn.type = 'button';

@@ -52,9 +52,7 @@ function matchTeamId(match, color) {
   return teamId !== undefined ? String(teamId) : null;
 }
 
-// A match whose end_time has passed describes a week that is over. ArenaNet
-// republishes the tiers one at a time and not always forwards, so this is
-// asked of a single match, never of a region.
+// A match whose end_time has passed is a week that is over. Ask it of a single match, never of a region: tiers are not republished together.
 function matchIsLive(match) {
   const end = Date.parse(match && match.end_time);
   return Number.isFinite(end) && end > Date.now();
@@ -67,17 +65,14 @@ const GUID_RE = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/
 const SHEET_ID = '1Txjpcet-9FDVek6uJ0N3OciwgbpE0cfWozUK7ATfWx4';
 const SHEET_URL = (tab) =>
   `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
-// The same sheet for a person to open: built from SHEET_ID, not a shortener
-// whose owner could repoint it.
+// The same sheet for a person to open, built from SHEET_ID, not a shortener.
 const SHEET_HUMAN_URL =
   `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit?usp=sharing`;
 
 const MAX_ENTRIES = 20;        // hard cap so a pasted wall of text can't hammer a public API
 const MAX_NAME_LENGTH = 64;    // real guild names and GUIDs are well under this
 const REQUEST_TIMEOUT_MS = 10000;
-// The whole ids=all standings body and the guild tables can take 40 s on a slow
-// line, so 10 s throws them away. Only the first standings load and the guild
-// search wait this long; every refresh keeps the short deadline.
+// Only the first standings load and the guild search wait this long; every refresh keeps the short deadline.
 const SLOW_REQUEST_TIMEOUT_MS = 30000;
 // After a failed standings load: the window, in ms, of each extra try, with full
 // jitter (a random point inside it). Then the ordinary cycle takes over.
@@ -85,12 +80,11 @@ const STANDINGS_RETRY_WINDOWS_MS = [[5000, 15000], [15000, 40000]];
 const THROTTLE_MS = 200;       // gap between sequential lookups, to stay well under rate limits
 const MAX_RETRIES = 2;         // for 429 / transient network errors
 
-// Match data updates unpredictably; 5 min balances freshness and load. Lockout
-// barely changes, so it is checked less often. Both run only while the tab is visible.
 // The visitor's choice of which standings column goes left, 'na' or 'eu'.
 // js/region.js reads it by this same literal, before this file loads.
 const RAIL_FIRST_KEY = 'wvw-rail-first';
 
+// Both refreshes below run only while the tab is visible; lockout changes least, so it is checked less often.
 const STANDINGS_REFRESH_MS = 5 * 60 * 1000;  // match scores, kills/deaths, VP, relink
 const TIMERS_REFRESH_MS = 10 * 60 * 1000;    // season lockout
 // Community sheet is edited by hand; re-fetched on click with a short TTL.
@@ -117,20 +111,14 @@ const OWN_API_TIMEOUT_MS = 4000;
 // Must match the column order the Apps Script writes.
 const KILLS_MAP_ORDER = Object.freeze(['Center', 'RedHome', 'BlueHome', 'GreenHome']);
 
-// The teams notice. The API announces a new team assignment nowhere, so an Apps
-// Script trigger compares the guild-to-team table and leaves two integers in one
-// cell (the counting cannot happen in the page).
+// The teams notice: an Apps Script trigger compares the guild-to-team table and leaves two integers in one cell.
 //   window     the NA teamAssignment these numbers are about, epoch seconds
 //   published  when the table was seen to have moved, epoch seconds, or 0
-// Nothing else is read out of that cell; updateTeamsNotice in js/relink.js says
-// what each decides. Its own spreadsheet, shared read-only: whoever could write
-// that cell could make this page announce a relink that has not happened.
+// Nothing else is read out of that cell; updateTeamsNotice in js/relink.js says what each decides.
 const RELINK_SHEET_ID = '14kWfueHYO2-aLKGDVFgdkuO9pHkmYs1fghCO9eMIEl4';
-// `range=A1:A1` is load-bearing. A2 of the same tab holds the trigger's
-// heartbeat and RELINK_STATE_RE anchors the WHOLE body: a second row is a body
-// the page refuses, which removes the notice and looks like the sheet being down.
+// Its own spreadsheet, shared read-only: whoever could write that cell could make this page announce a relink that has not happened.
+// `range=A1:A1` is load-bearing: A2 holds the trigger's heartbeat, and RELINK_STATE_RE anchors the whole body, so a second row is refused.
 const RELINK_SHEET_URL =
   `https://docs.google.com/spreadsheets/d/${RELINK_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=relink&range=A1:A1`;
-// No point being fresher than the timers that decide the window; the value changes
-// once a month, and once it says published the page stops asking.
+// Once it says published the page stops asking.
 const RELINK_SHEET_TTL_MS = 10 * 60 * 1000;

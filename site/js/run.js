@@ -5,9 +5,7 @@
 // off a drop that has only just started.
 let deployTimer = null;
 
-// What a failed lookup says in the results table: a short phrase, never the
-// technical message. Decided by the error's fields, which the fetches set; the
-// fetch's own message differs in each browser.
+// What a failed lookup says in the results table: a short phrase, decided by the error's fields, never its message.
 function lookupErrorText(e) {
   if (e.notFound) return 'Guild not found (name must match exactly)';
   if (e.status === 429) return 'Server busy, try again';
@@ -108,8 +106,7 @@ async function run() {
       await sleep(THROTTLE_MS);
     }
 
-    // Fetches match/score context for every distinct team found. Usually
-    // instant since these are already in the standings cache.
+    // Match/score context for every distinct team found.
     if (teamsFound.size > 0) {
       statusMsg.innerHTML = '<span class="spinner"></span>Pulling in match details…';
 
@@ -182,9 +179,7 @@ async function run() {
 // The click and Ctrl+Enter are bound in boot.js, once everything run()
 // calls has loaded.
 
-// Keeps the pasted list across reloads; it stays in this browser. Every access is
-// wrapped because a private window, or a browser blocking site data, throws on
-// localStorage rather than returning null.
+// Keeps the pasted list across reloads. Every access is wrapped: localStorage can throw when site data is blocked.
 const STORAGE_KEY = 'wvw-relink-checker:guilds';
 let saveTimer = null;
 
@@ -206,8 +201,7 @@ function restoreGuildInput() {
 guildInput.addEventListener('input', saveGuildInput);
 restoreGuildInput();
 
-// navigator.clipboard does not exist in a non-secure context and can be refused
-// by permissions policy; deprecated execCommand('copy') is the fallback there.
+// navigator.clipboard may be missing or refused; execCommand('copy') is the fallback.
 function legacyCopy(text) {
   const ta = document.createElement('textarea');
   ta.value = text;

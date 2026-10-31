@@ -17,12 +17,11 @@
  * time-driven trigger on relinkTick() every 5 minutes. A standalone script
  * would have to reach the sheet by id, which is the broad grant above.
  *
- * A project of its own, not added to the kills script: an Apps Script project
- * shares ONE global scope across all of its files, so a `var API` here
- * against a `const API` there is a SyntaxError that stops the whole project,
- * and two functions with the same name are NOT an error - the last one
- * declared wins, silently. The 90 minutes a day of trigger time is a
- * per-ACCOUNT quota, shared with the kills trigger.
+ * A project of its own, not added to the kills script: a project shares ONE global
+ * scope across all of its files, so a `var API` here against a `const API` there is
+ * a SyntaxError, and two functions with the same name silently resolve to the last
+ * one declared. The trigger runtime quota (90 minutes a day) is per account, shared
+ * with the kills trigger: https://developers.google.com/apps-script/guides/services/quotas
  *
  * Hence the closure. Exactly four names are global, three only because they
  * are run by name:
@@ -33,10 +32,8 @@
  *   RelinkNotice_ everything else, private inside it
  * ---------------------------------------------------------------------------
  *
- * What it is for. ArenaNet republishes /v2/wvw/guilds/{na,eu} with everyone's
- * new team and announces it nowhere: no timestamp, no ETag. The only signal is
- * the table itself moving, and seeing that means holding a copy of it and
- * comparing - half a megabyte - which the visitors' browsers must not do.
+ * What it is for. /v2/wvw/guilds/{na,eu} carries no timestamp or ETag of a relink; the only
+ * signal is the table itself moving, which means holding a copy and comparing - half a megabyte, which visitors' browsers must not do.
  *
  * What it writes. Two cells in the relink tab, both as text.
  *
@@ -48,30 +45,23 @@
  * `window` is what ends the notice with nothing having to switch it off: the
  * page compares it against the relink it is counting down to.
  *
- * Text, not two number cells: the CSV export renders a numeric cell in
- * whatever format the sheet uses, and a thousands separator is a comma inside
- * a comma-separated file.
+ * Text, not two number cells: a numeric cell may export with a thousands separator, a comma in a CSV.
  *
  * relink!A2, one epoch integer - the heartbeat, which the site never reads. It
- * is written FIRST, before anything that can throw, on every tick in and out
- * of the window: a tick that fails is already loud, but a trigger that never
- * runs makes no sound anywhere. check-notice.py reads it and fails on a stale
- * one.
+ * is written FIRST, before anything that can throw, on every tick: a trigger
+ * that never runs makes no sound. check-notice.py reads it and fails on a stale one.
  *
  * After every tick both cells also go to wvwrelink.com/api, signed - see
  * push(). The cells stay the one source: what is sent is read back from them.
  *
- * Cost. Outside the window it reads two small timers and returns; inside it
- * (about four days a month) it also reads the two tables, the expensive part.
+ * Outside the window it reads two small timers and returns; inside it also reads the two tables.
  */
 
 /**
  * The function the trigger calls. Every 5 minutes.
  *
- * Locked: triggers are not queued, so a tick that runs long is overlapped by
- * the next one, and a second run in the middle of the baseline being cleared
- * and rewritten would leave a half-written table, which reads as every guild
- * having moved. Gives up rather than waits.
+ * Locked: a second run in the middle of the baseline being rewritten would
+ * leave a half-written table, which reads as every guild having moved. Gives up rather than waits.
  */
 function relinkTick() {
   var lock = LockService.getScriptLock();
@@ -87,8 +77,7 @@ function relinkTick() {
 /**
  * Run this once by hand, from the editor, before the first relink.
  *
- * Takes the first baseline and writes a dark state. Also the only way to get
- * the authorisation prompts out of the way before the night it matters.
+ * Takes the first baseline and writes a dark state; also takes the authorisation prompts out of the way.
  */
 function relinkSetup() {
   RelinkNotice_.setup();
@@ -109,12 +98,8 @@ var RelinkNotice_ = (function () {
   'use strict';
 
   // Must match the tab named in RELINK_SHEET_URL in js/config.js. If this tab
-  // is missing, the CSV export quietly serves the *first* sheet instead of
-  // failing; setup() renames the default sheet to this rather than leaving an
-  // empty one in front of it.
-  //
-  // No spreadsheet id here: bound, the only spreadsheet this script can touch
-  // is the one it lives in. The id exists only in js/config.js.
+  // is missing, the CSV export serves the *first* sheet instead; setup() renames
+  // the default sheet to this rather than leaving an empty one in front of it.
   //
   // The document must be shared as "anyone with the link, VIEWER", never
   // Editor: whoever can write the cell below can make the page say the new
@@ -124,42 +109,32 @@ var RelinkNotice_ = (function () {
   var API = 'https://api.guildwars2.com/v2';
   var REGIONS = ['na', 'eu'];
 
-  // One percent of the table: about 45 guilds in NA, 55 in EU. The signal is
-  // bimodal - outside a relink no guild changes team, a relink moves most
+  // The signal is bimodal - outside a relink no guild changes team, a relink moves most
   // of the table - so this is not a tuning knob.
   var THRESHOLD_FRACTION = 0.01;
 
-  // Rolling: whenever the table is seen to have moved, the table that moved
-  // becomes the new baseline, in the same pass, so it is always "the last
-  // thing that was true".
-  //
-  // In tabs of the same spreadsheet, not Drive files: Drive would cost an
-  // OAuth scope over the owner's whole Drive.
-  //
+  // Rolling: the table that moved becomes the new baseline in the same pass.
+  // Tabs of the same spreadsheet, not Drive files, which would need a Drive scope.
   // Layout of each tab: A1 'takenAt', B1 the epoch integer, then one row per
   // guild from row 2 - guid in A, team in B.
   var BASELINE_TAB = { na: 'baseline-na', eu: 'baseline-eu' };
 
-  // One relink cycle is a month. A baseline older than this means a whole
-  // window was missed and the table has come back two relinks behind, which
-  // reads as a relink. Refuse, retake. Must agree with MAX_GAP_SECONDS in
-  // scripts/check-notice.py.
+  // A baseline older than this means a whole window was missed and would read as a relink.
+  // Refuse, retake. Must agree with MAX_GAP_SECONDS in scripts/check-notice.py.
   var BASELINE_MAX_AGE_SECONDS = 45 * 24 * 60 * 60;
 
   var GUID_RE = /^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$/;
   var TEAM_RE = /^[0-9]{5}$/;
   var STATE_RE = /^(\d{1,12}):(\d{1,12})$/;
 
-  // Quiet for a hiccup, loud for a real outage, never loud on every tick:
-  // Apps Script emails on every uncaught exception, and a trigger that throws
-  // for hours is one Google may disable, which would take the notice away
-  // silently. At five minutes a tick, the first email comes after about an
-  // hour (12 ticks), then a reminder about every six hours (72).
+  // Quiet for a hiccup, loud for a real outage, never loud on every tick: each uncaught
+  // exception sends an email. At TICK_MINUTES a tick, the first email comes after
+  // ALARM_AFTER ticks (about an hour), then a reminder every ALARM_EVERY (about six hours).
   var TICK_MINUTES = 5;
   var ALARM_AFTER = 12;
   var ALARM_EVERY = 72;
 
-  // Per request, against the 360 s default; see getAll().
+  // Per request; see getAll().
   var TIMEOUT_SECONDS = 20;
 
   var INGEST = 'https://wvwrelink.com';
@@ -173,9 +148,8 @@ var RelinkNotice_ = (function () {
 
 
   /**
-   * Records a failure, and throws only at the thresholds above.
-   * Throwing is the only way this script can reach anybody: nobody watches the
-   * execution log.
+   * Records a failure, and throws only at the thresholds above; throwing is the only way
+   * this script reaches anybody.
    */
   function fail(message) {
     var props = PropertiesService.getScriptProperties();
@@ -201,12 +175,8 @@ var RelinkNotice_ = (function () {
    * GETs in parallel, with retries, returning one body per url or null.
    *
    * Only the ones that failed are asked again. fetchAll throws when any request
-   * in it fails below HTTP - a timeout, a dropped connection - so a throw
-   * counts against all of them.
-   *
-   * The timeout bounds a tick: without it a hung request waits the 360 s
-   * default, the whole execution. Worst case is 3 x 20 s + 2 x 5 s per call,
-   * two calls a tick.
+   * in it fails below HTTP, so a throw counts against all of them.
+   * The timeout bounds a tick: worst case is 3 x TIMEOUT_SECONDS + 2 x 5 s per call.
    */
   function getAll(urls) {
     var bodies = urls.map(function () { return null; });
@@ -264,8 +234,7 @@ var RelinkNotice_ = (function () {
    * One region's guild-to-team table, or null if the answer is not one.
    *
    * A truncated read, an error document or a changed shape must never be
-   * mistaken for a table in which every guild moved - that reads as a relink
-   * and would fire the notice on a bad afternoon.
+   * mistaken for a table in which every guild moved: that fires the notice.
    */
   function readTable(body) {
     if (body === null) return null;
@@ -333,13 +302,9 @@ var RelinkNotice_ = (function () {
 
 
   /**
-   * The cell the site reads, creating the tab if it is not there. Created
-   * rather than failed on; check-notice.py watches either way.
-   *
-   * A new spreadsheet's one empty sheet is named by the account's language,
-   * and the CSV export serves the FIRST sheet when it cannot find the tab
-   * name, so an empty sheet in front of this one would answer the site with
-   * nothing. The default sheet is renamed instead; later tabs go at the end.
+   * The cell the site reads, creating the tab if it is not there; check-notice.py watches either way.
+   * An empty default sheet is renamed rather than left in front: the CSV export serves the
+   * FIRST sheet when it cannot find the tab name. Later tabs go at the end.
    */
   function stateTab() {
     var doc = book();
@@ -364,10 +329,9 @@ var RelinkNotice_ = (function () {
   /**
    * Stamps the heartbeat, and never lets its own failure end the tick.
    *
-   * A failed write means the document is unreachable, which the work below
-   * discovers and reports through fail(); throwing here would replace that
-   * report. A missed stamp is also the right outcome: check-notice.py should
-   * see a stale heartbeat when the sheet cannot be written.
+   * A failed write means the document is unreachable, which the work below reports
+   * through fail(); throwing here would replace that report, and check-notice.py
+   * should see a stale heartbeat anyway.
    */
   function beat(now) {
     try {
@@ -445,24 +409,20 @@ var RelinkNotice_ = (function () {
 
 
   function writeBaseline(region, takenAt, table) {
-    // Rebuilt key by key from values that already passed readTable, so what
-    // lands in the sheet is this script's own data and not the API's.
+    // Rebuilt key by key from values that already passed readTable.
     var rows = [['takenAt', takenAt]];
     for (var guid in table) rows.push([String(guid), String(table[guid])]);
 
     var tab = baselineTab(region);
-    // Cleared first: last month's table is longer or shorter than this one, and
-    // leftover rows below the new data would be read back as part of it.
+    // Cleared first: leftover rows below the new data would be read back as part of it.
     tab.clear();
 
-    // getRange does not grow the sheet, and a new spreadsheet has a thousand
-    // rows against the ten thousand this needs, so without this the first write
-    // throws. The spare hundred saves a second call when the table gains guilds.
+    // getRange does not grow the sheet, so without this a write past its rows throws.
+    // The spare hundred saves a second call when the table gains guilds.
     var need = rows.length - tab.getMaxRows();
     if (need > 0) tab.insertRowsAfter(tab.getMaxRows(), need + 100);
 
-    // One call, not ten thousand. Written as plain text so a five-digit team id
-    // is never reinterpreted as a number and read back in some other shape.
+    // One call. Plain text, so a five-digit team id is never reinterpreted as a number.
     var range = tab.getRange(1, 1, rows.length, 2);
     range.setNumberFormat('@');
     range.setValues(rows);
@@ -472,8 +432,7 @@ var RelinkNotice_ = (function () {
   function tick() {
     var now = Math.floor(Date.now() / 1000);
 
-    // Before anything that can return or throw: the one line that proves the
-    // trigger is alive on the days a working tick does nothing else.
+    // Before anything that can return or throw: proves the trigger is alive.
     beat(now);
 
     var t = timers();
@@ -495,8 +454,7 @@ var RelinkNotice_ = (function () {
     var tables = readTables();
     for (var i = 0; i < REGIONS.length; i++) {
       if (tables[REGIONS[i]] === null) {
-        // A garbled read looks exactly like every guild having moved, so it is
-        // never compared against.
+        // A garbled read looks like every guild having moved, so it is never compared against.
         fail(REGIONS[i] + ': the guild table came back a shape this does not '
           + 'recognise');
         return;
@@ -547,19 +505,16 @@ var RelinkNotice_ = (function () {
     }
 
     if (!moved) {
-      // Both regions or neither: somebody whose guild is in the region that
-      // has not moved yet would follow the notice to the old answer.
-      //
-      // Written only when it would change something, to keep the document's
-      // revision history free of noise.
+      // Both regions or neither: a guild in the region that has not moved yet
+      // would follow the notice to the old answer.
+      // Written only when it would change something, to keep the revision history clean.
       if (!state || state.window !== assignNa || state.published !== 0) {
         writeState(assignNa, 0);
       }
       return;
     }
 
-    // The one write of the month that matters, and both halves belong together:
-    // the notice goes on, and the table that turned it on becomes the baseline.
+    // Both halves belong together: the notice goes on, and the table that turned it on becomes the baseline.
     writeState(assignNa, now);
     for (var m = 0; m < REGIONS.length; m++) {
       writeBaseline(REGIONS[m], now, tables[REGIONS[m]]);
@@ -597,8 +552,7 @@ var RelinkNotice_ = (function () {
    *
    * Runs after every tick, including one that threw, and never throws itself:
    * the tick's exception is the one worth an email, and a failed push is sent
-   * again five minutes later with newer values. Whoever watches for pushes
-   * stopping is outside this script: the Worker's health route.
+   * again with the next tick. The Worker's health route watches for pushes stopping.
    */
   function push() {
     try {
@@ -640,8 +594,7 @@ var RelinkNotice_ = (function () {
         + 'first to replace it.');
       return;
     }
-    // getUuid is java.util.UUID.randomUUID, a cryptographically strong
-    // generator: four of them, hashed into 512 bits.
+    // Four UUIDs, hashed into 512 bits.
     var bytes = [];
     for (var i = 0; i < 2; i++) {
       bytes = bytes.concat(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,

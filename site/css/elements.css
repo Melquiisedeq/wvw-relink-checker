@@ -2,8 +2,8 @@
 #resultsPlaceholder{text-shadow:0 1px 2px rgba(0,0,0,.6);}
 #resultsPlaceholder .muted{color:#aab4c2;margin:0;}
 .hint{color:#8d97a6;font-size:.8rem;margin-top:6px;}
-/* On the same translucent card as everything else, so every glyph
-   gets the same edge. */
+/* On the same translucent card as everything else, so every glyph gets the same edge.
+   */
 table{
   width:100%;border-collapse:collapse;margin-top:4px;font-size:.92rem;
   text-shadow:0 1px 2px rgba(0,0,0,.6);
@@ -12,10 +12,9 @@ th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--border);}
 td{color:#f2f6fa;}
 th{color:#8d97a6;font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;}
 tr:last-child td{border-bottom:none;}
-/* Phones: each row is a block - the guild name on its own line, then tag,
-   region and team beneath it, the team wrapping to the next line when it
-   does not fit. The header stays for screen readers, clipped like
-   .sr-only. phone.spec.mjs measures at 320 and 390 px. */
+/* Phones: each row is a block, the guild name on its own line, then tag, region and
+   team. The header stays for screen readers, clipped like .sr-only. phone.spec.mjs
+   measures at 320 and 390 px. */
 @media (max-width:520px){
   #resultCard table,#resultCard tbody{display:block;}
   #resultCard thead{
@@ -48,9 +47,7 @@ a{color:var(--accent);}
 }
 @keyframes spin{to{transform:rotate(360deg);}}
 
-/* The only footer on the page. Brand left, links right: it carries a name and
-   still fits on one screen (stacked, a one-page tool becomes something you
-   scroll past). */
+/* The only footer on the page: brand left, links right, on one screen. */
 .gw2-band{
   position:relative;z-index:1;
   margin-top:6px;padding:11px 16px 13px;
@@ -63,8 +60,7 @@ a{color:var(--accent);}
   justify-content:space-between;gap:12px 24px;
 }
 .gw2-band-brand{display:flex;align-items:center;gap:10px;min-width:0;}
-/* Same crest as the title, held back: down here it signs off rather
-   than announces. */
+/* Same crest as the title, held back. */
 .gw2-band-crest{flex-shrink:0;opacity:.8;}
 .gw2-band-words{display:flex;flex-direction:column;gap:1px;min-width:0;}
 .gw2-band-name{
@@ -72,9 +68,8 @@ a{color:var(--accent);}
 }
 .gw2-band-tag{font-size:.74rem;color:var(--muted);line-height:1.35;}
 .gw2-band-links{display:flex;flex-wrap:wrap;align-items:center;}
-/* 24px is the floor WCAG 2.2 puts on a tap target outside a sentence,
-   and these are in a nav. Costs no height - the crest already makes the
-   row 28px. */
+/* 24px is the WCAG 2.2 floor for a tap target outside a sentence; these are in a nav.
+   Costs no height, since the crest already makes the row 28px. */
 .gw2-band-links a{
   position:relative;
   display:inline-flex;align-items:center;min-height:24px;
@@ -82,18 +77,16 @@ a{color:var(--accent);}
   padding:0 11px;line-height:1.2;
   transition:color .15s ease;
 }
-/* Drawn rather than typed in, so the first link carries no stray dot
-   and a wrap strands none. A pseudo-element and not a border, which
-   would run the full 24px of the tap target and look like a table. */
+/* Drawn, so the first link carries no stray dot and a wrap strands none. A pseudo-
+   element, not a border, which would run the full 24px of the tap target. */
 .gw2-band-links a + a::before{
   content:'';position:absolute;left:0;top:50%;
   width:1px;height:11px;margin-top:-5.5px;
   background:rgba(154,164,178,.22);
 }
 .gw2-band-links a:hover{color:var(--accent-bright);}
-/* Provenance and trademarks, at the quietest weight on the page but not under
-   the floor: #737c88 is 4.41:1 against the band over the photo, just under AA;
-   this is the same grey one step up. */
+/* Provenance and trademarks, quiet but not under the floor: #737c88 is 4.41:1 against
+   the band over the photo, under AA; this is one step up. */
 .gw2-band-fine{
   max-width:900px;margin:9px auto 0;padding-top:8px;
   border-top:1px solid rgba(255,255,255,.05);
@@ -105,9 +98,8 @@ a{color:var(--accent);}
   .gw2-band-words{align-items:center;}
 }
 
-/* "Try again" beside a failed load: a secondary button in the error's own
-   tone (the primary Check stays blue), with the reload arrow. Focus ring
-   comes from the rule in base.css. */
+/* "Try again" beside a failed load: a secondary button in the error's tone (the primary
+   Check stays blue). Focus ring comes from base.css. */
 .retry-btn{
   display:inline-flex;align-items:center;gap:5px;
   padding:2px 9px;font-size:.78rem;border-radius:6px;white-space:nowrap;

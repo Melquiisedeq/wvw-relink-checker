@@ -382,8 +382,7 @@ function renderGuildsPopoverContent(popover, teamName, data, triggerEl) {
   shotStatus.setAttribute('role', 'status');
   popover.appendChild(shotStatus);
 
-  // Everything except header/footer lives in this container so the
-  // expanded (screenshot) mode can lay it out in multiple columns.
+  // Everything but header/footer lives here, so expanded mode can lay it out in columns.
   const body = document.createElement('div');
   body.className = 'info-popover-body';
 
@@ -463,16 +462,13 @@ async function toggleGuildsPopover(teamName, triggerEl) {
   positionPopover(popover, triggerEl);
 }
 
-// The shield with an info mark inside: this page's sign for "there is a guild
-// list behind this". The teams notice in js/relink.js draws the same one, called
-// rather than copied; safe across the load order because nothing calls this until
-// a click or a countdown tick.
+// The shield with an info mark: this page's sign for "there is a guild list behind
+// this". The teams notice in js/relink.js calls it; safe across the load order because
+// nothing calls it until a click or a countdown tick.
 //
-// aria-hidden for both callers: the button's own aria-label says what it opens,
-// and inside the notice's sentence the word is supplied as text beside the icon
-// (buildTeamsNotice in js/relink.js). Not role="img": that makes the icon an
-// OBJECT in the accessibility tree and the screen reader stops at it, losing the
-// rest of the sentence.
+// aria-hidden for both callers: the button's own aria-label names what it opens, and
+// the notice supplies the word as text. Not role="img": the screen reader would stop
+// at the icon and lose the rest of the sentence.
 function serverGuildsShield(size) {
   return `<svg width="${size}" height="${Math.round(size * 19 / 17)}" viewBox="0 0 24 27" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">`
     + '<path d="M12 2 L21 4.5 V13 C21 19 17 23.5 12 25.5 C7 23.5 3 19 3 13 V4.5 Z" '
@@ -481,8 +477,6 @@ function serverGuildsShield(size) {
     + '<rect x="10.4" y="13.2" width="3.2" height="8" rx="1.6" fill="currentColor"/></svg>';
 }
 
-// Small shield icon with an info mark inside, next to NA server names
-// only. Opens the community guild list popover on click.
 function buildServerGuildsButton(teamName) {
   const btn = document.createElement('button');
   btn.type = 'button';
