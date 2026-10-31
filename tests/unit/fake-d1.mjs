@@ -5,7 +5,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, readdirSync } from 'node:fs';
 
-const WORKER = new URL('../worker/', import.meta.url);
+const WORKER = new URL('../../worker/', import.meta.url);
 
 export function fakeD1({ skip = [] } = {}) {
   const sql = new DatabaseSync(':memory:');

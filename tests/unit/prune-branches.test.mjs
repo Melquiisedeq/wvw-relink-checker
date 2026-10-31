@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decide, branchFromRef } from '../.github/scripts/prune-branches.mjs';
+import { decide, branchFromRef } from '../../.github/scripts/prune-branches.mjs';
 
 const DAY = 24 * 60 * 60 * 1000;
 const now = Date.parse('2026-10-27T12:00:00Z');

@@ -1,11 +1,11 @@
 // The rules of wvwrelink.com/api (worker/index.mjs), against its real code and
 // a real SQLite: what the entrance refuses, what it keeps, what the reads give
-// and when they refuse to. Run: node --test "tests/*.test.mjs"
+// and when they refuse to. Run: node --test "tests/unit/*.test.mjs"
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
-import worker from '../worker/index.mjs';
+import worker from '../../worker/index.mjs';
 import { fakeD1 } from './fake-d1.mjs';
 import { signHeaders } from './signed.mjs';
 

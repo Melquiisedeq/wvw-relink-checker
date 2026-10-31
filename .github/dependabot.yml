@@ -2,7 +2,7 @@
 # package.json in site/ or worker/. Two things are pinned and never update
 # themselves: the GitHub Actions the workflows run, by commit SHA, and
 # Playwright Test and monocart-coverage-reports, the browser tests' two
-# dependencies, by exact version in .github/e2e/package-lock.json. This is what tells us a newer version of
+# dependencies, by exact version in tests/e2e/package-lock.json. This is what tells us a newer version of
 # either exists, as a pull request to read before taking it.
 version: 2
 updates:
@@ -14,7 +14,7 @@ updates:
       interval: monthly
 
   - package-ecosystem: npm
-    directory: /.github/e2e
+    directory: /tests/e2e
     schedule:
       # Monthly too: Playwright ships about once a month, monocart less often.
       interval: monthly

@@ -124,7 +124,7 @@ function table(measured, committed) {
 
 function nodeTests() {
   rmSync(NODE_DIR, { recursive: true, force: true });
-  execFileSync('node', ['--test', '--test-reporter=dot', 'tests/*.test.mjs'], {
+  execFileSync('node', ['--test', '--test-reporter=dot', 'tests/unit/*.test.mjs'], {
     cwd: ROOT, stdio: 'inherit', env: { ...process.env, NODE_V8_COVERAGE: NODE_DIR },
   });
 }
@@ -215,7 +215,7 @@ async function main(command, ...args) {
     '', 'Two causes, and this check cannot tell which (it does not see the diff):',
     '- The pull request added code no test runs: write the test.',
     '- The file is not one the pull request touched: it is oscillation. Run the sweep (Actions > Coverage sweep), then cover what it lists with a test. The committed number never goes down.');
-  if (rose.length && !fell.length) lines.push('', 'Coverage rose: run `npm run coverage:write` in `.github/e2e` and commit `coverage.json`.', ...rose.map(l => `- ${l}`));
+  if (rose.length && !fell.length) lines.push('', 'Coverage rose: run `npm run coverage:write` in `tests/e2e` and commit `coverage.json`.', ...rose.map(l => `- ${l}`));
   console.log(lines.join('\n'));
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, '### Coverage\n\n' + lines.join('\n') + '\n');
   if (fell.length) process.exitCode = 1;

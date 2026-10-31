@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import fs from 'node:fs';
 
-const src = fs.readFileSync(new URL('../apps-script/relink-notice/relink-notice.gs', import.meta.url), 'utf8');
+const src = fs.readFileSync(new URL('../../apps-script/relink-notice/relink-notice.gs', import.meta.url), 'utf8');
 
 const range = () => ({ setNumberFormat() { return this; }, setValues() { return this; }, setValue() { return this; }, getDisplayValues: () => [['', ''], ['', '']] });
 const sheet = (name, rows = 0) => ({ name, rows, setName(n) { this.name = n; return this; }, getLastRow() { return this.rows; }, getMaxRows: () => 1000,

@@ -9,7 +9,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const siteDir = path.join(root, 'site');
 const SKIPPED = new Set(['js/boot.js']);
 
@@ -68,7 +68,7 @@ export function loadPage(startAt = 0) {
 }
 
 export function loadRecording() {
-  const file = path.join(root, '.github/e2e/recordings.json.gz');
+  const file = path.join(root, 'tests/e2e/recordings.json.gz');
   const rec = JSON.parse(zlib.gunzipSync(fs.readFileSync(file)));
   const all = JSON.parse(rec.entries['https://api.guildwars2.com/v2/wvw/matches?ids=all'][2]);
   return { recordedAt: rec.recordedAt, matches: all };

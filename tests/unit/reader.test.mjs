@@ -1,13 +1,13 @@
 // The Supabase reader (supabase/): its rules, then what it builds against the
 // Worker's own entrance, and the function's gate with Deno and fetch stubbed.
-// Run: node --test "tests/*.test.mjs"
+// Run: node --test "tests/unit/*.test.mjs"
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fakeD1 } from './fake-d1.mjs';
 import { postSigned, signHeaders } from './signed.mjs';
 import {
   REGIONS, regionFor, checkMatch, checkRead, checkSummaryBody, pickNewer, buildBody, sign, sameSecret, handle, boardOf
-} from '../supabase/reader.mjs';
+} from '../../supabase/reader.mjs';
 
 // 2026-10-03 is a Saturday: the NA week began 02:00Z, 10 hours before this clock.
 const NOW = Date.parse('2026-10-03T12:00:00Z');

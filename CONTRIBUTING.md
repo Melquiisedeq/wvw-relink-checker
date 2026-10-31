@@ -14,7 +14,7 @@ script from elsewhere is Cloudflare's visit counter, and the page does not
 need it to work. `worker/`, the Supabase readers in `supabase/` and the Apps Scripts in
 `apps-script/` are the code that runs outside the browser; `worker/` follows the
 same rule: one file, no dependencies, nothing to install. The browser tests in
-`.github/e2e/` are the one place with dependencies, Playwright Test and
+`tests/e2e/` are the one place with dependencies, Playwright Test and
 monocart-coverage-reports, and nothing in `site/` or `worker/` may import from there.
 
 So a pull request that adds a library, a bundler or a framework will not be
@@ -39,10 +39,10 @@ apps-script/   the two Google Apps Script projects behind the spreadsheets:
                pasted from
 supabase/      the two readers, one per API server pool, that push the newest
                match bodies to the Worker every 30 seconds
-tests/         the Worker's and the Supabase readers' rules, and the page's
-               rules with its scripts in a node:vm; run by node --test
-.github/       the checks and the workflows that run them; e2e/ holds the
-               browser tests (Playwright Test, monocart-coverage-reports)
+tests/         unit/: the Worker's and the Supabase readers' rules, and the page's
+               rules with its scripts in a node:vm, run by node --test;
+               e2e/: the browser tests (Playwright Test, monocart-coverage-reports)
+.github/       the checks and the workflows that run them
 wrangler.jsonc the root Worker: serves site/ as static assets, no code
 CONTRIBUTING.md  SECURITY.md  LICENSE
 ```
@@ -95,19 +95,19 @@ The Worker behind `wvwrelink.com/api` has tests, and so do the page's rules
 (its scripts loaded into a `node:vm`, no browser), with nothing to install
 (Node 22.13 or later):
 
-    node --test "tests/*.test.mjs"
+    node --test "tests/unit/*.test.mjs"
 
 The page itself has browser tests that open it in a real Chrome. They use
-Playwright Test, pinned in `.github/e2e/package-lock.json` (Node 22 and one
+Playwright Test, pinned in `tests/e2e/package-lock.json` (Node 22 and one
 installed Chrome or Chromium; no browser is downloaded):
 
-    cd .github/e2e && npm ci --ignore-scripts && npx playwright test
+    cd tests/e2e && npm ci --ignore-scripts && npx playwright test
 
 They drive your installed Google Chrome, or the executable `CHROME` names
 (`CHROME=/usr/bin/chromium npx playwright test`); CI uses its own Google
 Chrome. They serve `site/` with its real headers (`SITE_DIR` serves another
 folder) and answer the API and the sheets from a recording in
-`.github/e2e/recordings.json.gz`, so they run offline, and start the page's
+`tests/e2e/recordings.json.gz`, so they run offline, and start the page's
 clock at the recording's instant. The tests walk the page as a visitor would: a
 guild search, every tier map and each of its tabs, the popovers, the NA/EU
 swap, a second load with `/api` answering 503. A test fails on an exception, a
@@ -120,7 +120,7 @@ real hosts and commit the file. The run is live, one worker; what decides is the
 replay of the whole suite against the new file at the end, and the old
 recording is replaced only if that passes:
 
-    cd .github/e2e && RECORD=1 npx playwright test
+    cd tests/e2e && RECORD=1 npx playwright test
 
 (`RECORDINGS=/some/path.json.gz` writes the new recording there instead.)
 
@@ -133,9 +133,9 @@ commands above; `structure` runs without a network or an install:
 
     python3 .github/scripts/check-structure.py
 
-`page` also fails if the page goes over its budget (`.github/e2e/budget.json`)
-or a file's test coverage falls (`.github/e2e/coverage.json`); the message says
-which measure and which file. `npm run coverage` in `.github/e2e` measures
+`page` also fails if the page goes over its budget (`tests/e2e/budget.json`)
+or a file's test coverage falls (`tests/e2e/coverage.json`); the message says
+which measure and which file. `npm run coverage` in `tests/e2e` measures
 it locally, running both test suites and comparing with `coverage.json`.
 
 ## Style
@@ -150,7 +150,7 @@ One concern each. A fix and a redesign on the same branch means neither can be
 taken without the other, and the small one ends up waiting on the big one.
 
 A change in what the page does brings its test in the same pull request: a
-rule in `tests/`, or a browser test in `.github/e2e/`. A bug fix brings a test
+rule in `tests/unit/`, or a browser test in `tests/e2e/`. A bug fix brings a test
 that fails before the fix and passes after it.
 
 If a change is visible on the page, say what it looks like — a screenshot

@@ -1,11 +1,11 @@
 // The scheduler's pg_net timeout must outlast the reader's serial waits, or the
 // Worker push (the last step) can be cut off. Reads both files as text.
-// Run: node --test "tests/*.test.mjs"
+// Run: node --test "tests/unit/*.test.mjs"
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const read = (name) => readFileSync(new URL(`../supabase/${name}`, import.meta.url), 'utf8');
+const read = (name) => readFileSync(new URL(`../../supabase/${name}`, import.meta.url), 'utf8');
 
 test('call_reader timeout is longer than the reader\'s serial deadlines', () => {
   const reader = read('reader.mjs');
@@ -21,7 +21,7 @@ test('both readers are scheduled every 30 seconds and the peek follows', () => {
   const sql = read('scheduler.sql');
   const jobs = [...sql.matchAll(/cron\.schedule\('(reader-[a-z]+)',\s*'([^']+)'/g)].map((m) => [m[1], m[2]]);
   assert.deepEqual(jobs, [['reader-us', '30 seconds'], ['reader-eu', '30 seconds']]);
-  const page = readFileSync(new URL('../site/js/standings.js', import.meta.url), 'utf8');
+  const page = readFileSync(new URL('../../site/js/standings.js', import.meta.url), 'utf8');
   assert.match(page, /const PEEK_EVERY_MS = 30 \* 1000;/, 'the peek follows the beat');
 });
 

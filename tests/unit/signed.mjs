@@ -1,7 +1,7 @@
 // A signed POST to the Worker's entrance, as the Apps Scripts and the Supabase
 // readers send it.
 import { createHmac } from 'node:crypto';
-import worker from '../worker/index.mjs';
+import worker from '../../worker/index.mjs';
 
 // The two headers the entrance checks: the time, and HMAC-SHA256 over time, path and body
 // (text or bytes).

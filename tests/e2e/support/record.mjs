@@ -7,7 +7,7 @@
 // nothing; the verdict is the replay in the teardown: the whole suite, with no
 // RECORD, against the new file, and only a green one replaces the old recording.
 //
-//   cd .github/e2e && RECORD=1 npx playwright test
+//   cd tests/e2e && RECORD=1 npx playwright test
 //   RECORDINGS=/tmp/new.json.gz RECORD=1 npx playwright test   (writes there instead)
 //
 // Cloud sandbox: NODE_USE_ENV_PROXY=1 NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt
