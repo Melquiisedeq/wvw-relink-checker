@@ -8,7 +8,9 @@
 // really runs: a call the platform ran elsewhere is answered 404 and reads nothing.
 //
 // Flow: check the call's secret; read the game API; check the whole body; ask
-// /api/latest/summary what the Worker has; push only the newer matches, gzipped and signed.
+// /api/latest/summary what the Worker has; push only the newer matches, signed, as
+// plain JSON in two parts: the live body, and, in messages of their own, its finished
+// skirmishes only when the Worker holds fewer of them.
 //
 // Function secrets (Dashboard > Edge Functions > Secrets), never in the repository:
 //   READER_KEY            what the scheduler sends in x-wvw-key (128 hex)
@@ -41,8 +43,11 @@ export function regionFor(sbRegion, xRegion) {
 
 // Past this the read is refused whole (502, nothing stored); the game's body grows through the week and must stay under the function's memory.
 export const MAX_API_BYTES = 4 * 1024 * 1024;
-const MAX_SLICE = 16 * 1024;
-const MAX_RAW = 256 * 1024;
+// The Worker's caps on format 2: each part, and the message (its summary line included).
+const MAX_LIVE = 64 * 1024;
+const MAX_HIST = 64 * 1024;
+export const MAX_MESSAGE = 256 * 1024;
+const HEAD_ROOM = 16 * 1024;
 const MAX_SCORE_PER_MIN = 1000;
 const SCORE_SLACK = 2000;
 const MAPS = ['Center', 'RedHome', 'BlueHome', 'GreenHome'];
@@ -71,7 +76,8 @@ function plain(x, depth, count) {
   return Object.keys(x).every((k) => /^[a-z_0-9]{1,32}$/.test(k) && plain(x[k], depth + 1, count));
 }
 
-// One match of the API, whole. Returns {id, start, scores, kills, text, board} or null.
+// One match of the API, whole. Returns {id, start, scores, score, kills, live, hist, n, board}
+// or null: live and hist are JSON text, hist null when there is none to send.
 export function checkMatch(m, nowMs) {
   if (!m || typeof m !== 'object' || Array.isArray(m)) return null;
   if (typeof m.id !== 'string' || !/^[12]-[1-9]$/.test(m.id)) return null;
@@ -105,9 +111,24 @@ export function checkMatch(m, nowMs) {
   const scores = TEAMS.map((t) => m.scores[t]);
   const score = scores[0] + scores[1] + scores[2];
   if (score > MAX_SCORE_PER_MIN * Math.max(0, (nowMs - start) / 60e3) + SCORE_SLACK) return null;
-  const text = JSON.stringify(m);
-  if (new TextEncoder().encode(text).length > MAX_RAW) return null;
-  return { id: m.id, start, scores, score, kills, text, board: boardOf(m, start, nowMs) };
+  const parts = splitMatch(m, start, nowMs);
+  const enc = new TextEncoder();
+  if (enc.encode(parts.live).length > MAX_LIVE) return null;
+  if (parts.hist && enc.encode(parts.hist).length > MAX_HIST) Object.assign(parts, { hist: null, n: 0 });
+  return { id: m.id, start, scores, score, kills, ...parts, board: boardOf(m, start, nowMs) };
+}
+
+// The live part: the match with only its running skirmish (the last). The history:
+// skirmishes 1 to n, the finished ones. A list that is not 1, 2, ... up to one begun by the
+// clock (the Worker refuses such a history) is not split: it stays whole in the live part.
+export function splitMatch(m, start, nowMs) {
+  const list = m.skirmishes;
+  const ok = Array.isArray(list) && list.length >= 1
+    && list.length <= Math.min(SKIRMISHES, Math.floor((nowMs - start + 300e3) / SKIRMISH_MS) + 1)
+    && list.every((x, i) => x && typeof x === 'object' && !Array.isArray(x) && x.id === i + 1);
+  if (!ok) return { live: JSON.stringify(m), hist: null, n: 0 };
+  const n = list.length - 1;
+  return { live: JSON.stringify({ ...m, skirmishes: list.slice(-1) }), hist: n ? JSON.stringify(list.slice(0, -1)) : null, n };
 }
 
 // The Worker's board (checkBoard): the match's VP and its last two skirmishes, the running one last.
@@ -143,57 +164,80 @@ export function checkRead(data, nowMs) {
 }
 
 // What /api/latest/summary holds, checked as strangers' data too. Null if it is not that shape.
+// A `hist` that is not a count is taken as none: the history then goes again.
 export function checkSummaryBody(r) {
   if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
   const out = {};
   for (const [id, v] of Object.entries(r)) {
     if (!/^[12]-[1-9]$/.test(id) || !v || !Number.isSafeInteger(v.start) || !Number.isSafeInteger(v.score)) return null;
     out[id] = { start: v.start, score: v.score };
+    if (Number.isSafeInteger(v.hist) && v.hist >= 0) out[id].hist = v.hist;
   }
   return out;
 }
 
 // Only what is newer than the Worker's copy: a newer week, or the same week and
-// a higher score. Nothing for a match it has never seen is held back.
+// a higher score, or more finished skirmishes than it holds. Nothing for a match
+// it has never seen is held back.
 export function pickNewer(matches, summary) {
   return matches.filter((m) => {
     if (!Object.hasOwn(summary, m.id)) return true;
-    const have = summary[m.id];
-    return m.start > have.start || (m.start === have.start && m.score > have.score);
+    return liveAhead(m, summary[m.id]) || histAhead(m, summary[m.id]);
   });
 }
 
-export async function gzip(bytes) {
-  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
+export function liveAhead(m, have) {
+  return !have || m.start > have.start || (m.start === have.start && m.score > have.score);
+}
+
+// The history goes only when the Worker holds fewer finished skirmishes of the week.
+export function histAhead(m, have) {
+  if (!m.hist) return false;
+  if (!have) return true;
+  return m.start > have.start || (m.start === have.start && (have.hist ?? 0) < m.n);
 }
 
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 
-// <summary JSON, one line> "\n" <gzip of each match, in the summary's order>.
-// Returns null when nothing is left to send.
-export async function buildBody(matches) {
+// Format 2: <summary JSON, one line> "\n" <its parts, in the summary's order>. The live
+// parts of the matches that rose go first, in as many messages as the Worker's cap asks; then
+// the histories the Worker lacks, in messages of their own (an entry with only id, start, hist).
+// Returns the messages, [] when nothing is left to send.
+export async function buildMessages(matches, summary = {}) {
   const enc = new TextEncoder();
-  const entries = [];
-  const slices = [];
+  const digest = async (b) => hex(await crypto.subtle.digest('SHA-256', b));
+  const out = [];
+  let cur = null;
+  const add = (kind, entry, part) => {
+    if (!cur || cur.kind !== kind || cur.size + part.length > MAX_MESSAGE - HEAD_ROOM) {
+      cur = { kind, entries: [], parts: [], size: 0 };
+      out.push(cur);
+    }
+    cur.entries.push(entry);
+    cur.parts.push(part);
+    cur.size += part.length;
+  };
   for (const m of matches) {
-    const raw = enc.encode(m.text);
-    const gz = await gzip(raw);
-    if (gz.length > MAX_SLICE) continue;
-    entries.push({
-      id: m.id, start: m.start, scores: m.scores, kills: m.kills,
-      bytes: gz.length, raw: raw.length, sha256: hex(await crypto.subtle.digest('SHA-256', gz)),
-      ...m.board
-    });
-    slices.push(gz);
+    if (!liveAhead(m, summary[m.id])) continue;
+    const live = enc.encode(m.live);
+    add('live', {
+      id: m.id, start: m.start, scores: m.scores, kills: m.kills, ...m.board,
+      live: { bytes: live.length, sha256: await digest(live) }
+    }, live);
   }
-  if (!entries.length) return null;
-  const head = enc.encode(JSON.stringify({ v: 1, matches: entries }) + '\n');
-  const body = new Uint8Array(head.length + slices.reduce((n, s) => n + s.length, 0));
-  body.set(head, 0);
-  let at = head.length;
-  for (const s of slices) { body.set(s, at); at += s.length; }
-  return { body, count: entries.length };
+  for (const m of matches) {
+    if (!histAhead(m, summary[m.id])) continue;
+    const hist = enc.encode(m.hist);
+    add('history', { id: m.id, start: m.start, hist: { n: m.n, bytes: hist.length, sha256: await digest(hist) } }, hist);
+  }
+  return out.map((msg) => {
+    const head = enc.encode(JSON.stringify({ v: 2, matches: msg.entries }) + '\n');
+    const body = new Uint8Array(head.length + msg.size);
+    body.set(head, 0);
+    let at = head.length;
+    for (const p of msg.parts) { body.set(p, at); at += p.length; }
+    return { body, kind: msg.kind, count: msg.entries.length };
+  });
 }
 
 // Hex HMAC-SHA256 of  time + "\n" + path + "\n" + body, as the Worker checks it.
@@ -249,20 +293,31 @@ export async function handle(req, env) {
     const summary = checkSummaryBody(JSON.parse(await readCapped(res, 64 * 1024) ?? 'null'));
     if (!summary) return generic(502);
 
-    const built = await buildBody(pickNewer(read.matches, summary));
-    if (!built) {
+    const messages = await buildMessages(pickNewer(read.matches, summary), summary);
+    if (!messages.length) {
       console.log(JSON.stringify({ region, sent: 0, dropped: read.dropped }));
       return generic(200);
     }
-    const t = String(Math.floor(Date.now() / 1000));
+    // One deadline for every push, so the scheduler's timeout still covers the run; each
+    // message is signed a second after the one before, as the Worker's replay guard asks.
+    const deadline = AbortSignal.timeout(8000);
+    const t0 = Math.floor(Date.now() / 1000);
     const path = new URL(INGEST_URL + source).pathname;
-    const sig = await sign(secret, t, path, built.body);
-    const push = await fetch(INGEST_URL + source, {
-      method: 'POST', body: built.body, signal: AbortSignal.timeout(8000),
-      headers: { 'x-wvw-time': t, 'x-wvw-sig': sig, 'content-type': 'application/octet-stream' }
-    });
-    console.log(JSON.stringify({ region, sent: built.count, dropped: read.dropped, status: push.status }));
-    return generic(push.ok ? 200 : 502);
+    let status = 0;
+    let done = 0;
+    for (const msg of messages) {
+      const t = String(t0 + done);
+      const sig = await sign(secret, t, path, msg.body);
+      status = (await fetch(INGEST_URL + source, {
+        method: 'POST', body: msg.body, signal: deadline,
+        headers: { 'x-wvw-time': t, 'x-wvw-sig': sig, 'content-type': 'application/octet-stream' }
+      })).status;
+      if (status !== 200) break;
+      done++;
+    }
+    const count = (kind) => messages.slice(0, done).filter((m) => m.kind === kind).reduce((n, m) => n + m.count, 0);
+    console.log(JSON.stringify({ region, sent: count('live'), hist: count('history'), messages: done, dropped: read.dropped, status }));
+    return generic(done === messages.length ? 200 : 502);
   } catch {
     // The reason is not written: an error's text can carry a URL or a header.
     console.log(JSON.stringify({ region, failed: true }));

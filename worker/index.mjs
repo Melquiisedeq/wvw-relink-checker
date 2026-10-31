@@ -4,12 +4,14 @@
 //   POST /api/ingest/relink   the teams notice script, after every tick
 //   POST /api/ingest/latest-supa-us, latest-supa-eu
 //                              the outside readers of the game API, the newest match bodies,
-//                              and each match's skirmishes into board (kept for good)
+//                              each match's finished skirmishes into history (format 2),
+//                              and its last two into board (kept for good)
 //   GET  /api/health            when each last reported; nothing else
 //   GET  /api/kills            the last 30 minutes of kills, each match's newest older row (up to 3 h back) and its kills' last move, for the map corner and swords
 //   GET  /api/relink           relink!A1 as numbers, for the teams notice
 //   GET  /api/latest            each match's newest body, as the readers pushed it
-//   GET  /api/latest/summary     the same without the bodies: id, start, score, at, by
+//   GET  /api/latest/summary     the same without the bodies: id, start, score, at, by, hist
+//   GET  /api/history/<1|2>?v=<n>  a region's finished skirmishes, n of them, this week
 //   daily, on a schedule       kills older than KEEP_DAYS are deleted
 //
 // A message is signed by its script with a secret of its own:
@@ -17,16 +19,22 @@
 //   x-wvw-sig   hex HMAC-SHA256 of  time + "\n" + path + "\n" + body
 // The path is signed so a message cannot be replayed against another source.
 //
-// The latest entrance never opens a match body (CPU time per request is limited): it decides
-// by the signed summary and the match's score, never by a reader's clock.
+// The latest entrance never unpacks a gzipped body (CPU time per request is limited), and parses
+// format 2's plain JSON only to check it: it decides by the signed summary and the match's score,
+// never by a reader's clock.
 
 const MAX_BYTES = 64 * 1024;
-const MAX_BYTES_LATEST = 256 * 1024; // at most one gzipped body per id in MATCHES
+// The HMAC, each part's hash and format 2's parse all run over the whole message, inside
+// the CPU limit: a reader sends more than this in several messages.
+const MAX_BYTES_LATEST = 256 * 1024;
 const MAX_SKEW_S = 300;
 // The Worker never opens a slice, so these bound what a page may be handed to
 // unpack. (MAX_RAW matches LATEST_BODY_MAX in js/api.js). One over either refuses the reader's whole push.
 const MAX_SLICE = 16 * 1024;
 const MAX_RAW = 256 * 1024;
+// Format 2, plain JSON: a match's body without its finished skirmishes, and those apart.
+const MAX_LIVE = 64 * 1024;
+const MAX_HIST = 64 * 1024;
 const SOURCES = {
   kills: 'INGEST_KILLS', relink: 'INGEST_RELINK',
   'latest-supa-us': 'INGEST_LATEST_SUPA_US', 'latest-supa-eu': 'INGEST_LATEST_SUPA_EU'
@@ -50,6 +58,12 @@ const SUMMARY_KEY = 'https://wvwrelink.com/api/latest/summary';
 // The max-age of each read, both in its answer and on a copy served from the cache.
 const LATEST_MAX_AGE = 5;
 const SUMMARY_MAX_AGE = 5;
+const HISTORY_KEY = 'https://wvwrelink.com/api/history/';
+// A version whose every match is in: it never changes. One with a match missing or behind: a minute.
+const HISTORY_MAX_AGE = 4 * 3600;
+const HISTORY_PARTIAL_MAX_AGE = 60;
+// What a version that is not the current one, or not there yet, answers.
+const HISTORY_MISS_MAX_AGE = 10;
 // The scripts make 128 hex characters; a short secret fails loudly rather than work weakly.
 const MIN_SECRET = 64;
 // The daily cleanup deletes kills older than this: two weeks keeps the running match and the one before it.
@@ -79,6 +93,15 @@ export default {
     if (m) {
       if (request.method !== 'POST') return text(405, 'method');
       return accept(request, env, m[1], url.pathname);
+    }
+    if (url.pathname.startsWith('/api/history/')) {
+      if (request.method !== 'GET') return text(405, 'method');
+      try {
+        return await readHistory(env, ctx, url);
+      } catch (e) {
+        console.log(JSON.stringify({ read: 'history', failed: String(e) }));
+        return text(503, 'unavailable');
+      }
     }
     // hasOwn: only a route named below is a read, never something inherited.
     if (Object.hasOwn(READS, url.pathname)) {
@@ -174,8 +197,11 @@ async function claimTime(db, source, t, now) {
   return !!claim.meta && claim.meta.changes === 1;
 }
 
-// The latest entrance: <summary JSON, one line> "\n" <gzip body of each match,
-// in the summary's order>. Only the summary and the slices' hashes are read.
+// The latest entrance: <summary JSON, one line> "\n" <the parts, in the summary's order>.
+// Format 1 (v 1): one gzipped body per match, never opened; only its hash is checked.
+// Format 2 (v 2): per match the live part (the body with only its running skirmish) when the
+// entry has `live`, then its finished skirmishes when it has `hist`; both plain JSON. Each part
+// is checked alone, and one that fails is left out with the reason logged, the others kept.
 async function acceptLatest(env, source, body, t, now) {
   const nl = body.indexOf(10);
   if (nl < 0) return refuse(400, source, 'no summary line');
@@ -188,10 +214,28 @@ async function acceptLatest(env, source, body, t, now) {
   const ms = checkSummary(summary, Date.now(), body.length - nl - 1);
   if (typeof ms === 'string') return refuse(422, source, ms);
   let at = nl + 1;
-  for (const m of ms) {
-    m.slice = body.subarray(at, at + m.bytes);
-    at += m.bytes;
-    if (toHex(await crypto.subtle.digest('SHA-256', m.slice)) !== m.sha256) return refuse(422, source, 'sha256 ' + m.id);
+  const cut = (n) => body.subarray(at, at += n);
+  if (summary.v === 1) {
+    for (const m of ms) {
+      const slice = cut(m.bytes);
+      if (await sha256(slice) !== m.sha256) return refuse(422, source, 'sha256 ' + m.id);
+      m.stored = { text: toBase64(slice), sha256: m.sha256, raw: m.raw };
+    }
+  } else {
+    const off = [];
+    for (const m of ms) {
+      if (m.live) {
+        const live = await partOf(cut(m.live.bytes), m.live.sha256, (x, text) => liveShape(x, text, m));
+        if (live.why) off.push(m.id + ' live ' + live.why);
+        else m.stored = { text: live.text, sha256: m.live.sha256, raw: m.live.bytes };
+      }
+      if (!m.hist) continue;
+      const hist = await partOf(cut(m.hist.bytes), m.hist.sha256, (x) => histShape(x, m.hist.n));
+      if (hist.why) off.push(m.id + ' history ' + hist.why);
+      else m.hist.text = hist.text;
+    }
+    if (off.length) console.log(JSON.stringify({ source, parts: 'left out', why: off }));
+    if (ms.every((m) => !m.stored && !(m.hist && m.hist.text))) return refuse(422, source, 'no part');
   }
 
   if (!await claimTime(env.DB, source, t, now)) return refuse(409, source, 'replay or out of order');
@@ -200,16 +244,19 @@ async function acceptLatest(env, source, body, t, now) {
   // match go back. A first write enters (it passed the checks above); after
   // that a newer week wins, and in the same week a higher score, but not past
   // what a score can rise since the stored one. Compared to the Worker's clock.
+  // `gz` holds format 1's gzip as base64, or format 2's live part as JSON text,
+  // which begins with "{" as base64 never does: /api/latest tells them apart by it.
   const applied = [];
   const lost = [];
   for (const m of ms) {
+    if (!m.stored) continue;
     const r = await env.DB.prepare(
       'INSERT INTO latest (id, start, score, at, reader, gz, sha, raw) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) ' +
       'ON CONFLICT (id) DO UPDATE SET start = excluded.start, score = excluded.score, at = excluded.at, ' +
       'reader = excluded.reader, gz = excluded.gz, sha = excluded.sha, raw = excluded.raw ' +
       'WHERE excluded.start > latest.start OR (excluded.start = latest.start AND excluded.score > latest.score ' +
       'AND excluded.score <= latest.score + ' + MAX_SCORE_PER_MIN + ' * ((?9 - latest.at) / 60.0) + ' + SCORE_SLACK + ')'
-    ).bind(m.id, m.start, m.score, now, source, toBase64(m.slice), m.sha256, m.raw, now).run();
+    ).bind(m.id, m.start, m.score, now, source, m.stored.text, m.stored.sha256, m.stored.raw, now).run();
     (r.meta && r.meta.changes === 1 ? applied : lost).push(m);
   }
   if (lost.length) await logJumps(env.DB, source, lost, now);
@@ -225,6 +272,13 @@ async function acceptLatest(env, source, body, t, now) {
   } catch (e) {
     console.log(JSON.stringify({ source, board: 'failed', why: String(e) }));
   }
+  // The same: without schema-006 only the history is lost.
+  let history = null;
+  try {
+    history = await historyInsert(env.DB, ms, now);
+  } catch (e) {
+    console.log(JSON.stringify({ source, history: 'failed', why: String(e) }));
+  }
 
   // The kills lines of the matches that moved, through the same rule as the
   // sheet's. Stamped by the Worker's clock: a reader's runs up to 5 min off, and
@@ -235,7 +289,7 @@ async function acceptLatest(env, source, body, t, now) {
     const rows = applied.map((m) => [m.id, at, ...m.kills, m.start, m.score]);
     entered = (await killsInsert(env.DB, rows, true).run()).meta.changes;
   }
-  console.log(JSON.stringify({ source, ok: true, applied: applied.length, lost: lost.length, board }));
+  console.log(JSON.stringify({ source, ok: true, applied: applied.length, lost: lost.length, board, history }));
   if (entered) {
     try {
       await rebuildRecent(env.DB, now, true);
@@ -246,6 +300,60 @@ async function acceptLatest(env, source, body, t, now) {
   return new Response(JSON.stringify({ applied: applied.map((m) => m.id) }) + '\n', {
     headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }
   });
+}
+
+async function sha256(bytes) {
+  return toHex(await crypto.subtle.digest('SHA-256', bytes));
+}
+
+// A format 2 part: {text}, or {why} it is left out. The text is kept as it came,
+// so it must parse whole and pass `shape`.
+async function partOf(bytes, sha, shape) {
+  if (await sha256(bytes) !== sha) return { why: 'sha256' };
+  let value;
+  let text;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    value = JSON.parse(text);
+  } catch {
+    return { why: 'not JSON' };
+  }
+  const why = shape(value, text);
+  return why ? { why } : { text };
+}
+
+// The live part is the match the summary describes: its id, week and scores.
+function liveShape(x, text, m) {
+  if (text[0] !== '{' || !x || typeof x !== 'object' || Array.isArray(x)) return 'not an object';
+  if (x.id !== m.id || typeof x.start_time !== 'string' || Date.parse(x.start_time) !== m.start) return 'not this match';
+  const s = x.scores;
+  if (!s || typeof s !== 'object' || !isIntList([s.red, s.blue, s.green], 3) || s.red + s.blue + s.green !== m.score) return 'scores';
+  if (!Array.isArray(x.maps)) return 'maps';
+  return null;
+}
+
+// The finished skirmishes 1 to n, in order.
+function histShape(x, n) {
+  if (!Array.isArray(x) || x.length !== n) return 'length';
+  if (!x.every((s, i) => s && typeof s === 'object' && s.id === i + 1)) return 'ids';
+  return null;
+}
+
+// One statement for every history of the message. A row moves only to a newer
+// week, or the same week and more finished skirmishes; only that version is kept.
+// The parts go in as JSON values, not strings, so nothing is escaped twice.
+async function historyInsert(db, ms, at) {
+  const parts = ms.filter((m) => m.hist && m.hist.text);
+  if (!parts.length) return null;
+  const list = '[' + parts.map((m) => '[' + JSON.stringify(m.id) + ',' + m.start + ',' + m.hist.n + ',' + m.hist.text + ']').join(',') + ']';
+  const r = await db.prepare(
+    'INSERT INTO history (match, start, n, at, body) SELECT ' +
+    "json_extract(value, '$[0]'), json_extract(value, '$[1]'), json_extract(value, '$[2]'), ?2, json_extract(value, '$[3]') " +
+    'FROM json_each(?1) WHERE true ' +
+    'ON CONFLICT (match) DO UPDATE SET start = excluded.start, n = excluded.n, at = excluded.at, body = excluded.body ' +
+    'WHERE excluded.start > history.start OR (excluded.start = history.start AND excluded.n > history.n)'
+  ).bind(list, at).run();
+  return { changes: r.meta.changes };
 }
 
 // A score above what the stored one allows is the sign worth a log line; a
@@ -263,7 +371,7 @@ async function logJumps(db, source, lost, now) {
 
 // Whole summary or nothing. Returns the checked matches, or the reason.
 function checkSummary(s, nowMs, rest) {
-  if (!s || typeof s !== 'object' || s.v !== 1) return 'version';
+  if (!s || typeof s !== 'object' || (s.v !== 1 && s.v !== 2)) return 'version';
   const list = s.matches;
   if (!Array.isArray(list) || !list.length || list.length > 18) return 'matches';
   const seen = new Set();
@@ -279,21 +387,49 @@ function checkSummary(s, nowMs, rest) {
     if (d.getUTCDay() !== r.day || d.getUTCHours() !== r.hour || d.getUTCMinutes() || d.getUTCSeconds() || d.getUTCMilliseconds()) {
       return 'start not a reset';
     }
-    if (!isIntList(m.scores, 3) || !isIntList(m.kills, 4)) return 'counts';
-    if (!isInt(m.bytes) || m.bytes < 18 || m.bytes > MAX_SLICE) return 'bytes';
-    if (!isInt(m.raw) || m.raw < 1 || m.raw > MAX_RAW) return 'raw';
-    if (typeof m.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(m.sha256)) return 'sha256 form';
-    const score = m.scores[0] + m.scores[1] + m.scores[2];
-    // Independent of what is stored: a week that has just begun cannot hold a big score.
-    if (score > MAX_SCORE_PER_MIN * Math.max(0, (nowMs - m.start) / 60e3) + SCORE_SLACK) return 'score for the week';
-    // A board field out of shape leaves only the board out (the reason, a string, is logged).
-    const board = checkBoard(m, nowMs);
-    total += m.bytes;
-    out.push({ id: m.id, start: m.start, score, kills: m.kills.slice(), bytes: m.bytes, raw: m.raw, sha256: m.sha256, board });
+    const e = { id: m.id, start: m.start, board: null };
+    // Format 2's history-only entry carries no counts: it changes neither latest, nor kills, nor board.
+    if (s.v === 1 || m.live !== undefined) {
+      if (!isIntList(m.scores, 3) || !isIntList(m.kills, 4)) return 'counts';
+      e.score = m.scores[0] + m.scores[1] + m.scores[2];
+      // Independent of what is stored: a week that has just begun cannot hold a big score.
+      if (e.score > MAX_SCORE_PER_MIN * Math.max(0, (nowMs - m.start) / 60e3) + SCORE_SLACK) return 'score for the week';
+      e.kills = m.kills.slice();
+      // A board field out of shape leaves only the board out (the reason, a string, is logged).
+      e.board = checkBoard(m, nowMs);
+    }
+    if (s.v === 1) {
+      if (!isInt(m.bytes) || m.bytes < 18 || m.bytes > MAX_SLICE) return 'bytes';
+      if (!isInt(m.raw) || m.raw < 1 || m.raw > MAX_RAW) return 'raw';
+      if (!isSha(m.sha256)) return 'sha256 form';
+      Object.assign(e, { bytes: m.bytes, raw: m.raw, sha256: m.sha256 });
+      total += m.bytes;
+    } else {
+      const live = m.live;
+      if (live !== undefined) {
+        if (!live || !isInt(live.bytes) || live.bytes < 2 || live.bytes > MAX_LIVE || !isSha(live.sha256)) return 'live';
+        e.live = { bytes: live.bytes, sha256: live.sha256 };
+        total += live.bytes;
+      } else if (m.hist === undefined) {
+        return 'no part';
+      }
+      if (m.hist !== undefined) {
+        const h = m.hist;
+        // Finished ones only: the running skirmish is n + 1, begun by the Worker's clock with the signature's room.
+        if (!h || !isInt(h.n) || h.n < 1 || h.n >= SKIRMISHES + 1
+          || h.n > Math.floor((nowMs - m.start + MAX_SKEW_S * 1000) / SKIRMISH_MS)) return 'hist';
+        if (!isInt(h.bytes) || h.bytes < 2 || h.bytes > MAX_HIST || !isSha(h.sha256)) return 'hist';
+        e.hist = { n: h.n, bytes: h.bytes, sha256: h.sha256 };
+        total += h.bytes;
+      }
+    }
+    out.push(e);
   }
   if (total !== rest) return 'bytes do not add up';
   return out;
 }
+
+const isSha = (x) => typeof x === 'string' && /^[0-9a-f]{64}$/.test(x);
 
 // vp [red, blue, green] and skirmishes [[id, red, blue, green], ...], both or
 // neither (a reader older than them sends neither). The last of skirmishes is
@@ -688,44 +824,110 @@ const READS = {
   // One query, and the answer kept by Cloudflare's cache under a fixed
   // key, so a query string cannot make a request of its own: a visitor costs D1
   // nothing while the copy lives.
-  '/api/latest': (env, ctx) => cached(ctx, LATEST_KEY, LATEST_MAX_AGE, async () => {
+  // Each entry in the format it came in: format 1 {id, start, score, at, by, gz}, the gzip
+  // as base64; format 2 {id, start, score, at, by, v: 2, body}, the live part as JSON.
+  '/api/latest': (env, ctx) => cached(ctx, LATEST_KEY, async () => {
     const { results } = await env.DB.prepare('SELECT id, start, score, at, reader, gz FROM latest').all();
     // Two hours without an update: a tier that no longer exists.
     const live = results.filter((r) => nowS() - r.at <= LATEST_KEEP_S);
     const newest = Math.max(0, ...live.map((r) => r.at));
     if (!live.length || nowS() - newest > STALE_LATEST_S) return text(503, 'stale');
-    return json(JSON.stringify({
-      at: newest,
-      matches: live.map((r) => ({ id: r.id, start: r.start, score: r.score, at: r.at, by: r.reader, gz: r.gz }))
-    }), LATEST_MAX_AGE);
+    // Format 2's text was parsed whole by the entrance, so it goes in as it is.
+    const entry = (r) => {
+      const head = JSON.stringify({ id: r.id, start: r.start, score: r.score, at: r.at, by: r.reader }).slice(0, -1);
+      return r.gz.startsWith('{') ? head + ',"v":2,"body":' + r.gz + '}' : head + ',"gz":' + JSON.stringify(r.gz) + '}';
+    };
+    return json('{"at":' + newest + ',"matches":[' + live.map(entry).join(',') + ']}', LATEST_MAX_AGE);
   }),
 
-  // Always 200, {} when empty: the readers need it to begin.
-  '/api/latest/summary': (env, ctx) => cached(ctx, SUMMARY_KEY, SUMMARY_MAX_AGE, async () => {
-    const { results } = await env.DB.prepare('SELECT id, start, score, at, reader FROM latest').all();
+  // Always 200, {} when empty: the readers need it to begin. `hist`: the finished
+  // skirmishes the history table holds for that match and week, when it holds them.
+  '/api/latest/summary': (env, ctx) => cached(ctx, SUMMARY_KEY, async () => {
+    let results;
+    try {
+      ({ results } = await env.DB.prepare('SELECT l.id, l.start, l.score, l.at, l.reader, h.n AS hist FROM latest l ' +
+        'LEFT JOIN history h ON h.match = l.id AND h.start = l.start').all());
+    } catch {
+      // Without schema-006.
+      ({ results } = await env.DB.prepare('SELECT id, start, score, at, reader FROM latest').all());
+    }
     const out = {};
     for (const r of results) {
-      if (nowS() - r.at <= LATEST_KEEP_S) out[r.id] = { start: r.start, score: r.score, at: r.at, by: r.reader };
+      if (nowS() - r.at > LATEST_KEEP_S) continue;
+      out[r.id] = { start: r.start, score: r.score, at: r.at, by: r.reader };
+      if (Number.isInteger(r.hist)) out[r.id].hist = r.hist;
     }
     return json(JSON.stringify(out), SUMMARY_MAX_AGE);
   })
 };
 
-// Only a 200 is kept. No Cache API outside Cloudflare (Node, the tests).
-async function cached(ctx, key, maxAge, make) {
+// GET /api/history/<region>?v=<n>: the region's finished skirmishes of this week. n is how
+// many have finished by the clock, or one fewer (a reader sends them a little after the
+// turn); anything else is a miss before D1 is read, so a parameter costs no row.
+// {v, start, matches: {id: [skirmish 1, ..., skirmish n]}}, only the matches at n.
+async function readHistory(env, ctx, url) {
+  const region = /^\/api\/history\/([12])$/.exec(url.pathname);
+  const v = /^\?v=([1-9]\d?)$/.exec(url.search);
+  if (!region || !v) return miss();
+  const nowMs = Date.now();
+  const start = weekStart(region[1], nowMs);
+  const n = Math.floor((nowMs - start) / SKIRMISH_MS);
+  const want = Number(v[1]);
+  if (want !== n && want !== n - 1) return miss();
+  const ids = MATCHES.filter((id) => id[0] === region[1]);
+  const key = HISTORY_KEY + region[1] + '?v=' + want + '&start=' + start;
+  // Every answer is kept for as long as it says: a stranger repeating a valid version costs
+  // D1 one read per key and max-age, whatever it found.
+  return cached(ctx, key, async () => {
+    // The matches of this week in latest, and the history each holds at this version.
+    const { results } = await env.DB.prepare(
+      'SELECT l.id AS match, CASE WHEN h.start = ?1 AND h.n = ?2 THEN h.body END AS body FROM latest l ' +
+      'LEFT JOIN history h ON h.match = l.id WHERE l.start = ?1 AND l.id IN (' + ids.map((_, i) => '?' + (i + 3)).join(', ') + ')'
+    ).bind(start, want, ...ids).all();
+    const at = results.filter((r) => r.body !== null).sort((a, b) => (a.match < b.match ? -1 : 1));
+    if (!at.length) return miss();
+    const whole = at.length === results.length;
+    const body = '{"v":' + want + ',"start":' + start + ',"matches":{' +
+      at.map((r) => JSON.stringify(r.match) + ':' + r.body).join(',') + '}}';
+    return json(body, whole ? HISTORY_MAX_AGE : HISTORY_PARTIAL_MAX_AGE);
+  });
+}
+
+// The start of the region's week that holds nowMs, epoch ms.
+function weekStart(region, nowMs) {
+  const r = RESET[region];
+  const d = new Date(nowMs);
+  const s = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), r.hour) - ((d.getUTCDay() - r.day + 7) % 7) * 86400e3;
+  return s > nowMs ? s - 7 * 86400e3 : s;
+}
+
+function miss() {
+  return new Response('not found\n', {
+    status: 404,
+    headers: { 'content-type': 'text/plain', 'cache-control': 'public, max-age=' + HISTORY_MISS_MAX_AGE, 'x-content-type-options': 'nosniff' }
+  });
+}
+
+// An answer that says `public, max-age=N` is kept N seconds (a 503 says no-store). No Cache API
+// outside Cloudflare (Node, the tests).
+async function cached(ctx, key, make) {
   const cache = typeof caches !== 'undefined' ? caches.default : null;
   if (cache) {
     const hit = await cache.match(key);
     if (hit) {
-      // The route's own max-age is put back here: a cached copy can carry another one.
+      // The answer's own max-age is put back from x-max-age: a cached copy can carry another one.
       const out = new Response(hit.body, { status: hit.status, statusText: hit.statusText, headers: hit.headers });
-      out.headers.set('cache-control', 'public, max-age=' + maxAge);
+      out.headers.set('cache-control', 'public, max-age=' + (out.headers.get('x-max-age') || '5'));
+      out.headers.delete('x-max-age');
       return out;
     }
   }
   const res = await make();
-  if (cache && res.status === 200) {
-    const put = cache.put(key, res.clone()).catch(() => {});
+  const age = /^public, max-age=(\d+)$/.exec(res.headers.get('cache-control') || '');
+  if (cache && age) {
+    const kept = res.clone();
+    kept.headers.set('x-max-age', age[1]);
+    const put = cache.put(key, kept).catch(() => {});
     if (ctx && ctx.waitUntil) ctx.waitUntil(put);
     else await put;
   }
