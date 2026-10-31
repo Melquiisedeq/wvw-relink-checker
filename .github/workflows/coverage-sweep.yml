@@ -45,12 +45,13 @@ jobs:
           echo "indexes=$(seq -s, 1 "$RUNS" | sed 's/^/[/; s/$/]/')" >> "$GITHUB_OUTPUT"
 
   # The e2e job of checks.yml, kept in step with it by hand, except that the
-  # coverage is saved instead of compared. A red run is not a coverage run, so a
+  # coverage is saved instead of compared; check-structure.py asserts the two
+  # timeouts are equal. A red run is not a coverage run, so a
   # failure here fails the sweep.
   run:
     needs: [plan]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
