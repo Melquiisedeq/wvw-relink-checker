@@ -107,7 +107,7 @@ They drive your installed Google Chrome, or the executable `CHROME` names
 (`CHROME=/usr/bin/chromium npx playwright test`); CI uses its own Google
 Chrome. They serve `site/` with its real headers (`SITE_DIR` serves another
 folder) and answer the API and the sheets from a recording in
-`tests/e2e/recordings.json.gz`, so they run offline, and start the page's
+`tests/e2e/data/recordings.json.gz`, so they run offline, and start the page's
 clock at the recording's instant. The tests walk the page as a visitor would: a
 guild search, every tier map and each of its tabs, the popovers, the NA/EU
 swap, a second load with `/api` answering 503. A test fails on an exception, a
@@ -133,10 +133,10 @@ commands above; `structure` runs without a network or an install:
 
     python3 .github/scripts/check-structure.py
 
-`page` also fails if the page goes over its budget (`tests/e2e/budget.json`)
-or a file's test coverage falls (`tests/e2e/coverage.json`); the message says
+`page` also fails if the page goes over its budget (`tests/e2e/data/budget.json`)
+or a file's test coverage falls (`tests/e2e/data/coverage.json`); the message says
 which measure and which file. `npm run coverage` in `tests/e2e` measures
-it locally, running both test suites and comparing with `coverage.json`.
+it locally, running both test suites and comparing with `data/coverage.json`.
 
 ## Style
 

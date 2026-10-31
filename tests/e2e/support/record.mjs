@@ -1,4 +1,4 @@
-// RECORD=1 npx playwright test: re-record recordings.json.gz from the real hosts.
+// RECORD=1 npx playwright test: re-record data/recordings.json.gz from the real hosts.
 // The specs run once against the live game with workers: 1 (the config), so
 // every URL is fetched once, in order, by the one process that answers the page
 // (support/recordings.mjs), and the world is frozen at first sight: a later
@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
 const E2E = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-export const RECORDING = process.env.RECORDINGS ? resolve(process.env.RECORDINGS) : join(E2E, 'recordings.json.gz');
+export const RECORDING = process.env.RECORDINGS ? resolve(process.env.RECORDINGS) : join(E2E, 'data', 'recordings.json.gz');
 export const RECORDING_ON = !!process.env.RECORD;
 
 const GAME = 'https://api.guildwars2.com';

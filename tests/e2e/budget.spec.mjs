@@ -3,7 +3,7 @@
 //   load    after the page opens on the recording: compressed bytes per type
 //           of what site/ served, requests to site/, blocking scripts, DOM
 //           nodes and event listeners (CDP Memory.getDOMCounters after a
-//           garbage collection). Each has a ceiling in budget.json, reviewed
+//           garbage collection). Each has a ceiling in data/budget.json, reviewed
 //           by hand: today's measure plus a margin (bytes +1 KB, rounded up
 //           to 100 B; requests and blocking scripts none; nodes and listeners +10 %).
 //   cycles  20 turns of: clock jumps, tab hidden and back, a map opened and
@@ -26,13 +26,13 @@ import { test, expect } from './support/fixtures.mjs';
 import { MIN, hidden, playing, visible, wake } from './support/scenarios.mjs';
 import { load, openMap, firstTier } from './support/steps.mjs';
 
-const budget = JSON.parse(readFileSync(new URL('./budget.json', import.meta.url), 'utf8'));
+const budget = JSON.parse(readFileSync(new URL('./data/budget.json', import.meta.url), 'utf8'));
 const CYCLES = 20;
 // What the floor may rise between the two halves of the cycles.
 // Under 14, so that one node or listener left behind per cycle (14 cycles
 // between the floors) fails, and over what the floors may wander.
 const TOLERANCE = { nodes: 8, listeners: 8 };
-const RAISE = 'if the rise is on purpose, raise the ceiling in budget.json in the same PR';
+const RAISE = 'if the rise is on purpose, raise the ceiling in data/budget.json in the same PR';
 
 const typeOf = (ct, url) => {
   if (/html/.test(ct)) return 'html';
@@ -101,7 +101,7 @@ test('the load stays inside the budget, and 20 cycles leak nothing', async ({ pa
   const measured = { bytes, requests, blockingScripts: blocking, nodes: after.nodes, listeners: after.listeners };
   console.log('e2e budget measure: ' + JSON.stringify(measured));
   for (const [t, ceiling] of Object.entries(budget.bytes)) over(`compressed ${t} bytes`, bytes[t] || 0, ceiling);
-  expect(Object.keys(bytes).filter(t => !(t in budget.bytes)), 'a type of file with no ceiling in budget.json').toEqual([]);
+  expect(Object.keys(bytes).filter(t => !(t in budget.bytes)), 'a type of file with no ceiling in data/budget.json').toEqual([]);
   over('requests to site/', requests, budget.requests);
   over('blocking scripts', blocking, budget.blockingScripts);
   over('DOM nodes after load', after.nodes, budget.nodes);

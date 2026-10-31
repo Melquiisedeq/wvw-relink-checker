@@ -6,7 +6,7 @@ This goes further, in two ways:
   1. every key and type in gw2-contract.json (what site/js/ reads, nested),
      checked against a live answer;
   2. the live answer's keys and types against the recording the page tests
-     run on (tests/e2e/recordings.json.gz): a field gone, new or of another
+     run on (tests/e2e/data/recordings.json.gz): a field gone, new or of another
      type fails, so the recording is re-made when the game changes.
 
 Guild routes use ids and names already in the recording; no new guild name is
@@ -154,7 +154,7 @@ def versus(live, rec):
 def main():
     with open(HERE + '/gw2-contract.json') as f:
         contract = json.load(f)
-    with gzip.open(HERE + '/../../tests/e2e/recordings.json.gz') as f:
+    with gzip.open(HERE + '/../../tests/e2e/data/recordings.json.gz') as f:
         rec = json.load(f)
     entries = {}
     for url, e in rec['entries'].items():
