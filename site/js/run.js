@@ -5,6 +5,17 @@
 // off a drop that has only just started.
 let deployTimer = null;
 
+// What a failed lookup says in the results table: a short phrase, never the
+// technical message. Decided by the error's fields, which the fetches set; the
+// fetch's own message differs in each browser.
+function lookupErrorText(e) {
+  if (e.notFound) return 'Guild not found (name must match exactly)';
+  if (e.status === 429) return 'Server busy, try again';
+  if (e.timedOut) return 'Server slow, try again';
+  if (e.network) return 'Connection lost, try again';
+  return 'Server error, try again';
+}
+
 async function run() {
   const { names, cut } = parseGuildNames(guildInput.value);
   // Cleared up front: every statusMsg after this one is progress or success and
@@ -91,7 +102,7 @@ async function run() {
           successEntries.push({ name: info.name, teamId: link.teamId });
         }
       } catch (e) {
-        renderRow({ originalName, error: e.message || 'Lookup failed' });
+        renderRow({ originalName, error: lookupErrorText(e) });
       }
 
       await sleep(THROTTLE_MS);
