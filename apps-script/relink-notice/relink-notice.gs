@@ -14,7 +14,7 @@
  * external requests.
  * ---------------------------------------------------------------------------
  * BOUND to the relink spreadsheet (Extensions > Apps Script), with a
- * time-driven trigger on relinkTick() every 15 minutes. A standalone script
+ * time-driven trigger on relinkTick() every 5 minutes. A standalone script
  * would have to reach the sheet by id, which is the broad grant above.
  *
  * A project of its own, not added to the kills script: an Apps Script project
@@ -66,7 +66,7 @@
  */
 
 /**
- * The function the trigger calls. Every 15 minutes.
+ * The function the trigger calls. Every 5 minutes.
  *
  * Locked: triggers are not queued, so a tick that runs long is overlapped by
  * the next one, and a second run in the middle of the baseline being cleared
@@ -153,10 +153,11 @@ var RelinkNotice_ = (function () {
   // Quiet for a hiccup, loud for a real outage, never loud on every tick:
   // Apps Script emails on every uncaught exception, and a trigger that throws
   // for hours is one Google may disable, which would take the notice away
-  // silently. At fifteen minutes a tick, the first email comes after about an
-  // hour (4 ticks), then a reminder about every six hours (24).
-  var ALARM_AFTER = 4;
-  var ALARM_EVERY = 24;
+  // silently. At five minutes a tick, the first email comes after about an
+  // hour (12 ticks), then a reminder about every six hours (72).
+  var TICK_MINUTES = 5;
+  var ALARM_AFTER = 12;
+  var ALARM_EVERY = 72;
 
   // Per request, against the 360 s default; see getAll().
   var TIMEOUT_SECONDS = 20;
@@ -184,7 +185,7 @@ var RelinkNotice_ = (function () {
     if (n === ALARM_AFTER
         || (n > ALARM_AFTER && (n - ALARM_AFTER) % ALARM_EVERY === 0)) {
       throw new Error('teams notice: ' + n + ' failed ticks (~'
-        + (n * 15) + ' min): ' + message);
+        + (n * TICK_MINUTES) + ' min): ' + message);
     }
   }
 
@@ -596,7 +597,7 @@ var RelinkNotice_ = (function () {
    *
    * Runs after every tick, including one that threw, and never throws itself:
    * the tick's exception is the one worth an email, and a failed push is sent
-   * again fifteen minutes later with newer values. Whoever watches for pushes
+   * again five minutes later with newer values. Whoever watches for pushes
    * stopping is outside this script: the Worker's health route.
    */
   function push() {

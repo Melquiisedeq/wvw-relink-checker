@@ -77,12 +77,12 @@ STATE_CELL = re.compile(r'^"?(\d{1,12}):(\d{1,12})"?$')
 # forty-five sits between them.
 MAX_GAP_SECONDS = 45 * 24 * 60 * 60
 
-# The heartbeat: one epoch integer in A2, written by the trigger every 15
+# The heartbeat: one epoch integer in A2, written by the trigger every 5
 # minutes. As strict as the state cell, for the same reason: the sheet is
 # world-readable.
 HEARTBEAT_CELL = re.compile(r'^"?(\d{1,12})"?$')
 
-# Twelve missed ticks. Not tighter: this check runs every six hours, so that
+# Thirty-six missed ticks. Not tighter: this check runs every six hours, so that
 # schedule, not this number, decides how fast a dead trigger is caught; a
 # tighter threshold only fails on Apps Script jitter and ticks Google skips
 # under quota.
@@ -223,7 +223,7 @@ def check_heartbeat(page_url, now):
 
     print('')
     print('::error::The Apps Script trigger has not run for %d minutes and is '
-          'supposed to run every 15. It stamps that cell before it does '
+          'supposed to run every 5. It stamps that cell before it does '
           'anything else, so this is not the API failing, not the threshold '
           'refusing to trip and not the sheet being unwritable - it is the '
           'trigger itself not firing. A deleted trigger, a locked account, an '
