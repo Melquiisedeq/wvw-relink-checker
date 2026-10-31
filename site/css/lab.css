@@ -66,3 +66,12 @@
 .lab-g-icon{min-width:24px;min-height:24px;display:inline-flex;align-items:center;justify-content:center;}
 .lab-g-icon:disabled{opacity:.45;cursor:default;}
 .lab-g-icon.lab-g-done{color:var(--accent);}
+.lab-g-icon.lab-look-cyan,.lab-g-icon.lab-look-ring{color:var(--accent);}
+.lab-g-icon.lab-look-ring{border-radius:50%;width:28px;height:28px;background:var(--accent-soft);box-shadow:0 0 0 1px rgba(127,214,242,.35);}
+.lab-g-icon.lab-look-ring:hover{background:rgba(127,214,242,.24);box-shadow:0 0 0 1px rgba(127,214,242,.6),0 0 10px rgba(127,214,242,.35);color:var(--accent-bright);}
+.lab-g-icon.lab-look-cyan:hover{color:var(--accent-bright);}
+.lab-bubble{position:fixed;z-index:10000;transform:translate(-50%,0);padding:2px 8px;border-radius:999px;font-size:.72rem;font-weight:700;
+  color:var(--accent-bright);background:rgba(10,20,28,.92);border:1px solid rgba(127,214,242,.45);pointer-events:none;white-space:nowrap;}
+.lab-flash{position:fixed;z-index:9999;background:#fff;border-radius:10px;pointer-events:none;}
+.lab-thumb{position:fixed;z-index:10000;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.6),0 0 0 2px rgba(255,255,255,.85);pointer-events:none;transform-origin:center 60px;}
+.lab-ripple{position:fixed;z-index:10000;border-radius:50%;border:2px solid var(--accent);pointer-events:none;}

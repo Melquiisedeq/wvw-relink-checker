@@ -5,7 +5,7 @@
 // .claude/tools/lab/pecas/ for the pieces worth reusing (README.md says what each lab has).
 
 const LAB_KEY = 'wvw-lab-40-1-39-3';
-const LAB_VERSION = 2;          // bump when the defaults change: older saved choices are dropped
+const LAB_VERSION = 3;          // bump when the defaults change: older saved choices are dropped
 // One entry per control, in order. check: a toggle; radio: one of a few; button: an
 // action (a "Simulate…" so the owner sees what a rare event looks like); section: a title.
 const LAB_ITEMS = [
@@ -15,9 +15,13 @@ const LAB_ITEMS = [
     today: 'Today', A: 'A · hold, fade late', B: 'B · A + shrinks', C: 'C · smooth' } },
   { type: 'section', label: 'Guild screenshot (40-1)' },
   { type: 'note', label: 'Click the shield next to a team name in the standings, then look at the popover.' },
-  { type: 'radio', key: 'shot', label: 'Form', value: 'today', options: {
-    today: 'Today', a: '(a) Camera', b: '(b) Screenshot', c: '(c) Corners' } },
-  { type: 'note', label: 'Round 2: one icon in the popover header, left of expand. Click it, then paste in Discord.' },
+  { type: 'radio', key: 'shot', label: 'Icon', value: 'a', options: {
+    today: 'Today (none)', a: 'Camera', b: 'Screenshot', c: 'Corners' } },
+  { type: 'radio', key: 'look', label: 'Look', value: 'ring', options: {
+    quiet: 'Quiet (round 2)', cyan: 'Cyan', ring: 'Cyan + ring' } },
+  { type: 'radio', key: 'fx', label: 'Click', value: 'thumb', options: {
+    none: 'Check only (round 2)', flash: 'Flash', thumb: 'Snapshot flies in', ripple: 'Ripple' } },
+  { type: 'note', label: 'Round 3: the camera, more present, and an effect on click. Each shows "Copied" under the icon.' },
 ];
 
 // Called after any change: repaint whatever the prototypes draw.
@@ -321,6 +325,7 @@ function labFlash(btn, text) {
   labSetIcon(btn, text === 'Failed' ? 'fail' : 'ok');
   btn.classList.toggle('lab-g-done', text !== 'Failed');
   labSay(text);
+  if (labPrefs.fx !== 'none') labBubble(btn, text);
   clearTimeout(btn.__labT);
   btn.__labT = setTimeout(() => { btn.classList.remove('lab-g-done'); labSetIcon(btn, labPrefs.shot); }, 2000);
 }
@@ -379,11 +384,73 @@ function labDecorate(popover) {
     btn.type = 'button';
     btn.setAttribute('aria-label', 'Copy the list as an image');
     btn.title = 'Copy the list as an image';
-    btn.addEventListener('click', (e) => { e.stopPropagation(); labCopy(btn, popover); });
+    btn.addEventListener('click', (e) => { e.stopPropagation(); labShotFx(btn, popover); labCopy(btn, popover); });
   }
   if (btn.nextElementSibling !== expandBtn) actions.insertBefore(btn, expandBtn);
   if (btn.__labMode !== mode && !btn.classList.contains('lab-g-done')) { labSetIcon(btn, mode); btn.__labMode = mode; }
+  btn.classList.toggle('lab-look-cyan', labPrefs.look === 'cyan');
+  btn.classList.toggle('lab-look-ring', labPrefs.look === 'ring');
   btn.disabled = !popover.querySelector('.guild-line');
+}
+
+
+// ---- 40-1 round 3: the effect on click -------------------------------------------
+// Run-once effects, so they play for everyone (CLAUDE.md: reduced motion stops loops only).
+function labBubble(btn, text) {
+  const r = btn.getBoundingClientRect();
+  const b = labEl('div', 'lab-bubble', text);
+  b.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(b);
+  b.style.left = (r.left + r.width / 2) + 'px';
+  b.style.top = (r.bottom + 6) + 'px';
+  b.animate([{ opacity: 0, transform: 'translate(-50%,-4px)' }, { opacity: 1, transform: 'translate(-50%,0)' }],
+    { duration: 160, easing: 'ease-out', fill: 'forwards' });
+  setTimeout(() => b.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, fill: 'forwards' }).finished.then(() => b.remove()), 1500);
+}
+
+function labOverlay(rect, cls) {
+  const o = labEl('div', cls);
+  Object.assign(o.style, { left: rect.left + 'px', top: rect.top + 'px', width: rect.width + 'px', height: rect.height + 'px' });
+  document.body.appendChild(o);
+  return o;
+}
+
+function labShotFx(btn, popover) {
+  const fx = labPrefs.fx;
+  const pr = popover.getBoundingClientRect();
+  const br = btn.getBoundingClientRect();
+  btn.animate([{ transform: 'scale(1)' }, { transform: 'scale(.78)' }, { transform: 'scale(1.12)' }, { transform: 'scale(1)' }],
+    { duration: 380, easing: 'ease-out' });
+  if (fx === 'flash' || fx === 'thumb') {
+    const f = labOverlay(pr, 'lab-flash');
+    f.animate([{ opacity: fx === 'flash' ? .7 : .35 }, { opacity: 0 }], { duration: fx === 'flash' ? 420 : 300, easing: 'ease-out' })
+      .finished.then(() => f.remove());
+  }
+  if (fx === 'thumb') {
+    const body = popover.querySelector('.info-popover-body') || popover;
+    const r = body.getBoundingClientRect();
+    let src;
+    try { src = labShotCanvas(labGuildData(popover)).toDataURL('image/png'); } catch (e) { return; }
+    const img = labEl('img', 'lab-thumb');
+    img.src = src;
+    img.alt = '';
+    const w = Math.min(r.width, 320);
+    Object.assign(img.style, { left: (r.left + (r.width - w) / 2) + 'px', top: (r.top + 8) + 'px', width: w + 'px' });
+    document.body.appendChild(img);
+    const dx = br.left + br.width / 2 - (r.left + r.width / 2);
+    const dy = br.top + br.height / 2 - (r.top + 8 + 60);
+    img.animate([
+      { transform: 'translate(0,0) scale(1) rotate(0)', opacity: 0 },
+      { transform: 'translate(0,0) scale(.92) rotate(-2deg)', opacity: 1, offset: .25 },
+      { transform: 'translate(0,0) scale(.92) rotate(-2deg)', opacity: 1, offset: .5 },
+      { transform: `translate(${dx}px,${dy}px) scale(.06) rotate(0)`, opacity: .4 }
+    ], { duration: 900, easing: 'cubic-bezier(.5,0,.75,0)' }).finished.then(() => img.remove());
+  }
+  if (fx === 'ripple') {
+    const ring = labOverlay(br, 'lab-ripple');
+    ring.animate([{ transform: 'scale(.6)', opacity: .8 }, { transform: 'scale(2.6)', opacity: 0 }],
+      { duration: 600, easing: 'ease-out' }).finished.then(() => ring.remove());
+  }
 }
 
 labPanel = labBuildPanel();
