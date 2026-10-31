@@ -650,7 +650,8 @@ test.describe('what you missed, the body behind the kill history', () => {
 
 // ---- How long an absence -----------------------------------------------------
 // Play with objectives changing hands from the opening; the tab away for 9 min
-// (the corner's ten minutes already cover it: nothing) or for over 2 h (the
+// (the corner's ten minutes already cover it: nothing), for 25 min coming back
+// without the focus (the block fades in all the same), or for over 2 h (the
 // block comes folded, its two badges in the title, and opens on a tap).
 test.describe('what you missed, by how long the tab was away', () => {
   test.use({ timeline: missed(150, 30) });
@@ -668,6 +669,24 @@ test.describe('what you missed, by how long the tab was away', () => {
     await page.waitForTimeout(1500); // the popover's one-second repaint
     expect(await page.evaluate(([sel, id]) => !!document.querySelector(sel) || missedNotes.has(id), [BLOCK, FOCUS]),
       'a summary after 9 min away').toBe(false);
+  });
+
+  test('away 25 min with an objective open, back without the focus: the block shows and the objective stays', async ({ page, wvw }) => {
+    await load(page, wvw);
+    await openMap(page, wvw, TIER_BUTTON(page));
+    await page.locator('.info-popover .wvw-plot .wvw-marker').nth(3).dispatchEvent('click');
+    const detail = page.locator('.info-popover .wvw-detail');
+    await expect(detail.locator('.wvw-detail-name')).toBeVisible();
+    await page.evaluate(() => { document.hasFocus = () => false; });
+    await hidden(page, wvw, 25 * MIN);
+    await visible(page);
+    await wvw.settle();
+    const block = page.locator(BLOCK);
+    await expect(block).toBeAttached();
+    expect(await page.evaluate(() => document.documentElement.classList.contains('is-idle')), 'the state: the page is idle').toBe(true);
+    await expect.poll(() => block.evaluate(b => getComputedStyle(b).opacity), { message: 'the block\'s opacity', timeout: 3000 }).toBe('1');
+    await expect(detail.locator('.wvw-detail-name')).toBeVisible();
+    await expect(page.locator('.info-popover .wvw-subtab.is-active')).toHaveAttribute('data-pane', 'objective');
   });
 
   test('away over 2 h: the block comes folded with both badges, and opens on a tap', async ({ page, wvw }) => {
