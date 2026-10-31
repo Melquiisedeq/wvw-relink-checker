@@ -243,3 +243,36 @@ test('without animationstart, the relink bar rebuilt still leaves no looping ani
   });
   await expectAllMoving(page, 'looping animations moving after the bar is rebuilt');
 });
+
+// The opacity of a rising ember by how far up it is (0 at the bottom, 1 at the top).
+const riseAlpha = p => (p < .10 ? p / .10 * .9 : p < .82 ? .9 - (p - .10) / .72 * .2 : .7 * (1 - (p - .82) / .18));
+
+test('a rising ember holds its glow up the page and goes out only near the top', async ({ page, wvw }) => {
+  // Each halo is drawn at the alpha just set, and its core arc follows at the ember's own y.
+  await page.addInitScript(() => {
+    window.__rise = [];
+    const proto = CanvasRenderingContext2D.prototype;
+    const draw = proto.drawImage, arc = proto.arc;
+    let pending = null;
+    proto.drawImage = function (...a) {
+      if (this.canvas && this.canvas.id === 'fxEmbers') pending = this.globalAlpha;
+      return draw.apply(this, a);
+    };
+    proto.arc = function (x, y, ...a) {
+      if (this.canvas && this.canvas.id === 'fxEmbers' && pending !== null) {
+        window.__rise.push([y, pending]);
+        pending = null;
+      }
+      return arc.call(this, x, y, ...a);
+    };
+  });
+  await load(page, wvw);
+  await expect.poll(() => page.evaluate(() => window.__rise.length), { timeout: 15000 }).toBeGreaterThan(3000);
+  const { H, samples } = await page.evaluate(() => ({ H: document.getElementById('fxEmbers').clientHeight, samples: window.__rise }));
+  const points = samples.map(([y, alpha]) => ({ p: (H + 10.5 - y) / (H * 1.02), alpha }));
+  for (const [lo, hi, label] of [[.03, .08, 'rising'], [.45, .55, 'middle'], [.88, .97, 'near the top']]) {
+    const band = points.filter(s => s.p >= lo && s.p <= hi);
+    expect(band.length, `embers seen ${label}`).toBeGreaterThan(0);
+    for (const s of band) expect(s.alpha, `alpha ${label} at p=${s.p.toFixed(3)}`).toBeCloseTo(riseAlpha(s.p), 3);
+  }
+});
