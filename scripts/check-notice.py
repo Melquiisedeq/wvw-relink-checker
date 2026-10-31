@@ -46,7 +46,7 @@ It is the counterpart of check-sheets.py, which asks whether the kills history
 is still being written. Same failure mode, same reason it needs asking: a
 stopped trigger makes no noise at all.
 
-Run it by hand any time:  python .github/scripts/check-notice.py
+Run it by hand any time:  python scripts/check-notice.py
 """
 
 import calendar
@@ -63,7 +63,7 @@ ATTEMPTS = 3
 PAUSE_SECONDS = 5
 TIMEOUT_SECONDS = 30
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Read out of js/config.js rather than repeated: the page and this check have
 # to be looking at the same cell.

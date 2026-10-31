@@ -21,7 +21,7 @@ unpublish it, and it kept serving a copy of the repository for a day), and
 the domain is not about to expire - it is renewed by hand, on purpose, so
 this is what remembers.
 
-Run it by hand any time:  python .github/scripts/check-site.py
+Run it by hand any time:  python scripts/check-site.py
 """
 
 import datetime
@@ -36,7 +36,7 @@ import urllib.request
 
 SITE = 'https://wvwrelink.com/'
 HEADERS_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     'site', '_headers')
 ATTEMPTS = 3
 PAUSE_SECONDS = 5
