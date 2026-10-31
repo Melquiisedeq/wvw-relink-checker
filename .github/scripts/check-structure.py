@@ -425,10 +425,50 @@ def sitemap_note():
             % found.group(1).strip())
 
 
+def job_timeout(rel, job):
+    """The timeout-minutes of one job, read from the workflow's text."""
+    path = os.path.join(ROOT, '.github', 'workflows', rel)
+    with io.open(path, encoding='utf-8') as fh:
+        lines = fh.read().splitlines()
+    inside = False
+    for line in lines:
+        if re.match(r'  %s:\s*$' % re.escape(job), line):
+            inside = True
+        elif inside and re.match(r'  \S', line):
+            break
+        elif inside:
+            m = re.match(r'    timeout-minutes:\s*(\d+)\s*$', line)
+            if m:
+                return int(m.group(1))
+    return None
+
+
+def check_sweep_timeout(problems):
+    """The coverage sweep's run job must not time out before the suite does.
+
+    It runs the same suite as the e2e job of checks.yml, so the two timeouts
+    must be equal: a lower one cancels every round of the sweep.
+    """
+    found = {}
+    for rel, job in (('checks.yml', 'e2e'), ('coverage-sweep.yml', 'run')):
+        found[rel] = job_timeout(rel, job)
+        if found[rel] is None:
+            problems.append(
+                'workflows/%s: no "timeout-minutes: N" found directly under '
+                'the %s job.' % (rel, job))
+    a, b = found['checks.yml'], found['coverage-sweep.yml']
+    if None not in (a, b) and a != b:
+        problems.append(
+            'coverage-sweep.yml run has timeout-minutes %d but the e2e job of '
+            'checks.yml has %d: the sweep runs the same suite and must have '
+            'the same timeout.' % (b, a))
+
+
 def main():
     problems = []
     for check in (check_hosts, check_scripts, check_styles, check_demo_hatch,
-                  check_notice_position, check_sitemap, check_readme):
+                  check_notice_position, check_sitemap, check_readme,
+                  check_sweep_timeout):
         check(problems)
 
     if problems:
@@ -446,6 +486,7 @@ def main():
                      len(MENTIONED)))
     print('No demo hatch in js/.')
     print('The teams notice is the first element in the body.')
+    print('The sweep and the e2e job share one timeout.')
     print(sitemap_note())
     return 0
 
