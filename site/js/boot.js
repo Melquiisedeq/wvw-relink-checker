@@ -210,11 +210,12 @@ const emberField = (function () {
 
     for (const e of rising) {
       const p = ((clock + e.phase) % e.dur) / e.dur;
-      // ember-rise: opacity 0 -> .85 at 12% -> .5 at 70% -> 0. The
+      // ember-rise: opacity 0 -> .9 at 10% -> .7 at 82% -> 0 at the top, so it
+      // holds its glow most of the way up and goes out only near the end. The
       // transform has ends only, so it runs straight across.
-      const a = p < .12 ? (p / .12) * .85
-              : p < .70 ? .85 - ((p - .12) / .58) * .35
-              :           .50 - ((p - .70) / .30) * .50;
+      const a = p < .10 ? p / .10 * .9
+              : p < .82 ? .9 - (p - .10) / .72 * .2
+              :           .7 * (1 - (p - .82) / .18);
       const y = H + 10.5 - H * 1.02 * p;      // bottom:-12px, then -102vh
       const x = e.x * W + 1.5 + e.drift * p;
 
