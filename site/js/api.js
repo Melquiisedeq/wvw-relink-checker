@@ -44,11 +44,16 @@ async function fetchJson(url, attempt = 0, cacheMode = 'no-store', timeoutMs = R
     return await res.json();
   } catch (err) {
     if (err.name === 'AbortError') {
-      throw new Error('Request timed out');
+      const timeout = new Error('Request timed out');
+      timeout.timedOut = true;
+      throw timeout;
     }
-    if (err instanceof TypeError && attempt < MAX_RETRIES) {
-      await sleep(500 * (attempt + 1));
-      return fetchJson(url, attempt + 1, cacheMode, timeoutMs);
+    if (err instanceof TypeError) {
+      if (attempt < MAX_RETRIES) {
+        await sleep(500 * (attempt + 1));
+        return fetchJson(url, attempt + 1, cacheMode, timeoutMs);
+      }
+      err.network = true;
     }
     throw err;
   } finally {
@@ -114,7 +119,9 @@ async function resolveGuildId(rawName) {
   const ids = await fetchJson(url); // array of GUIDs (usually 0 or 1)
 
   if (!Array.isArray(ids) || ids.length === 0) {
-    throw new Error('Guild not found (name must match exactly)');
+    const missing = new Error('Guild not found (name must match exactly)');
+    missing.notFound = true;
+    throw missing;
   }
   return ids[0];
 }
@@ -163,7 +170,9 @@ async function getGuildInfo(guildId, allowStored = false) {
   if (guildNameCache.has(guildId)) {
     const cached = guildNameCache.get(guildId);
     if (cached.ok) return cached.data;
-    throw new Error(cached.error);
+    const again = new Error(cached.error);
+    again.notFound = true;   // only a 404 is cached
+    throw again;
   }
 
   // Only for callers that said so - the maps, which want the emblem. The relink
@@ -192,6 +201,7 @@ async function getGuildInfo(guildId, allowStored = false) {
     // 429 says nothing about the guild, and caching it would replay the error on
     // every Check until reload.
     if (err.status === 404) {
+      err.notFound = true;
       guildNameCache.set(guildId, { ok: false, error: err.message || 'Guild lookup failed' });
     }
     throw err;

@@ -47,7 +47,7 @@ test.describe('a read that never answers', () => {
     await page.clock.runFor(9 * 1000);
     await expect(row, 'no row one second before the deadline').toHaveCount(0);
     await page.clock.runFor(1500);
-    await expect(row.first(), 'the row after the deadline').toContainText('Request timed out');
+    await expect(row.first(), 'the row after the deadline').toContainText('API slow, try again');
     await page.clock.runFor(2000);
     await expect(page.locator('#statusMsg'), 'the search ended').toHaveText(/^Done/);
     await expect(page.locator('#runBtn')).toBeEnabled();
