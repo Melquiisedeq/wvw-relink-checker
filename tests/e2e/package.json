@@ -10,7 +10,7 @@
     "coverage:sweep": "node support/coverage.mjs sweep-run"
   },
   "devDependencies": {
-    "@playwright/test": "1.64.0",
+    "@playwright/test": "1.64.1",
     "monocart-coverage-reports": "2.13.2"
   }
 }
