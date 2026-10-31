@@ -1118,3 +1118,312 @@ test('board: 18 matches are one statement, and without the table the message sti
   assert.equal(bare.sql.prepare('SELECT count(*) n FROM latest').get().n, 1);
   assert.ok(lines.some((l) => JSON.parse(l).board === 'failed'), lines.join('\n'));
 });
+
+// ---- Format 2: plain JSON, the live part and the history apart (supabase/reader.mjs builds it).
+const sha = (b) => createHash('sha256').update(b).digest('hex');
+// setup()'s clock, Wednesday 12:00Z: 53 skirmishes of the NA week have finished, 57 of the EU's.
+const NA_DONE = 53;
+const EU_WEEK = Date.parse('2026-09-25T18:00:00Z');
+const skirmishList = (n) => Array.from({ length: n }, (_, i) => ({ id: i + 1, scores: { red: i, blue: 1, green: 2 } }));
+const liveOf = (id, start = NA_WEEK, scores = [1000, 2000, 3000]) => ({
+  id, start_time: new Date(start).toISOString().replace('.000Z', 'Z'),
+  scores: { red: scores[0], blue: scores[1], green: scores[2] }, maps: [], skirmishes: [{ id: 54 }]
+});
+
+// Each entry: {id, start?, scores?, live? (object, or a string/Buffer sent as it is), hist? {n, body}, sha? (wrong on purpose)}.
+function v2Body(entries) {
+  const bytes = (x) => (Buffer.isBuffer(x) ? x : Buffer.from(typeof x === 'string' ? x : JSON.stringify(x)));
+  const parts = [];
+  const matches = entries.map((e) => {
+    const start = e.start ?? NA_WEEK;
+    const scores = e.scores || [1000, 2000, 3000];
+    const live = bytes(e.live ?? liveOf(e.id, start, scores));
+    const out = { id: e.id, start, scores, kills: [1, 2, 3, 4], live: { bytes: live.length, sha256: e.sha || sha(live) } };
+    parts.push(live);
+    if (e.hist) {
+      const h = bytes(e.hist.body ?? skirmishList(e.hist.n));
+      out.hist = { n: e.hist.n, bytes: h.length, sha256: sha(h) };
+      parts.push(h);
+    }
+    return out;
+  });
+  return Buffer.concat([Buffer.from(JSON.stringify({ v: 2, matches }) + '\n'), ...parts]);
+}
+const pushV2 = (w, source, entries) => w.post(source, v2Body(entries), { key: SUPA[source] });
+
+// Counts every statement the Worker prepares, reads and writes alike.
+function countQueries(w) {
+  const real = w.env.DB;
+  const n = { q: 0 };
+  w.env.DB = { prepare: (q) => { n.q++; return real.prepare(q); } };
+  return n;
+}
+
+function quiet(fn) {
+  const log = console.log;
+  const lines = [];
+  console.log = (x) => lines.push(JSON.parse(String(x)));
+  return Promise.resolve().then(fn).then((r) => ({ r, lines }), (e) => { throw e; }).finally(() => { console.log = log; });
+}
+
+test('format 2: the live part goes where the copy lives, the history in its own table, and both are served', async () => {
+  const w = setup({ env: SUPA_ENV });
+  const hist = skirmishList(NA_DONE);
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', hist: { n: NA_DONE, body: hist } }, { id: '1-2' }]), 200);
+  const latest = JSON.parse((await w.get('/api/latest')).body);
+  assert.deepEqual(latest.matches.map((m) => Object.keys(m)), [
+    ['id', 'start', 'score', 'at', 'by', 'v', 'body'], ['id', 'start', 'score', 'at', 'by', 'v', 'body']]);
+  assert.deepEqual(latest.matches[0].body, liveOf('1-1'));
+  assert.equal(latest.matches[0].v, 2);
+  // The summary says which history the Worker holds, so the reader sends it only when it grows.
+  const summary = JSON.parse((await w.get('/api/latest/summary')).body);
+  assert.equal(summary['1-1'].hist, NA_DONE);
+  assert.ok(!('hist' in summary['1-2']));
+  const r = await w.get('/api/history/1?v=' + NA_DONE);
+  assert.equal(r.status, 200);
+  assert.deepEqual(JSON.parse(r.body), { v: NA_DONE, start: NA_WEEK, matches: { '1-1': hist } });
+  assert.equal(r.headers.get('content-type'), 'application/json');
+  // The kills line and the board go on as for format 1.
+  assert.equal(w.sql.prepare('SELECT count(*) n FROM kills').get().n, 2);
+});
+
+test('format 2: the history moves only forward, and a new week replaces it', async () => {
+  const w = setup({ env: SUPA_ENV });
+  const held = () => w.sql.prepare("SELECT start, n FROM history WHERE match = '1-1'").get();
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', hist: { n: NA_DONE } }]), 200);
+  assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '1-1', scores: [1000, 2000, 3001], hist: { n: NA_DONE - 1 } }]), 200);
+  assert.deepEqual({ ...held() }, { start: NA_WEEK, n: NA_DONE }, 'a reader behind does not take it back');
+  w.advance(7 * 86400e3 - 106 * 3600e3 + 3 * 3600e3);
+  const next = NA_WEEK + 7 * 86400e3;
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', start: next, scores: [10, 20, 30], hist: { n: 1 } }]), 200);
+  assert.deepEqual({ ...held() }, { start: next, n: 1 });
+});
+
+test('format 2: a part that is not JSON or out of shape is left out alone; the others go in', async () => {
+  const w = setup({ env: SUPA_ENV });
+  const { r, lines } = await quiet(() => pushV2(w, 'latest-supa-us', [
+    { id: '1-1', live: '{"id":"1-1",' },
+    { id: '1-2', hist: { n: NA_DONE, body: skirmishList(NA_DONE - 1).concat([{ id: 99 }]) } },
+    { id: '1-3', live: liveOf('1-4') },
+    { id: '1-4', live: { ...liveOf('1-4'), scores: { red: 1, blue: 2, green: 3 } } },
+    { id: '1-5', live: Buffer.from([0x7b, 0xff, 0x7d]) },
+    { id: '1-6', live: liveOf('1-6', NA_WEEK - 7 * 86400e3) },
+    { id: '1-7', sha: 'f'.repeat(64) },
+    { id: '1-8', live: [] },
+    { id: '1-9', hist: { n: 2, body: skirmishList(3) } },
+    { id: '2-1', start: EU_WEEK, hist: { n: 57, body: '[{"id":1}' } }
+  ]));
+  assert.equal(r, 200);
+  assert.deepEqual(w.sql.prepare('SELECT id FROM latest ORDER BY id').all().map((x) => x.id), ['1-2', '1-9', '2-1']);
+  assert.equal(w.sql.prepare('SELECT count(*) n FROM history').get().n, 0);
+  assert.deepEqual(lines.find((l) => l.parts).why.map((s) => s.slice(0, 40)), [
+    '1-1 live not JSON', '1-2 history ids', '1-3 live not this match', '1-4 live scores', '1-5 live not JSON',
+    '1-6 live not this match', '1-7 live sha256', '1-8 live not an object', '1-9 history length', '2-1 history not JSON']);
+  // Every part broken: nothing to keep, and not even the replay claim is written.
+  const before = w.sql.prepare("SELECT t FROM source WHERE name = 'latest-supa-eu'").get().t;
+  const all = await quiet(() => pushV2(w, 'latest-supa-eu', [{ id: '1-1', live: 'x' }]));
+  assert.equal(all.r, 422);
+  assert.equal(w.sql.prepare("SELECT t FROM source WHERE name = 'latest-supa-eu'").get().t, before);
+});
+
+test('format 2: a summary out of shape refuses the whole message, before any write', async (sub) => {
+  const w = setup({ env: SUPA_ENV });
+  const body = (over) => {
+    const b = v2Body([{ id: '1-1', hist: { n: NA_DONE } }]);
+    const nl = b.indexOf(10);
+    const head = JSON.parse(b.subarray(0, nl));
+    over(head.matches[0]);
+    return Buffer.concat([Buffer.from(JSON.stringify(head) + '\n'), b.subarray(nl + 1)]);
+  };
+  const cases = {
+    'neither live nor hist': (m) => { delete m.live; delete m.hist; },
+    'a live part without counts': (m) => { delete m.scores; },
+    'a live part past 64 KiB': (m) => { m.live.bytes = 64 * 1024 + 1; },
+    'a sha256 that is no hash': (m) => { m.live.sha256 = 'x'; },
+    'a history of 0': (m) => { m.hist.n = 0; },
+    'a history of a skirmish still running': (m) => { m.hist.n = NA_DONE + 1; },
+    'a history past 64 KiB': (m) => { m.hist.bytes = 64 * 1024 + 1; },
+    'bytes that do not add up': (m) => { m.hist.bytes--; },
+    'hist that is null': (m) => { m.hist = null; }
+  };
+  for (const [name, over] of Object.entries(cases)) {
+    await sub.test(name, async () => {
+      assert.equal(await w.post('latest-supa-us', body(over), { key: SUPA['latest-supa-us'] }), 422);
+      assert.equal(w.sql.prepare('SELECT count(*) n FROM latest').get().n, 0);
+    });
+  }
+  assert.equal(w.sql.prepare("SELECT t FROM source WHERE name = 'latest-supa-us'").get().t, 0);
+  // The edge the other way: a history of the skirmish that ends within the signature's 5 minutes.
+  w.advance(2 * 3600e3 - 5 * 60e3);
+  const short = await quiet(() => w.post('latest-supa-us', body((m) => { m.hist.n = NA_DONE + 1; }), { key: SUPA['latest-supa-us'] }));
+  assert.equal(short.r, 200, 'n is allowed; the part holds 53, so only it is left out');
+  assert.deepEqual(short.lines.find((l) => l.parts).why, ['1-1 history length']);
+  assert.equal(w.sql.prepare('SELECT count(*) n FROM history').get().n, 0);
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', scores: [1000, 2000, 3001], hist: { n: NA_DONE + 1 } }]), 200);
+  assert.equal(w.sql.prepare("SELECT n FROM history WHERE match = '1-1'").get().n, NA_DONE + 1);
+});
+
+test('the two formats are taken side by side, and /api/latest serves each as it came', async () => {
+  const w = setup({ env: SUPA_ENV });
+  assert.equal(await pushLatest(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
+  assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '1-2' }]), 200);
+  const { matches } = JSON.parse((await w.get('/api/latest')).body);
+  assert.deepEqual(matches.map((m) => [m.id, m.v ?? 1, typeof (m.gz ?? m.body)]), [['1-1', 1, 'string'], ['1-2', 2, 'object']]);
+  // A reader on the old format overtakes a format 2 body, and the other way round: only the score decides.
+  assert.equal(await pushLatest(w, 'latest-supa-us', [{ id: '1-2', scores: [1000, 2000, 3001] }]), 200);
+  assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '1-1', scores: [1000, 2000, 3001] }]), 200);
+  const again = JSON.parse((await w.get('/api/latest')).body).matches;
+  assert.deepEqual(again.map((m) => [m.id, m.v ?? 1]), [['1-1', 2], ['1-2', 1]]);
+});
+
+test('format 2 without the history table: the live parts go in, the summary has no hist, the route says 503', async () => {
+  const w = setup({ env: SUPA_ENV, skip: ['schema-006-history.sql'] });
+  const { r, lines } = await quiet(() => pushV2(w, 'latest-supa-us', [{ id: '1-1', hist: { n: NA_DONE } }]));
+  assert.equal(r, 200);
+  assert.ok(lines.some((l) => l.history === 'failed'), JSON.stringify(lines));
+  assert.equal(w.sql.prepare('SELECT count(*) n FROM latest').get().n, 1);
+  assert.equal(w.sql.prepare('SELECT count(*) n FROM kills').get().n, 1);
+  const summary = await w.get('/api/latest/summary');
+  assert.equal(summary.status, 200);
+  assert.deepEqual(Object.keys(JSON.parse(summary.body)['1-1']), ['start', 'score', 'at', 'by']);
+  assert.equal((await quiet(() => w.get('/api/history/1?v=' + NA_DONE))).r.status, 503);
+});
+
+test('/api/history: a version that is not the current one is a short 404 that never reads D1', async () => {
+  const w = setup({ env: SUPA_ENV });
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', hist: { n: NA_DONE } }, { id: '2-1', start: EU_WEEK, hist: { n: 57 } }]), 200);
+  const n = countQueries(w);
+  for (const path of [
+    '/api/history/1?v=' + (NA_DONE - 2), '/api/history/1?v=' + (NA_DONE + 1), '/api/history/1?v=0', '/api/history/1?v=053',
+    '/api/history/1?v=-1', '/api/history/1?v=abc', '/api/history/1', '/api/history/1?v=53&x=1', '/api/history/1?x=1&v=53',
+    '/api/history/3?v=53', '/api/history/0?v=53', '/api/history/1/?v=53', '/api/history/?v=53', '/api/history/constructor?v=53',
+    '/api/history/2?v=' + NA_DONE
+  ]) {
+    const r = await w.get(path);
+    assert.equal(r.status, 404, path);
+    assert.equal(r.headers.get('cache-control'), 'public, max-age=10', path);
+  }
+  assert.equal(n.q, 0, 'no statement prepared');
+  assert.equal((await w.get('/api/history/1?v=' + NA_DONE, 'POST')).status, 405);
+  assert.equal(n.q, 0);
+  // Valid: one read each. The version before is valid too, and the D1 does not hold it: a short 404.
+  assert.equal((await w.get('/api/history/1?v=' + NA_DONE)).status, 200);
+  assert.equal((await w.get('/api/history/2?v=57')).status, 200);
+  const before = await w.get('/api/history/1?v=' + (NA_DONE - 1));
+  assert.equal(before.status, 404);
+  assert.equal(before.headers.get('cache-control'), 'public, max-age=10');
+  assert.equal(n.q, 3);
+  // On the turn the clock moves the window: 54 is now current and 53 the one before.
+  w.advance(2 * 3600e3);
+  assert.equal((await w.get('/api/history/1?v=' + NA_DONE)).status, 200);
+  assert.equal((await w.get('/api/history/1?v=' + (NA_DONE + 1))).status, 404);
+  assert.equal((await w.get('/api/history/1?v=' + (NA_DONE - 1))).status, 404);
+  assert.equal(n.q, 5);
+});
+
+test('/api/history: a whole version is kept long under its own key; one with a match behind only a minute', async () => {
+  const w = setup({ env: SUPA_ENV });
+  const store = new Map();
+  const real = globalThis.caches;
+  globalThis.caches = {
+    default: {
+      match: async (k) => (store.has(k) ? store.get(k).clone() : undefined),
+      put: async (k, r) => { store.set(k, r); }
+    }
+  };
+  try {
+    assert.equal(await pushV2(w, 'latest-supa-us', [
+      { id: '1-1', hist: { n: NA_DONE } }, { id: '1-2', hist: { n: NA_DONE - 1 } }]), 200);
+    const n = countQueries(w);
+    const part = await w.get('/api/history/1?v=' + NA_DONE);
+    assert.equal(part.status, 200);
+    assert.deepEqual(Object.keys(JSON.parse(part.body).matches), ['1-1']);
+    assert.equal(part.headers.get('cache-control'), 'public, max-age=60');
+    assert.equal(store.size, 1, 'a version with a match behind is kept, for its minute');
+    store.clear();
+    assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '1-2', scores: [1000, 2000, 3001], hist: { n: NA_DONE } }]), 200);
+    const whole = await w.get('/api/history/1?v=' + NA_DONE);
+    assert.equal(whole.headers.get('cache-control'), 'public, max-age=14400');
+    assert.deepEqual(Object.keys(JSON.parse(whole.body).matches), ['1-1', '1-2']);
+    assert.deepEqual([...store.keys()], ['https://wvwrelink.com/api/history/1?v=' + NA_DONE + '&start=' + NA_WEEK]);
+    const reads = n.q;
+    const hit = await w.get('/api/history/1?v=' + NA_DONE);
+    assert.equal(hit.body, whole.body);
+    assert.equal(hit.headers.get('cache-control'), 'public, max-age=14400');
+    assert.equal(hit.headers.get('x-max-age'), null, 'the kept max-age stays inside');
+    assert.equal(n.q, reads, 'a hit reads nothing');
+  } finally {
+    globalThis.caches = real;
+  }
+});
+
+function fakeCache() {
+  const store = new Map();
+  return {
+    store,
+    // A hit comes back with another max-age than the one stored.
+    default: {
+      match: async (k) => {
+        if (!store.has(k)) return undefined;
+        const hit = store.get(k).clone();
+        hit.headers.set('cache-control', 'public, max-age=14400');
+        return hit;
+      },
+      put: async (k, r) => { store.set(k, r); }
+    }
+  };
+}
+
+async function withCache(fn) {
+  const real = globalThis.caches;
+  globalThis.caches = fakeCache();
+  try {
+    return await fn(globalThis.caches);
+  } finally {
+    globalThis.caches = real;
+  }
+}
+
+test('/api/history: a valid version not there yet, and one with a match behind, are kept too, for their short time', async () => {
+  const w = setup({ env: SUPA_ENV });
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', hist: { n: NA_DONE } }, { id: '1-2', hist: { n: NA_DONE - 1 } }]), 200);
+  await withCache(async () => {
+    const n = countQueries(w);
+    const path = '/api/history/1?v=' + (NA_DONE - 1);
+    for (let i = 0; i < 2; i++) {
+      const r = await w.get('/api/history/1?v=' + NA_DONE);
+      assert.equal(r.headers.get('cache-control'), 'public, max-age=60', 'a version with a match behind');
+    }
+    assert.equal(n.q, 1, 'the second read of a partial version is the cache');
+    const fresh = setup({ env: SUPA_ENV });
+    assert.equal(await pushV2(fresh, 'latest-supa-us', [{ id: '1-1' }]), 200);
+    const m = countQueries(fresh);
+    for (let i = 0; i < 2; i++) {
+      const r = await fresh.get(path);
+      assert.equal(r.status, 404);
+      assert.equal(r.headers.get('cache-control'), 'public, max-age=10');
+    }
+    assert.equal(m.q, 1, 'two reads of a version D1 does not hold yet: one query');
+  });
+});
+
+test('/api/history: whole only when every match of the region in latest this week has the version', async () => {
+  const w = setup({ env: SUPA_ENV });
+  // 1-2 is in latest this week with no history at all (its part left out, or a new tier).
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', hist: { n: NA_DONE } }, { id: '1-2' }]), 200);
+  const r = await w.get('/api/history/1?v=' + NA_DONE);
+  assert.equal(r.status, 200);
+  assert.deepEqual(Object.keys(JSON.parse(r.body).matches), ['1-1']);
+  assert.equal(r.headers.get('cache-control'), 'public, max-age=60');
+  assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '1-2', scores: [1000, 2000, 3001], hist: { n: NA_DONE } }]), 200);
+  assert.equal((await w.get('/api/history/1?v=' + NA_DONE)).headers.get('cache-control'), 'public, max-age=14400');
+});
+
+test('format 2: a live part with anything before its "{" is left out', async () => {
+  const w = setup({ env: SUPA_ENV });
+  const { r, lines } = await quiet(() => pushV2(w, 'latest-supa-us', [
+    { id: '1-1', live: ' ' + JSON.stringify(liveOf('1-1')) }, { id: '1-2' }]));
+  assert.equal(r, 200);
+  assert.deepEqual(lines.find((l) => l.parts).why, ['1-1 live not an object']);
+  assert.deepEqual(w.sql.prepare('SELECT id FROM latest').all().map((x) => x.id), ['1-2']);
+});

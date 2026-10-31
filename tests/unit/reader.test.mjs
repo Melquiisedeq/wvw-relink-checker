@@ -3,11 +3,18 @@
 // Run: node --test "tests/unit/*.test.mjs"
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { fakeD1 } from './fake-d1.mjs';
 import { postSigned, signHeaders } from './signed.mjs';
 import {
-  REGIONS, regionFor, checkMatch, checkRead, checkSummaryBody, pickNewer, buildBody, sign, sameSecret, handle, boardOf
+  REGIONS, regionFor, checkMatch, checkRead, checkSummaryBody, pickNewer, buildMessages, sign, sameSecret, handle, boardOf,
+  splitMatch, MAX_MESSAGE
 } from '../../supabase/reader.mjs';
+import worker from '../../worker/index.mjs';
+
+// The first message: the live parts, when there are any.
+const buildBody = async (ms, summary) => (await buildMessages(ms, summary))[0] ?? null;
 
 // 2026-10-03 is a Saturday: the NA week began 02:00Z, 10 hours before this clock.
 const NOW = Date.parse('2026-10-03T12:00:00Z');
@@ -84,17 +91,27 @@ test('only what is newer than the Worker holds is sent', () => {
 });
 
 // The Worker's door with the reader's secrets, clock held at NOW.
-function door() {
+function door(now = NOW) {
   const { sql, DB } = fakeD1();
   const env = { DB, INGEST_LATEST_SUPA_US: SECRET['us-east-1'], INGEST_LATEST_SUPA_EU: SECRET['eu-central-1'] };
   return {
     sql,
-    async push(region, body, t = Math.floor(NOW / 1000)) {
+    async push(region, body, t = Math.floor(now / 1000)) {
       const { source } = REGIONS[region];
       const path = '/api/ingest/' + source;
       const sig = await sign(SECRET[region], String(t), path, body);
-      const r = await postSigned(env, NOW, path, body, { 'x-wvw-time': String(t), 'x-wvw-sig': sig });
+      const r = await postSigned(env, now, path, body, { 'x-wvw-time': String(t), 'x-wvw-sig': sig });
       return { status: r.status, text: await r.text() };
+    },
+    async get(path) {
+      const real = Date.now;
+      Date.now = () => now;
+      try {
+        const r = await worker.fetch(new Request('https://wvwrelink.com' + path), env, {});
+        return { status: r.status, text: await r.text() };
+      } finally {
+        Date.now = real;
+      }
     }
   };
 }
@@ -110,7 +127,7 @@ test('what the reader builds is accepted by the Worker, each region at its own d
   const row = w.sql.prepare("SELECT reader, score, raw FROM latest WHERE id = '1-1'").get();
   assert.equal(row.reader, 'latest-supa-us');
   assert.equal(row.score, 6000);
-  assert.equal(row.raw, new TextEncoder().encode(read.matches[0].text).length);
+  assert.equal(row.raw, new TextEncoder().encode(read.matches[0].live).length);
   // Same read again: its own score is no longer newer, so nothing is built.
   const again = pickNewer(read.matches, { '1-1': { start: read.matches[0].start, score: 6000 } });
   assert.deepEqual(again.map((m) => m.id), ['1-2', '2-1']);
@@ -235,14 +252,14 @@ const GAME = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
 
 // Runs one call of the function in the US region with the network stubbed:
 // `answers` maps a URL start to a Response (or a function giving one, or an Error to throw).
-async function callReader(answers, env = {}) {
+async function callReader(answers, env = {}, now = NOW) {
   const handler = loadHandler({ SB_REGION: 'us-east-1', READER_KEY: LOCK, INGEST_LATEST_SUPA_US: SECRET['us-east-1'], ...env });
   const realFetch = globalThis.fetch;
   const realNow = Date.now;
   const log = console.log;
   const asked = [];
   const lines = [];
-  Date.now = () => NOW;
+  Date.now = () => now;
   console.log = (s) => lines.push(String(s));
   globalThis.fetch = async (url, init = {}) => {
     asked.push({ url: String(url), init });
@@ -294,7 +311,7 @@ test('the function: a game API that fails, lies or is too big gives a generic 50
   assert.ok(net.lines.every((l) => !l.includes('boom')), 'the error text is not logged');
 });
 
-test('the function: ten matches with all 84 skirmishes, a body past 1 MiB, are read and sent', async () => {
+test('the function: ten matches with all 84 skirmishes, a body past 1 MiB, are read and sent, each history apart', async () => {
   const trio = (a, b, c) => ({ red: a, blue: b, green: c });
   const r9 = () => Math.floor(Math.random() * 9000);
   const skirmishes = Array.from({ length: 84 }, (_, i) => ({
@@ -313,14 +330,20 @@ test('the function: ten matches with all 84 skirmishes, a body past 1 MiB, are r
   const list = ids.map((id) => apiMatch(id, { over: { skirmishes, maps } }));
   const big = JSON.stringify(list, null, 2);
   assert.ok(big.length > 1024 * 1024, 'the body is past the old cap: ' + big.length);
-  const r = await callReader({ [GAME]: new Response(big), [SUMMARY]: empty, [INGEST]: () => json({ applied: [] }) });
+  // The NA week's last hour: skirmish 84 runs, 83 have finished.
+  const late = Date.parse('2026-10-10T01:00:00Z');
+  const r = await callReader({ [GAME]: new Response(big), [SUMMARY]: empty, [INGEST]: () => json({ applied: [] }) }, {}, late);
   assert.equal(r.status, 200);
-  const push = r.asked.find((a) => a.url === INGEST);
-  assert.ok(push, 'pushed');
-  const head = JSON.parse(new TextDecoder().decode(push.init.body).split('\n')[0]);
-  assert.equal(head.matches.length, 10);
-  assert.ok(push.init.body.length <= 256 * 1024, 'the send is within the Worker\'s limits');
-  assert.ok(head.matches.every((m) => m.bytes <= 16 * 1024 && m.raw <= 256 * 1024), 'each slice is within the Worker\'s limits');
+  const pushes = r.asked.filter((a) => a.url === INGEST);
+  const entries = pushes.flatMap((p) => JSON.parse(new TextDecoder().decode(p.init.body).split('\n')[0]).matches);
+  assert.ok(pushes.every((p) => p.init.body.length <= MAX_MESSAGE), 'each send is within the Worker\'s cap');
+  const live = entries.filter((e) => e.live);
+  const hist = entries.filter((e) => e.hist);
+  assert.equal(live.length, 10);
+  assert.equal(hist.length, 10);
+  assert.ok(live.every((e) => e.live.bytes <= 64 * 1024) && hist.every((e) => e.hist.n === 83 && e.hist.bytes <= 64 * 1024),
+    'each part is within the Worker\'s limits');
+  assert.deepEqual(JSON.parse(r.lines.at(-1)), { region: 'us-east-1', sent: 10, hist: 10, messages: pushes.length, dropped: 0, status: 200 });
 });
 
 test('the function: the Worker\'s summary that fails, is too big or is the wrong shape gives 502 before any push', async () => {
@@ -365,7 +388,7 @@ test('the function: the Worker refusing the push is a 502, accepting it a 200, a
   for (const status of [400, 401, 409, 413, 422, 500]) assert.equal((await send(status)).r.status, 502, 'worker said ' + status);
   const good = await send(200);
   assert.equal(good.r.status, 200);
-  assert.deepEqual(JSON.parse(good.r.lines.at(-1)), { region: 'us-east-1', sent: 2, dropped: 0, status: 200 });
+  assert.deepEqual(JSON.parse(good.r.lines.at(-1)), { region: 'us-east-1', sent: 2, hist: 0, messages: 1, dropped: 0, status: 200 });
   const t = good.pushed.headers['x-wvw-time'];
   assert.equal(good.pushed.headers['x-wvw-sig'], await sign(SECRET['us-east-1'], t, '/api/ingest/latest-supa-us', good.pushed.body));
   assert.ok(good.r.lines.every((l) => !l.includes(SECRET['us-east-1']) && !l.includes(LOCK)));
@@ -404,7 +427,7 @@ test('a match out of shape or too big is left out alone, the rest of the read go
     'two maps of one type': edit((m) => { m.maps[1] = { ...m.maps[0] }; }),
     'nested 9 levels': edit((m) => { let o = m; for (let i = 0; i < 9; i++) o = o.n = {}; }),
     'one value past 20000': edit((m) => { m.pad = new Array(valuesTo20000 + 1).fill(1); }),
-    'raw text past 256 KiB': edit((m) => { m.pad = Array.from({ length: 6000 }, (_, i) => 'a'.repeat(60) + i); })
+    'live part past 64 KiB': edit((m) => { m.pad = Array.from({ length: 1100 }, (_, i) => 'a'.repeat(60) + i); })
   };
   for (const [what, m] of Object.entries(bad)) assert.equal(checkMatch(m, NOW), null, what);
   // The edges the other way: these still pass.
@@ -419,18 +442,82 @@ test('a match out of shape or too big is left out alone, the rest of the read go
   assert.equal(r.dropped, 3);
 });
 
-test('a match too big once gzipped is not sent, the others are', async () => {
-  const noisy = apiMatch('1-2');
-  let seed = 1;
-  // About 18000 integers of nine digits: under the 20000 values and 256 KiB the checks allow, past the 16 KiB a slice may take.
-  noisy.pad = Array.from({ length: 18000 }, () => (seed = (seed * 48271) % 2147483647) % 1e9);
-  const read = checkRead([apiMatch('1-1'), noisy], NOW);
-  assert.equal(read.matches.length, 2);
-  const built = await buildBody(read.matches);
-  assert.equal(built.count, 1);
-  const head = JSON.parse(new TextDecoder().decode(built.body.subarray(0, built.body.indexOf(10))));
-  assert.deepEqual(head.matches.map((m) => m.id), ['1-1']);
-  assert.equal(await buildBody([read.matches[1]]), null);
+test('a match is split: the live part keeps only the running skirmish, the history the finished ones', () => {
+  const sk = (n) => Array.from({ length: n }, (_, i) => ({ id: i + 1, scores: { red: i, blue: 0, green: 0 }, map_scores: [] }));
+  const m = checkMatch(apiMatch('1-1', { over: { skirmishes: sk(6) } }), NOW);
+  assert.equal(m.n, 5);
+  assert.deepEqual(JSON.parse(m.hist), sk(5));
+  const live = JSON.parse(m.live);
+  assert.deepEqual(live.skirmishes, [sk(6)[5]]);
+  assert.deepEqual({ ...live, skirmishes: sk(6) }, apiMatch('1-1', { over: { skirmishes: sk(6) } }), 'nothing else is touched');
+  // Skirmish 1 running: nothing finished, no history.
+  assert.deepEqual([checkMatch(apiMatch('1-2'), NOW).n, checkMatch(apiMatch('1-2'), NOW).hist], [0, null]);
+  // A list the Worker would refuse is not split: whole in the live part, no history.
+  const start = Date.parse(NA_START);
+  for (const [what, list] of [['a gap', [sk(3)[0], sk(3)[2]]], ['one not begun', sk(7)], ['not a list', null], ['an empty list', []]]) {
+    const parts = splitMatch({ id: '1-1', skirmishes: list }, start, NOW);
+    assert.deepEqual([parts.hist, parts.n, JSON.parse(parts.live).skirmishes], [null, 0, list], what);
+  }
+  // A live part past 64 KiB leaves the match out; a history past it only the history.
+  const big = Array.from({ length: 6 }, (_, i) => ({ id: i + 1, pad: new Array(i < 5 ? 1750 : 1).fill(1234567) }));
+  const h = checkMatch(apiMatch('1-1', { over: { skirmishes: big } }), NOW);
+  assert.deepEqual([h.hist, h.n], [null, 0]);
+  assert.ok(JSON.parse(h.live).skirmishes.length === 1);
+});
+
+test('the history goes only when the Worker holds fewer finished skirmishes, and the Worker\'s summary says how many', async () => {
+  const sk = (n) => Array.from({ length: n }, (_, i) => ({ id: i + 1, scores: { red: i, blue: 0, green: 0 }, map_scores: [] }));
+  const read = (n, score = 6000) => checkRead([
+    apiMatch('1-1', { scores: [score - 5000, 2000, 3000], over: { skirmishes: sk(n + 1) } }),
+    apiMatch('1-2', { over: { skirmishes: sk(n + 1) } })
+  ], NOW).matches;
+  const w = door();
+  const summary = async () => checkSummaryBody(JSON.parse((await w.get('/api/latest/summary')).text));
+  // [kind, [id, n of its history or null]] of each message.
+  const plan = async (ms, have) => (await buildMessages(ms, have)).map((m) => [m.kind, head(m).matches.map((e) => [e.id, e.hist ? e.hist.n : null])]);
+  const send = async (ms, have, t) => {
+    for (const [i, m] of (await buildMessages(ms, have)).entries()) assert.equal((await w.push('us-east-1', m.body, t + i)).status, 200);
+  };
+  const t = Math.floor(NOW / 1000);
+  // Nothing held: the live parts, then the histories apart.
+  assert.deepEqual(await plan(pickNewer(read(4), await summary()), await summary()),
+    [['live', [['1-1', null], ['1-2', null]]], ['history', [['1-1', 4], ['1-2', 4]]]]);
+  await send(pickNewer(read(4), await summary()), await summary(), t);
+  assert.deepEqual(await summary(), {
+    '1-1': { start: Date.parse(NA_START), score: 6000, hist: 4 }, '1-2': { start: Date.parse(NA_START), score: 6000, hist: 4 }
+  });
+  // The score rose, the skirmish did not turn: the live part alone.
+  assert.deepEqual(await plan(pickNewer(read(4, 6100), await summary()), await summary()), [['live', [['1-1', null]]]]);
+  await send(pickNewer(read(4, 6100), await summary()), await summary(), t + 2);
+  // The skirmish turned and the score of 1-2 stood still: its history goes, its live part does not.
+  assert.deepEqual(await plan(pickNewer(read(5, 6100), await summary()), await summary()), [['history', [['1-1', 5], ['1-2', 5]]]]);
+  await send(pickNewer(read(5, 6100), await summary()), await summary(), t + 3);
+  assert.deepEqual(Object.values(await summary()).map((e) => e.hist), [5, 5]);
+  assert.deepEqual(await buildMessages(pickNewer(read(5, 6100), await summary()), await summary()), [], 'nothing new at all');
+  // A summary with a hist that is no count is taken as none: the history goes again.
+  assert.deepEqual(checkSummaryBody({ '1-1': { start: 1, score: 1, hist: '5' } }), { '1-1': { start: 1, score: 1 } });
+  // A Worker on a later week never gets this week's history.
+  const later = { '1-1': { start: Date.parse(NA_START) + 7 * 86400e3, score: 1, hist: 0 } };
+  assert.equal(pickNewer(read(5).slice(0, 1), later).length, 0);
+});
+
+test('every message stays under the Worker\'s cap: the live parts first, in as many as they need, then the histories', async () => {
+  const fake = (id, live, hist) => ({
+    id, start: 1, scores: [1, 2, 3], kills: [1, 2, 3, 4], live: JSON.stringify({ id, pad: 'x'.repeat(live) }),
+    hist: hist ? '[' + 'x'.repeat(hist) + ']' : null, n: hist ? 5 : 0
+  });
+  const ms = [];
+  for (let i = 1; i <= 9; i++) ms.push(fake('1-' + i, 60000, 40000));
+  for (let i = 1; i <= 9; i++) ms.push(fake('2-' + i, 60000, 0));
+  const out = await buildMessages(ms);
+  assert.ok(out.every((m) => m.body.length <= MAX_MESSAGE), out.map((m) => m.body.length).join(' '));
+  const kinds = out.map((m) => m.kind);
+  assert.deepEqual(kinds, [...kinds.filter((k) => k === 'live'), ...kinds.filter((k) => k === 'history')], 'the live ones first');
+  const ids = (kind) => out.filter((m) => m.kind === kind).flatMap((m) => head(m).matches.map((e) => e.id));
+  assert.deepEqual(ids('live'), ms.map((m) => m.id));
+  assert.deepEqual(ids('history'), ms.slice(0, 9).map((m) => m.id));
+  // Four live parts of 60 KB fill one message; six histories of 40 KB another.
+  assert.deepEqual(out.map((m) => m.count), [4, 4, 4, 4, 2, 6, 3]);
 });
 
 // ---- board: the last finished skirmish, the running one and the VP, for the Worker's table.
@@ -486,4 +573,39 @@ test('skirmishes the Worker would refuse leave the match without them, and the m
   const start = Date.parse(NA_START);
   assert.equal(boardOf({ skirmishes: skirmishes(7), victory_points: trio(0, 0, 0) }, start, start + 12 * 3600e3 - 300e3 - 1), null);
   assert.ok(boardOf({ skirmishes: skirmishes(7), victory_points: trio(0, 0, 0) }, start, start + 12 * 3600e3 - 300e3));
+});
+
+// The recorded game answer of the tests' page (tests/e2e/data), near the end of both weeks.
+function recorded() {
+  const rec = JSON.parse(gunzipSync(readFileSync(new URL('../e2e/data/recordings.json.gz', import.meta.url))));
+  return { now: rec.recordedAt, body: rec.entries['https://api.guildwars2.com/v2/wvw/matches?ids=all'][2] };
+}
+
+test('the function: the live parts go alone and first, the histories in messages of their own, each within 256 KiB, and the Worker takes them all', async () => {
+  const { now, body } = recorded();
+  const pushes = [];
+  const r = await callReader({
+    [GAME]: new Response(body), [SUMMARY]: empty,
+    [INGEST]: (init) => { pushes.push(init); return json({ applied: [] }); }
+  }, {}, now);
+  assert.equal(r.status, 200);
+  const heads = pushes.map((p) => JSON.parse(new TextDecoder().decode(p.body).split('\n')[0]));
+  assert.ok(pushes.length >= 2, String(pushes.length));
+  for (const p of pushes) assert.ok(p.body.length <= 256 * 1024, 'a message within 256 KiB: ' + p.body.length);
+  assert.deepEqual(heads[0].matches.map((e) => [e.id, !!e.live, !!e.hist]), JSON.parse(body).map((m) => [m.id, true, false]));
+  const hists = heads.slice(1).flatMap((h) => h.matches);
+  assert.ok(hists.every((e) => !e.live && e.hist), 'history messages carry no live part');
+  assert.deepEqual(hists.map((e) => [e.id, e.hist.n]), JSON.parse(body).map((m) => [m.id, m.skirmishes.length - 1]));
+  // Signed one second apart, so the replay guard takes each.
+  const times = pushes.map((p) => Number(p.headers['x-wvw-time']));
+  assert.deepEqual(times, times.map((_, i) => times[0] + i));
+  // The real Worker takes a live message of the week's end and a history message near its cap.
+  assert.ok(pushes[0].body.length > 150 * 1024, 'live message ' + pushes[0].body.length);
+  assert.ok(Math.max(...pushes.slice(1).map((p) => p.body.length)) > 200 * 1024, 'history message');
+  const w = door(now);
+  for (const [i, p] of pushes.entries()) assert.equal((await w.push('us-east-1', p.body, times[i])).status, 200, 'message ' + i);
+  assert.equal(w.sql.prepare('SELECT count(*) n FROM latest').get().n, 9);
+  assert.deepEqual(w.sql.prepare('SELECT match, n FROM history ORDER BY match').all().map((x) => [x.match, x.n]),
+    JSON.parse(body).map((m) => [m.id, m.skirmishes.length - 1]).sort());
+  assert.deepEqual(JSON.parse(r.lines.at(-1)), { region: 'us-east-1', sent: 9, hist: 9, messages: pushes.length, dropped: 0, status: 200 });
 });
