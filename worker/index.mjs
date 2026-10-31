@@ -20,15 +20,16 @@
 // not open the other.
 //
 // The latest entrance never opens a match body (the free plan gives 10 ms of CPU
-// a request, and unpacking 484 KB does not fit): it decides by the signed summary
+// a request, and unpacking whole match bodies does not fit): it decides by the signed summary
 // that comes before the bodies and by the match's score, never by a reader's clock.
 
 const MAX_BYTES = 64 * 1024;      // kills sends at most 30 min of rows, ~4 KB
-const MAX_BYTES_LATEST = 256 * 1024; // up to 18 gzipped match bodies
+const MAX_BYTES_LATEST = 256 * 1024; // at most one gzipped body per id in MATCHES
 const MAX_SKEW_S = 300;
-// One match body is ~28 KB, ~4.5 KB gzipped. The Worker never opens a slice,
-// so these bound what a page may be handed to unpack: a gzip bomb of 16 KB
-// still unpacks to ~16 MB, and the page stops at raw.
+// The Worker never opens a slice, so these bound what a page may be handed to
+// unpack: a gzip bomb of 16 KB still unpacks to ~16 MB, and the page stops at raw.
+// Both sit well above a real body: one over either refuses the reader's
+// whole push.
 const MAX_SLICE = 16 * 1024;
 const MAX_RAW = 256 * 1024;
 const SOURCES = {
@@ -57,8 +58,9 @@ const SUMMARY_MAX_AGE = 5;
 // The scripts make 128 hex characters. Anything much shorter was pasted in
 // half, and a weak secret that works is worse than one that fails loudly.
 const MIN_SECRET = 64;
-// The running match and the one before it. Raising it keeps more from then on;
-// what was already deleted does not come back.
+// The daily cleanup deletes kills older than this: two weeks keeps the running
+// match and the one before it. Raising it keeps more from then on; what was
+// already deleted does not come back.
 const KEEP_DAYS = 14;
 // What GET /api/kills carries in full. The page wants the newest reading at
 // least ten minutes old, which with a tick every five is 10-15 minutes back;
@@ -695,7 +697,7 @@ function relinkStatement(db, d, t) {
   ).bind(d.beat, none ? null : d.window, none ? null : d.published, d.fails);
 }
 
-// Each read is one row of D1 (health: two), whatever anyone asks, and takes
+// Each read touches a fixed set of D1 rows, whatever anyone asks, and takes
 // nothing from the request - no parameter reaches a query.
 const READS = {
   '/api/health': async (env) => {

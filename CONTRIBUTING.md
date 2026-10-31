@@ -38,7 +38,7 @@ apps-script/   the two Google Apps Script projects behind the spreadsheets:
                the teams notice and the kills history; the copies they are
                pasted from
 supabase/      the two readers, one per API server pool, that push the newest
-               match bodies to the Worker every minute
+               match bodies to the Worker every 30 seconds
 tests/         the Worker's and the Supabase readers' rules, and the page's
                rules with its scripts in a node:vm; run by node --test
 .github/       the checks and the workflows that run them; e2e/ holds the

@@ -35,10 +35,11 @@ const ALARM_EVERY = 72;                   // then a reminder every ~6 h
 const API         = 'https://api.guildwars2.com/v2/wvw/matches';
 // The whole match body, read twice at once: score, kills and start_time come
 // from one node in one body, so they agree. The small routes (stats, overview,
-// scores) are served by different nodes and disagree, which would write old kills
-// under a new time. ~382 KB a body, uncompressed. A second read raises the
-// odds of a fresh body; two is the compromise against the Apps Script quota
-// (90 min/day for both scripts, so under ~14 s an execution on average).
+// scores) are served by different nodes and disagree, which would write old
+// kills under a new time. A body is large, so each read spends execution time.
+// A second read raises the odds of a fresh body; two is the compromise against
+// the Apps Script quota (90 min/day for both scripts, so under ~14 s an
+// execution on average).
 const ROUTES      = [API + '?ids=all', API + '?ids=all'];
 // Without this a hung request waits 360 s, the whole execution, and spends
 // the daily trigger quota this script shares with the relink one.
