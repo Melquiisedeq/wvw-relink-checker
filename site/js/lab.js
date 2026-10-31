@@ -5,7 +5,7 @@
 // .claude/tools/lab/pecas/ for the pieces worth reusing (README.md says what each lab has).
 
 const LAB_KEY = 'wvw-lab-40-1-39-3';
-const LAB_VERSION = 1;          // bump when the defaults change: older saved choices are dropped
+const LAB_VERSION = 2;          // bump when the defaults change: older saved choices are dropped
 // One entry per control, in order. check: a toggle; radio: one of a few; button: an
 // action (a "Simulate…" so the owner sees what a rare event looks like); section: a title.
 const LAB_ITEMS = [
@@ -16,7 +16,8 @@ const LAB_ITEMS = [
   { type: 'section', label: 'Guild screenshot (40-1)' },
   { type: 'note', label: 'Click the shield next to a team name in the standings, then look at the popover.' },
   { type: 'radio', key: 'shot', label: 'Form', value: 'today', options: {
-    today: 'Today', a: '(a) Visible button', b: '(b) Copy image', c: '(c) Both' } },
+    today: 'Today', a: '(a) Camera', b: '(b) Screenshot', c: '(c) Corners' } },
+  { type: 'note', label: 'Round 2: one icon in the popover header, left of expand. Click it, then paste in Discord.' },
 ];
 
 // Called after any change: repaint whatever the prototypes draw.
@@ -291,12 +292,37 @@ function labShotCanvas(d) {
   return c;
 }
 
+// Round 2: the icon turns into a check (or a cross) for 2 s, and a status region that
+// already exists says the word, so a screen reader hears it without the focus moving.
+const LAB_SVG = (inner) => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + inner + '</svg>';
+const LAB_ICONS = {
+  // Lucide "camera" (ISC)
+  a: '<path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/>',
+  // Tabler "screenshot" (MIT)
+  b: '<path d="M7 19a2 2 0 0 1 -2 -2"/><path d="M5 13v-2"/><path d="M5 7a2 2 0 0 1 2 -2"/><path d="M11 5h2"/><path d="M17 5a2 2 0 0 1 2 2"/><path d="M19 11v2"/><path d="M19 17v4"/><path d="M21 19h-4"/><path d="M13 19h-2"/>',
+  // Lucide "scan" (ISC)
+  c: '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>',
+  ok: '<path d="M20 6 9 17l-5-5"/>',
+  fail: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'
+};
+let labSR = null;
+function labSay(text) {
+  if (!labSR) {
+    labSR = labEl('div', 'lab-sr-legend');
+    labSR.setAttribute('role', 'status');
+    document.body.appendChild(labSR);
+  }
+  labSR.textContent = '';
+  setTimeout(() => { labSR.textContent = text; }, 50);
+}
+function labSetIcon(btn, key) { btn.innerHTML = LAB_SVG(LAB_ICONS[key]); } // constants only
 function labFlash(btn, text) {
-  const label = btn.querySelector('.lab-g-text');
-  if (!label) return;
-  label.textContent = text;
+  labSetIcon(btn, text === 'Failed' ? 'fail' : 'ok');
+  btn.classList.toggle('lab-g-done', text !== 'Failed');
+  labSay(text);
   clearTimeout(btn.__labT);
-  btn.__labT = setTimeout(() => { label.textContent = 'Copy image'; }, 2000);
+  btn.__labT = setTimeout(() => { btn.classList.remove('lab-g-done'); labSetIcon(btn, labPrefs.shot); }, 2000);
 }
 
 function labDownload(blob) {
@@ -338,50 +364,26 @@ function labCopy(btn, popover) {
   });
 }
 
-// Turns the popover's header into the chosen form. Idempotent: called after every render,
-// every expand/shrink (which rewrites the expand button) and every panel change.
+// Puts the chosen icon in the popover's header, left of expand (round 2). Idempotent:
+// called after every render, every expand/shrink and every panel change.
 function labDecorate(popover) {
   if (!popover || !popover.classList.contains('info-popover--guilds')) return;
   const mode = labPrefs.shot;
   const expandBtn = popover.querySelector('.info-popover-expand');
   const actions = popover.querySelector('.info-popover-header-actions');
   if (!expandBtn || !actions) return;
-  const hasList = !!popover.querySelector('.guild-line');
-  let bar = popover.querySelector('.lab-g-bar');
-  if (mode === 'today') {
-    if (bar) { actions.insertBefore(expandBtn, actions.firstChild); bar.remove(); }
-    expandBtn.classList.remove('lab-g-expand');
-    const t = expandBtn.querySelector('.lab-g-text');
-    if (t) t.remove();
-    return;
+  let btn = actions.querySelector('.lab-g-icon');
+  if (mode === 'today') { if (btn) btn.remove(); return; }
+  if (!btn) {
+    btn = labEl('button', 'info-popover-expand lab-g-icon');
+    btn.type = 'button';
+    btn.setAttribute('aria-label', 'Copy the list as an image');
+    btn.title = 'Copy the list as an image';
+    btn.addEventListener('click', (e) => { e.stopPropagation(); labCopy(btn, popover); });
   }
-  if (!bar) {
-    bar = labEl('div', 'lab-g-bar');
-    popover.insertBefore(bar, popover.querySelector('.info-popover-body'));
-  }
-  const showExpand = mode === 'a' || mode === 'c';
-  const showCopy = mode === 'b' || mode === 'c';
-  let copy = bar.querySelector('.lab-g-copy');
-  if (showCopy && !copy) {
-    copy = labEl('button', 'lab-g-btn lab-g-copy');
-    copy.type = 'button';
-    copy.append(labEl('span', 'lab-g-text', 'Copy image'));
-    copy.addEventListener('click', (e) => { e.stopPropagation(); labCopy(copy, popover); });
-    bar.prepend(copy);
-  }
-  if (copy) { copy.hidden = !showCopy; copy.disabled = !hasList; }
-  if (showExpand) {
-    if (expandBtn.parentNode !== bar) bar.appendChild(expandBtn);
-    expandBtn.classList.add('lab-g-btn', 'lab-g-expand');
-    const t = expandBtn.querySelector('.lab-g-text') || expandBtn.appendChild(labEl('span', 'lab-g-text'));
-    t.textContent = popover.classList.contains('info-popover--expanded') ? 'Shrink' : 'Full list';
-  } else {
-    if (expandBtn.parentNode === bar) actions.insertBefore(expandBtn, actions.firstChild);
-    expandBtn.classList.remove('lab-g-btn', 'lab-g-expand');
-    const t = expandBtn.querySelector('.lab-g-text');
-    if (t) t.remove();
-  }
-  bar.hidden = !showCopy && !showExpand;
+  if (btn.nextElementSibling !== expandBtn) actions.insertBefore(btn, expandBtn);
+  if (btn.__labMode !== mode && !btn.classList.contains('lab-g-done')) { labSetIcon(btn, mode); btn.__labMode = mode; }
+  btn.disabled = !popover.querySelector('.guild-line');
 }
 
 labPanel = labBuildPanel();

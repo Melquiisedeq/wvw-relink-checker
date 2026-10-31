@@ -63,3 +63,6 @@
 .lab-g-btn:disabled{opacity:.45;cursor:default;}
 .lab-g-btn svg{width:15px;height:15px;}
 @media (max-width:600px){ .lab-g-btn{min-height:44px;flex:1 1 0;} }
+.lab-g-icon{min-width:24px;min-height:24px;display:inline-flex;align-items:center;justify-content:center;}
+.lab-g-icon:disabled{opacity:.45;cursor:default;}
+.lab-g-icon.lab-g-done{color:var(--accent);}
