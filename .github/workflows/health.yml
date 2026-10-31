@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Every route the page reads, and the shape it reads
-        run: python3 .github/scripts/check-api.py
+        run: python3 scripts/check-api.py
 
   # check-api.py asks whether each route answers; this asks whether every key
   # and type the page reads is still there (gw2-contract.json) and whether the
@@ -39,7 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: The keys and types the page reads, against the live API and the recording
-        run: python3 .github/scripts/check-contract.py
+        run: python3 scripts/check-contract.py
 
   # The API has no endpoint that resolves a 5-digit WvW Team ID to a name, so
   # js/config.js carries a hand-maintained TEAM_NAMES table. When ArenaNet adds
@@ -88,7 +88,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: The community sheet's columns, and whether kills is still being written
-        run: python3 .github/scripts/check-sheets.py
+        run: python3 scripts/check-sheets.py
 
   site:
     runs-on: ubuntu-latest
@@ -96,7 +96,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: wvwrelink.com serves every file it asks for; old Pages gone; domain not expiring
-        run: python3 .github/scripts/check-site.py
+        run: python3 scripts/check-site.py
 
   # wvwrelink.com/api: both Apps Scripts still pushing, the two reads the page
   # tries first still answering, the entrance still shut. Its own job, so the
@@ -107,7 +107,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Both sources pushing, the reads answering, the entrance shut
-        run: python3 .github/scripts/check-worker.py
+        run: python3 scripts/check-worker.py
 
   # The teams notice is meant to appear every month, and the Apps Script
   # trigger that feeds it stops as silently as the kills one does (see also
@@ -119,4 +119,4 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Every relink produced a notice
-        run: python3 .github/scripts/check-notice.py
+        run: python3 scripts/check-notice.py

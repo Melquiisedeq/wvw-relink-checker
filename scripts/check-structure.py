@@ -2,12 +2,12 @@
 """Structural checks for the mistakes that fail silently in a site with no build.
 
 Nothing in this file is shipped. Cloudflare publishes site/ and nothing
-else, and this lives under .github/; it runs only in CI. It exists because the mistakes this project can actually make - a script missing from
+else, and this lives under scripts/. It exists because the mistakes this project can actually make - a script missing from
 index.html, a host missing from the Content Security Policy - fail *silently*
 in production: the page looks completely fine and the feature simply does not
 happen. No error, no test, nothing to notice until somebody reports it.
 
-Run it by hand any time:  python .github/scripts/check-structure.py
+Run it by hand any time:  python scripts/check-structure.py
 """
 
 import datetime
@@ -17,7 +17,7 @@ import re
 import sys
 import time
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # The folder Cloudflare publishes: every path below is relative to it.
 SITE = os.path.join(ROOT, 'site')
 

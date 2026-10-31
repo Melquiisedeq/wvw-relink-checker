@@ -7,7 +7,7 @@ Thumbs.db
 .idea/
 *.swp
 
-# The checks under .github/scripts/ are run, not imported - but testing one
+# The checks under scripts/ are run, not imported - but testing one
 # means importing it from outside the repository, and Python leaves this behind
 # next to the file it imported.
 __pycache__/

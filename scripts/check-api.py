@@ -13,7 +13,7 @@ Asserting more would mean breaking on changes that do not affect anything.
 Every request gets three attempts, spaced out. The API genuinely flaps around
 reset, and an alarm that fires on a blip is an alarm that gets ignored.
 
-Run it by hand any time:  python .github/scripts/check-api.py
+Run it by hand any time:  python scripts/check-api.py
 """
 
 import json

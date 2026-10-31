@@ -24,7 +24,7 @@ Neither check asserts how many rows or columns there are. Both sheets grow and
 shrink as people maintain them, and a check that pinned those numbers would
 fail on somebody doing their job.
 
-Run it by hand any time:  python .github/scripts/check-sheets.py
+Run it by hand any time:  python scripts/check-sheets.py
 """
 
 import csv
@@ -38,7 +38,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # The spreadsheet ids are read out of js/config.js, never written here: a copy
 # that drifted would keep this check reading the old sheet and passing while

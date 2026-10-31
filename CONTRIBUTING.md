@@ -42,7 +42,8 @@ supabase/      the two readers, one per API server pool, that push the newest
 tests/         unit/: the Worker's and the Supabase readers' rules, and the page's
                rules with its scripts in a node:vm, run by node --test;
                e2e/: the browser tests (Playwright Test, monocart-coverage-reports)
-.github/       the checks and the workflows that run them
+scripts/       the checks (check-*.py) and the contract they compare against
+.github/       the workflows that run them, and the branch pruning
 wrangler.jsonc the root Worker: serves site/ as static assets, no code
 CONTRIBUTING.md  SECURITY.md  LICENSE
 ```
@@ -131,7 +132,7 @@ A pull request needs four checks to pass: `structure`, `syntax`, `rules` and
 `page` (`.github/workflows/checks.yml`). `rules` and `page` are the two test
 commands above; `structure` runs without a network or an install:
 
-    python3 .github/scripts/check-structure.py
+    python3 scripts/check-structure.py
 
 `page` also fails if the page goes over its budget (`tests/e2e/data/budget.json`)
 or a file's test coverage falls (`tests/e2e/data/coverage.json`); the message says
