@@ -3,60 +3,47 @@
  *
  * Columns, no header row:
  *   epoch ms | match id | Center | RedHome | BlueHome | GreenHome | start_time | score
- * The four numbers are kills summed over the three teams: deaths caused by an
- * enemy player. deaths is left out on purpose - it also counts whoever dies to
- * a lord, a guard or a fall, which is a roamer soloing a camp, and that would
- * inflate exactly the empty borderland.
+ * The four numbers are kills summed over the three teams. deaths is left out on
+ * purpose: it also counts deaths to a lord, a guard or a fall.
  * The site reads columns 0 to 5 and the 8th; the 7th is for this script only;
- * the 8th is the match score sum, written by run_ and sent to /api, and read by
- * the page only from the sheet, when /api is out.
+ * the 8th is the match score sum, sent to /api and read by the page only from
+ * the sheet, when /api is out.
  *
- * A match's row is written only when its score has risen since its last
- * written row. The GW2 API serves old answers for stretches (a whole match
- * frozen for up to an hour), and a row stamped with the tick's
- * time over frozen numbers reads as "no kills". The clock is the sum of the
- * match's scores - it rises every few seconds in a live match and by about one
- * tick's points every 5 minutes. The kills in the row come from the same body
- * as that score. Of the two bodies read each tick, a match keeps the newer:
+ * A match's row is written only when its score has risen since its last written
+ * row: the GW2 API can serve old answers, and a row stamped with the tick's time
+ * over frozen numbers reads as "no kills". The kills in the row come from the same
+ * body as that score. Of the two bodies read each tick, a match keeps the newer:
  * latest start_time, then higher score sum, then higher kills+deaths.
  * When no match moved, nothing is written and nothing is sent: not a failure.
  *
  * After the sheet, the same rows go to wvwrelink.com/api, signed - see push_.
- * Run killsSecret() once by hand before that starts; until then the sheet is
- * all there is, as before.
+ * Run killsSecret() once by hand before that starts.
  */
 const SHEET_NAME  = 'kills';
 const KEEP_MS     = 2 * 60 * 60 * 1000;   // window kept in the sheet
 const MAPS        = ['Center', 'RedHome', 'BlueHome', 'GreenHome'];
 const COLORS      = ['red', 'blue', 'green'];
 const RESET_RATIO = 0.5;                  // below this it is the weekly reset
-const ALARM_AFTER = 6;                    // 6 ticks ~ 30 min to the 1st alarm
-const ALARM_EVERY = 72;                   // then a reminder every ~6 h
+const ALARM_AFTER = 6;                    // ticks to the 1st alarm
+const ALARM_EVERY = 72;                   // ticks between reminders
 const API         = 'https://api.guildwars2.com/v2/wvw/matches';
-// The whole match body, read twice at once: score, kills and start_time come
-// from one node in one body, so they agree. The small routes (stats, overview,
-// scores) are served by different nodes and disagree, which would write old
-// kills under a new time. A body is large, so each read spends execution time.
-// A second read raises the odds of a fresh body; two is the compromise against
-// the Apps Script quota (90 min/day for both scripts, so under ~14 s an
-// execution on average).
+// The whole match body, read twice at once: score, kills and start_time come from one
+// body, so they agree; the small routes can disagree and would write old kills under a
+// new time. A second read raises the odds of a fresh body; each read spends execution
+// time against the daily trigger quota.
 const ROUTES      = [API + '?ids=all', API + '?ids=all'];
-// Without this a hung request waits 360 s, the whole execution, and spends
-// the daily trigger quota this script shares with the relink one.
+// A hung request would otherwise wait out the whole execution, against the daily quota the relink script shares.
 const TIMEOUT_S   = 20;
 const INGEST     = 'https://wvwrelink.com';
 const INGEST_PATH = '/api/ingest/kills';
-// Rows not yet accepted are sent again with the next tick, so a failed push
-// costs nothing if the one after it lands. Past this age they are dropped:
-// the Worker refuses rows much older than the message anyway.
+// Rows not yet accepted are sent again with the next tick; past this age they are dropped,
+// since the Worker refuses rows much older than the message.
 const PENDING_MS  = 30 * 60 * 1000;
-// A property value holds at most 9 KB; nine matches a tick are ~600 characters.
+// A script property value holds at most 9 KB (https://developers.google.com/apps-script/guides/services/quotas).
 const PENDING_MAX_CHARS = 8000;
 
 function snapshot() {
-  // Triggers are not queued: if a tick runs long, the next one starts on top
-  // of it and both read getLastRow() together. Gives up rather than waits -
-  // the next tick is 5 minutes away.
+  // A tick that runs long would overlap the next on getLastRow(); give up rather than wait.
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return;
   try {
@@ -103,13 +90,10 @@ function run_() {
   const ss = SpreadsheetApp.getActive();
   const sh = ss.getSheetByName(SHEET_NAME) || ss.insertSheet(SHEET_NAME);
 
-  // One read, used for two things: each matchup's last value and the
-  // window's cut. Google's documentation is explicit: alternating reads and
-  // writes is what makes it slow.
+  // One read serves both each matchup's last value and the window's cut; reads and writes are not alternated.
   const width = 4 + MAPS.length;
   const lastRow = sh.getLastRow();
-  // getRange past the sheet's last column throws, and a sheet made before the
-  // score column has seven: the whole tick would fail.
+  // getRange past the sheet's last column throws, and an older sheet has fewer columns.
   if (sh.getMaxColumns() < width) {
     sh.insertColumnsAfter(sh.getMaxColumns(), width - sh.getMaxColumns());
   }
@@ -137,9 +121,8 @@ function run_() {
     return;
   }
 
-  // deleteRows REMOVES rows, so the sheet's total shrinks on every run, and
-  // getRange does not grow it by itself. Without this the total reaches the
-  // used rows in ~7 h and writing starts failing silently.
+  // deleteRows removes rows, so the sheet's total shrinks every run and getRange does not
+  // grow it: without this writing starts failing silently.
   const start = lastRow + 1;
   const need = start + rows.length - 1 - sh.getMaxRows();
   if (need > 0) sh.insertRowsAfter(sh.getMaxRows(), need + 100);
@@ -215,8 +198,7 @@ function killsSecret() {
     Logger.log('A secret already exists. Delete the "ingest" script property first to replace it.');
     return;
   }
-  // getUuid is java.util.UUID.randomUUID, a cryptographically strong
-  // generator: four of them, hashed into 512 bits.
+  // Four UUIDs, hashed into 512 bits.
   let bytes = [];
   for (let i = 0; i < 2; i++) {
     bytes = bytes.concat(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,
@@ -320,10 +302,8 @@ function rowFor_(m, prevRow, now, score) {
 }
 
 function fetchAllJson_(urls) {
-  // Returns every body that came back whole; one failed read is not a failed
-  // tick while another succeeded. Two rounds: a dropped connection is the most
-  // common failure and retrying costs nothing, while giving up costs a
-  // 5-minute hole in the data.
+  // Returns every body that came back whole; one failed read is not a failed tick while
+  // another succeeded. Two rounds, since giving up costs a hole in the data.
   const reqs = urls.map(function (url) {
     return { url: url, muteHttpExceptions: true, timeoutSeconds: TIMEOUT_S };
   });
@@ -350,9 +330,7 @@ function fetchAllJson_(urls) {
 }
 
 function alarm_(props, e) {
-  // Quiet for a hiccup, loud for a real outage, and never loud on every
-  // tick: Apps Script sends an email on every exception, and a trigger that
-  // fails for hours on end is a trigger Google may switch off.
+  // Quiet for a hiccup, loud for a real outage, never loud on every tick: each exception sends an email.
   const n = num_(props.getProperty('fails')) + 1;
   props.setProperty('fails', String(n));
   if (n === ALARM_AFTER || (n > ALARM_AFTER && (n - ALARM_AFTER) % ALARM_EVERY === 0)) {

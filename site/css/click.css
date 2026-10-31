@@ -1,6 +1,5 @@
-/* The round, lobbed in from the corner where the trebuchet stands. Two
-   nested elements because X and Y need transforms of their own: the
-   outer one carries X at a constant rate, the inner one carries Y
+/* The round, lobbed in from the trebuchet's corner. Two nested elements because X and Y
+   need transforms of their own: the outer carries X at a constant rate, the inner Y
    through the sampled parabola below. */
 .siege-shot{
   position:fixed;z-index:39;pointer-events:none;
@@ -19,15 +18,10 @@
   8%{opacity:1;}
   100%{opacity:1;transform:translateX(var(--dx,0));}
 }
-/* A real parabola, sampled, not an ease pretending to be one (an ease starts the
-   vertical motion slowly, the opposite of a throw):
-
-     y(t) = dy*t - rise*4t(1-t)
-
-   X stays linear: nothing pushes the stone sideways once it is in the air. The
-   hump is a height in pixels that is zero at both ends, so it arcs over the top
-   wherever the target sits; scaling dy itself would dip under a target below
-   the launch point. */
+/* A sampled parabola, not an ease (an ease starts the vertical motion slowly, the
+   opposite of a throw): y(t) = dy*t - rise*4t(1-t). X stays linear. The hump is a pixel
+   height that is zero at both ends, so it arcs over the top wherever the target sits;
+   scaling dy would dip under a target below the launch point. */
 @keyframes shot-y{
   0%{transform:translateY(0) scale(0.700);}
   10%{transform:translateY(calc(var(--dy,0px) * 0.1 - var(--rise,0px) * 0.36)) scale(0.755);}
@@ -42,10 +36,9 @@
   100%{transform:translateY(var(--dy,0)) scale(1.250);}
 }
 
-/* One short segment per frame, from where the round was to where it is now. A
-   single re-aimed wedge can only point back the way the round came, so on a curve
-   it cuts the corner and looks detached. Here the path itself is the flame, and
-   each segment fades on its own clock, which tapers it. */
+/* One short segment per frame, from where the round was to where it is. A single re-
+   aimed wedge cuts the corner on a curve and looks detached; each segment fades on its own
+   clock, which tapers it. */
 .flame-seg{
   position:fixed;left:0;top:0;z-index:38;pointer-events:none;
   height:12px;margin-top:-6px;transform-origin:0 50%;
@@ -57,8 +50,7 @@
   filter:blur(2.6px);
   animation:flame-shrink .22s ease-out forwards;
 }
-/* The hot core, laid over the body: thinner, whiter, and gone sooner,
-   so the centre of the trail burns out before its edges do. */
+/* The hot core: thinner, whiter, gone sooner. */
 .flame-seg--hot{height:4px;margin-top:-2px;z-index:39;}
 .flame-seg--hot i{
   background:linear-gradient(90deg, rgba(160,225,255,.55), #f4fdff);
@@ -74,8 +66,7 @@
   55%{opacity:.62;}
   100%{opacity:0;transform:scaleY(.16);}
 }
-/* The glow around the head, which is the one part that does belong
-   pinned to the round. */
+/* The glow around the head, the one part pinned to the round. */
 .flame-head{
   position:fixed;left:0;top:0;z-index:37;pointer-events:none;opacity:0;
   width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;
@@ -86,8 +77,8 @@
 }
 .flame-head--big{width:104px;height:104px;margin:-52px 0 0 -52px;}
 
-/* Smoke and sparks, so something reads as burning after the streak passes. Both are dropped at the round's live position and then abandoned, so
-   they fall behind on their own. */
+/* Smoke and sparks, dropped at the round's live position and then abandoned, so they
+   fall behind on their own. */
 .trail-smoke{
   position:fixed;z-index:36;pointer-events:none;
   width:15px;height:15px;margin:-7.5px 0 0 -7.5px;border-radius:50%;
@@ -111,8 +102,8 @@
   100%{opacity:0;transform:translate(var(--sx,0px), var(--sy,0px)) scale(.3);}
 }
 
-/* The round going off where it lands: the whole click feedback. Same construction as the shield blast, a size down. No perfect ring
-   behind it: that shape makes it read as a lamp. */
+/* The round going off where it lands: the whole click feedback. Same construction as
+   the shield blast, a size down; no perfect ring, which reads as a lamp. */
 .shot-bloom{
   position:fixed;z-index:41;pointer-events:none;
   width:52px;height:52px;margin:-26px 0 0 -26px;

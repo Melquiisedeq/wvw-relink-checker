@@ -1,8 +1,7 @@
 'use strict';
-// Standings: loading the live match data for both regions and rendering one side of a tier (score, VP, activity, change flashes).
+// Standings: loading both regions' live matches and rendering a tier's sides.
 
-// Grey blocks in the shape of the real thing while the first request is in
-// flight, so the rails keep their eventual shape.
+// Grey blocks in the shape of the real thing while the first request is in flight.
 function showStandingsSkeleton(gridEl) {
   gridEl.textContent = '';
   for (let i = 0; i < 3; i++) {
@@ -20,21 +19,18 @@ function showStandingsSkeleton(gridEl) {
   }
 }
 
-// Last VP / skirmish per side, so a background refresh can highlight what
-// actually moved. Keyed by match and colour, not kept on the cards: a card
-// built again (renderStandingsRegion) has to compare against the one it replaces.
+// Last VP / skirmish per side, keyed by match and colour and not kept on the
+// cards: a rebuilt card (renderStandingsRegion) compares against the one it replaces.
 const prevSideStats = new Map(); // `${matchId}:${color}` -> { vp, skirmish, pct }
 
-// Dropped the moment a tier's week ends, so the first refresh of the new one has
-// nothing to compare against: kept, it would measure a fresh zero against last
-// week's closing figures and float a huge negative delta over every side.
+// Dropped when a tier's week ends: kept, a fresh zero would be compared against
+// last week's closing figures and float a huge negative delta.
 function forgetSideStats(matchId) {
   for (const color of COLORS) prevSideStats.delete(`${matchId}:${color}`);
 }
 
 // The tier a team of last week's line-up plays in this week, when this page
-// holds that match live: on a relink night the API serves tiers from both
-// weeks, and the team would otherwise stand in two tiers at once.
+// holds that match live; otherwise the team would stand in two tiers at once.
 function newerTierOfTeam(match, teamId) {
   const region = match.id.split('-')[0];
   const start = Date.parse(match.start_time);
@@ -45,9 +41,8 @@ function newerTierOfTeam(match, teamId) {
   return null;
 }
 
-// Every team the page knows in a region: the fixed table plus whatever the
-// cached bodies name (one body per tier, so the bodies alone fall short).
-// Table ids are 1 + region (NA 11xxx, EU 12xxx).
+// Every team the page knows in a region: the fixed table plus what the cached
+// bodies name (one body per tier, so the bodies alone fall short). Table ids are 1 + region (NA 11xxx, EU 12xxx).
 function regionTeamIds(regionCode) {
   const ids = new Set(Object.keys(TEAM_NAMES).filter((id) => id.startsWith(`1${regionCode}`)));
   for (const m of matchDataCache.values()) {
@@ -60,10 +55,8 @@ function regionTeamIds(regionCode) {
   return ids;
 }
 
-// With exactly one tier still on last week and the rest live on the new one,
-// the teams left over are the late tier's line-up. Only when the sum closes:
-// every team of the region is 3 per tier and exactly 3 are left. A table
-// with an extra or a missing team breaks the count, so it gives null too.
+// With exactly one tier still on last week and the rest live, the teams left
+// over are the late tier's line-up; null unless the count closes (3 per tier).
 function deduceLineup(matches, allTeams, tierCount) {
   const live = matches.filter(matchIsLive);
   const newest = Math.max(...live.map((m) => Date.parse(m.start_time)));
@@ -81,16 +74,9 @@ function deduceLineup(matches, allTeams, tierCount) {
   return { id: late[0].id, lineupOnly: true, all_worlds: { red, blue, green } };
 }
 
-// A tier between weeks still has to be usable for looking up who plays on a
-// server: team names survive a relink, only which three are matched together
-// does not.
-//
-// Dropped is everything that would read as a standing: rank, colour, victory
-// points, the stats line, the bar. `yoursByColor` comes only from the match
-// panel, where saying which of the three is yours is the point.
-//
-// A line-up only (match.lineupOnly: deduced, or from this browser's memory)
-// is this week's, not last week's: same rows, its own line.
+// A tier between weeks: rows without anything that would read as a standing
+// (rank, colour, points, stats, bar). `yoursByColor` comes only from the match
+// panel. A line-up only (match.lineupOnly) is this week's: same rows, its own line.
 const LINEUP_NOTE = "This week's line-up \u00b7 scores not in yet";
 
 function buildStandingsStale(match, yoursByColor) {
@@ -114,7 +100,7 @@ function buildStandingsStale(match, yoursByColor) {
       moved.title = `This week: Tier ${tier}`;
       row.appendChild(moved);
     }
-    // Same rule as everywhere else: the community sheet is NA only.
+    // The community sheet is NA only.
     if (isNA) row.appendChild(buildServerGuildsButton(name));
     const yours = (yoursByColor && yoursByColor[color]) || [];
     if (yours.length) {
@@ -136,10 +122,8 @@ function buildStandingsStale(match, yoursByColor) {
 // The numbers that changed in this repaint, flashed together by flashChanges.
 const pendingFlashes = []; // [valueEl, delta]
 
-// Flashes each number that just changed, pulses its card at the edge so a
-// change registers off-centre, and floats the delta above it. All at once: a
-// class removed and added again restarts its animation only across a layout,
-// so they share one layout.
+// Flashes each changed number, pulses its card and floats the delta. A class
+// removed and re-added restarts its animation only across a layout, hence one.
 function flashChanges() {
   const list = pendingFlashes.splice(0).filter(([, delta]) => Number.isFinite(delta));
   if (!list.length) return;
@@ -152,10 +136,7 @@ function flashChanges() {
   for (const s of sides) s.classList.add('side-pulse');
 
   // Deferred a frame: showRegion hangs the guild-found strip after this, which
-  // moves the cards below it. The delta is parked on <body> at the value's
-  // screen position, because the card clips its own chamfered corners and
-  // would shear it off. Every position is read before any delta is added, so
-  // the page is laid out once.
+  // moves the cards. The delta sits on <body> because the card clips its corners.
   requestAnimationFrame(() => {
     const rects = list.map(([el]) => el.getBoundingClientRect());
     list.forEach(([, delta], i) => {
@@ -172,8 +153,7 @@ function flashChanges() {
   });
 }
 
-// A card outlives its flash, so the flash's classes go when it ends: the next
-// repaint flashes only what changed then.
+// The classes go when the flash ends, so the next repaint flashes only what changed.
 document.addEventListener('animationend', (e) => {
   const t = e.target;
   if (!(t instanceof Element)) return;
@@ -181,11 +161,9 @@ document.addEventListener('animationend', (e) => {
   else if (e.animationName === 'side-pulse') t.classList.remove('side-pulse');
 });
 
-// After a guild search: the card of the team the first guild landed on blinks
-// three times, the page scrolls to it, and a strip hangs from its lower edge
-// with the guild's name for a few seconds. A refresh can build the cards
-// again or move them, so what was found is kept here and painted again after
-// every refresh (without the blink) until the time runs out.
+// After a guild search: the team's card blinks, the page scrolls to it and a
+// strip with the guild's name hangs from it. A refresh rebuilds the cards, so
+// what was found is painted again after every refresh until `until`.
 const GUILD_FOUND_MS = 8000;
 const GUILD_FOUND_FLASH_MS = 2600;
 let guildFound = null; // { teamName, guildName, until }
@@ -233,8 +211,7 @@ function showGuildFound(teamId, guildName) {
   if (!card) return;
   const b = card.getBoundingClientRect();
   if (b.top >= 0 && b.bottom <= window.innerHeight) return;
-  // The visitor wins: a wheel, a touch, a key or a click while the page is
-  // still travelling stops it where it is and gives the scroll back.
+  // Any input while the page is still travelling stops the scroll.
   const yield_ = () => {
     window.scrollTo({ top: window.scrollY, behavior: 'instant' });
     drop();
@@ -249,9 +226,8 @@ function showGuildFound(teamId, guildName) {
 
 const RESET_NOTE = 'Weekly reset \u00b7 new matchups arriving';
 
-// Shows the pulsing live-dot next to the synced time on success; plain
-// text (no dot) for loading/error states.
-// A dot already there keeps pulsing: only the time changes.
+// The live-dot beside the synced time on success, plain text otherwise. An
+// existing dot stays, so it keeps pulsing.
 function setStandingsStatus(el, synced, text) {
   clearRetryAlert(el);
   const [had, time] = el.childNodes;
@@ -268,15 +244,13 @@ function setStandingsStatus(el, synced, text) {
   el.appendChild(document.createTextNode(text));
 }
 
-// The shimmer only stands in for an answer that has not arrived; a failed one has
-// arrived, and would shimmer behind the error line for as long as the tab is open.
+// A failed answer must not shimmer behind its error line.
 function clearSkeleton(gridEl) {
   if (gridEl.querySelector('.skel-match')) gridEl.textContent = '';
 }
 
-// One region onto the page. A region that failed keeps whatever it last rendered:
-// last refresh's standings are still the standings. The first load is the
-// exception, because what is up then is the skeleton.
+// One region onto the page. A failed region keeps what it last rendered; the
+// first load is the exception, as only the skeleton is up.
 function showRegion(gridEl, statusEl, matches, label, syncedAt, failed) {
   const resetting = regionResetting(label, Date.now());
   if (matches && (matches.length || !resetting)) {
@@ -285,20 +259,15 @@ function showRegion(gridEl, statusEl, matches, label, syncedAt, failed) {
   } else clearSkeleton(gridEl);
   const ok = !!matches && matches.length > 0;
   if (ok) return setStandingsStatus(statusEl, true, syncedAt);
-  // null is a request that failed, and it will be asked again (below);
-  // [] is an answer with nothing in it, which asking again does not change.
-  // In the minutes after the region's reset either is the game's API not yet
-  // having the new week: both are asked again, and an empty answer leaves
-  // the table up as a failure does.
+  // null is a failed request, asked again; [] is an empty answer. Right after
+  // the region's reset both are asked again and leave the table up.
   if ((matches === null || resetting) && failed) failed.push({ el: statusEl, label: `${label} standings`, region: label });
   else setStandingsStatus(statusEl, false, `Couldn't load ${label} standings.`);
 }
 
-// The fallback when the one request fails: the id list, then one request
-// per region, the answers kept apart all the way down. null means that
-// region's request failed; [] means it answered and has no matches.
-// Collapsing the two lets one region take the other down: Promise.all rejects
-// whole, so a single 500 on EU would throw away an NA answer already arrived.
+// The fallback when the one request fails: the id list, then one request per
+// region. null is a failed region, [] an answer with no matches; kept apart so
+// one region's failure cannot discard the other's answer.
 async function loadStandingsByRegion() {
   const idList = await fetchJson(`${API_BASE}/wvw/matches`);
   if (!Array.isArray(idList) || idList.length === 0) {
@@ -323,9 +292,8 @@ async function loadStandingsByRegion() {
 }
 
 // Puts the column js/region.js chose on the left in the DOM, not only on
-// screen: CSS order moves what is seen, while Tab and a screen reader
-// follow the source. The two asides and their left/right classes swap in
-// one step and the pre-paint override in css/layout.css switches off with them.
+// screen, so Tab and screen readers follow it. The pre-paint override in
+// css/layout.css switches off with the swap.
 function placeRails() {
   const na = standingsGridNA.closest('.rail');
   const eu = standingsGridEU.closest('.rail');
@@ -336,22 +304,15 @@ function placeRails() {
   document.documentElement.classList.add('rails-placed');
 }
 
-// The swap button: the other column first, remembered for next time. A
-// popover open on the old side would be left pointing at a column that
-// moved, so it closes first; the button moves with its column and loses
-// focus on the way, so it gets it back.
-//
-// Everything that swapped slides to its new place - the two columns and
-// the NA / EU halves of the relink bar (FLIP: read before and after
-// the move, then animated back from where each was). The columns pass under the
-// centre column, shrinking and fading at the crossing so the text there stays
-// readable. Not View Transitions: capturing columns this tall freezes the page
-// before anything moves.
+// The swap button: the other column first, remembered. An open popover closes
+// first, and the button gets its focus back after it moves. The columns and the
+// relink bar's halves slide by FLIP; not View Transitions, which freeze the page
+// on columns this tall.
 const SWAP_MS = 650;
 const SWAP_EASE = 'cubic-bezier(.45, 0, .2, 1)';
 
-// The relink bar's region labels and countdowns, keyed so the same half
-// can be found again after updateRelinkBanner rebuilds them.
+// The relink bar's labels and countdowns, keyed to be found again after
+// updateRelinkBanner rebuilds them.
 function bannerHalves() {
   const out = new Map();
   let region = null;
@@ -386,9 +347,7 @@ function swapRails(btn) {
     const dy = was.top - now.top;
     if (!dx && !dy) continue;
     r.classList.add('is-swapping');
-    // Linear time, eased per step: the fade has to cover the whole middle stretch
-    // of the path; one easing over the run bunches the travel into the first
-    // frames, still opaque over the centre's text.
+    // Linear time, eased per step: the fade must cover the whole middle stretch.
     r.animate([
       { transform: `translate(${dx}px, ${dy}px)`, opacity: 1, easing: 'ease-in' },
       { transform: `translate(${dx * .7}px, ${dy * .7}px) scale(.92)`, opacity: .08, offset: .3 },
@@ -401,7 +360,7 @@ function swapRails(btn) {
     if (!was) continue;
     const dx = was.left - el.getBoundingClientRect().left;
     if (!dx) continue;
-    // The halves cross on one line, so one rises and the other dips as they pass.
+    // The halves cross on one line: one rises, the other dips.
     const lift = dx > 0 ? -7 : 7;
     el.classList.add('is-swapping');
     el.animate([
@@ -413,9 +372,8 @@ function swapRails(btn) {
   }
 }
 
-// Every match of both regions in one request - the one index.html
-// preloads, so the first load usually finds it already here. null when it
-// fails, and then loadStandings asks region by region instead.
+// Every match of both regions in one request, the one index.html preloads.
+// null on failure, then loadStandings asks region by region.
 async function fetchAllMatches(timeoutMs) {
   try {
     const all = await fetchMatches(`${API_BASE}/wvw/matches?ids=all`, timeoutMs, ['1', '2']);
@@ -427,12 +385,10 @@ async function fetchAllMatches(timeoutMs) {
 }
 
 // ---- After a failed load ---------------------------------------------
-// A failed load is asked again twice, soon, each at a random moment inside
-// its window (STANDINGS_RETRY_WINDOWS_MS), then left to the 5-minute cycle.
-// The message says so, with the seconds counting, and a button asks now.
-// A load that works clears the count. Never decided by navigator.onLine or
-// navigator.connection: one is only a hint, the other is missing in Safari
-// and Firefox.
+// A failed load is asked again twice, each at a random moment inside its
+// window (STANDINGS_RETRY_WINDOWS_MS), then left to the 5-minute cycle; a
+// button asks now. Never decided by navigator.onLine or navigator.connection:
+// neither is reliable.
 let standingsEverLoaded = false;   // the long deadline is for the first one only
 let standingsInFlight = false;
 let standingsExtraUsed = 0;        // extra tries spent since the last cycle load
@@ -446,12 +402,9 @@ function cancelStandingsRetry() {
   standingsRetry = null;
 }
 
-// The status line with its button. Built once per element and then only its
-// text changes, so a keyboard user's focus survives the countdown. The
-// visible words are aria-hidden and the live region gets a steady sentence:
-// a number changing every second would be read out every second.
-// The "Try again" button, here and in the guild search: the reload arrow
-// (drawn inline like the site's other icons) and the words.
+// The "Try again" button, here and in the guild search. The status line it sits
+// in is built once and only its text changes, so keyboard focus survives the
+// countdown; the live region gets a steady sentence, not the counting number.
 function buildRetryButton(onClick) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -519,8 +472,7 @@ function planStandingsRetry() {
   const show = () => paint(spoken, `Couldn't load standings. Trying again in ${left} s…`);
   show();
   standingsRetry = {
-    // A popover open is being read, and a load takes its anchor down; the
-    // try waits for it, without counting.
+    // A load takes an open popover's anchor down, so the try waits, uncounted.
     timer: setTimeout(function fire() {
       if (activeTrigger) standingsRetry.timer = setTimeout(fire, 5000);
       else retryStandingsNow();
@@ -529,9 +481,8 @@ function planStandingsRetry() {
   };
 }
 
-// The button, and the timer when it runs out. Nothing while a load is in
-// the air. Pressed while an extra try is waiting, it takes that try's place;
-// pressed after the last one, it is a single try of its own.
+// The button, and the timer when it runs out. While an extra try is waiting it
+// takes that try's place; after the last one it is a try of its own.
 function retryStandingsNow() {
   if (standingsInFlight) return;
   loadStandings(standingsRetry ? 'retry' : 'manual');
@@ -540,8 +491,7 @@ function retryStandingsNow() {
 // Loads every active match (NA + EU) and powers the standings rails.
 // Results are cached, so a later guild check reuses them.
 async function loadStandings(origin = 'cycle') {
-  // One load at a time, whoever asks: the 5-minute cycle, an extra try or the
-  // button. A second request now would only race the first.
+  // One load at a time, whoever asks.
   if (standingsInFlight) return;
   standingsInFlight = true;
   const failed = [];
@@ -550,14 +500,13 @@ async function loadStandings(origin = 'cycle') {
   else if (origin === 'retry') standingsExtraUsed++;
   for (const f of standingsFailed) paintRetryStatus(f.el, 'Trying again.', 'Trying again…', true,
     f.region && regionResetting(f.region, Date.now()));
-  // The first load waits longer than a refresh: on a slow line the whole
-  // body takes a while, and a refresh has the old table to fall back on.
+  // A refresh has the old table to fall back on; the first load does not.
   const timeoutMs = standingsEverLoaded ? REQUEST_TIMEOUT_MS : SLOW_REQUEST_TIMEOUT_MS;
   try {
     const asked = Date.now();
     let idList, naMatches, euMatches;
-    // A load the peek asked for reads /api when the summary is ahead, and not
-    // the game's ~97 KB again; with nothing newer in hand it leaves the board be.
+    // A peek's load reads /api when the summary is ahead; with nothing newer in
+    // hand it leaves the board be.
     let all = origin === 'peek' ? await latestBoard(peekCopy) : await fetchAllMatches(timeoutMs);
     if (!all && origin === 'peek') return;
     if (!all) {
@@ -574,17 +523,12 @@ async function loadStandings(origin = 'cycle') {
     }
     const answered = [...(naMatches || []), ...(euMatches || [])];
 
-    // Every refresh leaves a kills/deaths snapshot behind: nothing waits on it and
-    // nothing extra is fetched, and the maps popover can say which map is busy the
-    // moment it opens. See the fight log in js/maps-early.js, which keeps only bodies
-    // whose score rose since `asked`.
+    // The fight log in js/maps-early.js keeps only bodies whose score rose since `asked`.
     recordFightSamples(answered, asked);
 
-    // Forget matches that no longer exist. IDs are stable week to week, so this
-    // only bites when a region loses a tier: a leftover "1-4" would keep
-    // getMaxTierForRegion answering 4 and give tier 3's bottom side a relegation
-    // arrow. A tier missing from the list was read again by id (fetchMatches);
-    // only one missing from that read too is forgotten.
+    // Forget matches that no longer exist: a leftover "1-4" would keep
+    // getMaxTierForRegion answering 4 and give tier 3 a relegation arrow. A tier
+    // missing from the list but read again by id (fetchMatches) is kept.
     const liveIds = new Set([...idList, ...answered.filter((m) => m && typeof m.id === 'string').map((m) => m.id)]);
     for (const id of [...matchDataCache.keys()]) {
       if (!liveIds.has(id)) matchDataCache.delete(id);
@@ -599,8 +543,7 @@ async function loadStandings(origin = 'cycle') {
       for (const color of COLORS) {
         const teamId = matchTeamId(match, color);
         if (!teamId) continue;
-        // A mixed list holds the same team in last week's tier and this
-        // week's: the newer week keeps the team, whatever the list order.
+        // A mixed list holds a team in both weeks' tiers: the newer week keeps it.
         const had = matchDataCache.get(teamToMatchId.get(teamId));
         if (!had || had.id === match.id || matchReplaces(match, had)) teamToMatchId.set(teamId, match.id);
       }
@@ -613,8 +556,7 @@ async function loadStandings(origin = 'cycle') {
     showRegion(standingsGridEU, standingsStatusEU, euMatches, 'EU', syncedAt, failed);
     primeMapBadges();
   } catch {
-    // The id list itself failed, so nothing is said about either region: what is on
-    // screen stays. Only a skeleton has to go, for the reason in showRegion.
+    // The id list failed: what is on screen stays; only a skeleton goes.
     clearSkeleton(standingsGridNA);
     clearSkeleton(standingsGridEU);
     failed.push({ el: standingsStatusNA, label: 'live standings', region: 'NA' },
@@ -628,23 +570,18 @@ async function loadStandings(origin = 'cycle') {
   if (standingsSkipped) setTimeout(readOwed, 0);
 }
 
-// Between the five-minute refreshes, the readers' summary (~0.2 KB on the
-// wire, kept SUMMARY_MAX_AGE by Cloudflare, worker/index.mjs) is read while the tab is visible: every
-// PEEK_MS while the visitor is using the page, doubling to PEEK_IDLE_MAX_MS
-// while not (the readers move every 30 s, so "it moved" would never let it
-// slow down); never under PEEK_SAVE_MS less a few seconds with Save-Data on.
-// Once a summary has been read the delay is spent to land PEEK_AFTER_MS after
-// the newest `at` it gave, by the server's clock (Date.now() less ownClockLead), a whole number of PEEK_EVERY_MS on (see peekWait): the
-// readers write every 30 s and /api shows it only after the cache and the
-// way to the database; a moved mark is followed. Hidden, it stops; it
-// runs at once when the tab comes back,
-// when a popover closes and on the first input after an idle stretch. A live
-// match /api holds further along than the one on show, which has not risen
-// here for PEEK_BEHIND_MS, loads the board from /api/latest; a body in hand
-// further along than the one on show loads it from what is in hand. With a
-// popover open the board cannot load (it would take the popover's anchor
-// down), so the numbers come when the popover closes; an open map whose match
-// the summary shows ahead reads at once (mapAhead, js/popover.js).
+// Between the five-minute refreshes the readers' summary is read while the tab
+// is visible: every PEEK_MS while the visitor is using the page, doubling to
+// PEEK_IDLE_MAX_MS while not; never under PEEK_SAVE_MS less a few seconds with Save-Data on.
+// After a summary, the delay lands PEEK_AFTER_MS past the newest `at` it gave
+// (server clock: Date.now() less ownClockLead), so the readers' write has passed the cache
+// (SUMMARY_MAX_AGE, worker/index.mjs) and the way to the database, a whole number of PEEK_EVERY_MS
+// on (peekWait). Hidden it stops; it runs at once when the tab returns, a
+// popover closes, or on the first input after idle. A live match /api holds
+// further along than the one on show, unrisen here for PEEK_BEHIND_MS, loads
+// the board from /api/latest; a body in hand further along loads from that.
+// An open popover blocks the load (it would take the anchor down); an open map
+// whose match the summary shows ahead reads at once (mapAhead, js/popover.js).
 const PEEK_MS = 30 * 1000;
 const PEEK_IDLE_MAX_MS = 120 * 1000;
 const PEEK_SAVE_MS = 60 * 1000;
@@ -679,12 +616,9 @@ async function latestBoard(copy) {
   return board.sort((a, b) => byId(a.id, b.id));
 }
 
-// The game's reads failed (the visitor's server group down, or the IP
-// refused): our copy draws the board when one of its bodies rose within
-// HUD_STALE_MS, by its own `at`, on the servers' clock: this device's less its
-// lead on the Date of the copy's own answer (ownClockLead), so a clock ahead
-// does not age the copy. A copy empty, down or stopped throws `err`, and the
-// failure stands.
+// The game's reads failed: our copy draws the board when one of its bodies
+// rose within HUD_STALE_MS by its own `at`, on the server clock (ownClockLead),
+// so a clock ahead does not age it. Otherwise it throws `err`.
 async function copyBoard(err) {
   const shown = [...matchDataCache.values()];
   const reading = shown.length ? startLatest() : null;
@@ -706,8 +640,7 @@ function summaryAt(sum) {
 }
 
 // Ms until the next peek, from `now`: the last aligned moment within `delay`,
-// or the one a beat on when that is under `gap` away (the floor less 5 s of
-// slack, for a read that took a while). Never zero, so a skipped peek cannot spin.
+// or the next when that is under `gap` away. Never zero, so it cannot spin.
 function peekWait(delay, now, gap = peekFloor() - 5000) {
   if (!peekAnchor) return delay;
   const base = peekAnchor + PEEK_AFTER_MS;
@@ -716,11 +649,9 @@ function peekWait(delay, now, gap = peekFloor() - 5000) {
   return t - now;
 }
 
-// An aligned peek that read no newer `at` (the database or the edge slow) is
-// followed by one more after PEEK_RETRY_MS, never under Save-Data; that one is
-// not aligned, so it is not followed in turn. The timer alone reads four a minute
-// at most (an aligned read and its retry per mark, two marks); a show or
-// an input adds a read, never within the floor of the last.
+// An aligned peek that read no newer `at` is followed by one retry after
+// PEEK_RETRY_MS, never under Save-Data; the retry is not aligned, so no more
+// follow. A show or an input adds a read, never within the floor of the last.
 function peekNext(delay, now) {
   if (peekStill && peekAligned && peekFloor() === PEEK_MS) { peekAligned = false; peekRetried = true; return PEEK_RETRY_MS; }
   const gap = peekRetried ? PEEK_EVERY_MS - PEEK_RETRY_MS - 5000 : undefined;
@@ -824,16 +755,14 @@ function readOwed() {
 
 // A refresh that builds the board again takes an open popover's anchor down, so none runs while one is open.
 async function refreshStandings() {
-  // Anything open is being read, and reloading takes the board and the popover's
-  // anchor down: the tick is skipped, not spent closing it. The tier maps refresh
-  // themselves in place meanwhile.
+  // Reloading would take the popover's anchor down: the tick is skipped, not
+  // spent closing it.
   if (activeTrigger) { standingsSkipped = true; return false; }
   standingsSkipped = false;
   await loadStandings();
 }
 
-// Builds a "Label value · Label value" line with the label dimmed and the
-// value bright. Used by both the standings rails and the match panel.
+// A "Label value · Label value" line, shared by the rails and the match panel.
 function buildStatsLine(pairs, className) {
   const container = document.createElement('span');
   container.className = className;
@@ -858,8 +787,7 @@ function buildStatsLine(pairs, className) {
   return container;
 }
 
-// Builds the "Skirmish · Activity · K/D" line with icons and leader
-// underline. Shared by the standings rail and the match panel.
+// The "Skirmish · Activity · K/D" line, shared by the rails and the match panel.
 function buildStandingStats(match, color, stats, className) {
   const { kills, deaths, kd, skirmish, serverName, leaders } = stats;
 
@@ -1018,8 +946,8 @@ function patchStandingSide(match, color, side, rankByColor, leaders, leaderScore
 
   queueSideFlashes(figures, vpValue, skirmishValue);
 
-  // The fill stays, so its width transition runs from the width it has; a
-  // card without style is given it first, at the old width.
+  // The fill stays so its transition runs from the old width; a card without
+  // style is given it first.
   if (skirmish !== null && leaderScore !== null) {
     const rawPct = leaderScore > 0 ? (skirmish / leaderScore) * 100 : 0;
     const fill = side.querySelector('.skirmish-bar-fill');

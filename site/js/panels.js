@@ -1,12 +1,9 @@
 'use strict';
 // Result rows and match panels: the per-guild answer rows, the match panel under them, and their formatters.
 
-// The cards of a region, in the order they stand: one per tier.
 function standingsBoard(matches) {
-  // One late tier among live ones shows the teams left over (deduceLineup):
-  // that is the API's own data, so it goes first. Otherwise a body behind
-  // the week this browser remembers, and a tier of that week the API left
-  // out, show the remembered line-up instead (weekLineup).
+  // A late tier among live ones shows the teams left over (deduceLineup); a body behind
+  // the remembered week, or a tier the API left out, shows the remembered line-up (weekLineup).
   const region = matches[0].id.split('-')[0];
   const apiTiers = matches.map((m) => Number(m.id.split('-')[1])).filter(Number.isInteger);
   const line = deduceLineup(matches, regionTeamIds(region), Math.max(0, ...apiTiers));
@@ -17,8 +14,7 @@ function standingsBoard(matches) {
 
   const tierOf = (m) => Number((m.waitingId || m.id).split('-')[1]);
   const tiers = shown.map(tierOf).filter(Number.isInteger);
-  // A gap in the tiers (1-2 and 1-3 without 1-1) is a tier the API left out
-  // of every read and this page never saw: its card stays, waiting.
+  // A gap in the tiers is a tier the API left out: its card stays, waiting.
   const waiting = [];
   for (let t = 1; t < Math.max(0, ...tiers); t++) {
     if (!tiers.includes(t)) waiting.push({ waitingId: `${region}-${t}` });
@@ -26,8 +22,6 @@ function standingsBoard(matches) {
   return [...shown, ...waiting].sort((a, b) => tierOf(a) - tierOf(b));
 }
 
-// A new score is written into the cards on the page when the board has the
-// same shape (patchStandingsRegion); otherwise every card is built again.
 function renderStandingsRegion(gridEl, matches) {
   const sorted = matches.length ? standingsBoard(matches) : [];
   if (patchStandingsRegion(gridEl, sorted)) return;
@@ -59,9 +53,7 @@ function renderStandingsRegion(gridEl, matches) {
     label.appendChild(buildTierMapButton(match, regionName, tierNum || '?'));
     box.appendChild(label);
 
-    // Last week's score is not an answer to this week, and a stale one looks
-    // exactly like a live one. The tier keeps its name, maps button, team names and
-    // guild lists; only the numbers wait.
+    // Last week's score looks like a live one: the numbers wait, the rest stays.
     if (!matchIsLive(match)) {
       forgetSideStats(match.id);
       box.appendChild(buildStandingsStale(match));
@@ -85,10 +77,8 @@ function renderStandingsRegion(gridEl, matches) {
 
 const sideColorOf = (el) => COLORS.find((c) => el.classList.contains(`side-${c}`));
 
-// The new score written into the cards already on the page, so their elements
-// and their animations stay. False, with nothing touched, when the board's
-// shape differs from what is there: a tier came or went, a card is a line-up,
-// waiting or stale, other teams, a skirmish score came or went.
+// False, with nothing touched, when the board's shape differs (a tier came or went,
+// a card is a line-up, waiting or stale, other teams, a skirmish score came or went).
 function patchStandingsRegion(gridEl, sorted) {
   const boxes = gridEl.children;
   if (!sorted.length || boxes.length !== sorted.length) return false;
@@ -129,10 +119,9 @@ function patchStandingMatch({ m, box, sides, leaderScore }) {
   const ranked = [...COLORS].sort((a, b) => rankByColor[a] - rankByColor[b]);
   slideFirst(box, ranked, sides);
 
-  // A side overtook: the cards move, not rebuilt. The guild-found strip hangs
-  // from its card, so it goes and paintGuildFound hangs it again. moveBefore
-  // keeps a moved card's style; insertBefore drops it, and the card's bar then
-  // has no width to travel from (patchStandingSide gives it one).
+  // A side overtook: the cards move. The guild-found strip hangs from its card, so
+  // paintGuildFound hangs it again. moveBefore keeps a moved card's style; insertBefore
+  // drops it, and the bar then has no width to travel from (patchStandingSide gives it one).
   const order = [...box.children].filter((e) => e.classList.contains('standing-side'));
   const restyled = new Set();
   if (ranked.some((c, i) => order[i] !== sides[c])) {
@@ -149,11 +138,9 @@ function patchStandingMatch({ m, box, sides, leaderScore }) {
   slidePlay(box);
 }
 
-// The cards of a tier slide to their new places when a side overtakes: each place is
-// read before the move (slideFirst) and after it (slideRun, in a microtask, once
-// paintGuildFound has hung the strip again), then only transform and opacity animate.
-// Places are relative to the tier's own box, so a tier above that grew in the same
-// repaint does not read as a slide.
+// Cards slide when a side overtakes: places are read before (slideFirst) and after
+// (slideRun, in a microtask, once paintGuildFound has hung the strip again); only
+// transform and opacity animate. Places are relative to the tier's own box.
 const slideBefore = new Map(); // tier box -> { boxTop, tops: Map(card -> top), index: Map(card -> i), stripTop }
 const slideLive = new Map();   // tier box -> { anims, marked, shadow }
 const slideQueue = [];
@@ -253,7 +240,6 @@ function slideAnimate({ box, boxRect, moves, stripMove, border }) {
     live.anims.push(stripMove.strip.animate(
       [{ transform: `translateY(${stripMove.dy}px)` }, { transform: 'none' }], timing));
   }
-  // The climber's shadow, between it and the side it passes.
   if (climbers.size) {
     const m = moves.find((x) => climbers.has(x.side));
     const shadow = document.createElement('div');
@@ -277,9 +263,8 @@ function slideAnimate({ box, boxRect, moves, stripMove, border }) {
   }, () => { /* cancelled by a newer slide, which cleaned up */ });
 }
 
-// A delta floats from <body> at the place its number had in the first frame, which
-// is the card's old place: one that started over a sliding card goes with it.
-// Runs after flashChanges' own frame callback has parked the deltas.
+// A delta floats from <body> at its number's place in the first frame, the card's old
+// place. Runs after flashChanges' own frame callback has parked the deltas.
 const slideFollowed = new WeakSet();
 function slideFollowDeltas() {
   const tags = [...document.querySelectorAll('body > .delta')].filter((t) => !slideFollowed.has(t));
@@ -304,8 +289,6 @@ function slideFollowDeltas() {
   }
 }
 
-// The card of a tier with no body at all: its number and a line, no map
-// button (there is no match to draw).
 function buildWaitingTier(matchId) {
   const box = document.createElement('div');
   box.className = 'standing-match';
@@ -323,9 +306,8 @@ function buildWaitingTier(matchId) {
   return box;
 }
 
-// A tier painted as a line-up only (deduced, or from this browser's memory):
-// its number and the three names, no map button (the only body to draw is
-// last week's) and nothing that reads as a standing.
+// A line-up only (deduced, or from memory): the three names, no map button, nothing
+// that reads as a standing.
 function buildLineupTier(line) {
   forgetSideStats(line.id);
   const box = document.createElement('div');
@@ -341,8 +323,7 @@ function buildLineupTier(line) {
   return box;
 }
 
-// Uses DOM APIs and textContent only, no innerHTML with interpolated
-// strings. Guild names from the API or the user can never be parsed as markup.
+// textContent only: guild names are never parsed as markup.
 function renderRow({ originalName, tag, region, server, error }) {
   const tr = document.createElement('tr');
 
@@ -405,8 +386,6 @@ function renderRow({ originalName, tag, region, server, error }) {
   return null;
 }
 
-// The match's cumulative "scores" field isn't what trackers show; players
-// look at the current skirmish score and victory points instead.
 function getSkirmishScore(match, color) {
   if (Array.isArray(match.skirmishes) && match.skirmishes.length > 0) {
     const last = match.skirmishes[match.skirmishes.length - 1];
@@ -416,8 +395,6 @@ function getSkirmishScore(match, color) {
   return null;
 }
 
-// Highest current-skirmish score among the three sides; sizes the
-// score bar relative to whoever is leading right now.
 function getSkirmishLeaderScore(match) {
   const scores = COLORS.map((c) => getSkirmishScore(match, c)).filter((s) => s !== null);
   return scores.length > 0 ? Math.max(...scores) : null;
@@ -427,9 +404,6 @@ function markStatLeader(valueEl) {
   valueEl.classList.add('stat-leader');
 }
 
-// Finds which color leads each stat, so that side's number can be
-// underlined. Independent per stat (a side can lead Activity but not
-// Skirmish).
 function getStatLeaders(match) {
   // A tie is not a lead: comparing with > alone would hand the underline to the first colour checked.
   const best = (values) => {
@@ -452,8 +426,6 @@ function getStatLeaders(match) {
   return { skirmish: best(skirmishValues), activity: best(activityValues), kd: best(kdValues) };
 }
 
-// Thin bar showing this side's current skirmish score relative to the
-// tier leader, in the side's own color. Purely visual, no popover.
 function buildSkirmishBar(color, score, leaderScore, fromPct) {
   const row = document.createElement('div');
   row.className = 'skirmish-bar-row';
@@ -466,9 +438,7 @@ function buildSkirmishBar(color, score, leaderScore, fromPct) {
   const pct = Math.max(4, rawPct);
   fill.className = `skirmish-bar-fill skirmish-bar-${color}`;
 
-  // A card built again gets a fresh fill, which would appear at its final width
-  // and the CSS transition would never run. Starting at the previous width gives
-  // it somewhere to travel from.
+  // A rebuilt card's fill would appear at its final width and never transition: start at the previous width.
   const shouldAnimate = typeof fromPct === 'number' && Math.abs(fromPct - rawPct) > 0.01;
   fill.style.width = `${shouldAnimate ? Math.max(4, fromPct) : pct}%`;
   if (shouldAnimate) {
@@ -485,9 +455,7 @@ function buildSkirmishBar(color, score, leaderScore, fromPct) {
   return row;
 }
 
-// Ranks the three sides by victory points, the standing that decides the
-// tier. They tie often, so VP alone would leave ties in COLORS order; war score
-// breaks them.
+// VP ties are common; war score breaks them.
 function rankMatchByVictoryPoints(match) {
   const ranked = COLORS
     .map((color) => ({
@@ -502,9 +470,6 @@ function rankMatchByVictoryPoints(match) {
   return rankByColor;
 }
 
-// Highest tier active in a region, so a 3rd place can tell whether it's
-// already at the bottom. Reads matches already cached by loadStandings,
-// so no extra request.
 function getMaxTierForRegion(regionCode) {
   let max = null;
   for (const id of matchDataCache.keys()) {
@@ -517,11 +482,8 @@ function getMaxTierForRegion(regionCode) {
 
 const MOVEMENT_SYMBOLS = { up: '▲', down: '▼' };
 
-// Projects where a side lands after the next weekly reset from its rank within
-// the tier: 1st promotes, 2nd always stays, 3rd relegates, unless there is
-// nowhere further up or down to go. The reset that brings a relink moves the
-// teams the same way; the relink only swaps which guilds and alliances sit on
-// which team.
+// 1st promotes, 2nd stays, 3rd relegates, unless there is nowhere to go; a relink
+// moves the teams the same way.
 function getRelinkMovement(rank, tierNum, maxTierForRegion) {
   const tier = Number(tierNum);
   if (rank === 1) {
@@ -535,18 +497,14 @@ function getRelinkMovement(rank, tierNum, maxTierForRegion) {
   return { dir: 'down', label: 'Moves down next reset' };
 }
 
-// True when another side of the match has the same VP as this one.
 function isTiedOnVp(match, color) {
   const vp = Number(match.victory_points?.[color] ?? 0);
   return COLORS.some((c) => c !== color && Number(match.victory_points?.[c] ?? 0) === vp);
 }
 
-// Small movement badge next to a side's VP: arrow up, arrow down, or a
-// flat bar for "stays". Full wording lives in the tooltip only.
 function buildMovementIndicator(regionCode, tierNum, rank, tied) {
   if (tied) {
-    // Kept (empty) so the VP column does not shift; a tied rank is only
-    // the tiebreak's order, not a standing to project from.
+    // Kept empty so the VP column does not shift.
     const el = document.createElement('span');
     el.className = 'movement-indicator movement-tied';
     el.title = 'Tied on VP';
@@ -572,14 +530,12 @@ function formatKd(kills, deaths) {
   return '\u2013';
 }
 
-// Shortens large stat numbers (11,434 -> 11.4k) so the stats line fits
-// without wrapping. Below 1,000 it just uses the normal separator.
+// 11,434 -> 11.4k; below 1,000 the normal separator.
 function formatCompact(n) {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return n.toLocaleString();
 }
 
-// Renders one match panel (tier header + one column per side).
 // yourGuildsByColor maps each color to the queried guilds on that side.
 function renderMatchPanel(match, yourGuildsByColor) {
   const [regionCode, tierNum] = match.id.split('-');
@@ -595,13 +551,11 @@ function renderMatchPanel(match, yourGuildsByColor) {
   tierEl.textContent = `Tier ${tierNum || '?'}`;
   // The maps button takes the space of the region and match id; its tooltip carries what the text said.
   header.appendChild(tierEl);
-  // A remembered line-up has no body of its own to draw.
   if (!match.fromMemory) header.appendChild(buildTierMapButton(match, regionName, tierNum || '?'));
   panel.appendChild(header);
 
-  // The same rule as the standings rail: the three teams and their guild lists
-  // stay, everything that reads as a standing goes. The pin stays: the team comes
-  // from wvw/guilds, which turns over with the relink.
+  // As the standings rail: the three teams and guild lists stay, standings go. The pin
+  // stays: the team comes from wvw/guilds, which turns over with the relink.
   if (match.fromMemory || !matchIsLive(match)) {
     panel.appendChild(buildStandingsStale(match, yourGuildsByColor));
     return panel;

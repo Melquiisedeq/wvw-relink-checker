@@ -1,14 +1,12 @@
 'use strict';
 // ---------------------------------------------------------------------
-// The two static catalogues the objective maps are built from, written out
-// instead of fetched: the keeps, towers and camps on the four WvW maps, and the
-// polygons of the sectors they stand in. Both sit on the popover's critical path
-// and are not expected to change. getObjectiveCatalogue and getSectors
-// still fetch the live lists in the background and take over for the next
-// opening, so a change on ArenaNet's side lands on its own.
+// The two static catalogues the objective maps are built from, written out instead of
+// fetched: the objectives on the four WvW maps and the polygons of their sectors. They
+// sit on the popover's critical path; getObjectiveCatalogue and getSectors still fetch
+// the live lists and take over for the next opening.
 //
-// Only the fields the drawing code reads; coordinates rounded to one decimal
-// (the smallest marker has a radius of 80 map units). To rebuild by hand:
+// Only the fields the drawing code reads; coordinates rounded to one decimal (the
+// smallest marker has a radius of 80 map units). To rebuild by hand:
 //   /v2/wvw/objectives?ids=all  (maps 38, 1099, 96 and 95; fields id,
 //       name, type, map_id, coord, label_coord, sector_id, upgrade_id)
 //   /v2/continents/2/floors/3/regions/7/maps/<id>/sectors?ids=all for

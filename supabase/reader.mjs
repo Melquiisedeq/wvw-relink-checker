@@ -4,13 +4,11 @@
 // one file, no imports. Under Node (tests/unit/reader.test.mjs) it is imported as it is;
 // only the last lines touch Deno.
 // The scheduler (scheduler.sql) calls it with x-region us-east-1 or eu-central-1;
-// that header only routes the call to a region. What picks the secret that signs,
-// and the door it pushes to, is SB_REGION, where the function really runs: a call
-// the platform ran elsewhere is answered 404 and reads nothing.
+// the secret that signs and the door it pushes to come from SB_REGION, where the function
+// really runs: a call the platform ran elsewhere is answered 404 and reads nothing.
 //
-// Flow: the call's secret first, before anything is read; read the game API;
-// check the whole body; ask /api/latest/summary what the Worker already has; push
-// only the newer matches, gzipped and signed (worker/index.mjs, acceptLatest).
+// Flow: check the call's secret; read the game API; check the whole body; ask
+// /api/latest/summary what the Worker has; push only the newer matches, gzipped and signed.
 //
 // Function secrets (Dashboard > Edge Functions > Secrets), never in the repository:
 //   READER_KEY            what the scheduler sends in x-wvw-key (128 hex)
@@ -28,9 +26,7 @@ export const API_URL = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
 export const SUMMARY_URL = 'https://wvwrelink.com/api/latest/summary';
 export const INGEST_URL = 'https://wvwrelink.com/api/ingest/';
 
-// The region the function really runs in (SB_REGION, set by the platform) picks the
-// reader's own door and its own secret (a function secret). The caller's x-region
-// only routes the call there.
+// SB_REGION picks the reader's own door and secret; the caller's x-region only routes the call.
 export const REGIONS = Object.freeze({
   'us-east-1': { source: 'latest-supa-us', secret: 'INGEST_LATEST_SUPA_US' },
   'eu-central-1': { source: 'latest-supa-eu', secret: 'INGEST_LATEST_SUPA_EU' }
@@ -43,8 +39,7 @@ export function regionFor(sbRegion, xRegion) {
   return REGIONS[sbRegion];
 }
 
-// Past this the read is refused whole (502, nothing stored) and our copy stops for the rest of the week: the
-// game's body grows with every skirmish and every match, and must stay under the function's memory.
+// Past this the read is refused whole (502, nothing stored); the game's body grows through the week and must stay under the function's memory.
 export const MAX_API_BYTES = 4 * 1024 * 1024;
 const MAX_SLICE = 16 * 1024;
 const MAX_RAW = 256 * 1024;
@@ -59,15 +54,13 @@ const MAX_VP_PER_SKIRMISH = 60;
 
 const isInt = (x) => Number.isInteger(x) && x >= 0 && x <= 1e7;
 
-// Team ids in the API: NA 1001-1024 and 11001-11012, EU 2001-2301 and 12001-12015.
 function isWorld(x, region) {
   if (!Number.isInteger(x)) return false;
   return region === '1' ? (x >= 1001 && x <= 1099) || (x >= 11001 && x <= 11099)
     : (x >= 2001 && x <= 2999) || (x >= 12001 && x <= 12099);
 }
 
-// No free text: every key and every string in a match has a plain, short form
-// (ids, ISO times, guild UUIDs, enum words), whatever else the API adds.
+// No free text: every key and string in a match must have a plain, short form.
 function plain(x, depth, count) {
   if (++count.n > 20000 || depth > 8) return false;
   if (x === null || typeof x === 'boolean') return true;
@@ -117,15 +110,13 @@ export function checkMatch(m, nowMs) {
   return { id: m.id, start, scores, score, kills, text, board: boardOf(m, start, nowMs) };
 }
 
-// The Worker's board (checkBoard): the match's VP so far and its last two
-// skirmishes, [id, red, blue, green], the running one last. Null when they do
-// not pass the Worker's limits; the match then goes without them.
+// The Worker's board (checkBoard): the match's VP and its last two skirmishes, the running one last.
+// Null when they fail the Worker's limits; the match then goes without them.
 export function boardOf(m, start, nowMs) {
   const list = m.skirmishes;
   if (!Array.isArray(list) || !list.length || list.length > SKIRMISHES) return null;
   const last = list.slice(-2).map((x) => (x && x.scores ? [x.id, ...TEAMS.map((t) => x.scores[t])] : [null]));
   if (!last.every((x) => x.length === 4 && x.every(isInt))) return null;
-  // The ids run 1, 2, ... up to the running one.
   const id = last[last.length - 1][0];
   if (id !== list.length || id > Math.floor((nowMs - start + 300e3) / SKIRMISH_MS) + 1) return null;
   if (last.length === 2 && last[0][0] !== id - 1) return null;

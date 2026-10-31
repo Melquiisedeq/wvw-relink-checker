@@ -1,14 +1,8 @@
-/* Wider than the default 880: the right column holds the scoreboard.
-   Scoped here on purpose - the alliance grid is bin-packed in JS against
-   the 880. */
+/* Scoped here: the alliance grid is bin-packed in JS against the default 880. */
 .info-popover--maps.info-popover--expanded{width:min(1028px,94vw);max-width:94vw;}
 
-/* Live objective maps, one tier at a time: a self-hosted picture with the
-   API drawn over it. ArenaNet publishes no WvW map tiles, so the terrain is
-   the wiki's renders, whose printed sector borders are what the API polygons
-   get fitted to - see MAP_IMAGE in js/maps.js. Sized 2700px on the long side,
-   the most a 1x screen can show at MAX_ZOOM, with a 1280px-wide copy that
-   the map opens on. */
+/* Self-hosted terrain with the API drawn over it; the polygons are fitted to the sector
+   borders printed in the renders (MAP_IMAGE in js/maps.js). */
 
 .wvw-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
 .wvw-tab{
@@ -21,8 +15,7 @@
   box-shadow:inset 0 1px 0 rgba(255,255,255,.14), inset 0 -1px 0 rgba(0,0,0,.45);
   text-shadow:none;
 }
-/* Crossed swords on whichever map has the most kills since the last
-   refresh. Left of 4px because the tab's clip-path bevels that corner. */
+/* Left of 4px: the tab's clip-path bevels that corner. */
 .wvw-tab-swords{
   position:absolute;left:4px;top:1px;
   display:block;flex-shrink:0;pointer-events:none;
@@ -40,14 +33,11 @@
   background:linear-gradient(180deg,#a3e2f6,#57b6d6);
 }
 
-/* The map scoreboard, laid out like the game's own Contested Areas panel.
-   A fixed grid rather than a flow, so the four columns line up across the
-   three rows and comparing sides is reading down one. See paintMapBoard. */
+/* A fixed grid so the four columns line up across the three rows (paintMapBoard). */
 .wvw-board{
   /* Icon 22 + gap 5 + two digits at ~15: 42px of content, three to spare. */
   --board-cell:45px;
-  /* max-width is for when the stage stacks narrow and the column stops
-     being 350px. */
+  /* max-width is for when the stage stacks narrow and the column is no longer 350px. */
   width:auto;max-width:420px;
   display:flex;flex-direction:column;
   border:1px solid var(--border);border-top-color:rgba(255,255,255,.12);
@@ -59,12 +49,10 @@
   display:flex;align-items:center;gap:8px;
   font-size:.78rem;line-height:1.3;
 }
-/* A hairline, not a gap: it keeps a stack of three from reading as three
-   loose strips. The game does the same. */
+/* A hairline, not a gap: it keeps a stack of three from reading as three loose strips. The game does the same. */
 .wvw-board-row + .wvw-board-row{border-top:1px solid rgba(255,255,255,.055);}
 
-/* A fixed basis, not flex:1. Growing to fill stranded the icons against
-   the right edge, a popover away from the name they belong to. */
+/* A fixed basis, not flex:1: growing strands the icons away from the name. */
 .wvw-board-team{
   flex:1 1 auto;min-width:0;font-weight:700;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -92,21 +80,16 @@
   padding:3px 0;
   color:#c9d3e0;font-weight:700;font-variant-numeric:tabular-nums;
 }
-/* Two digits' worth of box, left-aligned, so the icon lands on the same
-   pixel in all three rows and stays glued to its own count. */
+/* Two digits' box, left-aligned, so the icons line up across rows. */
 .wvw-board-cell b{
   font-size:.84rem;font-weight:800;
   min-width:15px;text-align:left;
 }
-/* Kept rather than dropped, so the columns still line up - just faded
-   almost out, which reads better than a bright zero. */
+/* Faded, not dropped, so the columns still line up. */
 .wvw-board-cell.is-none{opacity:.24;}
 .wvw-board-cell img{display:block;flex-shrink:0;}
 
-/* The board picks what the map lights (paintBoardFocus): a row is the
-   team, a cell the team and that type, a column header the type. Picked,
-   the row takes its colour and a bar down its side - strong enough that a
-   stray tap reads as a choice, not a glitch. */
+/* paintBoardFocus: a row picks a team, a cell a team and type, a header the type. */
 .wvw-board [role="button"],
 .wvw-board-row[data-focus-color]{cursor:pointer;}
 .wvw-board-row[data-focus-color]:hover{background:rgba(255,255,255,.035);}
@@ -124,8 +107,7 @@
 .wvw-board-row.own-green .wvw-board-cell.is-picked{background:rgba(76,175,125,.18);box-shadow:inset 3px 0 0 var(--green);border-radius:3px;}
 /* The pick, in the place of "Objectives held", and the way to let it go. */
 .wvw-board-head.has-pick .wvw-board-team{text-overflow:clip;padding-right:4px;}
-/* Narrow, the name column is a few letters wide: the pick takes a line of
-   its own over the column names, which keep to the right as in the rows. */
+/* Narrow: the pick takes its own line over the column names. */
 @media (max-width:620px){
   .wvw-board-head.has-pick{flex-wrap:wrap;row-gap:5px;}
   .wvw-board-head.has-pick .wvw-board-team{flex:1 0 100%;}
@@ -160,15 +142,11 @@
   color:#f2f6fa;text-shadow:0 1px 2px rgba(0,0,0,.6);
 }
 
-/* Narrow: the team name goes first - the row colour and the icons already
-   say whose it is. Every row is its own grid, so nothing here may depend on
-   what a row holds: the name takes the same width in all three, and a cell
-   is icon + gap + a number box two digits wide, left-aligned, whatever the
-   digits are. */
+/* Narrow: the team name goes first. Every row is its own grid, so the name width and
+   the cell (icon + gap + a two-digit box) must not depend on what a row holds. */
 @media (max-width:620px){
-  /* 18 + 3 + the box. The box is 1.4em of the number (two digits at ~.7em; ch
-     undersizes the 8s), and the cell repeats it as 1.4 x .84rem, since an em on
-     the grid is not the number's em. */
+  /* 18 + 3 + the box (1.4em of the number); the cell repeats it as 1.4 x .84rem, since
+     an em on the grid is not the number's em. */
   .wvw-board{--board-cell:calc(21px + 1.176rem);}
   .wvw-board-team{flex:1 1 0;max-width:none;}
   .wvw-board-counts{column-gap:4px;}
@@ -177,8 +155,8 @@
   .wvw-board-cell b{width:1.4em;min-width:0;}
   .wvw-board-ppt{font-size:.84rem;}
 }
-/* A phone gives the team name back: 16px icons, tighter columns, and the
-   header says "Held" (paintBoardFocus). Cells are 16 + 2 + the number box. */
+/* A phone: 16px icons, tighter columns, the header says "Held" (paintBoardFocus). Cells
+   are 16 + 2 + the number box. */
 @media (max-width:480px){
   .wvw-board{--board-cell:calc(18px + 1.176rem);}
   .wvw-board-counts{column-gap:2px;}
@@ -188,27 +166,17 @@
   .wvw-board-head .wvw-board-counts{letter-spacing:0;}
 }
 
-/* A bar across the top of the map, drawn after the game's: three
-   segments, each as wide as that side's share of this map's PPT. Over the plot and
-   never inside the SVG - the SVG is the camera, so anything in it would pan and
-   zoom away with the ground. The height follows the width at the game's 35:1,
-   never under 4px. */
+/* Over the plot, never inside the SVG, which is the camera and would pan and zoom away.
+   Height follows the width at 35:1, never under 4px. */
 .wvw-scorebar{
   position:absolute;top:9px;left:50%;transform:translateX(-50%);
   display:flex;gap:2px;
   width:min(42%, 250px);aspect-ratio:35 / 1;min-height:4px;
   pointer-events:none;
 }
-/* The smear: a black wash pinned to the top edge that bleeds far wider
-   than the bar and dissolves into the terrain with no border at all. That
-   is what lets the bar be this thin and still read over snow.
-
-   A file rather than a gradient because its lower edge is torn, and
-   radial-gradient can only draw a perfect ellipse. The mask is flat across
-   the middle out to t=0.24 - which is also what guarantees full-height
-   cover behind a bar that ends at t=0.185 - then falls almost straight to
-   nothing at both tips, with no side ever taller than the middle. Its width
-   against the bar, 2.71x, is the game's. */
+/* The smear: a black wash at the top edge, wider than the bar. A file, not a radial-
+   gradient, because its lower edge is torn. The mask is flat out to t=0.24 (the bar ends
+   at t=0.185); width 2.71x the bar. */
 .wvw-scorebar::before{
   content:'';position:absolute;z-index:0;
   left:50%;top:-9px;transform:translateX(-50%);
@@ -216,11 +184,8 @@
   background:url(../assets/scorebar-smear.webp) 50% 0 / 100% 100% no-repeat;
   pointer-events:none;
 }
-/* Both ends fade into the black, as in the game, but only at the very tips:
-   the bar measures each side's share of this map's PPT, so a
-   wider wash would eat the first and last segments and make them look smaller
-   than they are. A black wash over the segments rather than a mask on the
-   bar: a mask there would also clip the smear to the bar's box. */
+/* Fades only at the very tips, so the first and last segments are not eaten. A wash
+   over the segments, not a mask on the bar, which would clip the smear. */
 .wvw-scorebar::after{
   content:'';position:absolute;z-index:2;inset:0;
   background:linear-gradient(90deg,#000 0,rgba(0,0,0,.35) 3%,transparent 8%,transparent 92%,rgba(0,0,0,.35) 97%,#000 100%);
@@ -231,8 +196,7 @@
   position:relative;z-index:1;
   display:block;height:100%;min-width:0;
 }
-/* The game's own three, flat: the core of the colours on its bar. That green is
-   not the emerald the markers use. */
+/* Flat game colours; that green is not the emerald the markers use. */
 .wvw-scorebar-seg.own-red{background:#e53325;}
 .wvw-scorebar-seg.own-blue{background:#279bba;}
 .wvw-scorebar-seg.own-green{background:#4e9416;}
@@ -248,15 +212,13 @@
 .wvw-stage{display:flex;gap:12px;align-items:stretch;}
 @media (max-width:760px){ .wvw-stage{flex-direction:column;} }
 
-/* One column beside the map: "What happened", the tabs, their pane. The
-   scoreboard is the rigid one, so it sets the width. */
+/* The scoreboard is the rigid one, so it sets the column's width. */
 .wvw-side{
   display:flex;flex-direction:column;gap:10px;
   flex:0 0 378px;min-width:0;
 }
-/* Stacked narrow, the column dissolves into the stage so the map stays on
-   top in every tab: map, "What happened", tabs, pane. The stage's 12px gap
-   spaces them. */
+/* Stacked narrow, the column dissolves into the stage so the map stays on top in every
+   tab. */
 @media (max-width:760px){
   .wvw-side{display:contents;}
   .wvw-subtabs{order:2;}
@@ -279,11 +241,9 @@
 .wvw-subtab.is-active{color:#06222c;background:linear-gradient(180deg,#a3e2f6,#57b6d6);}
 .wvw-subtab:disabled{opacity:.4;cursor:default;}
 .wvw-subtab:disabled:hover{color:#8d97a6;}
-/* One box shown at a time, hugging what it holds up to --pane-h (set from
-   the map in js/maps.js), then scrolling; under it, nothing. Beside the map
-   no spacer: the map gives the popover its height and every box ends above
-   the map's bottom. Stacked, the pane itself is --pane-h tall, so the map
-   above it stays put when the tab changes. */
+/* Hugs its content up to --pane-h (js/maps.js), then scrolls. Beside the map no spacer:
+   every box ends above the map's bottom. Stacked, the pane is --pane-h tall so the map
+   stays put when the tab changes. */
 .wvw-pane{display:flex;flex-direction:column;min-height:0;}
 .wvw-pane > .is-off{display:none;}
 .wvw-pane > .wvw-detail{flex:0 0 auto;max-height:var(--pane-h, 62vh);}
@@ -293,8 +253,6 @@
   .wvw-pane > .wvw-caps{max-height:100%;}
 }
 
-/* Recent captures: one discreet line each - the hour, the marker in the
-   taker's colour, a short name, the map. */
 .wvw-caps{
   flex:0 0 auto;max-height:var(--pane-h, 62vh);box-sizing:border-box;
   overflow-y:auto;overscroll-behavior:contain;
@@ -331,8 +289,7 @@
   .wvw-caps{scrollbar-width:thin;scrollbar-color:rgba(154,164,178,.45) transparent;}
 }
 
-/* Stands in while a tab's outline is still coming, or did not come at all.
-   The min-height stops the popover collapsing and jumping back. */
+/* The min-height stops the popover collapsing and jumping back. */
 .wvw-stage-msg{
   flex:1 1 auto;margin:0;min-height:220px;
   display:flex;align-items:center;justify-content:center;gap:8px;
@@ -345,18 +302,15 @@
   border-radius:10px;overflow:hidden;
   background:radial-gradient(circle at 50% 42%, #18202a, #0c0f14 78%);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.06), inset 0 -1px 0 rgba(0,0,0,.5);
-  /* Whole map in view: nothing to drag, so a vertical swipe scrolls what holds
-     the map - the popover, on a phone (touch-action:none here swallowed it). */
+  /* Whole map in view: nothing to drag, so a vertical swipe must scroll the popover
+     (touch-action:none swallowed it). */
   touch-action:pan-y;
 }
-/* Zoomed (class set from the viewBox in js/maps.js): the drag moves the map, so
-   the browser must not also scroll or it cancels the pointer stream. */
+/* Zoomed (js/maps.js): the browser must not also scroll or it cancels the pointer
+   stream. */
 .wvw-plot-wrap.is-zoomed{touch-action:none;cursor:grab;}
 .wvw-plot-wrap.is-zoomed.is-panning{cursor:grabbing;}
 .wvw-plot-wrap{container:plot / inline-size;}
-/* While a map has no owners yet. Ground, sectors and positions are all
-   already right - only the colours are late - so this explains rather
-   than apologises. */
 .wvw-waiting{
   position:absolute;left:0;right:0;bottom:0;margin:0;
   padding:6px 10px;text-align:center;
@@ -366,8 +320,7 @@
 }
 .wvw-plot{display:block;width:100%;height:auto;max-height:70vh;}
 
-/* Each sector tinted by whoever holds the objective inside it. Fill and
-   border are separate passes (see buildMapStage), so these are fills. */
+/* Fill and border are separate passes (buildMapStage); these are the fills. */
 .wvw-sector{stroke:none;}
 .wvw-sector.own-red{fill:rgba(210,70,72,.2);}
 .wvw-sector.own-blue{fill:rgba(70,110,215,.2);}
@@ -379,10 +332,8 @@
 .over-terrain .wvw-sector.own-green{fill:rgba(40,185,110,.28);}
 .over-terrain .wvw-sector.own-neutral{fill:rgba(140,155,175,.05);}
 
-/* Borders, in their own layers on top of every fill. The dark pass is not
-   decoration: the wiki renders have pale sector borders printed in, and a
-   thin coloured stroke over one leaves white showing on both sides. Widths
-   are set per map on the group - see MAP_IMAGE.edge. */
+/* Own layers above every fill. The dark pass covers the pale borders printed in the
+   renders. Widths are per map: MAP_IMAGE.edge. */
 .wvw-edges-under polygon{
   fill:none;stroke:rgba(0,0,0,.8);stroke-linejoin:round;
 }
@@ -392,9 +343,7 @@
 .wvw-edges .own-green{stroke:#5fe89e;}
 .wvw-edges .own-neutral{stroke:rgba(198,212,232,.4);}
 
-/* The waypoint. Deliberately quieter than the rest of the marker: it is
-   standing information, not a call to action, and at full strength a cyan
-   diamond beside every keep would be the loudest thing here. */
+/* Quieter than the rest of the marker: standing information, not a call to action. */
 .wvw-wp{pointer-events:auto;opacity:.95;}
 .wvw-wp.is-copyable{cursor:pointer;}
 .wvw-wp.is-copyable:hover image{filter:drop-shadow(0 0 4px #7fe8ff) drop-shadow(0 1px 2px rgba(0,0,0,.9));}
@@ -406,10 +355,9 @@
   filter:drop-shadow(0 1px 2px rgba(0,0,0,.9)) drop-shadow(0 0 3px rgba(0,0,0,.6));
 }
 
-/* Righteous Indignation: crossed swords and a clock under a marker that
-   just changed hands, for the five minutes its guards cannot be hurt. */
-/* Hoverable, so the clock can say what it is. The marker's own hit area
-   is cut back to the icon's disc to make room - see the note on .hit. */
+/* Righteous Indignation: swords and a clock under a marker that just changed hands. */
+/* Hoverable for the clock's label; the marker's hit area is cut back to the icon's disc
+   (see .hit). */
 .wvw-ri{pointer-events:auto;}
 .wvw-ri rect{fill:rgba(8,11,15,.88);stroke:rgba(0,0,0,.55);stroke-width:1.5;}
 .wvw-ri text{
@@ -419,31 +367,22 @@
 .wvw-ri image{filter:drop-shadow(0 1px 1px rgba(0,0,0,.8));}
 
 .wvw-marker{cursor:pointer;}
-/* The hit target, and only as big as what lights up when picked: wider,
-   and it would cover the badges hanging off the marker. */
+/* Only as big as what lights up when picked: wider covers the badges. */
 .wvw-marker .hit{fill:transparent;}
-/* The icon already carries the team colour, so there is nothing to draw
-   behind it - only a shadow, so it lifts off the terrain. */
+/* The icon carries the team colour; only a shadow lifts it off the terrain. */
 .wvw-marker .pip{pointer-events:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.85));}
-/* The claim badge: the game's gold shield. Gold is what carries "someone
-   holds this" from across the map. */
+/* The claim badge: the gold shield. */
 .wvw-claim{pointer-events:none;}
 .wvw-claim .claim-rim{
   fill:#f6d475;stroke:rgba(20,14,5,.92);stroke-width:3;
 }
-/* Near-black, because the emblem's backdrop layer is semi-transparent -
-   alpha 112 of 255 - so the ground decides its whole tone, and on gold or
-   on bone every backdrop came out dusty. The rim stays gold: that is the
-   part that says claimed. */
+/* Near-black: the emblem's backdrop layer is semi-transparent, so the ground decides
+   its tone. The rim stays gold: it says claimed. */
 .wvw-claim .claim-field{fill:#181d27;stroke:none;}
 .wvw-claim .claim-emblem{opacity:.96;}
-/* Picked: the disc itself lights up cyan. Brighter than the tab's blue,
-   which only has a flat panel to survive - here the light is spread over
-   snow and rock. A glow rather than a ring, because drop-shadow works off
-   the icon's own alpha and leaves the tier shields whole. The black shadow
-   stays first in the chain: it is what lifts the marker off the terrain.
-   Focus lights the same way, since the UA's own ring would trace the square
-   edge of the image file. */
+/* Picked: the disc lights cyan. A glow, not a ring: drop-shadow follows the icon's
+   alpha and leaves the tier shields whole; the black shadow stays first. Focus lights the
+   same way, since the UA ring would trace the image's square edge. */
 .wvw-marker:focus{outline:none;}
 .wvw-marker:focus-visible{outline:none;}
 .wvw-marker.is-selected .pip,
@@ -456,11 +395,9 @@
          drop-shadow(0 0 13px #00c4ff);
 }
 
-/* The focus (buildMapStage, paintFocus). The lit marker grows a quarter,
-   glowing in its owner's colour; its group carries its place on the map in
-   a transform attribute that a CSS transform would replace, so its parts
-   grow instead, round the marker's centre. The rest keeps its colours a
-   step darker: the markers by a filter, the ground by .wvw-focus-veil. */
+/* The focus (buildMapStage, paintFocus). The group's place is a transform attribute
+   that a CSS transform would replace, so its parts grow round the marker's centre; the
+   rest darkens by a filter, the ground by .wvw-focus-veil. */
 .wvw-plot.is-focused .wvw-marker.is-lit > *{transform:scale(1.25);}
 .wvw-plot.is-focused .wvw-marker:not(.is-lit){filter:brightness(.55);}
 .wvw-marker.own-red.is-lit:not(.is-selected) .pip{filter:drop-shadow(0 0 5px #ff8080) drop-shadow(0 0 2px #ff8080);}
@@ -475,11 +412,8 @@
 .wvw-focus-outline .own-green{stroke:#7df0b2;}
 .wvw-focus-outline .own-neutral{stroke:#e7ebf0;}
 
-/* Upgrade tier: one silver shield per tier over the marker, none at tier 0
-   - plain has to mean something. Silver at every tier, the way the game
-   draws them: what counts is how many there are. The dark stroke is
-   load-bearing, since these sit straight on the terrain. Lengths are map
-   units, like the marker radii. */
+/* One silver shield per tier, none at tier 0. The dark stroke is load-bearing over
+   terrain. Lengths are map units, like the marker radii. */
 .wvw-tierpips path{
   fill:#e9eef5;stroke:rgba(0,0,0,.85);stroke-width:3;
 }
@@ -498,10 +432,8 @@
   .wvw-zoom button{width:34px;height:34px;}
 }
 
-/* The two top corners of the map, either side of the score bar: kills on
-   the left, the age of the last accepted answer on the right. A dark glass
-   chip under each: the borderlands run light terrain right up to the top edge,
-   where a shadow alone is unreadable. They go while zoomed. */
+/* The two top corners, either side of the score bar. A dark chip under each: light
+   terrain makes a shadow alone unreadable. They go while zoomed. */
 .wvw-hud{
   position:absolute;top:0;z-index:3;
   padding:6px;pointer-events:none;
@@ -552,9 +484,8 @@
 .wvw-hud-note.at-r{right:8px;border-left:0;border-right:2px solid #57b6d6;}
 .wvw-plot-wrap.is-zoomed .wvw-hud,
 .wvw-plot-wrap.is-zoomed .wvw-hud-note{display:none;}
-/* Narrow map: "min" shortens to "m", the number stacks over its words, and
-   each corner stays inside the 29% either side of the score bar (42% wide):
-   the longer texts wrap. */
+/* Narrow map: "min" shortens to "m", the number stacks over its words, and each corner
+   stays inside the 29% either side of the 42% score bar. */
 @container plot (max-width:480px){
   .wvw-hud-long{display:none;}
   .wvw-hud-short{display:inline;}
@@ -581,9 +512,8 @@
   overflow-y:auto;max-height:62vh;
   overscroll-behavior:contain; /* without it a swipe at the end scrolls the page behind */
 }
-/* Stacked under the map it scrolls inside the pane, but hands a swipe at its end
-   on to the popover: contain there would keep a swipe on a panel with nothing
-   to scroll from reaching the popover. The captures list the same. */
+/* Stacked in the pane it hands a swipe at its end on to the popover; contain would trap
+   it. The captures list the same. */
 @media (max-width:760px){ .wvw-detail,.wvw-caps{overscroll-behavior:auto;} }
 .wvw-detail-empty{color:#8d97a6;margin:0;}
 .wvw-detail-name{
@@ -596,9 +526,8 @@
 }
 .wvw-detail-type img{display:block;flex-shrink:0;}
 
-/* A real two-column grid. Independent flex rows each sized their own middle
-   gap, so nothing lined up with anything; display:contents hands each dt and
-   dd straight to this grid instead. */
+/* display:contents hands each dt and dd to one grid, so the middle gap lines up across
+   rows. */
 .wvw-detail dl{
   margin:0;display:grid;grid-template-columns:auto 1fr;
   gap:0 12px;align-items:center;
@@ -608,8 +537,7 @@
 .wvw-row dd{
   margin:0;color:#f2f6fa;font-weight:700;text-align:right;padding:2px 0;
   min-width:0;overflow-wrap:anywhere;
-  /* The same digits the scoreboard uses, so the values read straight
-     down a column. */
+  /* The scoreboard's digits, so values read straight down a column. */
   font-variant-numeric:tabular-nums;
 }
 /* Whoever holds it, in their own colour - the first thing the eye looks for. */
@@ -617,10 +545,8 @@
 .wvw-row dd.wvw-owner.own-blue{color:#8cb8ff;}
 .wvw-row dd.wvw-owner.own-green{color:#5fe89e;}
 
-/* One treatment for a section label, used by both. A heading has to outrank its
-   rows and clear the 4.5 AA floor; brightening alone walks into the row labels,
-   so the rule under the label separates the sections. The rows themselves stay
-   unruled: a line per row buries them. */
+/* One treatment for both section labels: it outranks the rows and clears the 4.5 AA
+   floor; the rule under it separates the sections, the rows stay unruled. */
 .wvw-group,
 .wvw-upgrade-tier{
   margin:13px 0 5px;padding-bottom:3px;
@@ -631,8 +557,7 @@
 .wvw-group{grid-column:1 / -1;}
 .wvw-group:first-child{margin-top:0;}
 
-/* Yaks to the next tier, with a bar under it. The dd is right-aligned text,
-   so the cell stacks rather than sitting beside - no width to spare here. */
+/* The dd is right-aligned, so the cell stacks: no width to spare. */
 .wvw-yakcell{display:flex;flex-direction:column;align-items:flex-end;gap:3px;}
 .wvw-yaknum{display:flex;align-items:center;gap:5px;}
 .wvw-yaknum img{display:block;flex-shrink:0;}
@@ -643,15 +568,11 @@
   box-shadow:inset 0 1px 0 rgba(0,0,0,.6);
   overflow:hidden;
 }
-/* The dolyak's own orange, so the icon and the bar read as one
-   measurement instead of two unrelated things. */
 .wvw-yakbar i{
   display:block;height:100%;
   background:linear-gradient(180deg,#ffb163,#d9701d);
 }
 
-/* The same shields the map draws, in the same silver, so there is one
-   thing to learn rather than two. */
 .wvw-tierchip{display:inline-flex;gap:2px;flex-shrink:0;}
 .wvw-tierchip i{
   width:11px;height:13px;display:block;background:#e9eef5;
@@ -668,25 +589,22 @@
   width:20px;height:20px;flex-shrink:0;border-radius:3px;
   box-shadow:0 1px 2px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.14);
 }
-/* Side by side rather than stacked, which leaves the right half of the panel
-   empty. auto-fit needs no breakpoint: two columns while both fit, one when they
-   do not, and a list with no counterpart spans the full width. */
+/* auto-fit needs no breakpoint: two columns while both fit, one otherwise; a list with
+   no counterpart spans the full width. */
 .wvw-upgrade-cols{
   display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
   gap:0 14px;
 }
 .wvw-claimed{color:#f0d78c;font-weight:700;}
-/* The guild's emblem, in its own colours, drawn the way the marker draws
-   it. */
+/* The guild's emblem, drawn the way the marker draws it. */
 .wvw-emblem{
   width:21px;height:21px;vertical-align:-5px;margin-right:5px;
   display:inline-block;flex-shrink:0;
 }
 
 
-/* What happened while the data was away (paintMissed in js/maps.js): at the
-   top of the right-hand column, a thin cyan bar down its left tying the
-   header to what it covers, and no box. */
+/* paintMissed in js/maps.js: top of the right-hand column, a cyan bar down its left, no
+   box. */
 .wvw-missed{
   position:relative;padding:1px 0 2px 11px;
   animation:wvw-missed-in 250ms ease-out both;
@@ -700,10 +618,8 @@
 @keyframes wvw-missed-out{from{opacity:1;}to{opacity:0;}}
 /* Stacked narrow, under the map and over the tabs (.wvw-subtabs). */
 @media (max-width:760px){ .wvw-missed{order:1;} }
-/* The whole header row is the button: the title, the counts at the end of
-   its text in small pills (kills, then objectives, each after its icon; the
-   pair moves to the next line as one, centred on the capitals), and a
-   chevron that turns. */
+/* The whole header row is the button; the count pills move to the next line as a pair.
+   */
 .wvw-missed-head{
   display:flex;align-items:center;gap:6px;width:100%;margin:0;padding:3px 4px;
   border:0;border-radius:5px;background:none;box-shadow:none;text-shadow:none;
@@ -727,9 +643,8 @@
 .wvw-missed.is-open .wvw-missed-chev{transform:rotate(180deg);}
 .wvw-missed-sub{margin:2px 0 7px;color:#8d97a6;font-size:.68rem;line-height:1.35;}
 @media (max-width:480px){ .wvw-missed-sub{margin:7px 0 0;} }
-/* One row per map, one box: a faint fill, a 3px stripe in the map's colour
-   (the open map's stronger, the others quieter), the map's dot and name (a
-   button to its tab) with its kills in amber, then that map's chips. */
+/* One boxed row per map: a 3px stripe in the map's colour (stronger on the open map),
+   dot and name (a button to its tab), kills, then chips. */
 .wvw-missed-row{
   --tint:#aab4c0;margin:7px 0 0;min-width:0;padding:6px 8px 7px 9px;
   border-radius:6px;border-left:3px solid var(--tint);background:rgba(255,255,255,.05);
@@ -750,8 +665,6 @@
 .wvw-missed-mapname .dot-neutral{background:radial-gradient(circle at 30% 30%, #f1f4f8, #aab4c0);color:#aab4c0;}
 .wvw-missed-kills{white-space:nowrap;}
 .wvw-missed-killn{color:#ffb070;font-weight:800;font-size:.8rem;font-variant-numeric:tabular-nums;}
-/* One chip per objective that changed hands: its icon in the new owner's
-   colour, a short name, and a dot for who held it before. */
 .wvw-chips{display:flex;flex-wrap:wrap;gap:6px;}
 .wvw-chip{
   display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px 0 5px;
@@ -774,9 +687,8 @@
 .wvw-chip-from.own-neutral{background:var(--muted);}
 .wvw-chip-more{padding:0 8px;background:rgba(127,214,242,.1);border-color:rgba(127,214,242,.4);color:var(--accent);}
 
-/* The ring on a marker that changed hands: four pulses, about 7 s
-   (MISSED_RING_MS). Its group carries no transform of its own, so each
-   circle scales round its own centre. */
+/* Four pulses (MISSED_RING_MS). The group has no transform of its own, so each circle
+   scales round its own centre. */
 .wvw-ring{pointer-events:none;}
 .wvw-ring circle{fill:none;stroke:#fff;stroke-width:3;transform-box:fill-box;transform-origin:center;}
 .wvw-ring-a{animation:wvw-ring 1.6s ease-out 4;opacity:0;}

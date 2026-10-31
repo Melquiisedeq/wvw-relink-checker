@@ -1,47 +1,34 @@
 'use strict';
-// Tier maps: sector polygons, objective markers, tiers, claim emblems,
-// tactics, pan and zoom. Ownership rides along with the match object the
-// standings already fetch; positions come from the objective catalogue. The
-// polygons share the objectives' coordinate space, so markers land right by
-// construction, not by fitting. The terrain is a
-// self-hosted wiki render (ArenaNet publishes no WvW tiles): see MAP_IMAGE
-// and the top of css/maps.css.
+// Tier maps: sector polygons, objective markers, tiers, claim emblems, tactics, pan and zoom.
+// Ownership rides on the match object the standings fetch; positions come from the objective catalogue,
+// and the polygons share the objectives' coordinate space. The terrain is a self-hosted wiki render
+// (MAP_IMAGE, and the top of css/maps.css).
 const MAP_PANEL_NAME = Object.freeze({
   Center: 'Eternal Battlegrounds',
   RedHome: 'Red Borderlands',
   BlueHome: 'Blue Borderlands',
   GreenHome: 'Green Borderlands',
 });
-// Spawns never change hands, so they are only clutter on a map whose
-// whole job is showing what changed.
+// Spawns never change hands, so they are not drawn.
 const MAP_SKIP_TYPES = new Set(['Spawn']);
-// Drawn biggest first: a camp painted over a keep would hide it, and the
-// smaller thing is the one that has to stay on top.
+// Drawn biggest first, so the smaller shape stays on top.
 const OBJ_DRAW_ORDER = ['Castle', 'Keep', 'Tower', 'Mercenary', 'Camp', 'Ruins'];
-// Marker radius in map units. Markers scale by the inverse of the zoom,
-// so this is also their size on screen at the default view. The closest
-// two objectives on any map are 261 units apart, so 118 leaves every
-// pair clear.
+// Marker radius in map units, also their on-screen size at the default view.
+// Under half the closest pair of objectives (261 units), so no two overlap.
 const OBJ_SIZE = Object.freeze({
   Castle: 118, Keep: 110, Tower: 100, Camp: 92, Mercenary: 92, Ruins: 80,
 });
-// How hard markers follow the zoom: 1 holds them fixed on screen, 0 pins
-// them to the ground. 0.2 is near enough to pinned that every notch of
-// the wheel visibly grows them.
+// How hard markers follow the zoom: 1 holds them fixed on screen, 0 pins them to the ground.
 const MARKER_FOLLOW = 0.2;
-// Markers that nearly follow the ground need a low ceiling, or a castle
-// ends the size of a dinner plate. 4.5x is as far in as the terrain has
-// detail to show.
+// Markers that nearly follow the ground need a low ceiling or they grow huge.
 const MAX_ZOOM = 4.5;
 
 // Where each picture sits in continent coordinates (x, y, w, h).
-// `edge` is how wide our own border is drawn, in map units; it has to
-// cover the 5-unit white line printed into every render. EBG's render also
-// has a 23-unit line in the home team's colour, which 14 does not cover; it
-// is taken out of the image, so a fresh render needs it taken out again.
-// `lite` is the same picture LITE_WIDTH pixels wide; a map opens on it and
-// takes `src` only once the zoom puts more pixels on screen than it holds
-// - see upgradeTerrain.
+// `edge` is our border width in map units; it has to cover the 5-unit white line printed into every render.
+// EBG's render also has a 23-unit line in the home colour that 14 does not cover; it is removed from the
+// image, so a fresh render needs it removed again.
+// `lite` is the same picture LITE_WIDTH pixels wide; a map opens on it and takes `src` once the zoom
+// needs more pixels than it holds (upgradeTerrain).
 const LITE_WIDTH = 1280;
 const MAP_IMAGE = Object.freeze({
   38: { src: 'assets/map-ebg.webp', lite: 'assets/map-ebg-1280.webp', x: 8846.4, y: 12710.9, w: 3308.0, h: 3293.5, edge: 14 },
@@ -50,29 +37,22 @@ const MAP_IMAGE = Object.freeze({
   95: { src: 'assets/map-gbl.webp', lite: 'assets/map-gbl-1280.webp', x: 5534.1, y: 11493.7, w: 2693.0, h: 3638.3, edge: 14 },
 });
 
-// The three EBG mercenary camps are the only objectives the API publishes
-// with an empty coord, and label_coord puts Molevekian Delve 139 units
-// west of its own camp. So these are read off the map render at that
-// image's own 1.1638 pixels per map unit - good to about 3 units against
-// a marker radius of 92, which is all a marker has to manage.
+// The three EBG mercenary camps have no usable coord (label_coord sits off the camp), so these are read
+// off the map render at 1.1638 pixels per map unit, good to about 3 units.
 const MERC_COORD = Object.freeze({
   '38-123': [9972.9, 14197.7],    // Molevekian Delve
   '38-125': [11284.6, 14096.6],   // Orgath Uplands
   '38-126': [10692.6, 15310.5],   // Darkrait Inlet
 });
 
-// The game's own icons off the wiki, in assets/icons. Only Keep and Tower
-// are published in all four colours; the rest are rebuilt by replaying on
-// them the grey -> team change learned from those two.
-//
-// Shipped at 96px rather than the published 32, so the browser is not left
-// stretching 32px up to the 143px a marker reaches at full zoom.
+// The game's own icons off the wiki, in assets/icons. Only Keep and Tower are published in all four
+// colours; the rest are rebuilt by replaying on them the grey -> team change learned from those two.
+// Shipped at 96px rather than the published 32, which a 143px marker at full zoom would stretch far further.
 const MARKER_ICON = Object.freeze({
   Castle: 'Event_Castle', Keep: 'Event_Keep', Tower: 'Event_Tower',
   Camp: 'Event_Camp', Ruins: 'Event_Ruins',
-  // The three EBG mercenary camps. The wiki has the crossed poleaxes the
-  // game uses only as a bare glyph - no disc, no team colour - so the disc
-  // is rebuilt from the camp icon and the axes knocked into it.
+  // The three EBG mercenary camps. The wiki has the crossed poleaxes only as a bare glyph, so the disc
+  // is rebuilt from the camp icon with the axes knocked into it.
   Mercenary: 'Event_Mercenary',
 });
 let plotSerial = 0;
@@ -81,9 +61,8 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && mapCatchUp) mapCatchUp();
 });
 window.addEventListener('focus', () => { if (mapCatchUp) mapCatchUp(); });
-// The last answer a poll got, paired with the standings match it was
-// pulled against - one slot, because only one tier's maps are ever
-// open. fillTierMaps says what the pairing is for.
+// The last answer a poll got, paired with the standings match it was pulled against: one slot, as only
+// one tier's maps are open (fillTierMaps).
 let freshRecall = null;
 
 function markerIcon(type, owner) {
@@ -93,11 +72,8 @@ function markerIcon(type, owner) {
   return `assets/icons/${base}${COLORS.includes(c) ? `_${c}` : ''}.webp`;
 }
 
-// Every upgrade a guild can install - ten tactics and eleven improvements
-// - copied in as well. Serving every picture ourselves is what lets
-// img-src stay 'self'. An id that is not here draws nothing rather than
-// reaching for render.guildwars2.com, so a new upgrade degrades to its
-// name alone.
+// Every upgrade a guild can install, copied in as well: serving every picture ourselves keeps img-src
+// 'self'. An id that is not here draws nothing, so a new upgrade degrades to its name alone.
 const UPGRADE_ICONS = new Set([
   '1202661','1202662','1202663','1202664','1202665','1202666','1202667',
   '1202668','1202669','1202670','1202671','1202672','1202673','1202674',
@@ -117,16 +93,13 @@ let tacticCatalogue = null;
 const tacticAsked = new Set();
 const sectorCache = new Map();
 
-// The written-out copy, checked once. Missing or malformed it simply
-// is not there, and everything below falls back to the API.
+// The written-out copy, checked once; missing or malformed, everything falls back to the API.
 function staticPack() {
   return (typeof WVW_STATIC === 'object' && WVW_STATIC) || null;
 }
 
-// Started once, in the background, with the map already drawn from the
-// baked copy. Whatever comes back is what the NEXT opening uses - this
-// never repaints under someone's cursor, and a map half from one
-// catalogue and half from another is not a state worth having.
+// Started once in the background. What comes back is what the NEXT opening uses; it never repaints
+// under a cursor, so a map is never half from one catalogue and half from another.
 function refreshCatalogueSoon() {
   fetchJsonCached(`${API_BASE}/wvw/objectives?ids=all`).then((list) => {
     if (!Array.isArray(list) || !list.length) return;
@@ -153,9 +126,7 @@ async function getObjectiveCatalogue() {
   return byId;
 }
 
-// Asking for every upgrade line returns the same bytes as filtering to
-// the ones in use, so this does not wait on the
-// objective catalogue.
+// Asks for every upgrade line, so it does not wait on the objective catalogue.
 async function getUpgradeCatalogue() {
   if (upgradeCatalogue) return upgradeCatalogue;
   const byId = new Map();
@@ -167,15 +138,11 @@ async function getUpgradeCatalogue() {
   return byId;
 }
 
-// The guild tactics installed on an objective, which is a different
-// thing from the upgrade tier: tiers are bought by yaks and arrive on
-// their own, tactics are chosen by whoever claimed it. Fetched for the
-// whole match in one request rather than per objective.
+// The guild tactics installed on an objective, distinct from the upgrade tier (bought by yaks).
+// Fetched for the whole match in one request.
 async function getTacticCatalogue(ids) {
   if (!tacticCatalogue) tacticCatalogue = new Map();
-  // Asked, not just answered. An id the API declines to return would
-  // otherwise be requested again on every repaint, for as long as the
-  // popover stayed open.
+  // Asked, not just answered: an id the API declines to return would be requested again on every repaint.
   const want = [...new Set(ids)]
     .filter((id) => !tacticCatalogue.has(id) && !tacticAsked.has(id));
   if (!want.length) return tacticCatalogue;
@@ -190,15 +157,12 @@ async function getTacticCatalogue(ids) {
   return tacticCatalogue;
 }
 
-// A foreground id per guild, plus a catalogue of what each one draws, as
-// layered PNGs. Only the first layer is used - the rest turn to mush at
-// this size - painted white. One request per session.
+// A foreground id per guild, plus a catalogue of what each draws, as layered PNGs. Only the first layer
+// is used, painted white. One request per session.
 let emblemPieces = null;
 let emblemPiecesPromise = null;
 
-// Both halves of the catalogue: the shapes a guild can pick for its
-// backdrop and the ones it can pick for the device on top. Fetched
-// together because an emblem needs both to be drawn at all.
+// Both halves of the catalogue (backdrop and device shapes), fetched together because an emblem needs both.
 function getEmblemPieces() {
   if (emblemPieces) return Promise.resolve(emblemPieces);
   if (!emblemPiecesPromise) {
@@ -214,21 +178,16 @@ function getEmblemPieces() {
       emblemPieces = { bg: pack(bgs), fg: pack(fgs) };
       return emblemPieces;
     })
-      // Dropped rather than remembered as an empty catalogue: kept, it
-      // would blank every claim emblem until the page was reloaded,
-      // because the answer is only ever fetched once. Clearing the
-      // promise is what lets the next claimed objective ask again.
+      // Dropped rather than remembered as an empty catalogue: kept, it would blank every claim emblem until
+      // reload, as the answer is fetched once. Clearing the promise lets the next claimed objective ask again.
       .catch(() => { emblemPiecesPromise = null; return { bg: new Map(), fg: new Map() }; });
   }
   return emblemPiecesPromise;
 }
 
-// Dye colours for the guild emblems: id to hex, the cloth value of each,
-// because a guild emblem is cloth. base_rgb is not the colour - it reads
-// [128, 26, 26] for all 643 of them, being the reference each material
-// transforms. /v2/colors publishes the colour after the shift, so there is
-// nothing to reimplement. Baked in rather than fetched: ?ids=all is about
-// ninety times larger. An id that is not here falls back to a dark ink.
+// Dye colours for the guild emblems: id to hex, the cloth value of each. base_rgb is not the colour
+// (it is the reference each material transforms); /v2/colors publishes the colour after the shift.
+// Baked in because ?ids=all is far larger. An id that is not here falls back to a dark ink.
 const DYE_CLOTH =
   '1:7c6c53,2:252326,3:5f5c5c,4:484546,5:302e31,6:d3d0cf,7:003349,'
   + '8:016a87,9:004c6d,10:3682a0,11:001f34,12:48220f,13:41311d,14:58402a,'
@@ -347,8 +306,7 @@ const DYE_CLOTH =
 
 let dyeRgb = null;
 
-// Parsed on first sight, not at load: a tier with nothing claimed never
-// pays for it.
+// Parsed on first sight, not at load.
 function dyeHex(id) {
   if (!dyeRgb) {
     dyeRgb = new Map();
@@ -360,10 +318,8 @@ function dyeHex(id) {
   return dyeRgb.get(Number(id)) || null;
 }
 
-// The dye, untouched. With the emblem's own backdrop drawn underneath
-// there is nothing to correct for, and correcting anyway would be
-// repainting a design its guild chose. The fallback covers a dye added to
-// the game after the table was written.
+// The dye, untouched: with the emblem's own backdrop underneath there is nothing to correct. The
+// fallback covers a dye added to the game after the table was written.
 function emblemInk(hex) {
   const n = hex ? parseInt(hex, 16) : NaN;
   if (!Number.isFinite(n)) return [0.09, 0.07, 0.04];
@@ -371,11 +327,8 @@ function emblemInk(hex) {
 }
 
 // The emblem as a stack of tinted layers, bottom first.
-//
-// The foreground's FIRST layer is not drawn. It is the whole device in the
-// game's base red, and the layers after it are the masks for the coloured
-// regions, one per entry in colors; drawing it paints the device wrong.
-// The background has one layer and no such spare.
+// The foreground's FIRST layer is not drawn: it is the whole device in base red and the later layers are
+// the masks for the coloured regions, so drawing it paints the device wrong. The background has one layer.
 function emblemLayers(info, pieces) {
   const em = info && info.emblem;
   if (!em || !pieces) return [];
@@ -407,9 +360,7 @@ function emblemLayers(info, pieces) {
   return out;
 }
 
-// One filter per colour, built on first use and parked in the defs it
-// is given. Shared by the map and by the detail panel, which draw the
-// same emblem at very different sizes.
+// One filter per colour, built on first use in the defs it is given. Shared by the map and the detail panel.
 function emblemFilterFactory(defs, prefix) {
   const made = new Map();
   return (hex) => {
@@ -451,29 +402,23 @@ function paintEmblem(parent, layers, box, filterFor) {
   }
 }
 
-// Everything the emblem needs, resolved together. Keyed by guild and
-// kept as the promise rather than the answer, so six markers held by the
-// same guild share one request instead of racing to make six.
+// Everything the emblem needs, resolved together. Keyed by guild and kept as the promise, so six
+// markers of one guild share one request.
 const emblemPending = new Map();
 
 function guildEmblem(guildId) {
   if (!emblemPending.has(guildId)) {
-    // true: the stored copy is good enough here. This draws a badge
-    // the size of a thumbnail, and the emblem on it has not changed
-    // since the guild was founded.
+    // true: the stored copy is good enough for a thumbnail-sized badge.
     const pending = Promise.all([getGuildInfo(guildId, true), getEmblemPieces()])
       .then(([info, pieces]) => ({ info, layers: emblemLayers(info, pieces) }));
-    // Dropped again if it fails, so the next marker can retry. Keeping a
-    // rejected promise here blanked that guild's emblem for the rest of
-    // the session over one bad request.
+    // Dropped if it fails so the next marker can retry; a kept rejection would blank that guild's emblem.
     pending.catch(() => emblemPending.delete(guildId));
     emblemPending.set(guildId, pending);
   }
   return emblemPending.get(guildId);
 }
 
-// Same deal as the catalogue: the drawing already happened, this is for
-// the next one.
+// As with the catalogue, the result serves the next drawing.
 function refreshSectorsSoon(mapId) {
   fetchJsonCached(
     `${API_BASE}/continents/2/floors/3/regions/7/maps/${encodeURIComponent(mapId)}/sectors?ids=all`)
@@ -496,9 +441,7 @@ async function getSectors(mapId) {
   const list = await fetchJsonCached(
     `${API_BASE}/continents/2/floors/3/regions/7/maps/${encodeURIComponent(mapId)}/sectors?ids=all`);
   const arr = (Array.isArray(list) ? list : []).filter((x) => Array.isArray(x.bounds));
-  // Only a real answer is worth keeping, the same rule getGuildInfo
-  // follows. An empty one cached would blank that map for the rest of the
-  // session, with nothing to retry against short of a reload.
+  // Only a real answer is kept, as in getGuildInfo: a cached empty one would blank that map for the session.
   if (arr.length) sectorCache.set(mapId, arr);
   return arr;
 }
@@ -514,10 +457,8 @@ function flippedAgo(iso) {
   return `${Math.floor(hours / 24)}d ${hours % 24}h`;
 }
 
-// Tier is not in the objective data - it is how many upgrade steps the
-// yaks have paid for. yaks_required is the cost of one step and not the
-// running total, which is why this sums as it goes: a tower's steps cost
-// 15, 20 and 35, so fortified is 70 yaks, not 35.
+// Tier is not in the objective data: it is how many upgrade steps the yaks have paid for. yaks_required
+// is the cost of one step, not the running total, which is why this sums as it goes.
 function objectiveTier(meta, ob) {
   const line = upgradeCatalogue && upgradeCatalogue.get(meta.upgrade_id);
   if (!line || !Array.isArray(line.tiers)) return null;
@@ -542,12 +483,9 @@ function objectiveTier(meta, ob) {
   };
 }
 
-// Where each waypoint stands, in the objectives' own coordinates, taken
-// from the points of interest the API publishes - the permanent ones; the
-// "Emergency Waypoint" entries belong to the tactic and come and go.
-// Baked in rather than fetched: four more requests on open for points that
-// do not move. x, y and the point's own id, which is what
-// a chat link is made of - see waypointChat.
+// Where each waypoint stands, in the objectives' coordinates, from the permanent points of interest (the
+// "Emergency Waypoint" entries belong to the tactic and come and go). Baked in because they do not move.
+// x, y and the point's own id, which a chat link is made of (waypointChat).
 const WAYPOINT_AT = Object.freeze({
   // Eternal Battlegrounds
   '38-1': [10836.5, 13669.2, 1214], '38-2': [11554.7, 15223.9, 1215],
@@ -562,19 +500,15 @@ const WAYPOINT_AT = Object.freeze({
   '95-37': [6845.8, 13105.6, 1243],
 });
 
-// The game's own chat link for a point of interest: the byte 4, then the
-// id as four little-endian bytes, base64'd between [& and ]. Built here
-// rather than written out, because a wrong character in a pasted code is
-// a link that silently goes nowhere.
+// The game's chat link for a point of interest: the byte 4, then the id as four little-endian bytes,
+// base64'd between [& and ]. Built here because a wrong character is a link that goes nowhere.
 function waypointChat(poiId) {
   if (!poiId) return null;
   const b = [4, poiId & 255, (poiId >> 8) & 255, (poiId >> 16) & 255, (poiId >> 24) & 255];
   return `[&${btoa(String.fromCharCode(...b))}]`;
 }
 
-// Straight to the clipboard, with the old way behind it: the modern API
-// needs a secure context and the user's permission, and neither is
-// guaranteed.
+// Straight to the clipboard, with the old way behind it: the modern API needs a secure context and permission.
 function copyChatLink(text) {
   const legacy = () => {
     try { return legacyCopy(text); }
@@ -586,24 +520,16 @@ function copyChatLink(text) {
   return Promise.resolve(legacy());
 }
 
-// Eternal Battlegrounds, placed by eye rather than by bearing. The real
-// bearings there are 100, 141, 151 and 158 degrees - every one straight
-// into the claim badge - so the rule had nowhere to put them and stacked
-// all four in the same corner. Offsets are in units of the marker's own
-// radius, x right and y down.
+// Eternal Battlegrounds, placed by eye: the real bearings (100 to 158 degrees) all point into the claim
+// badge. Offsets are in units of the marker's own radius, x right and y down.
 const WAYPOINT_NUDGE = Object.freeze({
-  // Overlook, red's keep. Tucked in until it just laps the icon's edge -
-  // the disc is 1r and this badge 0.37r across, so at this height the
-  // two overlap by about four hundredths of a radius.
+  // Overlook, red's keep. Tucked in until it just laps the icon's edge.
   '38-1': [-1.00, 0.74],
   // Valley, blue's keep.
   '38-2': [-1.08, 0.64],
-  // Lowlands, green's keep. Clear of the tier shields, which stop at
-  // 0.76r across, and clear of the claim badge, which starts at 0.09r
-  // down.
+  // Lowlands, green's keep. Clear of the tier shields (to 0.76r across) and the claim badge (from 0.09r down).
   '38-3': [1.32, -0.44],
-  // Stonemist. Low and left, which is the one quarter the claim badge
-  // never reaches.
+  // Stonemist. Low and left, the one quarter the claim badge never reaches.
   '38-9': [-0.86, 0.78],
 });
 
@@ -618,13 +544,10 @@ const KEEP_SPAWN_TEAM = Object.freeze({
   '95-37': 'green', '95-33': 'blue', '95-32': 'red',
 });
 
-// Does this objective have a waypoint? Not a field the API publishes,
-// and the upgrade catalogue is not the whole answer: a keep held by its
-// spawn team has one at any tier, tier 0 included. Any other keep, and
-// Stonemist, has one only once the catalogue's waypoint upgrade is built.
-//
-// It says the waypoint EXISTS, not that you can use it: one that is
-// contested is not published at all.
+// Does this objective have a waypoint? No API field says, and the upgrade catalogue is not the whole
+// answer: a keep held by its spawn team has one at any tier, tier 0 included. Any other keep, and
+// Stonemist, has one once the catalogue's waypoint upgrade is built. It says the waypoint EXISTS, not
+// that it is usable.
 function hasWaypoint(ob, tierInfo) {
   if (ob && ob.type === 'Keep') {
     const team = KEEP_SPAWN_TEAM[ob.id];
@@ -640,11 +563,8 @@ function hasWaypoint(ob, tierInfo) {
   return false;
 }
 
-// Held off to the side, in the direction the waypoint really lies; a fixed
-// corner is the same guess for every keep and lands some over the water.
-// Only the bearing is kept, not the distance: most waypoints sit closer
-// than the marker's own radius, so drawn to scale the badge would land
-// underneath the icon it belongs to.
+// Held off to the side, in the direction the waypoint really lies. Only the bearing is kept, not the
+// distance: drawn to scale the badge would land underneath the icon it belongs to.
 function waypointBadge(r, p) {
   const w = r * 0.74;
   const g = svgEl('g', { class: 'wvw-wp' });
@@ -693,22 +613,17 @@ function waypointBadge(r, p) {
   if (at) { dx = at[0] - p.x; dy = at[1] - p.y; }
   const d = Math.hypot(dx, dy) || 1;
 
-  // Bearing, clockwise from straight up, to be checked against what is
-  // already parked around the marker: the tier shields hold the top from
-  // -46 to 46 degrees and reach about 1.0r, and the claim badge sits at
-  // 133 degrees with a box that runs out to roughly 1.8r.
+  // Bearing, clockwise from straight up, checked against what is parked around the marker: the tier shields
+  // hold the top from -46 to 46 degrees to about 1.0r, and the claim badge sits at 133 degrees out to roughly 1.8r.
   let a = ((Math.atan2(dx, -dy) * 180) / Math.PI + 360) % 360;
   let out = Math.min(Math.max(d, r * 1.22), r * 1.7);
 
   if (a < 45 || a > 315) {
-    // Above the shields. Pushing outward keeps the real bearing, and
-    // there is nothing further up to run into.
+    // Above the shields. Pushing outward keeps the real bearing.
     out = Math.max(out, r * 1.55);
   } else if (a > 95 && a < 190) {
-    // Straight into the claim badge, which is where all four Eternal
-    // Battlegrounds waypoints really lie. Clearing a box that deep would
-    // strand the icon next to another marker, so it gives up the bearing
-    // and takes the upper left, the one corner nothing else uses.
+    // Straight into the claim badge, where all four EBG waypoints lie. Clearing a box that deep would strand
+    // the icon next to another marker, so it takes the upper left, the one corner nothing else uses.
     a = 315;
     out = r * 1.5;
   }
@@ -724,10 +639,7 @@ const svgEl = (name, attrs) => {
   return el;
 };
 
-// The heraldic shield both badges are cut from: flat across the top,
-// straight down the sides, then curving in to a point. Centred on
-// (cx, cy) so callers can place it by where it should sit rather than
-// by a corner.
+// The heraldic shield both badges are cut from, centred on (cx, cy).
 function shieldPath(cx, cy, w, h, cls) {
   const x = cx - w / 2, y = cy - h / 2;
   return svgEl('path', {
@@ -761,11 +673,9 @@ function ageWords(ms) {
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
 }
 
-// The two corners over the map: kills on the left, on the right the age
-// of the match's data (matchScoreRoseAt). Text on a shadow, no box, so
-// the map shows through; they go while the map is zoomed, as the score bar's smear would
-// cover what the visitor came to look at. Built once per map; paint()
-// rewrites them in place, so the status region keeps its identity.
+// The two corners over the map: kills on the left, on the right the age of the match's data
+// (matchScoreRoseAt). Text on a shadow, no box; they go while the map is zoomed. Built once per map;
+// paint() rewrites them in place, so the status region keeps its identity.
 function buildMapCorners(wrap, matchId) {
   const svg = wrap.querySelector('.wvw-plot');
   const mk = (tag, cls, text) => {
@@ -867,16 +777,10 @@ function buildMapCorners(wrap, matchId) {
     if (hover) btn.title = text;
     if (openKey === key) note.textContent = text;
   };
-  // The kills side, from killView for the map on show. No window, a dash and
-  // only "kills": never 0 from a window nobody counted. Four looks:
-  // current, one line ("80 kills · 11 min"); old for a normal reason, the
-  // quiet of a slow map (view.alive, past KILLS_STEP_MS), old with no proof
-  // yet ("data up to HH:MM", no sign, not dimmed: the API not known to move,
-  // or a silence still within one of its steps), and old for an abnormal
-  // one, the API behind or the map frozen ("data up to HH:MM ⚠", the number
-  // dimmed: the sign and the words are the signal, not the colour). Old
-  // takes two lines ("80 kills in 10 min" over the second). `at`: when the
-  // score last rose, which is when a stale API stopped.
+  // The kills side, from killView for the map on show. No window: a dash and only "kills", never 0 from
+  // a window nobody counted. Four looks: current; old for a normal reason (a slow map); old with no proof
+  // yet; old for an abnormal one (API behind or map frozen: "data up to HH:MM ⚠", number dimmed, the sign
+  // and the words being the signal, not the colour). `at`: when the score last rose.
   const paintKills = (view, type, isStale, at) => {
     const rates = view && view.rates;
     const line = rates && type ? fightCount(rates, type) : null;
@@ -991,9 +895,8 @@ function buildMapCorners(wrap, matchId) {
 }
 
 // ---- Righteous Indignation ------------------------------------------
-// Five minutes, from the wiki, on every objective but sentries. During it
-// the guards cannot be hurt, so it answers "can I take it back yet"
-// rather than "who owns this".
+// Five minutes (wiki), on every objective but sentries, during which the guards cannot be hurt: it
+// answers "can I take it back yet" rather than "who owns this".
 const RI_MS = 5 * 60 * 1000;
 
 function riLeft(iso) {
@@ -1008,21 +911,16 @@ function riClock(ms) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-// Crossed swords and a countdown, under the marker. The group carries
-// its own expiry in a data attribute rather than being held in a list,
-// so the one-second tick can just sweep the DOM - no registry to keep in
-// step with a repaint that rebuilds every marker from scratch.
+// Crossed swords and a countdown, under the marker. The group carries its own expiry in a data
+// attribute, so the one-second tick sweeps the DOM with no registry to keep in step with repaints.
 function riBadge(r, ob) {
-  // Ruins are left out: they have no guards, so there is nothing to protect,
-  // and they turn over constantly.
+  // Ruins have no guards, so there is nothing to protect.
   if (!ob || ob.type === 'Ruins') return null;
   const left = riLeft(ob.last_flipped);
   if (!left) return null;
   const g = svgEl('g', { class: 'wvw-ri' });
   g.dataset.until = String(new Date(ob.last_flipped).getTime() + RI_MS);
-  // No number in the tip: it is written on the thirty-second repaint while
-  // the clock beside it ticks every second, and a tooltip two minutes behind
-  // would be worse than none.
+  // No number in the tip: it is written on the thirty-second repaint while the clock ticks every second.
   const tip = svgEl('title', {});
   tip.textContent = 'Righteous Indignation \u2014 just flipped, and its'
     + ' guards take no damage until this runs out';
@@ -1049,9 +947,8 @@ function riBadge(r, ob) {
   return g;
 }
 
-// Rewrites the clocks and drops the badges whose five minutes are up.
-// Text only - it fetches nothing, which is why it can run every second
-// alongside the thirty-second refresh without competing with it.
+// Rewrites the clocks and drops the badges whose five minutes are up. Text only, no fetch, so it can
+// run every second beside the thirty-second refresh.
 function tickRi(root) {
   for (const g of root.querySelectorAll('.wvw-ri')) {
     const left = Number(g.dataset.until) - Date.now();
@@ -1061,21 +958,15 @@ function tickRi(root) {
   }
 }
 
-// The guild's own emblem on a gold shield at the marker's lower left,
-// which is how a claimed objective reads in game - larger than the tier
-// shields above it, so claimed and upgraded never get confused. The
-// shield is drawn straight away and the emblem drops in when the lookup
-// lands, so a slow guild call never holds up the map.
+// The guild's emblem on a gold shield at the marker's lower left, larger than the tier shields so
+// claimed and upgraded never get confused. The shield is drawn at once and the emblem drops in when the
+// lookup lands, so a slow guild call never holds up the map.
 function claimBadge(r, guildId, emblemFilter) {
-  // Lower right, pulled in over the disc rather than hung off its corner:
-  // a full radius out on both axes it reads as a second object beside the
-  // marker.
+  // Pulled in over the disc rather than hung off its corner: a full radius out it reads as a second object.
   const w = r * 1.12, h = w * 1.06;
   const cx = r * 0.74, cy = r * 0.68;
   const g = svgEl('g', { class: 'wvw-claim' });
-  // Two shields, one inside the other: the bright rim and the darker
-  // field it frames. That pair is what reads as the game's gold shield
-  // at this size - its quartering is under a pixel here.
+  // Two shields, one inside the other: the bright rim and the darker field it frames.
   g.appendChild(shieldPath(cx, cy, w, h, 'claim-rim'));
   g.appendChild(shieldPath(cx, cy, w * 0.82, h * 0.82, 'claim-field'));
   guildEmblem(guildId).then(({ layers }) => {
@@ -1089,10 +980,8 @@ function claimBadge(r, guildId, emblemFilter) {
   return g;
 }
 
-// One shield per tier along the TOP of the marker, none at tier 0, laid
-// out the way the game lays them out: one shield sits dead centre, two
-// flank that centre, and three put one back in the centre with the other
-// two out on the shoulders. Degrees from straight up.
+// One shield per tier along the TOP of the marker, none at tier 0, laid out as the game does: one dead
+// centre, two flanking it, three with one back in the centre. Degrees from straight up.
 const TIER_ANGLES = [null, [0], [-24, 24], [-46, 0, 46]];
 
 function tierShields(r, tier) {
@@ -1100,9 +989,7 @@ function tierShields(r, tier) {
   const angles = TIER_ANGLES[tier];
   if (!angles) return g;
   const w = r * 0.42, h = w * 1.15;
-  // At w*1.15 tall, a centre of 0.76r lands the top edge of each shield
-  // exactly on the outline at 1.0r, so they sit on the icon rather than
-  // over its edge.
+  // At w*1.15 tall, a centre of 0.76r lands each shield's top edge on the outline at 1.0r.
   const R = r * 0.76;
   for (const a of angles) {
     const t = (a * Math.PI) / 180;
@@ -1114,10 +1001,7 @@ function tierShields(r, tier) {
 // One map, drawn. Returns the wrapper plus a redraw hook, so the caller
 // can swap maps without rebuilding the whole popover.
 function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
-  // Who holds what, and only that. Empty means nobody knows yet, which is
-  // a real state and not an error: the API publishes a new match with the
-  // objective lists blank while the maps come up, and a tier that has not
-  // turned over yet is still serving last week's owners.
+  // Who holds what, and only that. Empty means nobody knows yet, a real state and not an error.
   const ownersOf = (data, isLive) => {
     const byId = new Map();
     if (isLive) for (const ob of (data && data.objectives) || []) byId.set(ob.id, ob);
@@ -1125,27 +1009,22 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
   };
   let owners = ownersOf(mapData, matchIsLive(match));
 
-  // The markers come from the catalogue, never from the match: what
-  // exists on a map and where it sits do not change at a relink, so the
-  // map is always whole and ownership is the only thing that waits. An
-  // objective with no owner is drawn Neutral.
+  // The markers come from the catalogue, never from the match: what exists on a map and where it sits do
+  // not change at a relink, so the map is always whole and only ownership waits. No owner is drawn Neutral.
   const blank = (meta) => ({ id: meta.id, type: meta.type, owner: 'Neutral' });
   const pts = [];
   for (const meta of catalogue.values()) {
     if (meta.map_id !== mapData.id) continue;
     if (MAP_SKIP_TYPES.has(meta.type)) continue;
-    // coord, not label_coord. label_coord is where the game writes the
-    // objective's *name*, which floats clear of the building so the text
-    // stays readable; coord is the structure itself. The three EBG mercenary
-    // camps publish an empty coord; MERC_COORD stands in for them.
+    // coord, not label_coord: label_coord is where the game writes the objective's *name*, clear of the
+    // building. The EBG mercenary camps have an empty coord; MERC_COORD stands in for them.
     const at = (meta.coord && meta.coord.length) ? meta.coord
       : (MERC_COORD[meta.id] || meta.label_coord);
     if (!at) continue;
     pts.push({ ob: owners.get(meta.id) || blank(meta), meta, x: at[0], y: at[1] });
   }
 
-  // The viewBox comes from the sector outlines, so the drawing defines
-  // its own frame and nothing has to agree about map bounds.
+  // The viewBox comes from the sector outlines, so nothing has to agree about map bounds.
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const sec of sectors) {
     for (const [x, y] of sec.bounds) {
@@ -1169,10 +1048,8 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
     preserveAspectRatio: 'xMidYMid meet',
   });
 
-  // One flattening filter per colour actually on this map, built the
-  // first time that colour is asked for. The alpha channel passes through
-  // untouched, so all that survives of the layer is its shape, filled
-  // with the guild's own dye.
+  // One flattening filter per colour on this map, built on first use. The alpha channel passes through,
+  // so only the layer's shape survives, filled with the guild's own dye.
   const defs = svgEl('defs', {});
   svg.appendChild(defs);
   const emblemFilter = emblemFilterFactory(defs, `wvw-emblem-${++plotSerial}`);
@@ -1200,10 +1077,9 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
     svg.appendChild(terrain);
   }
 
-  // Three passes, not one. A single pass lets the next sector's fill paint
-  // over the previous one's outline, which is exactly where the border
-  // matters most - the line between two owners. The dark pass also buries
-  // the pale sector borders printed into the wiki render.
+  // Three passes, not one: a single pass lets the next sector's fill paint over the previous outline,
+  // where the line between two owners matters most. The dark pass also buries the pale sector borders
+  // printed into the render.
   const land = svgEl('g', { class: picture ? 'over-terrain' : '' });
   const edgeW = (picture && picture.edge) || 14;
   const tinted = [];
@@ -1232,15 +1108,12 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
   pts.sort((a, b) => OBJ_DRAW_ORDER.indexOf(a.ob.type) - OBJ_DRAW_ORDER.indexOf(b.ob.type));
   const nodes = [];
 
-  // Everything about a marker that can change while you are looking at it,
-  // in one function, so a live update runs the same code as the first
-  // draw. The listeners live on the group itself, so emptying it is safe,
-  // and the selected class is carried across.
-  // What each marker was last drawn from, so the 30 s refresh redraws only
-  // the objectives that changed. The tier and the waypoint are part of the
-  // key, not just the objective: they come from upgradeCatalogue, which
-  // usually lands after the first drawing, and a key of the objective alone
-  // would leave those markers without their shields for good.
+  // Everything about a marker that can change while you look at it, in one function, so a live update runs
+  // the same code as the first draw. The listeners live on the group itself, so emptying it is safe, and the
+  // selected class is carried across.
+  // What each marker was last drawn from, so the 30 s refresh redraws only the objectives that changed. The
+  // tier and the waypoint are part of the key: they come from upgradeCatalogue, which usually lands after the
+  // first drawing, and a key of the objective alone would leave those markers without shields for good.
   const drawnFrom = new WeakMap();
   const markerKey = (p) => {
     const tierInfo = objectiveTier(p.meta, p.ob);
@@ -1261,8 +1134,7 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
     // The icon's own disc, and nothing past it: a wider target swallows the
     // badges hanging off the marker, which have to answer for themselves.
     g.appendChild(svgEl('circle', { class: 'hit', r }));
-    // The icon already carries the team colour, so nothing is drawn
-    // under it - a disc behind would only show as a second ring.
+    // The icon already carries the team colour: a disc behind would only show as a second ring.
     const markerSrc = markerIcon(p.ob.type, p.ob.owner);
     if (markerSrc) {
       const icon = svgEl('image', {
@@ -1283,8 +1155,7 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
     const ringUntil = missedRingUntil(match.id, p.meta.id);
     if (ringUntil) g.appendChild(missedRingMark(r, ringUntil));
     const tip = svgEl('title', {});
-    // The same words the detail panel uses. Nothing is lost by dropping the
-    // colour: the marker under the cursor is painted it.
+    // The same words the detail panel uses.
     const ownerId = COLORS.includes(owner) ? matchTeamId(match, owner) : null;
     const tierName = tierInfo && tierInfo.tier ? tierInfo.name : null;
     tip.textContent = `${p.meta.name || p.ob.id} · `
@@ -1319,16 +1190,12 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
   wrap.appendChild(svg);
 
   // ---- the focus ----------------------------------------------------
-  // What a spec (focusMatches) picks stays as drawn, its marker a quarter
-  // bigger, its sector ringed in the owner's colour; the rest goes a step
-  // darker and keeps its colours. The ground is darkened by a black veil
-  // with the lit sectors cut out (even-odd): the same pixels a
-  // brightness(.55) filter gives, without drawing the terrain twice - a
-  // second <image> asks the server for the picture again. The markers are
-  // darkened by that filter (css/maps.css, .is-focused). Each sector holds
-  // exactly one objective (wvw-static.js), so the marker names its sector.
-  // The layer is rebuilt only when what it shows moved, so the 30 s
-  // repaint, which calls this again, leaves the screen as it was.
+  // What a spec (focusMatches) picks stays as drawn, its marker a quarter bigger, its sector ringed in the
+  // owner's colour; the rest goes a step darker. The ground is darkened by a black veil with the lit sectors
+  // cut out (even-odd): the same pixels as a brightness(.55) filter without drawing the terrain twice (a
+  // second <image> asks the server again). The markers are darkened by that filter (css/maps.css,
+  // .is-focused). Each sector holds exactly one objective (wvw-static.js), so the marker names its sector.
+  // The layer is rebuilt only when what it shows moved, so the 30 s repaint leaves the screen as it was.
   let focus = null;
   let focusKey = '';
   const paintFocus = (spec) => {
@@ -1360,18 +1227,14 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
   };
 
   // ---- zoom and pan -------------------------------------------------
-  // The viewBox is the camera. Markers are pinned to the ground but
-  // damped - see MARKER_FOLLOW - so zooming in grows them along with the
-  // terrain instead of leaving them floating above it at a fixed size.
+  // The viewBox is the camera. Markers are pinned to the ground but damped (MARKER_FOLLOW).
   const view = { x: minX, y: minY, w: fullW, h: fullH };
 
-  // The full picture, once the terrain is drawn wider on screen than the
-  // lite one has pixels. Decoded off to the side and laid over the lite
-  // one, which only goes once the new node has loaded and a frame has
-  // shown both - swapping the href instead leaves the ground blank while
-  // the file decodes. The node asks for the file again (a revalidation,
-  // assets are max-age=0), hence waiting on its own load. Width comes
-  // from a ResizeObserver, so a zoom never has to ask for layout.
+  // The full picture, once the terrain is drawn wider on screen than the lite one has pixels. Decoded off
+  // to the side and laid over the lite one once the new node has loaded and a frame has shown both: swapping
+  // the href leaves the ground blank while the file decodes. The node asks for the file again (a
+  // revalidation), hence waiting on its own load. Width comes from a ResizeObserver, so a zoom never has to
+  // ask for layout.
   let shownWidth = 0;
   let upgrading = false;
   const upgradeTerrain = () => {
@@ -1504,24 +1367,20 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
   zoomBox.appendChild(reset);
   wrap.appendChild(zoomBox);
 
-  // Says which half is missing. The map is drawn and readable either
-  // way, so this is not an error state - it is the colours being late.
+  // Says which half is missing. The map is drawn and readable either way: not an error state.
   const waiting = document.createElement('p');
   waiting.className = 'wvw-waiting';
   waiting.textContent = "Just after reset — ArenaNet hasn't published this map yet";
   waiting.hidden = owners.size > 0;
   wrap.appendChild(waiting);
 
-  // Repaint from fresher objective data without rebuilding anything.
-  // Nothing about the drawing moves - same nodes, same viewBox - so the
-  // zoom you set and the objective you had selected both survive.
+  // Repaint from fresher objective data without rebuilding anything: same nodes, same viewBox, so the zoom
+  // and the selected objective survive.
   wrap.applyLive = (freshMapData, isLive) => {
     owners = ownersOf(freshMapData, isLive);
     for (let i = 0; i < pts.length; i++) {
-      // Back to Neutral when an owner goes away, rather than keeping the
-      // last one seen: the API has handed back a blank list mid-relink,
-      // and holding on to what was there would leave a map claiming an
-      // ownership nobody is asserting any more.
+      // Back to Neutral when an owner goes away, rather than keeping the last one seen: a blank list mid-relink
+      // must not leave a map claiming an ownership nobody asserts.
       pts[i].ob = owners.get(pts[i].meta.id) || blank(pts[i].meta);
       if (drawnFrom.get(nodes[i]) !== markerKey(pts[i])) paintMarker(nodes[i], pts[i]);
     }
@@ -1561,10 +1420,8 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
 
 
 // ---- the score bar --------------------------------------------------
-// One segment per side, as wide as that side's share of THIS map's tick.
-// Per map, not the match total: whoever is running the map fills the bar,
-// and a side that has stopped scoring shrinks out of it. A match-wide
-// number would be identical on all four tabs.
+// One segment per side, as wide as that side's share of THIS map's tick, not the match total (identical
+// on all four tabs): whoever is running the map fills the bar, and a side that stopped scoring shrinks out.
 function buildScoreBar(mapData, isLive) {
   const { by } = mapTally(mapData, isLive);
   const vals = COLORS.map((c) => Math.max(0, Number((by.get(c) || {}).ppt || 0)));
@@ -1588,21 +1445,15 @@ function buildScoreBar(mapData, isLive) {
 }
 
 // ---- the map scoreboard ---------------------------------------------
-// The four types that pay. Ruins and Mercenary tick zero, which is also
-// why the game's own Contested Areas panel shows four icons and not six.
-// Smallest first, the order that panel uses.
+// The four types that pay (Ruins and Mercenary tick zero), smallest first, the order of the game's panel.
 const SCORE_TYPES = ['Camp', 'Tower', 'Keep', 'Castle'];
 
-// What each side holds across whatever maps it is handed: the tick they
-// add up to, and how many of each structure. All of it comes out of the
-// objective lists the standings fetch already paid for, so it costs no
-// request at all.
+// What each side holds across the maps it is handed: the tick they add up to, and how many of each
+// structure, from the objective lists the standings already fetched.
 function tallyMaps(maps, isLive) {
   const by = new Map();
   for (const c of COLORS) by.set(c, { ppt: 0, counts: new Map() });
-  // Which of the four are in play at all. Across the whole match that is
-  // always the four; over a single borderland it drops the castle, which
-  // would otherwise be a column of zeroes using up width to say nothing.
+  // Which of the four are in play: across the match all four; over one borderland the castle drops out.
   const present = new Set();
   if (!isLive) return { by, types: [] };
   for (const m of maps || []) {
@@ -1720,12 +1571,9 @@ function paintBoardFocus(board, pick, clear) {
   label.appendChild(b);
 }
 
-// One row per side, the leader on top, totalled over the whole match -
-// what the game's own Contested Areas panel shows, and what leaves this
-// and the bar over the map answering different questions: the bar is
-// this map, the board is the war. Sorting by tick means rows can swap
-// places on the 30s refresh, which is why each carries the team colour
-// as well as the name.
+// One row per side, the leader on top, totalled over the whole match (the bar over the map is this map,
+// the board is the war). Sorting by tick can swap rows on the 30 s refresh, so each carries the team
+// colour as well as the name.
 function paintMapBoard(board, match, isLive) {
   board.textContent = '';
   const { by, types } = tallyMaps(match && match.maps, isLive);
@@ -1735,8 +1583,7 @@ function paintMapBoard(board, match, isLive) {
     return;
   }
   board.hidden = false;
-  // Ties keep the fixed colour order, so a 0-0 map does not shuffle on
-  // every refresh for no reason.
+  // Ties keep the fixed colour order, so a 0-0 map does not shuffle on every refresh.
   rows.sort((a, b) => (b.ppt - a.ppt) || (COLORS.indexOf(a.color) - COLORS.indexOf(b.color)));
 
   // The grid is set here rather than in the stylesheet because the
@@ -1744,8 +1591,7 @@ function paintMapBoard(board, match, isLive) {
   // the CSSOM, which the page's CSP does not govern.
   const grid = `repeat(${types.length}, var(--board-cell))`;
 
-  // The header the game's panel has too, with the column names filled
-  // in: the icons are the game's, but nobody has to already know them.
+  // The header the game's panel has too, with the column names filled in.
   const head = document.createElement('div');
   head.className = 'wvw-board-row wvw-board-head';
   const headLabel = document.createElement('span');
@@ -1796,9 +1642,7 @@ function paintMapBoard(board, match, isLive) {
     for (const type of types) {
       const n = r.counts.get(type) || 0;
       const cell = document.createElement('span');
-      // Zero still gets its cell: the columns have to line up across
-      // the three rows, and a side holding no keep at all is itself
-      // worth seeing. Faded almost out, the way the game does it.
+      // Zero still gets its cell so the columns line up across the rows. Faded almost out, as the game does.
       cell.className = n ? 'wvw-board-cell' : 'wvw-board-cell is-none';
       const src = markerIcon(type, r.color);
       if (src) {
@@ -1836,26 +1680,19 @@ function paintMapBoard(board, match, isLive) {
 }
 
 // ---- the detail panel ------------------------------------------------
-// How far along the next tier is, in the game's own x/y shape with a bar
-// under it. The bar fills to the same fraction the numbers state, so the
-// two can never disagree - what it is NOT is progress within the current
-// tier. At the top it says "max" and drops the bar but keeps the icon:
-// 100/100 under a full bar reads as progress towards something that is
-// not there.
+// How far along the next tier is, as x/y with a bar. The bar fills to the same fraction the numbers state;
+// it is not progress within the current tier. At the top it says "max" and drops the bar but keeps the icon.
 function yakCell(t) {
   const cell = document.createElement('span');
   cell.className = 'wvw-yakcell';
 
-  // The game's own caravan icon, so the pair of numbers says what it is
-  // counting without spending a word on it in a column this narrow.
+  // The game's caravan icon says what the pair of numbers counts in a column this narrow.
   const line = document.createElement('span');
   line.className = 'wvw-yaknum';
   const icon = document.createElement('img');
   icon.src = 'assets/icons/Event_Caravan.webp';
-  // At the top tier the row label already says "Yaks", so the icon is
-  // decoration and repeating the word just reads it twice. On the way
-  // up the label names the tier instead, and then the icon is the only
-  // thing saying what is being counted.
+  // At the top tier the row label already says "Yaks", so the icon is decoration. On the way up the label
+  // names the tier, and the icon is what says what is being counted.
   icon.alt = t.next ? 'yaks' : '';
   icon.width = 15;
   icon.height = 15;
@@ -1865,9 +1702,7 @@ function yakCell(t) {
   line.appendChild(n);
   cell.appendChild(line);
 
-  // No bar at the top tier. A full bar is a progress reading, and there
-  // is no progress left to report - the word says it in less space and
-  // without pretending something is still being counted towards.
+  // No bar at the top tier: a full bar reads as progress towards something that is not there.
   if (t.next) {
     const track = document.createElement('span');
     track.className = 'wvw-yakbar';
@@ -1899,9 +1734,7 @@ function row(dl, label, value, cls) {
   dl.appendChild(wrap);
 }
 
-// Breaks the list into the three questions it actually answers: whose it
-// is, what it pays, how upgraded it is. Same styling as the tactics
-// heading further down, so this is grouping, not a new look.
+// Breaks the list into the three questions it answers: whose it is, what it pays, how upgraded it is.
 function group(dl, label) {
   const h = document.createElement('div');
   h.className = 'wvw-group';
@@ -1936,8 +1769,7 @@ function renderObjectiveDetail(panel, p, match) {
   const owned = COLORS.includes(ownerColor);
   const ownCls = owned ? `wvw-owner own-${ownerColor}` : null;
 
-  // The type carries the very marker the map draws for it, already in
-  // the holder's colour: one glance says what it is and whose it is.
+  // The type carries the very marker the map draws, in the holder's colour.
   const type = document.createElement('div');
   type.className = 'wvw-detail-type';
   const tsrc = markerIcon(ob.type, ownerColor);
@@ -1968,10 +1800,8 @@ function renderObjectiveDetail(panel, p, match) {
     guildEmblem(ob.claimed_by).then(({ info, layers }) => {
       claimCell.textContent = '';
       if (layers.length) {
-        // An SVG rather than an img, because the layers have to be tinted
-        // and stacked - the same drawing the marker gets, at a fifth of
-        // the size. Its own defs and its own ids, since it lives outside
-        // the map's SVG entirely.
+        // An SVG rather than an img, because the layers are tinted and stacked: the marker's drawing at a fifth
+        // of the size, with its own defs and ids since it lives outside the map's SVG.
         const svg = svgEl('svg', { class: 'wvw-emblem', viewBox: '0 0 1 1' });
         const defs = svgEl('defs', {});
         svg.appendChild(defs);
@@ -1993,8 +1823,7 @@ function renderObjectiveDetail(panel, p, match) {
   group(dl, 'Upgrade');
   // The game's own names for the tiers, straight out of the API.
   if (tierInfo) {
-    // No "of 3": every objective in the mode has exactly three tiers. Not
-    // "paper" either: that word covers T1 as well.
+    // No "of 3": every objective in the mode has exactly three tiers.
     row(dl, 'Now', tierInfo.tier ? `T${tierInfo.tier} ${tierInfo.name}` : 'Not upgraded');
   }
   if (tierInfo && tierInfo.next) {
@@ -2007,31 +1836,22 @@ function renderObjectiveDetail(panel, p, match) {
 
   panel.appendChild(dl);
 
-  // Tactics, not the automatic tier upgrades - those follow from the yak
-  // count and are already summed up above. What is worth listing is what
-  // the holding guild chose to install.
-  //
-  // One field carries two different things. An improvement is bought once
-  // and is simply on from then; a tactic sits in a slot waiting for
-  // supply and for someone to press it, and only that is something an
-  // attack has to time around - so they get a heading each, tactics
-  // first, the way the game splits them. The API types both as
-  // "Claimable" and tells them apart only through the item each one
-  // costs, whose name ends in "Tactic" or "Improvement": ten and eleven
-  // across the catalogue, no exceptions. Anything matching neither is
-  // listed with the tactics, so a new kind of upgrade shows up instead of
-  // being quietly swallowed.
+  // Tactics, not the automatic tier upgrades (they follow from the yak count, summed above): what the
+  // holding guild chose to install.
+  // One field carries two kinds. An improvement is bought once and is simply on; a tactic sits in a slot
+  // waiting for supply and a press, which is what an attack has to time around. So each gets a heading,
+  // tactics first, as the game splits them. The API types both "Claimable" and, as far as we read it,
+  // separates them only by the cost item's name ending in "Tactic" or "Improvement". Anything matching
+  // neither is listed with the tactics, so a new kind of upgrade shows up instead of being swallowed.
   const isImprovement = (t) => {
     const cost = t && (t.costs || [])[0];
     return !!cost && /\bImprovement$/i.test(cost.name || '');
   };
   const installed = Array.isArray(ob.guild_upgrades) ? ob.guild_upgrades : [];
 
-  // The catalogue is fetched once for the whole match when the popover
-  // opens, so anything installed after that would show as a bare
-  // "Upgrade 379". Fetched on sight instead, and the panel repaints when it
-  // lands. The second check is the brake: a repaint that changes nothing
-  // would ask again for ever.
+  // The catalogue is fetched once for the match when the popover opens, so a later install would show as a
+  // bare "Upgrade 379". Fetched on sight instead; the panel repaints when it lands. The second check is
+  // the brake: a repaint that changes nothing would ask again for ever.
   const unknown = installed.filter((id) => !(tacticCatalogue && tacticCatalogue.has(id)));
   if (unknown.length) {
     getTacticCatalogue(unknown).then(() => {
@@ -2080,8 +1900,7 @@ function renderObjectiveDetail(panel, p, match) {
     group.appendChild(ul);
     cols.appendChild(group);
   };
-  // Tactics first, so the column that collapses to the top row on a
-  // narrow screen is the one you read before deciding to hit a place.
+  // Tactics first, so the column that collapses to the top row on a narrow screen is read first.
   listUpgrades('Tactics', tactics);
   listUpgrades('Improvements', improvements);
   if (cols.childElementCount) panel.appendChild(cols);
@@ -2403,9 +2222,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   popover.appendChild(header);
 
   const byType = new Map((match.maps || []).map((m) => [m.type, m]));
-  // A tab exists because the tier has that map, not because its outline
-  // has arrived yet - the outlines for the three tabs you did not open
-  // are still in flight when this runs.
+  // A tab exists because the tier has that map, not because its outline has arrived yet.
   const available = MAP_PANEL_ORDER.filter((t) => byType.has(t) && pendingSectors.has(t));
   if (!available.length) {
     const msg = document.createElement('p');
@@ -2480,9 +2297,8 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     detail.textContent = '';
     const p = document.createElement('p');
     p.className = 'wvw-detail-empty';
-    // Both lists are named because the game names them apart, and a
-    // defender treats them apart: the tier is bought by yaks and arrives on
-    // its own, the lists under it are what the holding guild chose to install.
+    // Both lists are named because the game names them apart and a defender treats them apart: the tier
+    // arrives on its own, the lists under it are what the holding guild chose to install.
     p.textContent = 'Click an objective to see who holds it, how long they have had it, and its tactics and improvements.';
     detail.appendChild(p);
   };
@@ -2697,8 +2513,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
       paintCorners();
       stage.appendChild(plotWrap);
     } else {
-      // The outline is what the drawing gets its frame from, so without
-      // it there is no map to show - but the other tabs are unaffected,
+      // The outline is the drawing's frame, so without it there is no map; the other tabs are unaffected,
       // which is why this replaces the stage and not the popover.
       const msg = document.createElement('p');
       msg.className = 'hint wvw-stage-msg';
@@ -2717,17 +2532,14 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     for (const b of tabs.children) b.classList.toggle('is-active', b.dataset.type === type);
     const ready = sectorsByType.get(type);
     if (ready) { draw(type, ready); return; }
-    // Not here yet. Only the tab that opens is waited on before the
-    // popover is built, so clicking one of the others early can land
-    // ahead of its outline.
+    // Not here yet: only the tab that opens is waited on, so clicking another early can land ahead of its outline.
     stage.textContent = '';
     const wait = document.createElement('p');
     wait.className = 'hint wvw-stage-msg';
     wait.innerHTML = '<span class="spinner"></span>Loading this map\u2026';
     stage.appendChild(wait);
     pendingSectors.get(type).then((arr) => {
-      // Both checks matter: the popover can be closed and another tab
-      // can be picked while this is in the air.
+      // The popover can be closed and another tab picked while this is in the air.
       if (activeTrigger !== triggerEl || current !== type) return;
       if (arr && arr.length) sectorsByType.set(type, arr);
       draw(type, arr);
@@ -2756,14 +2568,12 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     if (focusSpot && focusSpot.el && !focusSpot.el.isConnected) paintFocus();
   };
 
-  // ---- the pane under the tabs: one box shown, hugging what it holds up to
-  // the pane's height, then scrolling. Beside the map the pane ends where the
-  // map ends; stacked under it (a phone) the pane has a fixed height and the
-  // rest is empty, so the map above does not move when the tab changes.
-  // The map is measured once per opening (per width and map): measuring it
-  // on every repaint feeds back - the pane stretches the column, the map with
-  // it, then the pane again. And the drawing is measured, not its frame,
-  // which is the one the column stretches.
+  // ---- the pane under the tabs: one box shown, hugging what it holds up to the pane's height, then
+  // scrolling. Beside the map the pane ends where the map ends; stacked under it (a phone) the pane has a
+  // fixed height, so the map above does not move when the tab changes.
+  // The map is measured once per opening (per width and map): measuring on every repaint feeds back, the
+  // pane stretching the column, the map with it, then the pane again. The drawing is measured, not its
+  // frame, which is the one the column stretches.
   let paneOn = 'board';
   let paneSize = null;   // { key, at }: the map's bottom (wide) or the pane (stacked)
   const sizePane = () => {
@@ -2893,16 +2703,13 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     recordFightSamples([fresh], asked);
     markHotTab(liveMatch);
     const now = byType.get(current);
-    // Asked of the answer that just arrived, not of the match this
-    // popover opened with: a tier turns over while the maps are open,
-    // and it has also been seen turning back.
+    // Asked of the answer that just arrived, not of the match this popover opened with: a tier can turn over
+    // while the maps are open.
     const live = matchIsLive(fresh);
     paintBoard(fresh, live);
     if (plotWrap && plotWrap.applyLive && now) plotWrap.applyLive(now, live);
-    // The panel was born from a click and then stood still: the marker
-    // beside it could change hands, tier or guild while the text went
-    // on describing the moment it was clicked. applyLive rewrites the
-    // point in place, so repainting is all it takes.
+    // The panel was born from a click and then stood still: the marker beside it can change hands, tier or
+    // guild meanwhile. applyLive rewrites the point in place, so repainting is all it takes.
     if (selected) renderObjectiveDetail(detail, selected, fresh);
     if (plotWrap) {
       const old = plotWrap.querySelector('.wvw-scorebar');
@@ -2920,15 +2727,11 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     }
   };
 
-  // The maps keep themselves current while they are open. The standings
-  // refresh cannot do it for them: it rebuilds the whole board, and the
-  // button this popover is anchored to goes with it. So this asks for one
-  // match, not all nine, and repaints in place.
-  //
-  // Visible is enough, focus is not asked for: the window beside the game,
-  // unfocused on a second monitor, is where these maps are read. Only a
-  // hidden tab skips the tick, and mapCatchUp pulls the moment it is shown
-  // again.
+  // The maps keep themselves current while they are open. The standings refresh cannot: it rebuilds the
+  // whole board, and the button this popover is anchored to goes with it. So this asks for one match, not
+  // all nine, and repaints in place.
+  // Visible is enough, focus is not asked for: the window beside the game is where these maps are read.
+  // Only a hidden tab skips the tick, and mapCatchUp pulls the moment it is shown again.
   clearInterval(mapPollTimer);
   mapPollTimer = setInterval(() => {
     if (document.visibilityState === 'hidden') return;
@@ -2965,14 +2768,12 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     tabs.appendChild(b);
     tabByType.set(type, b);
   }
-  // The swords wait for the fresh reading rather than being painted from
-  // the one this popover opened with: that reading can be five minutes old
-  // and pick a different map, so painting at once would move the swords a
-  // breath later, which reads as a glitch. The tab titles are already set
-  // above, so nothing is blank. A fetch that never lands keeps the stale
-  // reading, which still beats no swords.
-  // Unless the body this page keeps rose within HOT_NOW_MS: that one is as
-  // fresh as the read, so the swords and the kills go up at once.
+  // The swords wait for the fresh reading rather than being painted from the one this popover opened with:
+  // that reading can be five minutes old and pick a different map, so painting at once would move the swords
+  // a breath later. The tab titles are already set above, so nothing is blank. A fetch that never lands keeps
+  // the stale reading, which still beats no swords.
+  // Unless the body this page keeps rose within HOT_NOW_MS: that one is as fresh as the read, so the swords
+  // and the kills go up at once.
   const keptNow = newestMatches.get(match.id);
   if (keptNow && Date.now() - keptNow.at <= HOT_NOW_MS) {
     liveMatch = keptNow.match;
@@ -2992,21 +2793,15 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   show(available[0]);
 
   // And once, right now, rather than waiting out the first poll.
-  //
-  // This popover opens with the match the standings panel is holding, and
-  // that panel refreshes every five minutes - the same five minutes
-  // Righteous Indignation lasts, so a snapshot that old is missing many of
-  // the objectives under it. It costs one request, blocks nothing - the map
-  // is already up - and it fixes the swords in the same move.
+  // This popover opens with the match the standings panel is holding, and that panel refreshes every five
+  // minutes, so a snapshot that old can be missing many of the objectives under it. One request, blocks
+  // nothing (the map is already up), and fixes the swords in the same move.
   pullFresh();
 
-  // The other three terrain pictures, once the first map is up and being
-  // looked at, so a tab switch does not start its own download between the
-  // click and anything appearing. The lite pictures only: the full ones wait
-  // for a zoom that needs them. decode() rather than just src, because the
-  // decode runs on the main thread and that is the half that would be seen.
-  // One at a time, in tab order - all three at once is a couple of megabytes
-  // racing the pictures the VISIBLE map is still pulling.
+  // The other three terrain pictures, once the first map is up, so a tab switch does not start its own
+  // download. The lite pictures only: the full ones wait for a zoom that needs them. decode() rather than
+  // just src, because the decode runs on the main thread. One at a time, in tab order, so they do not race
+  // the pictures the VISIBLE map is still pulling.
   const warmTerrain = () => {
     const queue = available.filter((t) => t !== current);
     const next = () => {
@@ -3024,8 +2819,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     };
     next();
   };
-  // Not for a connection that has asked to be spared. This is megabytes
-  // of maps nobody has said they want to see.
+  // Not for a connection that has asked to be spared: this is megabytes of maps nobody asked to see.
   const conn = navigator.connection;
   if (!conn || !(conn.saveData || /(^|-)2g$/.test(conn.effectiveType || ''))) {
     if (window.requestIdleCallback) requestIdleCallback(warmTerrain, { timeout: 4000 });
@@ -3036,15 +2830,11 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
 // The rest of a tier's opening, once maps-early.js has opened the popover
 // with its spinner and this file has loaded.
 async function fillTierMaps(popover, match, regionName, tierNum, triggerEl) {
-  // Reopen with what we already know, not with what the standings panel
-  // is holding. That panel refreshes every five minutes, so a reopen
-  // would paint from a snapshot this popover had already bettered and
-  // then correct itself a second later, which reads as a glitch.
-  //
-  // Which of the two is newer is decided by identity, not by clocks:
-  // every standings refresh parses fresh JSON, so a match object we have
-  // seen before means that panel has not refreshed and ours is the newer
-  // one. A different object means it is ahead of us, and it wins.
+  // Reopen with what we already know, not with what the standings panel is holding: a reopen would paint
+  // from a snapshot this popover had already bettered, then correct itself a second later.
+  // Which of the two is newer is decided by identity, not by clocks: every standings refresh parses fresh
+  // JSON, so a match object we have seen before means that panel has not refreshed and ours is newer. A
+  // different object means it is ahead of us, and it wins.
   if (freshRecall && freshRecall.from === match) {
     if (freshRecall.data) match = freshRecall.data;
   } else {
@@ -3055,21 +2845,15 @@ async function fillTierMaps(popover, match, regionName, tierNum, triggerEl) {
   const firstType = MAP_PANEL_ORDER.find((t) => wanted.some((m) => m.type === t));
   const firstMap = wanted.find((m) => m.type === firstType);
 
-  // The terrain picture, asked for here rather than by the <image> node.
-  // That node is built after everything below has resolved, so its
-  // download would queue up behind the API. Same URL, so the <image> finds
-  // it in the browser's cache instead of asking again.
+  // The terrain picture, asked for here rather than by the <image> node, which is built after everything
+  // below has resolved and would queue behind the API. Same URL, so the <image> finds it in the cache.
   const firstPic = firstMap && MAP_IMAGE[firstMap.id];
   if (firstPic) { const pre = new Image(); pre.src = firstPic.lite; }
 
-  // Started, never awaited. None of these draws a map - tiers only light
-  // the rings, tactics only name the list in the detail panel, and the
-  // foreground catalogue only matters once a claim emblem resolves. They
-  // land while the map is already on screen.
+  // Started, never awaited: none of these draws a map. They land while the map is already on screen.
   getUpgradeCatalogue();
   getEmblemPieces();
-  // Started here and never awaited: the swords are the last thing on the
-  // screen that matters and the first tab must not wait on a spreadsheet.
+  // Started here and never awaited: the first tab must not wait on a spreadsheet.
   getKillSheet();
   const tacticIds = [];
   for (const m of match.maps || []) {
@@ -3079,10 +2863,8 @@ async function fillTierMaps(popover, match, regionName, tierNum, triggerEl) {
   }
   if (tacticIds.length) getTacticCatalogue(tacticIds);
 
-  // All four outlines go out at once, but only the tab that opens is
-  // waited on: the slow ones are the server thinking, and waiting for all
-  // four would charge every opening the worst of them. show() waits on one
-  // if you get there first.
+  // All four outlines go out at once, but only the tab that opens is waited on, so an opening is not
+  // charged the slowest of them. show() waits on one if you get there first.
   const sectorsByType = new Map();
   const pendingSectors = new Map();
   for (const m of wanted) {

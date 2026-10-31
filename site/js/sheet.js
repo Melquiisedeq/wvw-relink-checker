@@ -30,9 +30,7 @@ function parseCsv(text) {
   return rows;
 }
 
-// Splits "[TAG] Name (region)". Two simple anchored regexes, not one combined
-// pattern: a lazy match plus an optional trailing group backtracks badly (ReDoS)
-// on this untrusted text.
+// Splits "[TAG] Name (region)". Two anchored regexes, not one combined pattern: a lazy match plus an optional group backtracks badly (ReDoS).
 const GUILD_TAG_RE = /^\[([^\]]+)\]/;
 const TRAILING_REGION_RE = /\(([^()]+)\)\s*$/;
 function parseGuildEntry(raw) {

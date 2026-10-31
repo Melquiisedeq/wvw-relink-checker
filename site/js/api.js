@@ -3,8 +3,7 @@
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Retry-After is either a number of seconds or an HTTP date. Both are read; the
-// wait is capped, because past half a minute the next background refresh retries.
+// Retry-After may be seconds or an HTTP date; the wait is capped, the next refresh retries.
 const RETRY_AFTER_FALLBACK_MS = 1500;
 const RETRY_AFTER_MAX_MS = 30000;
 
@@ -61,12 +60,9 @@ async function fetchJson(url, attempt = 0, cacheMode = 'no-store', timeoutMs = R
   }
 }
 
-// wvwrelink.com/api, the reads that stand in for the two project sheets. One
-// try, no retry: the caller's retry is the sheet. Throws on anything but a
-// 200 carrying JSON. `cache`: 'no-store' for our copy and its summary, which
-// the Worker sends with a max-age the browser would answer a repeat from.
-// A 'no-store' answer also sets ownClockLead: this device's clock minus the
-// answer's Date header (whole seconds, so up to 1 s over), 0 with no Date.
+// wvwrelink.com/api reads. One try, no retry (the caller's fallback is the sheet); throws on anything but a 200 with JSON.
+// `cache`: 'no-store' where the browser must not answer a repeat from its cache. A 'no-store'
+// answer sets ownClockLead: this clock minus the answer's Date header (up to 1 s over), 0 with no Date.
 let ownClockLead = 0;
 async function fetchOwnApi(url, cache = 'default') {
   const controller = new AbortController();
@@ -84,14 +80,10 @@ async function fetchOwnApi(url, cache = 'default') {
   }
 }
 
-// The static catalogues - objectives, upgrades, sectors, tactics, emblem
-// foregrounds - are served with max-age=3600, so they go through 'default' and
-// the browser's own cache answers for the hour. Live match data keeps 'no-store'.
+// Static catalogues go through 'default' so the browser cache answers; live match data keeps 'no-store'.
 const fetchJsonCached = (url) => fetchJson(url, 0, 'default');
 
-// Guild-to-team assignment only changes at the monthly relink; the same timer
-// interval is reused rather than tracking that date. A table kept from before
-// the teams notice went up (teamsNoticeUpAt, js/relink.js) is the old month's, whatever its age.
+// A table kept from before the teams notice went up (teamsNoticeUpAt, js/relink.js) is the old month's, whatever its age.
 async function getWvwMaps() {
   if (wvwMapCache && wvwMapCachedAt >= teamsNoticeUpAt
     && Date.now() - wvwMapCachedAt < TIMERS_REFRESH_MS) return wvwMapCache;
@@ -126,9 +118,7 @@ async function resolveGuildId(rawName) {
   return ids[0];
 }
 
-// Guild name, tag and emblem, kept between visits. About as static as this API
-// gets, and the maps ask for dozens at once. The API sends them no-store, so the
-// browser's own cache never keeps one; this does.
+// Guild name, tag and emblem, kept between visits; the browser's own cache keeps none of them.
 const GUILD_STORE_KEY = 'wvw-guilds-v1';
 const GUILD_STORE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // Enough for a season of WvW without unbounded growth: a guild seen once and never again is dropped by the trim below.
@@ -221,17 +211,11 @@ function findLink(guildId, maps) {
 }
 
 // ---- The newest body per match ---------------------------------------
-// The API answers from two groups of servers, picked by where the caller is,
-// and either can serve a body frozen in the past while the other moves on; the
-// body is pinned to the caller's IP, so a re-read stays on the same view. No
-// header gives the data's age. Painted, an older body walks the maps, the
-// scores and the kill rate backwards. Every reader of a match goes through
-// fetchMatches, which never hands out a body behind one already seen, and
-// /api/latest offers our copy, the newest our readers got from both groups.
-// matchId -> { match, at }; `at` is when the match's score last went up, as
-// this page saw it or as our copy dates its body. A frozen server repeats the
-// same body, so the time of an answer says nothing about the data's age; the
-// score sum of a live match rises every 20-40 s and jumps at each 5-min tick.
+// The API can serve a body older than one already seen, and re-reads may repeat it.
+// Every reader of a match goes through fetchMatches, which never hands out a body behind
+// one already seen; /api/latest offers our copy.
+// matchId -> { match, at }; `at` is when the match's score last went up, as this page
+// saw it or as our copy dates its body. The time of an answer says nothing about the data's age.
 const newestMatches = new Map();
 // Body from /api/latest -> when our readers saw its score go up (ms). A body
 // of our copy can be older than the moment it wins here.
@@ -325,15 +309,12 @@ function keepNewestMatch(match) {
 }
 
 // ---- The week's line-up between loads --------------------------------
-// On a relink night the API can serve a tier's new week and then last week's
-// again for about an hour; a reload would forget the new one.
+// On a relink night the API can serve last week's body after the new one; a reload would forget the new one.
 // Kept per match: start, end, the three team ids, when written - not the body.
-// Threat model: only this origin writes it (a script of ours, or the user's own extension).
-// Nothing in it becomes text: only team ids that exist in TEAM_NAMES, which supplies the names.
-// Worst case: a wrong line-up for up to WEEK_HOLD_MS, in this browser only.
+// Only team ids in TEAM_NAMES are kept, and it supplies the names; nothing stored becomes text.
 const WEEK_STORE_KEY = 'wvw-weeks-v1';
-// The memory overrules the API only this long after its week began, and only
-// over a body of an earlier week. 2 h covers the hour or so the API serves last week's body again.
+// The memory overrules the API only this long after its week began, and only over a body of an earlier week.
+// 2 h covers the hour or so the API serves last week's body again.
 const WEEK_HOLD_MS = 2 * 60 * 60 * 1000;
 const WEEK_MAX_MS = 8 * 24 * 60 * 60 * 1000;
 const WEEK_CLOCK_SLACK_MS = 5 * 60 * 1000;
@@ -714,22 +695,18 @@ async function latestInstead(one, early, err) {
 }
 
 // ---- /api/latest: a second read of the matches ------------------------
-// The game's own answer can sit still for minutes while the match moves.
-// /api/latest holds the same match bodies as the game gave them, gzipped and
-// base64, taken by our own scripts. Asked on the visit's first read, on the
+// The game's own answer can lag the match. /api/latest holds match bodies as the
+// game gave them, gzipped and base64, taken by our own scripts. Asked on the visit's first read, on the
 // first after the tab was hidden, and then, at most once per LATEST_GAP_MS,
 // when a live match read is behind what our copy holds: by the summary the
 // peek read (js/standings.js), while it is LATEST_SUMMARY_FRESH_MS old or
 // less; without one, when the game gave a body behind the kept one, or the
 // match has not risen here for LATEST_QUIET_MS (any one match, not all nine:
-// one of nine almost always rises, so asking only when all stood still would
-// be once a visit). Each body goes through
+// one of nine almost always rises). Each body goes through
 // keepNewestMatch like any other, so it wins only by being further
-// along. Threat model: anyone able to answer on this origin can hand us a
-// body, so: only ids the game already gave this visit, id and start must
-// match the body's own, the inflated size is capped while it streams, and
-// the body is data, as always. Any failure is silence: the page is then as it
-// was without this read.
+// along. Only ids the game already gave this visit are taken, id and start must
+// match the body's own, and the inflated size is capped while it streams.
+// Any failure is silence: the page is as it was without this read.
 const LATEST_URL = '/api/latest';
 const LATEST_SUMMARY_URL = '/api/latest/summary';
 const LATEST_QUIET_MS = 90 * 1000;

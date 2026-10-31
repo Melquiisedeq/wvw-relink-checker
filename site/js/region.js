@@ -1,8 +1,7 @@
 'use strict';
-// Which standings column goes on the left: the visitor's own choice, else their
-// region by ArenaNet's rule - Western and Eastern Europe play on EU, every other
-// country defaults to NA (guildwars2.com, "A World of Choice - The Regions of
-// Guild Wars 2"). The time zone stands in for the country and stays in the browser.
+// Which standings column goes on the left: the visitor's own choice, else their region by ArenaNet's rule: Western and Eastern Europe play on EU, every other
+// country defaults to NA (guildwars2.com, "A World of Choice - The Regions of Guild Wars 2").
+// The time zone stands in for the country and stays in the browser.
 //
 // In <head> and blocking, so the columns paint on the right side the first time.
 // It only sets data-rail-first on <html>: css/layout.css orders the columns from it

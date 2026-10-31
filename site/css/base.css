@@ -8,29 +8,26 @@
   --accent-bright:#66f5ff;
   --accent-soft:rgba(127,214,242,.14);
   --ok:#4caf7d;
-  /* Not cyan - cyan means "you can touch it" here. This is the ember
-     orange already drifting behind the header. */
+  /* Not cyan: cyan means "you can touch it". The ember orange drifting behind the
+     header. */
   --warn:#ffb765;
-  /* Not the same value as --red below, and the difference is load-bearing: this
-     one carries the "Guild not found" line on a card over the photo, where
-     #e15c5c is 4.27:1 at the photo's brightest point, under the 4.5 AA floor.
-     Two steps lighter, same hue and saturation, is 4.58. */
+  /* Not the same value as --red, and the difference is load-bearing: this carries the
+     "Guild not found" line over the photo's brightest point, where #e15c5c is 4.27:1,
+     under the 4.5 AA floor. Two steps lighter, same hue and saturation, is 4.58. */
   --err:#e36565;
   --blue:#5b8ff0;
   --green:#4caf7d;
   --red:#e15c5c;
-  /* The same two colours for letters: a fill may be dark, but --red as small text
-     is 3.49:1, and on a dark surface every legible red is a lighter one. Shapes
-     keep --red and --green. Saturation, not lightness, keeps a lighter red
-     reading as red rather than salmon: this one clears 4.5 by a tenth where the
-     K/D figure sits, and a step darker is 4.09 and fails. css/maps.css has its
-     own lighter pair. */
+  /* The same two colours for letters: --red as small text is 3.49:1. Saturation, not
+     lightness, keeps a lighter red reading as red: this one clears 4.5 by a tenth at the
+     K/D figure, and a step darker is 4.09 and fails. css/maps.css has its own lighter
+     pair. */
   --red-ink:#fb6a68;
   --green-ink:#3fbd83;
 }
 *{box-sizing:border-box;}
-/* The shake (.page.struck) would widen the document by up to 9 px; clip on
-   both, html alone does not hold (tests/e2e/layout.spec.mjs). */
+/* The shake (.page.struck) would widen the document by up to 9 px; clip on both, html
+   alone does not hold (tests/e2e/layout.spec.mjs). */
 html,body{overflow-x:clip;}
 body{
   margin:0;
@@ -41,39 +38,34 @@ body{
 }
 /* ---- Background effects: fixed layer stack behind the page, in its own div. ---- */
 .fx{
-  /* Not `inset:0`: on mobile Chromium a fixed element is sized by the visual
-     viewport, which changes as the URL bar hides, and `cover` would rescale the
-     photo while scrolling. lvh is the one height the URL bar cannot move. */
+  /* Not `inset:0`: on mobile Chromium a fixed element follows the visual viewport as
+     the URL bar hides, and `cover` would rescale the photo while scrolling. lvh does not
+     move. */
   position:fixed;left:0;top:0;width:100%;
   height:100vh;   /* Chromium already reads vh as the large viewport... */
   height:100lvh;  /* ...and this says so by spec rather than by habit. */
   pointer-events:none;z-index:0;overflow:hidden;
-  /* Nothing in here affects anything outside it, so a moving ember does not
-     invalidate the page above. paint is what overflow:hidden already does; this
-     makes it a promise the compositor can act on. */
+  /* Nothing in here affects anything outside it, so a moving ember does not invalidate
+     the page above. */
   contain:layout paint style;
 }
 .fx-l{position:absolute;inset:0;}
 
-/* The page's slate is #1a1f27 to #0f1216. These two are it shifted so that the
-   grey photo at .58 over them gives what the colour photo with
-   mix-blend-mode:luminosity at .58 over the slate would, with no filter or blend
-   to redo on every frame: each is (C - .58 * lum(C)) / .42. */
+/* The slate (#1a1f27 to #0f1216) shifted so the grey photo at .58 over it equals the
+   colour photo with mix-blend-mode:luminosity at .58 over the slate, with no filter to
+   redo per frame: each is (C - .58 * lum(C)) / .42. */
 .fx-ground{background:radial-gradient(circle at top, rgb(20,32,51), rgb(11,19,28) 60%);}
 
-/* The photo carries its effect in the file: grey, lum = 0.3 R + 0.59 G + 0.11 B,
-   after brightness .72 and contrast 1.04, blurred 1.14 px at its 1700x820
-   (1.5 px on a 1920x1080 screen). A new photo is baked the same way. No
-   will-change: a layer of its own makes every frame dearer (paint.spec.mjs). */
+/* The photo carries its effect in the file (grey, lum = 0.3 R + 0.59 G + 0.11 B, brightness .72, contrast 1.04,
+   blurred 1.14 px at 1700x820); a new photo is baked the same way. No will-change: a layer
+   of its own makes every frame dearer (paint.spec.mjs). */
 .fx-photo{
-  /* Left of centre: the castle is in the left third, and `center`
-     cropped it away on a tall window. */
+  /* Left of centre: `center` crops the castle away on a tall window. */
   background:url("../assets/wvw13-1.webp") 22% 42%/cover no-repeat;
   opacity:.58;
 }
 
-/* Darkest through the middle where the text sits. Inverse of a
-   vignette. */
+/* Darkest through the middle where the text sits. */
 .fx-scrim{
   background:
     radial-gradient(ellipse 62% 56% at 50% 45%,
@@ -91,20 +83,17 @@ body{
   contain:layout paint style;
 }
 
-/* A finished check reaches the background: the field lifts, flares
-   and settles, so the impact and the scenery read as one event. */
+/* A finished check reaches the background: the field lifts, flares and settles. */
 .fx-embers.surge{animation:ember-surge 2.8s cubic-bezier(.15,.8,.35,1);}
 @keyframes ember-surge{
   0%{filter:brightness(1);transform:translateY(0);}
   7%{filter:brightness(2.5) saturate(1.3);transform:translateY(-12px);}
   100%{filter:brightness(1);transform:translateY(0);}
 }
-/* Nothing loops while the window is not being watched. `*` rather than a list of
-   the looping animations, because a list misses whatever gets added next. Paused,
-   not disabled, so coming back is instant. Set in idleWhenUnwatched, js/boot.js.
-   The looping ones the embers' clock has paused (js/boot.js) ignore this rule and
-   stand still because that clock stops. The exceptions are the animations that run
-   once and are supposed to end: freezing those is a stuck frame, not a pause. */
+/* Nothing loops while the window is not watched (idleWhenUnwatched, js/boot.js). `*`,
+   not a list, so a new animation is covered; paused, not disabled, so coming back is
+   instant. The looping ones the embers' clock has paused ignore this rule. Run-once
+   animations are exempt: freezing them is a stuck frame. */
 .is-idle *:not(.value-changed):not(.delta):not(.match-panel),
 .is-idle *::before,
 .is-idle *:not(.side-pulse)::after{animation-play-state:paused !important;}
@@ -118,23 +107,21 @@ body{
   .live-dot,.trend-live-dot{animation-play-state:paused !important;}
 }
 
-/* ---- Scrollbars: the popovers and the map's detail column. -webkit-
-   pseudo-elements, not scrollbar-width/scrollbar-color: declaring those in
-   Chromium 121+ turns these rules off entirely. Firefox keeps its own. ---- */
+/* ---- Scrollbars: the popovers and the map's detail column. -webkit- pseudo-elements,
+   not scrollbar-width/scrollbar-color, which turn these rules off in Chromium. Firefox
+   keeps its own. ---- */
 .info-popover::-webkit-scrollbar,
 .wvw-detail::-webkit-scrollbar{width:9px;}
 
 .info-popover::-webkit-scrollbar-track,
 .wvw-detail::-webkit-scrollbar-track{background:transparent;}
 
-/* When an element is resizable AND scrolls, Chromium reserves a square below the
-   scrollbar for the grip and paints it opaque near-white; the track and thumb
-   rules do not reach it. */
+/* A resizable, scrolling element gets a UA-painted corner square that the track and
+   thumb rules do not reach. */
 .info-popover::-webkit-scrollbar-corner,
 .wvw-detail::-webkit-scrollbar-corner{background:transparent;}
 
-/* Transparent border clipped to the padding box: 5px of colour with
-   air either side, instead of a 9px bar against the wall. */
+/* Transparent border clipped to the padding box: 5px of colour with air either side. */
 .info-popover::-webkit-scrollbar-thumb,
 .wvw-detail::-webkit-scrollbar-thumb{
   background-color:rgba(154,164,178,.30);
@@ -147,8 +134,8 @@ body{
   background-color:rgba(127,214,242,.55);
 }
 
-/* Firefox, which has none of the above. It must stay inside this @supports:
-   scrollbar-width in Chromium turns every -webkit- rule above off. */
+/* Firefox. It must stay inside this @supports: scrollbar-width in Chromium turns every
+   -webkit- rule above off. */
 @supports not selector(::-webkit-scrollbar) {
   .info-popover,
   .wvw-detail{
@@ -157,35 +144,29 @@ body{
   }
 }
 
-/* ---- The browser's own chrome the user agent still paints in the OS palette.
-   Bare selectors on purpose: scoping them means the next input gets the white
-   one back. ---- */
+/* ---- The browser's own chrome in the OS palette. Bare selectors on purpose: scoping
+   them lets the next input get the white one back. ---- */
 
-/* The resize grip, the one rule here that is scoped: `resize` is on two unalike
-   elements. The textarea keeps the browser's grip; on the popover the narrowed
-   scrollbar leaves that corner 9px wide, where anything drawn is a smudge. */
+/* The one scoped rule: `resize` is on two unalike elements. The textarea keeps the
+   browser's grip; on the popover the narrowed scrollbar leaves that corner 9px wide, where
+   anything drawn is a smudge. */
 .info-popover--guilds::-webkit-resizer{background:none;}
 
-/* Background only, never a colour: a colour means a team on this page
-   (see standings.css), and forcing selected text to one shade would
-   break that for as long as the selection lasts. */
+/* Background only, never a colour: a colour means a team on this page (see
+   standings.css). */
 ::selection{background-color:rgba(127,214,242,.22);}
 
-/* The UA grey read as content. Dim enough to say "example", still
-   4.99:1. */
+/* The UA grey read as content; this is dimmer and still 4.99:1. */
 ::placeholder{color:#79838f;opacity:1;}
 
-/* Keyboard focus. On the element types, not the classes: a list of the button
-   kinds misses the next one, which gets Chromium's white ring. Outline, never
-   box-shadow: the buttons carry their relief in stacked box-shadows. The offset
-   puts the ring on the dark card behind the button. .wvw-marker opts out in
-   maps.css. */
+/* Keyboard focus, on the element types, not the classes: a list misses the next kind.
+   Outline, never box-shadow: the buttons carry their relief in stacked box-shadows. The
+   offset puts the ring on the dark card behind. .wvw-marker opts out in maps.css. */
 button:focus-visible,
 a:focus-visible{
   outline:2px solid var(--accent-bright);
   outline-offset:2px;
 }
 
-/* Android's default is a grey-black wash. On the root because the
-   property inherits, so it covers whatever gets written next. */
+/* On the root because the property inherits. */
 html{-webkit-tap-highlight-color:rgba(127,214,242,.18);}

@@ -1,18 +1,13 @@
 /* Team-tinted card: the side's own colour, as an edge and a fill. */
 .standing-side{margin:4px 0;}
-/* Variables only. facets.css repaints border and background as two
-   layers, and painting the colours here too would out-specify it - two
-   classes beat one regardless of order.
-
-   --side-fill is opaque, not a wash: the team colours are light, so
-   layering them over the page just raises its brightness and swallows
-   the text. Each is its hue mixed 12% into the card's dark base at 62%
-   alpha; the other 38% lets the team edge and the artwork through. */
+/* Variables only. facets.css repaints border and background as two layers, and painting
+   the colours here too would out-specify it (two classes beat one regardless of order).
+   --side-fill is opaque, not a wash: the team colours are light, so layering them raises
+   the page's brightness and swallows the text. Each is its hue mixed 12% into the card's
+   dark base at 62% alpha; the other 38% lets the team edge and the artwork through. */
 .side-red,.col-red{--side-edge:rgba(225,92,92,.45);--side-fill:rgba(47,35,35,.62);--side-rail:var(--red);--side-glow:rgba(255,150,150,.9);}
 .side-blue,.col-blue{--side-edge:rgba(91,143,240,.45);--side-fill:rgba(31,41,56,.62);--side-rail:var(--blue);--side-glow:rgba(160,195,255,.9);}
 .side-green,.col-green{--side-edge:rgba(76,175,125,.45);--side-fill:rgba(29,45,44,.62);--side-rail:var(--green);--side-glow:rgba(150,235,195,.9);}
 
-/* Weight, not colour: cyan on this page means something you can touch, and a team
-   name is not a control. The pin badge already names the guild that put you in
-   this column. */
+/* Weight, not colour: cyan means touchable, and a team name is not a control. */
 .team-col.is-yours .team-name{font-weight:800;}

@@ -8,16 +8,13 @@
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.14),
     inset 0 -1px 0 rgba(0,0,0,.5),
-    /* Contact shadow: tight and dark, right under the edge. This is
-       the one that says the card is sitting ON something. */
+    /* Contact shadow: tight and dark, right under the edge. */
     0 2px 3px rgba(0,0,0,.45),
     /* Cast shadow: wide and soft, saying how far above it sits. */
     0 20px 40px -16px rgba(0,0,0,.9);
 }
-/* Everything inside a panel sits over a translucent card over a
-   photograph, so it gets the same treatment the standings sides got:
-   each glyph given its own edge, and the tone split so labels recede
-   and values carry. */
+/* Everything inside a panel sits over a translucent card over the photograph: each
+   glyph gets its own edge, and the tone split makes labels recede and values carry. */
 .match-panel{text-shadow:0 1px 2px rgba(0,0,0,.55);}
 .match-panel-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
 .match-tier{font-weight:700;font-size:.95rem;color:#f2f6fa;}
@@ -35,16 +32,14 @@
 .dot-blue{background:radial-gradient(circle at 30% 30%, #b8cdff, var(--blue));color:var(--blue);}
 .dot-green{background:radial-gradient(circle at 30% 30%, #b3ecce, var(--green));color:var(--green);}
 .dot-pending{background:#4b5563;box-shadow:none;}
-/* inline-flex on a span inside the cell, deliberately not flex on the <td>: a
-   cell told to be a flex container stops being a table cell, the row wraps it
-   in an anonymous one, and with align-items:center no item offers a baseline, so
-   the flex box synthesises one from its bottom edge, which pushes this column
-   up and stretches the row. The dot is a bare span and only gets its 10px by
-   being a flex item, so the flex moves inward rather than away. */
+/* inline-flex on a span inside the cell, not flex on the <td>: a flex <td> stops being
+   a table cell, the row wraps it in an anonymous one, and with align-items:center the box
+   synthesises a baseline from its bottom edge, which pushes the column up and stretches
+   the row. The dot gets its 10px by being a flex item, so the flex moves inward. */
 .server-cell{display:inline-flex;align-items:center;gap:8px;vertical-align:middle;}
 .team-name{font-weight:600;font-size:.88rem;color:#f2f6fa;min-width:0;overflow-wrap:anywhere;}
-/* Chips carry their own dark-on-light text, and a drop shadow meant for
-   light-on-dark only muddies them. */
+/* Chips carry their own dark-on-light text; a drop shadow meant for light-on-dark
+   muddies them. */
 .rank-badge,.pin-badge,.tag{text-shadow:none;}
 .pin-badge{
   display:inline-block;margin-top:2px;margin-bottom:6px;

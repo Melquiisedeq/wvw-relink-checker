@@ -8,8 +8,6 @@ const MAP_LABEL_CLASS = Object.freeze({
   Center: 'map-kd-label--ebg', RedHome: 'map-kd-label--rbl',
   BlueHome: 'map-kd-label--bbl', GreenHome: 'map-kd-label--gbl'
 });
-// A figure card is a label over a number; a bar row is a label, a
-// proportion, a number and its share.
 function popFigure(label, value, tone) {
   const box = document.createElement('div');
   box.className = `pop-figure${tone ? ` pop-figure--${tone}` : ''}`;
@@ -24,10 +22,8 @@ function popFigure(label, value, tone) {
   return box;
 }
 
-// A section heading, and on the same line the words that name the columns of the
-// rows under it (on two lines they leave a band of empty space). The heading runs
-// along the left, over the label and the bar; each column word keeps its own
-// column's width, so it lands on what it names.
+// A heading with the column words on the same line (two lines leave a band of empty
+// space); each word keeps its column's width, so it lands on what it names.
 function popSection(title, cells) {
   const el = document.createElement('div');
   el.className = 'pop-section';
@@ -43,9 +39,7 @@ function popCell(className, text) {
   return el;
 }
 
-// One place a row label is built, so the bar rows and the total row
-// under them line up by construction rather than by two lists of the
-// same class names staying in step.
+// One place builds a row label, so bar rows and the total row line up by construction.
 function popBarLabel(text, labelClass) {
   const el = document.createElement('span');
   el.className = `pop-bar-label ${labelClass || ''}`.trim();
@@ -53,8 +47,6 @@ function popBarLabel(text, labelClass) {
   return el;
 }
 
-// `fraction` fills the track, `label` names the row, `value` and `pct`
-// sit at the right. labelClass lets a map row keep its map colour.
 function popBarRow(label, labelClass, fraction, value, pct, fillClass) {
   const row = document.createElement('div');
   row.className = 'pop-bar-row';
@@ -78,9 +70,8 @@ function popBarRow(label, labelClass, fraction, value, pct, fillClass) {
   return row;
 }
 
-// What the rows above add up to, on the same grid so the number lands
-// under the numbers. The track slot is kept and emptied rather than
-// dropped: that is what holds the columns in place.
+// The total row, on the same grid. The track slot is kept and emptied, not dropped:
+// that holds the columns in place.
 function popBarTotal(label, labelClass, value) {
   const row = document.createElement('div');
   row.className = 'pop-bar-row pop-bar-total';
@@ -98,7 +89,6 @@ function popBarTotal(label, labelClass, value) {
   return row;
 }
 
-// Every data popover opens the same way.
 function popHeader(popover, title) {
   const header = document.createElement('div');
   header.className = 'info-popover-header';
