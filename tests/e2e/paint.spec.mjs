@@ -4,7 +4,7 @@
 // on the compositor (a new one is a new cost per frame: it fails until it is
 // named here), the embers on a layer of their own, the photo on none and with
 // no filter and no blend mode (its effect is baked into the file), and the
-// raster work after the warm-up against a wide ceiling in budget.json. Paint and
+// raster work after the warm-up against a wide ceiling in data/budget.json. Paint and
 // layout go to one "e2e paint: ..." line, and to $GITHUB_STEP_SUMMARY on CI,
 // never to a failure. Frames drawn are frames.spec.mjs's.
 //
@@ -15,7 +15,7 @@ import { test, expect } from './support/fixtures.mjs';
 import { playing } from './support/scenarios.mjs';
 import { load, looping } from './support/steps.mjs';
 
-const budget = JSON.parse(readFileSync(new URL('./budget.json', import.meta.url), 'utf8')).paint;
+const budget = JSON.parse(readFileSync(new URL('./data/budget.json', import.meta.url), 'utf8')).paint;
 
 // Those the compositor can run without the main thread; an
 // infinite animation with any other property in a keyframe runs on the main thread.
@@ -107,9 +107,9 @@ test('standing still and watched, the layers, the animations and the raster stay
   console.log(line);
   if (process.env.GITHUB_ACTIONS === 'true' && process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `- ${line}\n`);
 
-  const RAISE = 'if the rise is on purpose, raise the ceiling in budget.json in the same PR';
+  const RAISE = 'if the rise is on purpose, raise the ceiling in data/budget.json in the same PR';
   expect(layers.length, `layers: ${layers.length}, ceiling ${budget.layers}; ${RAISE}`).toBeLessThanOrEqual(budget.layers);
-  expect(Object.keys(reasons).filter(r => !(r in budget.reasons)), 'a reason for a layer with no ceiling in budget.json').toEqual([]);
+  expect(Object.keys(reasons).filter(r => !(r in budget.reasons)), 'a reason for a layer with no ceiling in data/budget.json').toEqual([]);
   for (const [r, ceiling] of Object.entries(budget.reasons)) {
     expect(reasons[r] || 0, `layers for ${r}: ${reasons[r] || 0}, ceiling ${ceiling}; ${RAISE}`).toBeLessThanOrEqual(ceiling);
   }

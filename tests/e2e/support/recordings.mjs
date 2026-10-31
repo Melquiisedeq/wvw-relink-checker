@@ -1,4 +1,4 @@
-// Answers the page's outside reads from the recording (recordings.json.gz, or
+// Answers the page's outside reads from the recording (data/recordings.json.gz, or
 // $RECORDINGS), by exact URL: the GW2 API, the sheets on docs.google.com and
 // this site's /api. A URL the recording does not hold is a problem that fails
 // the test, naming the URL; nothing reaches the network. To refresh the

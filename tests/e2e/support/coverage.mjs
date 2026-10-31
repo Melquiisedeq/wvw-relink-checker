@@ -2,7 +2,7 @@
 // browser (every spec, through the `wvw` fixture) and from `node --test` (the
 // page's scripts in a node:vm and the /api Worker), joined by monocart-coverage-
 // reports into lines and branches per file: site/js, worker/index.mjs and supabase/reader.mjs.
-// coverage.json holds the committed numbers; a file that falls more than
+// data/coverage.json holds the committed numbers; a file that falls more than
 // TOLERANCE points, in lines or branches, fails the job. There is no absolute
 // target on purpose: a number to reach is met with a test that asserts nothing.
 // Two runs of one commit differ by up to 0.5 point in a few files: page timers
@@ -14,16 +14,16 @@
 // than a local Chromium, so CI's runs are among them.
 //
 //   npm run coverage            everything, locally (node, then the browser), prints the table
-//   npm run coverage:write      the same, then rewrites coverage.json (a PR that raises it commits it)
+//   npm run coverage:write      the same, then rewrites data/coverage.json (a PR that raises it commits it)
 //   node support/coverage.mjs node    node --test with V8 coverage kept in test-results/coverage-node
 //                                     (after the browser's run: Playwright empties test-results when it starts)
 //   node support/coverage.mjs check   join what the two runs left, table, compare (CI)
-//   node support/coverage.mjs write   join and rewrite coverage.json
+//   node support/coverage.mjs write   join and rewrite data/coverage.json
 //   npm run coverage:sweep [-- N]     N runs (3), one at a time, kept in sweep-results/run-<i>, then the sweep report
 //   node support/coverage.mjs save <dir>    join what the two runs left, keep istanbul.json and measured.json in <dir>
 //   node support/coverage.mjs sweep <dir> [--write]   the lines and branches covered in some runs and not in others, and
 //                                     those in none, over the runs saved under <dir> (one folder each); exit 1 if any
-//                                     oscillates; --write rewrites coverage.json with the minimum per file and metric
+//                                     oscillates; --write rewrites data/coverage.json with the minimum per file and metric
 //                                     (needs no node_modules: the CI sweep reads artifacts with it)
 //   node support/coverage.mjs untested <base>   after `check`: the lines `git diff <base> HEAD` added in site/js, worker and
 //                                     supabase that no test ran, to the job summary; never fails (what a line asks is judgement)
@@ -44,7 +44,7 @@ const OUT = join(E2E, 'test-results', 'coverage');
 const NODE_DIR = join(E2E, 'test-results', 'coverage-node');
 const COVERAGE_ON = !!process.env.E2E_COVERAGE;
 export const TOLERANCE = 0.5;
-const COMMITTED = join(E2E, 'coverage.json');
+const COMMITTED = join(E2E, 'data', 'coverage.json');
 const SWEEP_DIR = join(E2E, 'sweep-results');
 
 const options = () => ({
@@ -150,7 +150,7 @@ async function sweep(dir, write) {
   const minimum = minimumOf(runs.map(r => r.measured));
   if (write) {
     writeFileSync(COMMITTED, text(minimum));
-    lines.push('', `coverage.json rewritten with the minimum of ${runs.length} runs, ${Object.keys(minimum).length} files.`);
+    lines.push('', `data/coverage.json rewritten with the minimum of ${runs.length} runs, ${Object.keys(minimum).length} files.`);
   }
   console.log(lines.join('\n'));
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, '### Coverage sweep\n\n' + lines.join('\n') + '\n');
@@ -215,7 +215,7 @@ async function main(command, ...args) {
     '', 'Two causes, and this check cannot tell which (it does not see the diff):',
     '- The pull request added code no test runs: write the test.',
     '- The file is not one the pull request touched: it is oscillation. Run the sweep (Actions > Coverage sweep), then cover what it lists with a test. The committed number never goes down.');
-  if (rose.length && !fell.length) lines.push('', 'Coverage rose: run `npm run coverage:write` in `tests/e2e` and commit `coverage.json`.', ...rose.map(l => `- ${l}`));
+  if (rose.length && !fell.length) lines.push('', 'Coverage rose: run `npm run coverage:write` in `tests/e2e` and commit `data/coverage.json`.', ...rose.map(l => `- ${l}`));
   console.log(lines.join('\n'));
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, '### Coverage\n\n' + lines.join('\n') + '\n');
   if (fell.length) process.exitCode = 1;

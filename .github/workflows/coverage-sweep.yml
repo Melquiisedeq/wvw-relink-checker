@@ -1,4 +1,4 @@
-# The committed coverage (tests/e2e/coverage.json) is the minimum per file over
+# The committed coverage (tests/e2e/data/coverage.json) is the minimum per file over
 # several runs, because a few lines and branches are covered by luck of timing
 # (real timers, an aborted read). This runs the whole e2e job N times at once,
 # lists what some runs covered and others did not, and fails if anything did, so the
