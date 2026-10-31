@@ -848,6 +848,27 @@ test('the daily cleanup deletes kills older than 14 days and nothing newer', asy
   assert.ok(del.args.length <= 100);
 });
 
+test('the daily cleanup leaves its mark in source, and /api/health shows it', async () => {
+  const w = setup();
+  const sql = w.sql;
+  const day = Date.now() - 86400e3;
+  const now = Date.now();
+  const real = Date.now;
+  try {
+    Date.now = () => day;
+    await worker.scheduled({}, { DB: w.env.DB });
+    // The next day's run moves the mark, not only the first one.
+    Date.now = () => now;
+    await worker.scheduled({}, { DB: w.env.DB });
+  } finally {
+    Date.now = real;
+  }
+  const rows = sql.prepare("SELECT t, received FROM source WHERE name = 'cleanup'").all();
+  assert.deepEqual(rows.map((r) => ({ ...r })), [{ t: 0, received: Math.floor(now / 1000) }]);
+  const body = JSON.parse((await w.get('/api/health')).body);
+  assert.equal(body.cleanup, Math.floor(now / 1000));
+});
+
 test('a signed message with a wrong shape is 422 and writes nothing, whatever the field', async (sub) => {
   const w = setup();
   const now = w.now;

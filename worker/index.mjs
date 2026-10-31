@@ -112,6 +112,11 @@ export default {
     const r = await env.DB.prepare(cleanupSql)
       .bind(Date.now() - KEEP_DAYS * 86400e3, ...MATCHES).run();
     console.log(JSON.stringify({ cleanup: true, deleted: r.meta && r.meta.changes }));
+    // Only a cleanup that ran to here moves the mark; check-worker.py reads it.
+    await env.DB.prepare(
+      "INSERT INTO source (name, t, received) VALUES ('cleanup', 0, ?1) " +
+      'ON CONFLICT (name) DO UPDATE SET received = ?1'
+    ).bind(nowS()).run();
   }
 };
 
