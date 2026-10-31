@@ -144,7 +144,7 @@ test.describe('the screenshot button', () => {
       await page.evaluate(() => globalThis.__skewClock(Date.UTC(2026, 2, 15, 3, 0) - Date.now()));
       await page.locator(SHOT).click();
       await expect(page.locator('.shot-bubble')).toHaveText('Copied');
-      expect(await page.evaluate(() => window.__drawn.find(t => t.startsWith('wvwrelink.com')))).toBe('wvwrelink.com · 2026-03-14');
+      expect(await page.evaluate(() => window.__drawn)).toContain('wvwrelink.com · 2026-03-14');
     });
   });
 
