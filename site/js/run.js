@@ -10,10 +10,10 @@ let deployTimer = null;
 // fetch's own message differs in each browser.
 function lookupErrorText(e) {
   if (e.notFound) return 'Guild not found (name must match exactly)';
-  if (e.status === 429) return 'API busy, try again';
-  if (e.timedOut) return 'API slow, try again';
+  if (e.status === 429) return 'Server busy, try again';
+  if (e.timedOut) return 'Server slow, try again';
   if (e.network) return 'Connection lost, try again';
-  return 'API error, try again';
+  return 'Server error, try again';
 }
 
 async function run() {

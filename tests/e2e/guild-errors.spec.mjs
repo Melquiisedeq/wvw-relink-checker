@@ -17,14 +17,14 @@ async function checkOne(page, wvw, name) {
   return page.locator('#resultBody tr .status-err');
 }
 
-test('429 on the search: "API busy, try again"', async ({ page, wvw }) => {
+test('429 on the search: "Server busy, try again"', async ({ page, wvw }) => {
   await fail(page, wvw, SEARCH, 429);
-  await expect(await checkOne(page, wvw, 'Busy Guild')).toHaveText('API busy, try again');
+  await expect(await checkOne(page, wvw, 'Busy Guild')).toHaveText('Server busy, try again');
 });
 
-test('503 on the search: "API error, try again"', async ({ page, wvw }) => {
+test('503 on the search: "Server error, try again"', async ({ page, wvw }) => {
   await fail(page, wvw, SEARCH, 503);
-  await expect(await checkOne(page, wvw, 'Down Guild')).toHaveText('API error, try again');
+  await expect(await checkOne(page, wvw, 'Down Guild')).toHaveText('Server error, try again');
 });
 
 test('the connection dropping: "Connection lost, try again"', async ({ page, wvw }) => {
@@ -32,9 +32,9 @@ test('the connection dropping: "Connection lost, try again"', async ({ page, wvw
   await expect(await checkOne(page, wvw, 'Offline Guild')).toHaveText('Connection lost, try again');
 });
 
-test('guild data in the wrong shape: "API error, try again"', async ({ page, wvw }) => {
+test('guild data in the wrong shape: "Server error, try again"', async ({ page, wvw }) => {
   await answer(page, GUILD, { unexpected: true });
-  await expect(await checkOne(page, wvw, ID)).toHaveText('API error, try again');
+  await expect(await checkOne(page, wvw, ID)).toHaveText('Server error, try again');
 });
 
 test('an unknown name keeps "Guild not found (name must match exactly)"', async ({ page, wvw }) => {
