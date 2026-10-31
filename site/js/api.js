@@ -63,8 +63,9 @@ async function fetchJson(url, attempt = 0, cacheMode = 'no-store', timeoutMs = R
 // wvwrelink.com/api reads. One try, no retry (the caller's fallback is the sheet); throws on anything but a 200 with JSON.
 // `cache`: 'no-store' where the browser must not answer a repeat from its cache. A 'no-store'
 // answer sets ownClockLead: this clock minus the answer's Date header (up to 1 s over), 0 with no Date.
+// `raw`: the answer's text, unparsed.
 let ownClockLead = 0;
-async function fetchOwnApi(url, cache = 'default') {
+async function fetchOwnApi(url, cache = 'default', raw = false) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), OWN_API_TIMEOUT_MS);
   try {
@@ -74,7 +75,7 @@ async function fetchOwnApi(url, cache = 'default') {
       const lead = Date.now() - Date.parse(res.headers.get('Date'));
       ownClockLead = Number.isFinite(lead) ? lead : 0;
     }
-    return await res.json();
+    return await (raw ? res.text() : res.json());
   } finally {
     clearTimeout(timer);
   }
@@ -696,7 +697,9 @@ async function latestInstead(one, early, err) {
 
 // ---- /api/latest: a second read of the matches ------------------------
 // The game's own answer can lag the match. /api/latest holds match bodies as the
-// game gave them, gzipped and base64, taken by our own scripts. Asked on the visit's first read, on the
+// game gave them, taken by our own scripts: format 2 `body`, the match with only its
+// running skirmish, its finished ones at /api/history (latestJoin); format 1 `gz`, the
+// whole body gzipped and base64. Asked on the visit's first read, on the
 // first after the tab was hidden, and then, at most once per LATEST_GAP_MS,
 // when a live match read is behind what our copy holds: by the summary the
 // peek read (js/standings.js), while it is LATEST_SUMMARY_FRESH_MS old or
@@ -705,7 +708,7 @@ async function latestInstead(one, early, err) {
 // one of nine almost always rises). Each body goes through
 // keepNewestMatch like any other, so it wins only by being further
 // along. Only ids the game already gave this visit are taken, id and start must
-// match the body's own, and the inflated size is capped while it streams.
+// match the body's own, and each part's size is capped (an inflated one while it streams).
 // Any failure is silence: the page is as it was without this read.
 const LATEST_URL = '/api/latest';
 const LATEST_SUMMARY_URL = '/api/latest/summary';
@@ -715,9 +718,16 @@ const LATEST_GAP_MS = 30 * 1000;
 // the quiet rule above judges instead.
 const LATEST_SUMMARY_FRESH_MS = 90 * 1000;
 const LATEST_WAIT_MS = 1200;           // how long a read holds the paint; a late answer waits for the next one
-const LATEST_BODY_MAX = 256 * 1024;    // inflated bytes per match
+const LATEST_BODY_MAX = 256 * 1024;    // per part: inflated bytes (format 1), characters (format 2, a history)
 const LATEST_GZ_MAX = 96 * 1024;       // base64 characters per match
 const LATEST_MATCHES_MAX = 20;
+const WEEK_SKIRMISHES = 84;
+const LATEST_HISTORY_URL = { 1: '/api/history/1?v=', 2: '/api/history/2?v=' };
+// A version that lacked a match is asked again after this (the Worker keeps a partial one 60 s).
+const LATEST_HISTORY_RETRY_MS = 60 * 1000;
+// region:start:n -> { at, lists }: the finished skirmishes 1 to n of the matches the
+// answer held (id -> list), for the versions the last read needed.
+let latestHistory = new Map();
 let latestAsked = false;
 let latestAskedAt = 0;
 // The last summary read: id -> { start, score, at } (ms, the score sum, ms), and when.
@@ -735,7 +745,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 async function latestInflate(b64) {
-  if (typeof b64 !== 'string' || b64.length > LATEST_GZ_MAX) return null;
+  if (typeof DecompressionStream !== 'function' || typeof b64 !== 'string' || b64.length > LATEST_GZ_MAX) return null;
   const bin = atob(b64);
   const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
   const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')).getReader();
@@ -754,16 +764,20 @@ async function latestInflate(b64) {
   return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(joined));
 }
 
+// A whole answer within LATEST_BODY_MAX holds no part over it; past it, each is measured.
+const latestOver = (text, part) => text.length > LATEST_BODY_MAX && JSON.stringify(part).length > LATEST_BODY_MAX;
+
 // Resolves, never rejects, to the bodies that passed every check.
 async function latestRead() {
   try {
-    const data = await fetchOwnApi(LATEST_URL, 'no-store');
+    const text = await fetchOwnApi(LATEST_URL, 'no-store', true);
+    const data = JSON.parse(text);
     const list = data && Array.isArray(data.matches) ? data.matches.slice(0, LATEST_MATCHES_MAX) : [];
     const out = [];
     for (const e of list) {
       try {
         if (!e || typeof e.id !== 'string' || !WEEK_ID_RE.test(e.id)) continue;
-        const body = await latestInflate(e.gz);
+        const body = e.v === 2 ? (latestOver(text, e.body) ? null : e.body) : await latestInflate(e.gz);
         if (!body || body.id !== e.id || typeof body.all_worlds !== 'object' || !body.all_worlds
           || typeof body.scores !== 'object' || !body.scores || !Array.isArray(body.maps)) continue;
         if (!Number.isFinite(e.start) || Date.parse(body.start_time) !== e.start) continue;
@@ -771,14 +785,67 @@ async function latestRead() {
         out.push(body);
       } catch { /* this match has no data */ }
     }
-    return out;
+    return await latestJoin(out);
   } catch {
     return [];
   }
 }
 
+// The version of the history a body needs: its skirmishes from n + 1 on, n > 0, or
+// null when it holds them all from the first.
+function latestNeeds(body) {
+  const first = Array.isArray(body.skirmishes) ? body.skirmishes[0] : null;
+  const n = first && Number.isInteger(first.id) ? first.id - 1 : 0;
+  return n > 0 && n < WEEK_SKIRMISHES ? { region: body.id[0], start: Date.parse(body.start_time), n } : null;
+}
+
+// Puts each body's finished skirmishes back in front of its own, from the history
+// read once per version; a body whose history is not there is left out.
+async function latestJoin(bodies) {
+  const want = new Map();
+  for (const b of bodies) {
+    const v = latestNeeds(b);
+    if (!v) continue;
+    const key = v.region + ':' + v.start + ':' + v.n;
+    if (!want.has(key)) want.set(key, { ...v, ids: [] });
+    want.get(key).ids.push(b.id);
+  }
+  const kept = new Map();
+  await Promise.all([...want].map(async ([key, v]) => {
+    let h = latestHistory.get(key);
+    if (!h || (v.ids.some((id) => !h.lists.has(id)) && Date.now() - h.at >= LATEST_HISTORY_RETRY_MS)) {
+      h = { at: Date.now(), lists: await latestHistoryRead(v) };
+    }
+    kept.set(key, h);
+  }));
+  latestHistory = kept;
+  return bodies.filter((b) => {
+    const v = latestNeeds(b);
+    if (!v) return true;
+    const list = kept.get(v.region + ':' + v.start + ':' + v.n).lists.get(b.id);
+    if (list) b.skirmishes = list.concat(b.skirmishes);
+    return !!list;
+  });
+}
+
+// id -> skirmishes 1 to n, for each match of the region's answer at that version
+// whose list is that; empty on any failure.
+async function latestHistoryRead(v) {
+  const out = new Map();
+  try {
+    const text = await fetchOwnApi(LATEST_HISTORY_URL[v.region] + v.n, 'default', true);
+    const data = JSON.parse(text);
+    if (!data || data.v !== v.n || data.start !== v.start || !data.matches || typeof data.matches !== 'object') return out;
+    for (const [id, list] of Object.entries(data.matches).slice(0, LATEST_MATCHES_MAX)) {
+      if (!WEEK_ID_RE.test(id) || id[0] !== v.region || !Array.isArray(list) || list.length !== v.n
+        || !list.every((s, i) => s && typeof s === 'object' && s.id === i + 1) || latestOver(text, list)) continue;
+      out.set(id, list);
+    }
+  } catch { /* no history: the bodies that need it are left out */ }
+  return out;
+}
+
 function startLatest() {
-  if (typeof DecompressionStream !== 'function') return null;
   latestAsked = true;
   latestAskedAt = Date.now();
   if (document.visibilityState !== 'hidden') latestMissed = false;

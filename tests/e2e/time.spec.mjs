@@ -10,7 +10,7 @@
 //   the visitor's group down, copy current visitorDown(20), the map open, then closed
 //   our copy ahead of the visitor's, old   copyAheadOld(20) and (2), the map open
 //   kills in steps, the score rising       killSteps(7, 12, 42), the map open
-//   no DecompressionStream, copy unread    freeze(3), the map open
+//   copy unread, its summary read          freeze(3), the map open
 //
 // Invariants, at every look:
 //   stale    nothing says the data is current - the map's "data from" without
@@ -23,6 +23,7 @@
 // And on the row that hides the tab, "What you missed": it shows, its period
 // holds every flip, its count is the flips', its kills are the timeline's.
 import { test, expect } from './support/fixtures.mjs';
+import { fail } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { FOCUS, HOUR, MIN, apiDown, copyAheadOld, copyBehindAll, frozen, hidden, killSteps, missed, playing, twoPools, visible, visitorDown, wake } from './support/scenarios.mjs';
 
@@ -459,13 +460,14 @@ test.describe("our copy ahead of the visitor's server group, and old", () => {
   }
 });
 
-// Without DecompressionStream the copy cannot be opened, but its summary is plain
-// JSON: a body of the game with the summary's score is dated by the summary's
-// `at`, not by the moment the page read it.
+// Without DecompressionStream a format 1 copy cannot be opened (here the copy is
+// not read: a 503), but its summary is plain JSON: a body of the game with the
+// summary's score is dated by the summary's `at`, not by the moment the page read it.
 test.describe('no DecompressionStream, the game\'s body as far along as the summary', () => {
   test.use({ timeline: gw2.match(FOCUS).advance(12).freeze(3).pageOpens() });
   test('the corner gives the summary\'s time', async ({ page, wvw }) => {
     await page.addInitScript(() => { delete window.DecompressionStream; });
+    await fail(page, wvw, /\/api\/latest$/, 503);
     const r = rower(page, wvw);
     await r.load();
     await r.open();

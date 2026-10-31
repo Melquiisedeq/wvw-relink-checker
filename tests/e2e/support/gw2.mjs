@@ -1,6 +1,6 @@
 // A fake Guild Wars 2 world with one timeline. Every URL the page reads a match
 // from - the plain list of ids, ?ids=all, ?ids=<list>, ?id=, ?world=,
-// /api/latest (and its summary) and /api/kills - is answered from the same
+// /api/latest (and its summary), /api/history and /api/kills - is answered from the same
 // timeline at the page's own time,
 // so no two URLs contradict each other: bodies that disagree between URLs
 // mislead the page into states the game never shows.
@@ -44,7 +44,6 @@
 //   The skirmishes add up to the scores too.
 // The server checks the bodies it serves against these (served() below) and
 // reports a break as a problem of the test.
-import { gzipSync } from 'node:zlib';
 import { recording } from './recordings.mjs';
 
 const MIN = 60 * 1000;
@@ -503,6 +502,11 @@ function broken(b, now, prev) {
   return out;
 }
 
+// A body as our readers split it (supabase/reader.mjs, splitMatch): the live part keeps only
+// the running skirmish, /api/history the finished ones, 1 to n.
+export const liveOf = b => ({ ...b, skirmishes: b.skirmishes.slice(-1) });
+export const historyOf = b => b.skirmishes.slice(0, -1);
+
 const json = (status, value) => ({ status, type: 'application/json; charset=utf-8', body: Buffer.from(JSON.stringify(value)) });
 
 class Server {
@@ -578,7 +582,8 @@ class Server {
       if (want.every(i => /^\d{1,6}$/.test(i))) return json(200, want.filter(i => baseBodies().tactics.has(i)).map(i => baseBodies().tactics.get(i)));
     }
     const path = (() => { try { return new URL(url).pathname; } catch { return ''; } })();
-    if (path === '/api/latest' || path === '/api/latest/summary') {
+    const history = /^\/api\/history\/([12])$/.exec(path);
+    if (path === '/api/latest' || path === '/api/latest/summary' || history) {
       const down = this.#tl.latestStatusAt(t);
       if (down === 'hang') return 'hang';
       if (down) {
@@ -589,11 +594,23 @@ class Server {
       // `at`, in seconds as the Worker gives it: when the body's score last rose.
       const at = id => Math.floor(this.#tl.changedAt(id, up) / 1000);
       const bodies = ids.map(id => this.#body(id, up, anchor + up, false));
+      if (history) {
+        // The matches of the region at the version asked; a 404 when none is, as the Worker answers.
+        const v = Number(new URL(url).searchParams.get('v'));
+        const region = bodies.filter(b => b.id[0] === history[1]);
+        const start = Math.max(...region.map(b => Date.parse(b.start_time)));
+        const held = region.filter(b => Date.parse(b.start_time) === start && historyOf(b).length === v);
+        if (!held.length) {
+          this.#planted.add(url);
+          return json(404, { error: 'not found' });
+        }
+        return json(200, { v, start, matches: Object.fromEntries(held.map(b => [b.id, historyOf(b)])) });
+      }
       if (path === '/api/latest/summary') {
         return { ...json(200, Object.fromEntries(bodies.map(b => [b.id, { start: Date.parse(b.start_time), score: sum(b.scores), at: at(b.id), by: 'a' }]))), date: pageNow };
       }
       return { ...json(200, { matches: bodies.map(b => ({ id: b.id, start: Date.parse(b.start_time), score: sum(b.scores), at: at(b.id), by: 'a',
-        gz: gzipSync(Buffer.from(JSON.stringify(b))).toString('base64') })) }), date: pageNow };
+        v: 2, body: liveOf(b) })) }), date: pageNow };
     }
     if (path === '/api/kills') return json(200, { rows: this.#rows(t) });
     return null;
