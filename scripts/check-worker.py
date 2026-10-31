@@ -36,8 +36,8 @@ WORKERS_DEV = 'https://wvwrelink-api.wvwgw2.workers.dev/api/health'
 ATTEMPTS = 3
 PAUSE_SECONDS = 5
 TIMEOUT_SECONDS = 30
-# The Worker's own STALE_KILLS_S and STALE_RELINK_S: kills ticks every 5
-# minutes, relink every 15. Past these the reads already answer 503.
+# The Worker's own STALE_KILLS_S and STALE_RELINK_S: kills and relink tick
+# every 5 minutes. Past these the reads already answer 503.
 # Kills is the exception for the report: kills.gs pushes only when a match's
 # score rose, and the GW2 API has served frozen data for about an hour, so a
 # silent kills source is reported only past 90 minutes.

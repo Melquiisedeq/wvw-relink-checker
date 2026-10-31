@@ -79,7 +79,7 @@ const KILLS_WINDOW_MS = 10 * 60e3;
 const MOVE_MS = 2.5 * 3600e3;
 // Past these a source counts as stopped, and the reads answer 503 so the
 // page goes to the sheet rather than show a copy that stopped moving. Kills
-// ticks every 5 minutes, relink every 15.
+// and relink both tick every 5 minutes.
 const STALE_KILLS_S = 20 * 60;
 const STALE_RELINK_S = 45 * 60;
 // Every match id the entrance accepts, so the rebuild and the cleanup below read the kills
