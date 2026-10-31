@@ -2861,9 +2861,12 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   // repainted when it lands. Called on opening and then on the poll.
   // Stamped when asked, not when answered, so a catch-up and the poll do
   // not both fire for the same gap. The sequence number keeps a slow
-  // answer from painting over a newer one that overtook it.
+  // answer from painting over a newer one that overtook it, unless the older
+  // answer is a body of the copy further along (the copy is asked once per gap,
+  // so a newer read may not have it).
   let pulledAt = 0;
   let pullSeq = 0;
+  let paintedSeq = 0;
   const pullFresh = async () => {
     pulledAt = Date.now();
     const asked = Date.now();
@@ -2879,8 +2882,9 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
       if (kept && matchIsBehind(liveMatch, kept.match)) fresh = kept.match;
     }
     firstReadDone = true;
-    if (seq !== pullSeq) return;
     if (activeTrigger !== triggerEl || !fresh || !Array.isArray(fresh.maps)) return;
+    if (seq < paintedSeq && !(latestBodyAt.has(fresh) && matchIsBehind(liveMatch, fresh))) return;
+    paintedSeq = Math.max(paintedSeq, seq);
     for (const m of fresh.maps) if (byType.has(m.type)) byType.set(m.type, m);
     liveMatch = fresh;
     // Outlives the popover, so reopening starts from here.
