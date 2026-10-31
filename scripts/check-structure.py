@@ -67,14 +67,14 @@ def script_tags(html):
     Parsed rather than grepped: the JSON-LD block has no src at all, which a
     line-based grep trips over.
     """
-    body = html.find('<body')
+    body = html.lower().find('<body')
     out = []
-    for m in re.finditer(r'<script\b[^>]*>', html):
+    for m in re.finditer(r'<script\b[^>]*>', html, re.I):
         tag = m.group(0)
-        src = re.search(r'\bsrc="([^"]+)"', tag)
+        src = re.search(r'\bsrc="([^"]+)"', tag, re.I)
         out.append({
             'src': src.group(1) if src else None,
-            'async': re.search(r'\basync\b', tag) is not None,
+            'async': re.search(r'\basync\b', tag, re.I) is not None,
             'head': m.start() < body,
         })
     return out
@@ -214,7 +214,7 @@ def check_scripts(problems):
 
 def check_styles(problems):
     referenced = re.findall(r'<link\b[^>]*href="([^"]+\.css)"',
-                            read('index.html'))
+                            read('index.html'), re.I)
 
     for href in referenced:
         if not os.path.exists(os.path.join(SITE, href)):
@@ -258,7 +258,7 @@ def check_notice_position(problems):
     anybody could notice are the days a relink is happening.
     """
     html = read('index.html')
-    body = re.search(r'<body[^>]*>', html)
+    body = re.search(r'<body[^>]*>', html, re.I)
     if not body:
         problems.append(
             'No <body> tag in index.html, so where the teams notice sits could '

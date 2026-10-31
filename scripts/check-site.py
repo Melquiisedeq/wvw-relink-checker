@@ -162,8 +162,8 @@ def main():
 
     # From the served HTML, not from the repository: the point is to catch a
     # file the deploy left behind.
-    assets = re.findall(r'<script\b[^>]*\bsrc="([^":]+)"', html) \
-        + re.findall(r'<link\b[^>]*href="([^":]+\.css)"', html)
+    assets = re.findall(r'<script\b[^>]*\bsrc="([^":]+)"', html, re.I) \
+        + re.findall(r'<link\b[^>]*href="([^":]+\.css)"', html, re.I)
 
     if not assets:
         problems.append('No scripts or stylesheets found in the served HTML at '
