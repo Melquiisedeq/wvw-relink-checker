@@ -1427,3 +1427,52 @@ test('format 2: a live part with anything before its "{" is left out', async () 
   assert.deepEqual(lines.find((l) => l.parts).why, ['1-1 live not an object']);
   assert.deepEqual(w.sql.prepare('SELECT id FROM latest').all().map((x) => x.id), ['1-2']);
 });
+
+test('format 2: a live part with no maps is left out, and a summary that is no object or has another version is 422', async () => {
+  const w = setup({ env: SUPA_ENV });
+  const { r, lines } = await quiet(() => pushV2(w, 'latest-supa-us', [
+    { id: '1-1', live: { ...liveOf('1-1'), maps: undefined } }, { id: '1-2' }]));
+  assert.equal(r, 200);
+  assert.deepEqual(lines.find((l) => l.parts).why, ['1-1 live maps']);
+  assert.deepEqual(w.sql.prepare('SELECT id FROM latest').all().map((x) => x.id), ['1-2']);
+  const refused = async (summary) => {
+    const out = await quiet(() => w.post('latest-supa-us', Buffer.from(summary + '\n'), { key: SUPA['latest-supa-us'] }));
+    assert.deepEqual(out.lines.map((l) => [l.refused, l.why]), [[422, 'version']], summary);
+    return out.r;
+  };
+  for (const summary of ['null', '5', '{"v":3,"matches":[]}', '{"v":0,"matches":[]}', '{"matches":[]}']) {
+    assert.equal(await refused(summary), 422);
+  }
+});
+
+test('/api/history: the matches come in order of their id, whichever order D1 reads them in', async () => {
+  const w = setup({ env: SUPA_ENV });
+  const ids = ['1-1', '1-2', '1-3'];
+  for (const id of ids) assert.equal(await pushV2(w, 'latest-supa-us', [{ id, hist: { n: NA_DONE } }]), 200);
+  const real = w.env.DB;
+  let turn = (rows) => rows;
+  w.env.DB = {
+    prepare: (q) => {
+      const st = real.prepare(q);
+      if (!q.includes('FROM latest l LEFT JOIN history')) return st;
+      return { bind: (...a) => ({ all: async () => { const r = await st.bind(...a).all(); return { ...r, results: turn(r.results) }; } }) };
+    }
+  };
+  for (const [name, order] of [['reversed', (rows) => [...rows].reverse()], ['rotated', (rows) => [...rows.slice(1), rows[0]]]]) {
+    turn = order;
+    const r = await w.get('/api/history/1?v=' + NA_DONE);
+    assert.deepEqual(Object.keys(JSON.parse(r.body).matches), ids, name);
+  }
+});
+
+test('/api/history: on the reset day before the reset hour the week is still the last one', async () => {
+  const w = setup({ env: SUPA_ENV });
+  w.advance(Date.parse('2026-10-03T01:00:00Z') - w.now);
+  const done = Math.floor((w.now - NA_WEEK) / (2 * 3600e3));
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', hist: { n: done } }]), 200);
+  const r = await w.get('/api/history/1?v=' + done);
+  assert.equal(r.status, 200);
+  assert.equal(JSON.parse(r.body).start, NA_WEEK);
+  w.advance(3600e3);
+  assert.equal((await w.get('/api/history/1?v=' + done)).status, 404, 'at the reset the week is a new one, and the old version is gone');
+});
