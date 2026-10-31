@@ -1,7 +1,7 @@
 {
   "site/js/api.js": {
-    "lines": 89.9,
-    "branches": 90
+    "lines": 90.4,
+    "branches": 90.8
   },
   "site/js/boot.js": {
     "lines": 93.1,
@@ -16,19 +16,19 @@
     "branches": 100
   },
   "site/js/guilds-popover.js": {
-    "lines": 87.8,
-    "branches": 64.7
+    "lines": 91.9,
+    "branches": 77.1
   },
   "site/js/maps-early.js": {
-    "lines": 94.6,
-    "branches": 92.2
+    "lines": 94.5,
+    "branches": 92
   },
   "site/js/maps.js": {
-    "lines": 92.4,
-    "branches": 85.1
+    "lines": 92.6,
+    "branches": 85.5
   },
   "site/js/panels.js": {
-    "lines": 94.3,
+    "lines": 94.4,
     "branches": 82.5
   },
   "site/js/popover-parts.js": {
@@ -37,15 +37,15 @@
   },
   "site/js/popover.js": {
     "lines": 97.7,
-    "branches": 93.9
+    "branches": 94.2
   },
   "site/js/region.js": {
     "lines": 91.7,
     "branches": 75
   },
   "site/js/relink.js": {
-    "lines": 95.9,
-    "branches": 95.8
+    "lines": 96.1,
+    "branches": 96.2
   },
   "site/js/run.js": {
     "lines": 88.6,
@@ -60,8 +60,8 @@
     "branches": 90.1
   },
   "site/js/stat-popovers.js": {
-    "lines": 93.4,
-    "branches": 77.1
+    "lines": 93.2,
+    "branches": 78.9
   },
   "site/js/summary.js": {
     "lines": 99.2,
@@ -76,11 +76,11 @@
     "branches": 0
   },
   "supabase/reader.mjs": {
-    "lines": 97.6,
-    "branches": 97
+    "lines": 97.8,
+    "branches": 97.4
   },
   "worker/index.mjs": {
-    "lines": 98.9,
-    "branches": 99.7
+    "lines": 99.1,
+    "branches": 99.8
   }
 }
