@@ -93,9 +93,245 @@ function buildGuildList(entries) {
   return list;
 }
 
+// Lucide "camera", "check" and "x" (https://lucide.dev), ISC licence: Copyright (c) 2026 Lucide Icons and Contributors.
+const SHOT_ICONS = {
+  camera: '<path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/>',
+  ok: '<path d="M20 6 9 17l-5-5"/>',
+  fail: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'
+};
+function setShotIcon(btn, key) {
+  btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + SHOT_ICONS[key] + '</svg>';
+}
+
+function guildsShotCanvas(team, alliances, solo) {
+  const W = 880, PAD = 22, GAP = 12, LH = 20, FS = 14, SCALE = 2;
+  const cs = getComputedStyle(document.documentElement);
+  const col = (v, f) => cs.getPropertyValue(v).trim() || f;
+  const family = getComputedStyle(document.body).fontFamily || 'sans-serif';
+  const c = document.createElement('canvas');
+  const x = c.getContext('2d');
+  const font = (w, px) => { x.font = `${w} ${px}px ${family}`; };
+  const wrap = (text, width, w) => {
+    font(w, FS);
+    const out = [];
+    let cur = '';
+    for (const word of text.split(/\s+/)) {
+      const t = cur ? `${cur} ${word}` : word;
+      if (x.measureText(t).width <= width) { cur = t; continue; }
+      if (cur) { out.push(cur); cur = ''; }
+      // A word wider than the column is cut by character.
+      for (const ch of word) {
+        if (cur && x.measureText(cur + ch).width > width) { out.push(cur); cur = ch; } else cur += ch;
+      }
+    }
+    if (cur) out.push(cur);
+    return out.length ? out : [''];
+  };
+  const inner = W - PAD * 2;
+  const numCols = Math.max(1, Math.min(4, alliances.length || 1, Math.floor((inner + GAP) / (220 + GAP)) || 1));
+  const colW = (inner - GAP * (numCols - 1)) / numCols;
+  const region = (g) => (g.region ? `(${g.region})` : '');
+  // One string per guild so a wrapped line keeps its tag, name and region together.
+  const full = (g) => `${g.tag ? `[${g.tag}] ` : ''}${g.name}${g.region ? ` ${region(g)}` : ''}`;
+  const cards = alliances.map((a) => {
+    const head = wrap(a.tag ? `[${a.tag}] ${a.name}` : a.name, colW - 20, 700);
+    const rows = a.members.map((g) => ({ g, parts: wrap(full(g), colW - 30, 400) }));
+    const h = 16 + head.length * LH + rows.reduce((n, r) => n + r.parts.length * LH, 0) + 2;
+    return { head, rows, h };
+  }).sort((a, b) => b.h - a.h);
+  const cols = Array.from({ length: numCols }, () => ({ h: 0, items: [] }));
+  for (const k of cards) {
+    let t = 0;
+    for (let i = 1; i < numCols; i++) if (cols[i].h < cols[t].h) t = i;
+    cols[t].items.push(k);
+    cols[t].h += k.h + GAP;
+  }
+  const soloCols = Array.from({ length: Math.max(1, Math.min(numCols, solo.length)) }, () => ({ h: 0, rows: [] }));
+  for (const g of solo) {
+    const parts = wrap(full(g), colW - 4, 400);
+    let t = 0;
+    for (let i = 1; i < soloCols.length; i++) if (soloCols[i].h < soloCols[t].h) t = i;
+    soloCols[t].rows.push({ g, parts });
+    soloCols[t].h += parts.length * LH;
+  }
+  const alliancesH = alliances.length ? 26 + Math.max(...cols.map((k) => k.h)) - GAP : 0;
+  const soloH = solo.length ? 34 + Math.max(...soloCols.map((k) => k.h)) : 0;
+  const H = PAD + 34 + alliancesH + soloH + 36;
+  c.width = W * SCALE;
+  c.height = H * SCALE;
+  x.scale(SCALE, SCALE);
+  x.fillStyle = col('--card', '#171b21');
+  x.fillRect(0, 0, W, H);
+  x.textBaseline = 'alphabetic';
+  font(700, 22);
+  x.fillStyle = col('--text', '#e6e9ee');
+  x.fillText(team, PAD, PAD + 20);
+  let y = PAD + 34;
+  const section = (label, top) => {
+    font(800, 11);
+    x.fillStyle = col('--muted', '#9aa4b2');
+    x.fillText(label.toUpperCase().split('').join(String.fromCharCode(8202)), PAD, top + 12);
+    x.fillStyle = col('--border', '#2a313a');
+    x.fillRect(PAD, top + 18, inner, 1);
+  };
+  const drawLine = (g, parts, px, py) => {
+    parts.forEach((txt, i) => {
+      let cx = px;
+      const base = py + i * LH;
+      const tagText = i === 0 && g.tag ? `[${g.tag}] ` : '';
+      if (tagText && txt.startsWith(tagText)) {
+        font(700, FS);
+        x.fillStyle = col('--accent', '#7fd6f2');
+        x.fillText(tagText, cx, base);
+        cx += x.measureText(tagText).width;
+        txt = txt.slice(tagText.length);
+      }
+      font(400, FS);
+      const reg = region(g) && i === parts.length - 1 && txt.endsWith(region(g)) ? region(g) : '';
+      const main = reg ? txt.slice(0, txt.length - reg.length) : txt;
+      x.fillStyle = col('--text', '#e6e9ee');
+      x.fillText(main, cx, base);
+      if (reg) {
+        x.fillStyle = col('--muted', '#9aa4b2');
+        x.fillText(reg, cx + x.measureText(main).width, base);
+      }
+    });
+  };
+  if (alliances.length) {
+    section('Alliances', y);
+    const top = y + 26;
+    cols.forEach((k, i) => {
+      let cy = top;
+      const cx = PAD + i * (colW + GAP);
+      for (const card of k.items) {
+        x.fillStyle = 'rgba(255,255,255,.04)';
+        x.fillRect(cx, cy, colW, card.h);
+        x.strokeStyle = col('--border', '#2a313a');
+        x.strokeRect(cx + .5, cy + .5, colW - 1, card.h - 1);
+        font(700, FS);
+        x.fillStyle = col('--blue', '#6aa9ff');
+        card.head.forEach((t, j) => x.fillText(t, cx + 10, cy + 8 + FS + j * LH));
+        let ry = cy + 8 + FS + card.head.length * LH;
+        for (const r of card.rows) { drawLine(r.g, r.parts, cx + 20, ry); ry += r.parts.length * LH; }
+        cy += card.h + GAP;
+      }
+    });
+    y = top + Math.max(...cols.map((k) => k.h)) - GAP;
+  }
+  if (solo.length) {
+    section('Solo guilds', y + 8);
+    const top = y + 8 + 26;
+    soloCols.forEach((k, i) => {
+      let ry = top + FS;
+      for (const r of k.rows) { drawLine(r.g, r.parts, PAD + i * (colW + GAP) + 2, ry); ry += r.parts.length * LH; }
+    });
+  }
+  font(400, 11);
+  x.fillStyle = col('--muted', '#9aa4b2');
+  x.textAlign = 'right';
+  x.fillText(`wvwrelink.com · ${new Date().toLocaleDateString('en-CA')}`, W - PAD, H - 14);
+  return c;
+}
+
+// Run-once effects, so reduced motion keeps them.
+function showShotResult(btn, popover, text) {
+  if (!btn.isConnected) return;
+  const failed = text === 'Failed';
+  setShotIcon(btn, failed ? 'fail' : 'ok');
+  btn.classList.toggle('shot-done', !failed);
+  const status = popover.querySelector('.info-popover-shot-status');
+  if (status) status.textContent = text;
+  const r = btn.getBoundingClientRect();
+  const bubble = document.createElement('div');
+  bubble.className = 'shot-bubble';
+  bubble.textContent = text;
+  bubble.setAttribute('aria-hidden', 'true');
+  bubble.style.left = (r.left + r.width / 2) + 'px';
+  bubble.style.top = (r.bottom + 6) + 'px';
+  document.body.appendChild(bubble);
+  bubble.animate([{ opacity: 0, transform: 'translate(-50%,-4px)' }, { opacity: 1, transform: 'translate(-50%,0)' }],
+    { duration: 160, easing: 'ease-out', fill: 'forwards' });
+  setTimeout(() => bubble.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, fill: 'forwards' })
+    .finished.then(() => bubble.remove()), 1500);
+  clearTimeout(btn.__shotTimer);
+  btn.__shotTimer = setTimeout(() => {
+    btn.classList.remove('shot-done');
+    setShotIcon(btn, 'camera');
+    if (status) status.textContent = '';
+  }, 2000);
+}
+
+function playShotFlash(btn, popover) {
+  const r = popover.getBoundingClientRect();
+  const flash = document.createElement('div');
+  flash.className = 'shot-flash';
+  Object.assign(flash.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+  document.body.appendChild(flash);
+  flash.animate([{ opacity: .7 }, { opacity: 0 }], { duration: 420, easing: 'ease-out' })
+    .finished.then(() => flash.remove());
+  btn.animate([{ transform: 'scale(1)' }, { transform: 'scale(.78)' }, { transform: 'scale(1.12)' }, { transform: 'scale(1)' }],
+    { duration: 380, easing: 'ease-out' });
+}
+
+function downloadShot(blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'wvwrelink-guilds.png';
+  a.addEventListener('click', (e) => e.stopPropagation()); // a click on the document would close the popover
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+// The clipboard write starts inside the click with the blob still a promise: awaiting it
+// first loses the user gesture in Safari.
+function copyGuildsShot(btn, popover, teamName) {
+  playShotFlash(btn, popover);
+  const blobP = new Promise((res, rej) => {
+    try {
+      guildsShotCanvas(teamName, popover.__allianceData || [], popover.__soloData || [])
+        .toBlob((b) => (b ? res(b) : rej(new Error('toBlob'))), 'image/png');
+    } catch (e) { rej(e); }
+  });
+  let wrote;
+  try {
+    wrote = navigator.clipboard && window.ClipboardItem && navigator.clipboard.write
+      ? navigator.clipboard.write([new ClipboardItem({ 'image/png': blobP })])
+      : Promise.reject(new Error('unsupported'));
+  } catch (e) { wrote = Promise.reject(e); }
+  wrote.then(() => showShotResult(btn, popover, 'Copied'), async () => {
+    try {
+      const blob = await blobP;
+      const file = new File([blob], 'wvwrelink-guilds.png', { type: 'image/png' });
+      let shared = false;
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: teamName });
+          shared = true;
+        } catch (e) {
+          if (e && e.name === 'AbortError') return;
+        }
+      }
+      if (shared) showShotResult(btn, popover, 'Shared');
+      else {
+        downloadShot(blob);
+        showShotResult(btn, popover, 'Saved');
+      }
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      showShotResult(btn, popover, 'Failed');
+    }
+  });
+}
+
 function renderGuildsPopoverContent(popover, teamName, data, triggerEl) {
   popover.textContent = '';
   popover.classList.remove('info-popover--expanded');
+  popover.__allianceData = null;
+  popover.__soloData = data ? data.solo : null;
 
   const header = document.createElement('div');
   header.className = 'info-popover-header';
@@ -117,6 +353,18 @@ function renderGuildsPopoverContent(popover, teamName, data, triggerEl) {
     const nowExpanded = !popover.classList.contains('info-popover--expanded');
     setPopoverExpanded(popover, triggerEl, nowExpanded);
   });
+  const shotBtn = document.createElement('button');
+  shotBtn.type = 'button';
+  shotBtn.className = 'info-popover-shot';
+  setShotIcon(shotBtn, 'camera');
+  shotBtn.setAttribute('aria-label', 'Copy the list as an image');
+  shotBtn.title = shotBtn.getAttribute('aria-label');
+  shotBtn.disabled = !(data && (data.alliances.length || data.solo.length));
+  shotBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    copyGuildsShot(shotBtn, popover, teamName);
+  });
+  actions.appendChild(shotBtn);
   actions.appendChild(expandBtn);
 
   const closeBtn = document.createElement('button');
@@ -129,6 +377,10 @@ function renderGuildsPopoverContent(popover, teamName, data, triggerEl) {
 
   header.appendChild(actions);
   popover.appendChild(header);
+  const shotStatus = document.createElement('span');
+  shotStatus.className = 'sr-only info-popover-shot-status';
+  shotStatus.setAttribute('role', 'status');
+  popover.appendChild(shotStatus);
 
   // Everything except header/footer lives in this container so the
   // expanded (screenshot) mode can lay it out in multiple columns.
