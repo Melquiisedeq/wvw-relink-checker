@@ -10,7 +10,7 @@ This goes further, in two ways:
      type fails, so the recording is re-made when the game changes.
 
 Guild routes use ids and names already in the recording; no new guild name is
-looked up. Run it by hand:  python3 .github/scripts/check-contract.py
+looked up. Run it by hand:  python3 scripts/check-contract.py
 """
 
 import gzip
@@ -154,7 +154,7 @@ def versus(live, rec):
 def main():
     with open(HERE + '/gw2-contract.json') as f:
         contract = json.load(f)
-    with gzip.open(HERE + '/../../tests/e2e/data/recordings.json.gz') as f:
+    with gzip.open(HERE + '/../tests/e2e/data/recordings.json.gz') as f:
         rec = json.load(f)
     entries = {}
     for url, e in rec['entries'].items():

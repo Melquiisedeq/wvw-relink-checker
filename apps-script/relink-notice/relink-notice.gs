@@ -143,7 +143,7 @@ var RelinkNotice_ = (function () {
   // One relink cycle is a month. A baseline older than this means a whole
   // window was missed and the table has come back two relinks behind, which
   // reads as a relink. Refuse, retake. Must agree with MAX_GAP_SECONDS in
-  // .github/scripts/check-notice.py.
+  // scripts/check-notice.py.
   var BASELINE_MAX_AGE_SECONDS = 45 * 24 * 60 * 60;
 
   var GUID_RE = /^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$/;

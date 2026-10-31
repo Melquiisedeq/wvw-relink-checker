@@ -19,7 +19,7 @@ And the doors that must stay shut, each a status and no judgement: the
 entrance takes no GET and no unsigned POST, and the Worker has no workers.dev
 address (`workers_dev: false` in worker/wrangler.jsonc).
 
-Run it by hand any time:  python .github/scripts/check-worker.py
+Run it by hand any time:  python scripts/check-worker.py
 """
 
 import json
