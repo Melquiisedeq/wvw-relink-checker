@@ -90,14 +90,6 @@ body{
   7%{filter:brightness(2.5) saturate(1.3);transform:translateY(-12px);}
   100%{filter:brightness(1);transform:translateY(0);}
 }
-/* Nothing loops while the window is not watched (idleWhenUnwatched, js/boot.js). `*`,
-   not a list, so a new animation is covered; paused, not disabled, so coming back is
-   instant. The looping ones the embers' clock has paused ignore this rule. Exempt: the
-   run-once ones whose frozen first frame would stay (a blank space, a stuck value); the
-   rest are removed by their own timers. */
-.is-idle *:not(.value-changed):not(.delta):not(.match-panel):not(.wvw-missed),
-.is-idle *::before,
-.is-idle *:not(.side-pulse)::after{animation-play-state:paused !important;}
 /* Only the infinite ones, bar the loading indicators (.spinner, .btn-pips); embers.spec.mjs asserts they pause and the run-once ones play. */
 @media (prefers-reduced-motion: reduce){
   .header-rule::before,.rank-1::after,.skel::after,

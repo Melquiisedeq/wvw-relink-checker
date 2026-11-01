@@ -1,8 +1,9 @@
-// The embers draw only while the page is being watched: losing focus or hiding
-// the tab stops the canvas drawing and marks the page is-idle, and coming back
-// starts both again. The looping animations move on the embers' clock (js/boot.js),
-// so they stand still whenever it does. Reduced motion stops the looping ones the
-// same way and leaves the run-once ones and the loading indicators playing.
+// The embers draw while the page is visible, with the focus or without it (a second
+// monitor); hiding the tab stops the canvas drawing, and showing it starts it again.
+// The looping animations move on the embers' clock (js/boot.js), so they stand still
+// whenever it does; the run-once ones play to the end in every case. Reduced motion
+// stops the looping ones the same way and leaves the run-once ones and the loading
+// indicators playing.
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
 import { load, search, recordedJson, serveList, iso, looping, LOADERS } from './support/steps.mjs';
@@ -27,6 +28,14 @@ const onCssNow = page => page.evaluate(sel => document.getAnimations()
   .filter(a => a.effect && a.effect.target && a.effect.getComputedTiming().iterations === Infinity
     && a.playState === 'running' && !a.effect.target.closest(sel)).map(a => a.animationName), LOADERS);
 
+// The page as a visitor leaves it: the focus in another window, the tab hidden.
+const watch = (page, { focused = true, hidden = false } = {}) => page.evaluate(([f, h]) => {
+  document.hasFocus = () => f;
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') });
+  window.dispatchEvent(new Event(f ? 'focus' : 'blur'));
+  document.dispatchEvent(new Event('visibilitychange'));
+}, [focused, hidden]);
+
 function countEmberDraws(page) {
   return page.addInitScript(() => {
     window.__emberDraws = 0;
@@ -38,40 +47,26 @@ function countEmberDraws(page) {
   });
 }
 
-test('embers stop drawing when focus or the tab is lost, and resume when it returns', async ({ page, wvw }) => {
+test('embers draw with or without focus, stop when the tab is hidden, and resume when it is shown', async ({ page, wvw }) => {
   await countEmberDraws(page);
   await load(page, wvw);
   const draws = () => page.evaluate(() => window.__emberDraws);
-  const idle = () => page.evaluate(() => document.documentElement.classList.contains('is-idle'));
-  const watch = (focused, hidden) => page.evaluate(([f, h]) => {
-    document.hasFocus = () => f;
-    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') });
-    document.dispatchEvent(new Event('visibilitychange'));
-  }, [focused, hidden]);
   // The count after the page has had time to settle and a frame to land.
   const quiet = async () => { await page.waitForTimeout(150); const n = await draws(); await page.waitForTimeout(350); return (await draws()) - n; };
 
-  await watch(true, false);
-  expect(await idle()).toBe(false);
+  await watch(page);
   expect(await quiet(), 'drawing while watched').toBeGreaterThan(5);
   await expectAllMoving(page, 'looping animations moving while watched');
 
-  await watch(false, false);   // focus gone: a second monitor
-  expect(await idle()).toBe(true);
-  expect(await quiet(), 'drawing without focus').toBe(0);
-  expect((await looping(page)).moved, 'looping animations moving without focus').toBe(0);
+  await watch(page, { focused: false });   // a second monitor
+  expect(await quiet(), 'drawing without focus').toBeGreaterThan(5);
+  await expectAllMovingNow(page, 'looping animations moving without focus');
 
-  await watch(true, false);
-  await expectAllMovingNow(page, 'looping animations moving again after focus');
-  expect(await idle()).toBe(false);
-  expect(await quiet(), 'drawing again after focus').toBeGreaterThan(5);
-
-  await watch(true, true);     // the tab hidden
-  expect(await idle()).toBe(true);
+  await watch(page, { focused: false, hidden: true });
   expect(await quiet(), 'drawing in a hidden tab').toBe(0);
   expect((await looping(page)).moved, 'looping animations moving in a hidden tab').toBe(0);
 
-  await watch(true, false);
+  await watch(page, { focused: false });
   await expectAllMovingNow(page, 'looping animations moving after the tab is shown');
   expect(await quiet(), 'drawing after the tab is shown').toBeGreaterThan(5);
 });
@@ -127,16 +122,41 @@ test('reduced motion stops the looping animations and the canvas, and follows th
   expect(await quiet(), 'drawing after the setting returns').toBe(0);
 });
 
-test('reduced motion leaves the run-once animations playing: the found strip shows', async ({ page, wvw }) => {
-  await page.emulateMedia({ reducedMotion: 'reduce' });
+// A run-once animation frozen at its first frame leaves a blank or a stuck value.
+for (const when of ['with reduced motion', 'without focus', 'in a hidden tab']) {
+  test(`${when} the run-once animations play: the found strip shows`, async ({ page, wvw }) => {
+    if (when === 'with reduced motion') await page.emulateMedia({ reducedMotion: 'reduce' });
+    await load(page, wvw);
+    if (when === 'without focus') await watch(page, { focused: false });
+    if (when === 'in a hidden tab') await watch(page, { hidden: true });
+    await search(page, wvw.guilds);
+    const strip = page.locator('.guild-found-strip');
+    await expect(strip).toBeAttached();
+    await expect.poll(() => strip.evaluate(e => getComputedStyle(e).opacity), { message: 'the strip fading in' }).toBe('1');
+    const paused = await page.evaluate(() => document.getAnimations()
+      .filter(a => a.effect.getComputedTiming().iterations !== Infinity && a.playState === 'paused')
+      .map(a => `${a.animationName} on ${a.effect.target.getAttribute('class')}`));
+    expect(paused, 'paused run-once animations').toEqual([]);
+  });
+}
+
+test('without focus the loading indicators turn', async ({ page, wvw }) => {
   await load(page, wvw);
-  await search(page, wvw.guilds);
-  const strip = page.locator('.guild-found-strip');
-  await expect(strip).toBeAttached();
-  await expect.poll(() => strip.evaluate(e => getComputedStyle(e).opacity), { message: 'the strip fading in' }).toBe('1');
-  const paused = await page.evaluate(() => document.getAnimations()
-    .filter(a => a.effect.getComputedTiming().iterations !== Infinity && a.playState === 'paused').length);
-  expect(paused, 'paused run-once animations').toBe(0);
+  let release;
+  const held = new Promise(r => { release = r; });
+  await page.route(/^https:\/\/api\.guildwars2\.com\/v2\/guild\/search\?/, async route => { await held; await route.fallback(); });
+  await page.locator('#guildInput').focus();
+  await page.keyboard.insertText(wvw.guilds.join('\n'));
+  await page.locator('#runBtn').click();
+  await expect(page.locator('#statusMsg .spinner')).toBeAttached();
+  await watch(page, { focused: false });
+  // A cancelled animation rejects its ready.
+  await page.evaluate(() => Promise.all(document.getAnimations().map(a => a.ready.catch(() => {}))));
+  const loaders = await looping(page, { loaders: true });
+  expect(loaders.moved, 'loading indicators turning without focus').toBeGreaterThan(0);
+  expect(loaders.still, 'loading indicators standing still without focus').toBe(0);
+  release();
+  await expect(page.locator('#statusMsg')).toHaveText(/^Done/, { timeout: 15000 });
 });
 
 for (const when of ['before the search', 'during the search']) {
@@ -212,23 +232,46 @@ test('the relink bar leaving reset night: its pulse, cancelled, does not come ba
   await expectAllMoving(page, 'looping animations moving after reset night');
 });
 
-test('the relink bar rebuilt every minute leaves no looping animation off the clock', async ({ page, wvw }) => {
+for (const focused of [true, false]) {
+  test(`the relink bar rebuilt every minute${focused ? '' : ' without focus'} leaves no looping animation off the clock`, async ({ page, wvw }) => {
+    await bar(page, wvw, { lockout: -1 * HOUR, assign: { na: 2 * DAY, eu: 2 * DAY - 8 * HOUR }, na: { start: -2 * DAY, end: 5 * DAY } });
+    await expect(page.locator('#relinkBanner')).toHaveClass(/is-rebuild/);
+    await watch(page, { focused });
+    await expectAllMoving(page, 'looping animations moving in the rebuild week');
+    // A few frames after the new animations start, not a second: the sweep they ask for,
+    // not the one a second.
+    for (let i = 0; i < 5; i++) {
+      const left = await page.evaluate(() => new Promise(done => {
+        const frames = n => (n ? requestAnimationFrame(() => frames(n - 1)) : done(document.getAnimations()
+          .filter(a => a.effect && a.effect.getComputedTiming().iterations === Infinity && a.playState === 'running'
+            && !a.effect.target.closest('.spinner, .btn-pips')).map(a => a.animationName)));
+        document.addEventListener('animationstart', () => frames(3), { capture: true, once: true });
+        updateRelinkBanner();
+      }));
+      expect(left, `left on CSS just after rebuild ${i + 1}`).toEqual([]);
+    }
+    await expectAllMoving(page, 'looping animations moving after the bar is rebuilt');
+  });
+}
+
+// Rebuilt with the clock stopped, they start on CSS: the first frame back takes them, with
+// their animationstart held back so that only the sweep the start asks for can.
+test('the relink bar rebuilt in a hidden tab leaves no looping animation off the clock once shown', async ({ page, wvw }) => {
+  await countEmberDraws(page);
   await bar(page, wvw, { lockout: -1 * HOUR, assign: { na: 2 * DAY, eu: 2 * DAY - 8 * HOUR }, na: { start: -2 * DAY, end: 5 * DAY } });
   await expect(page.locator('#relinkBanner')).toHaveClass(/is-rebuild/);
-  await expectAllMoving(page, 'looping animations moving in the rebuild week');
-  // A few frames after the new animations start, not a second: the sweep they ask for,
-  // not the one a second.
-  for (let i = 0; i < 5; i++) {
-    const left = await page.evaluate(() => new Promise(done => {
-      const frames = n => (n ? requestAnimationFrame(() => frames(n - 1)) : done(document.getAnimations()
-        .filter(a => a.effect && a.effect.getComputedTiming().iterations === Infinity && a.playState === 'running'
-          && !a.effect.target.closest('.spinner, .btn-pips')).map(a => a.animationName)));
-      document.addEventListener('animationstart', () => frames(3), { capture: true, once: true });
-      updateRelinkBanner();
-    }));
-    expect(left, `left on CSS just after rebuild ${i + 1}`).toEqual([]);
-  }
-  await expectAllMoving(page, 'looping animations moving after the bar is rebuilt');
+  await watch(page, { hidden: true });
+  await page.evaluate(() => {
+    window.addEventListener('animationstart', e => e.stopImmediatePropagation(), true);
+    window.__emberDraws = 0;
+    updateRelinkBanner();
+  });
+  const r = await looping(page);
+  expect(r.onCss.length, 'the state: looping animations started on CSS in the hidden tab').toBeGreaterThan(0);
+  await watch(page);
+  await page.waitForFunction(() => window.__emberDraws > 0);
+  expect(await onCssNow(page), 'left on CSS at the first frame of embers').toEqual([]);
+  await expectAllMoving(page, 'looping animations moving after the tab is shown');
 });
 
 // An animation can stay pending and its animationstart never come: held back here,
