@@ -235,8 +235,9 @@ const emberField = (function () {
   // Looping CSS animations are paused here and moved on by these frames, so the page draws only
   // when the embers do (frames.spec.mjs). Not the loading indicators, which turn under reduced motion
   // too. Paused through the API they no longer follow animation-play-state, so the
-  // stopped clock is what holds them still while away or under reduced motion
-  // (embers.spec.mjs); handed back to CSS they would restart.
+  // stopped clock is what holds them still under reduced motion (embers.spec.mjs); handed
+  // back to CSS they would restart. One started while the tab is hidden runs on CSS, which
+  // draws nothing there, until the first frame back sweeps it.
   const driven = new Set();
   let sweepDue = false, sinceSweep = 0;
   function adopt() {
@@ -324,21 +325,16 @@ const emberField = (function () {
   };
 })();
 
-// Ambient animation is for when someone is looking: on a second monitor the page stays visible
-// and visibilitychange never fires, so focus decides.
+// Ambient animation stops only with the tab hidden, like the data polls: a page left visible on a
+// second monitor, the focus in another window, is still being watched.
 (function idleWhenUnwatched() {
-  const root = document.documentElement;
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
   const update = () => {
-    const away = document.visibilityState === 'hidden' || !document.hasFocus();
-    root.classList.toggle('is-idle', away);
-    if (away) emberField.stop();
+    if (document.visibilityState === 'hidden') emberField.stop();
     else if (reduced.matches) emberField.stop(true);
     else emberField.start();
   };
   reduced.addEventListener('change', update);
-  window.addEventListener('focus', update);
-  window.addEventListener('blur', update);
   document.addEventListener('visibilitychange', update);
   update();
 })();

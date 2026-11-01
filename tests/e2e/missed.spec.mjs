@@ -683,7 +683,7 @@ test.describe('what you missed, by how long the tab was away', () => {
     await wvw.settle();
     const block = page.locator(BLOCK);
     await expect(block).toBeAttached();
-    expect(await page.evaluate(() => document.documentElement.classList.contains('is-idle')), 'the state: the page is idle').toBe(true);
+    expect(await page.evaluate(() => document.hasFocus()), 'the state: the page has no focus').toBe(false);
     await expect.poll(() => block.evaluate(b => getComputedStyle(b).opacity), { message: 'the block\'s opacity', timeout: 3000 }).toBe('1');
     await expect(detail.locator('.wvw-detail-name')).toBeVisible();
     await expect(page.locator('.info-popover .wvw-subtab.is-active')).toHaveAttribute('data-pane', 'objective');

@@ -195,8 +195,8 @@ function updateRelinkFromMatches(naMatches, euMatches) {
 }
 
 // Pins the green layer (.relink-inner::before, rebuilt every minute) to the red's
-// clock so the three stay in step. currentTime, not startTime: an idle page
-// (.is-idle) pauses animations, which then have no startTime.
+// clock so the three stay in step. currentTime, not startTime: the embers' clock
+// pauses the looping animations (js/boot.js), which then have no startTime.
 function keepBeatInStep(inner) {
   if (!document.getAnimations) return;
   let red = null;
