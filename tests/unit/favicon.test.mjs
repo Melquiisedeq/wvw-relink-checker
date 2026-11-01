@@ -1,4 +1,4 @@
-// The tab icon is the crest alone on a transparent ground; the dark square belongs to favicon-192.png.
+// Every icon is the crest on a transparent ground: favicon.ico whole, favicon-192.png and apple-touch-icon.png smaller.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -58,6 +58,16 @@ test('every corner of every favicon.ico frame is transparent', () => {
     assert.equal(w, width);
     for (const [x, y] of [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]]) {
       assert.equal(alpha(x, y), 0, `${width}px frame, corner ${x},${y}`);
+    }
+  }
+});
+
+test('every corner of favicon-192.png and apple-touch-icon.png is transparent', () => {
+  for (const [name, side] of [['favicon-192.png', 192], ['apple-touch-icon.png', 180]]) {
+    const { width: w, height: h, alpha } = pixels(readFileSync(new URL(`../../site/assets/${name}`, import.meta.url)));
+    assert.deepEqual([w, h], [side, side], `${name} size`);
+    for (const [x, y] of [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]]) {
+      assert.equal(alpha(x, y), 0, `${name}, corner ${x},${y}`);
     }
   }
 });
