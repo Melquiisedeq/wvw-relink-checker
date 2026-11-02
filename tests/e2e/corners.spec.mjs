@@ -8,6 +8,7 @@
 // recording answers one by one in any order (support/recordings.mjs). A read it
 // cannot answer fails the test, naming the address.
 import { test, expect } from './support/fixtures.mjs';
+import { pastEdge } from './support/edge.mjs';
 import { answer, fail } from './support/faults.mjs';
 import { phone, recordedJson, load, firstTier, openMap, later } from './support/steps.mjs';
 import { gw2 } from './support/gw2.mjs';
@@ -375,12 +376,13 @@ test.describe('corners by the data clock', () => {
           const room = await page.evaluate(() => {
             const r = s => { const e = document.querySelector('.info-popover .wvw-plot-wrap ' + s); return e && e.offsetParent ? e.getBoundingClientRect() : null; };
             const l = r('.wvw-hud-l .wvw-hud-btn'), rt = r('.wvw-hud-r .wvw-hud-btn'), bar = r('.wvw-scorebar');
-            return { left: l && bar ? Math.round(l.right - bar.left) : null, right: rt && bar ? Math.round(bar.right - rt.left) : null,
-              page: document.documentElement.scrollWidth - innerWidth };
+            return { left: l && bar ? Math.round(l.right - bar.left) : null, right: rt && bar ? Math.round(bar.right - rt.left) : null };
           });
+          const spill = (await page.evaluate(pastEdge)).past;
           expect(room.left !== null && room.right !== null, `${width} px: a corner or the score bar is missing`).toBe(true);
-          expect(room.left <= 0 && room.right <= 0 && room.page <= 0,
-            `${width} px: a corner reaches ${room.left}px / ${room.right}px into the score bar, the page spills ${room.page}px`).toBe(true);
+          expect(room.left <= 0 && room.right <= 0,
+            `${width} px: a corner reaches ${room.left}px / ${room.right}px into the score bar`).toBe(true);
+          expect(spill, `${width} px: nothing past the screen's edge`).toEqual([]);
           await cdp.send('Emulation.clearDeviceMetricsOverride');
         }
       }
@@ -480,10 +482,12 @@ test.describe('kills that stood still, through the Worker', () => {
       const room = await page.evaluate(() => {
         const r = s => { const e = document.querySelector('.info-popover .wvw-plot-wrap ' + s); return e && e.offsetParent ? e.getBoundingClientRect() : null; };
         const l = r('.wvw-hud-l .wvw-hud-btn'), bar = r('.wvw-scorebar');
-        return { left: l && bar ? Math.round(l.right - bar.left) : null, page: document.documentElement.scrollWidth - innerWidth };
+        return { left: l && bar ? Math.round(l.right - bar.left) : null };
       });
-      expect(room.left !== null && room.left <= 0 && room.page <= 0,
-        `${width} px: the kills corner reaches ${room.left}px into the score bar, the page spills ${room.page}px`).toBe(true);
+      const spill = (await page.evaluate(pastEdge)).past;
+      expect(room.left !== null && room.left <= 0,
+        `${width} px: the kills corner reaches ${room.left}px into the score bar`).toBe(true);
+      expect(spill, `${width} px: nothing past the screen's edge`).toEqual([]);
       await cdp.send('Emulation.clearDeviceMetricsOverride');
     }
   });
