@@ -26,7 +26,7 @@ const overtake = (list, ahead, other) => {
 
 // Reads the page in the task that repaints it: the animations of transform on
 // the cards of the tier, and where each card is drawn.
-const repaint = (page, freeze = false) => page.evaluate(async ([id, freeze]) => {
+const repaint = (page, freeze = false, hold = false) => page.evaluate(async ([id, freeze, hold]) => {
   const cards = () => [...document.querySelectorAll(`.standing-match[data-match-id="${id}"] > .standing-side`)];
   const colorOf = el => ['red', 'blue', 'green'].find(c => el.classList.contains('side-' + c));
   const slides = () => cards().filter(s => s.getAnimations().some(a => !a.animationName
@@ -42,10 +42,12 @@ const repaint = (page, freeze = false) => page.evaluate(async ([id, freeze]) => 
   const was = drawn();
   const wasOrder = cards().map(colorOf);
   await loadStandings();
+  // Stopped mid-slide in the task that started it, so a slow machine cannot run it out first.
+  if (hold) document.getAnimations().filter(a => !a.animationName).forEach(a => { a.pause(); a.currentTime = 300; });
   const elsewhere = [...document.querySelectorAll('.standing-side')]
     .filter(s => s.closest('.standing-match').dataset.matchId !== id && s.getAnimations().some(a => !a.animationName)).length;
   return { was, wasOrder, now: drawn(), slides: slides().sort(), order: cards().map(colorOf), elsewhere };
-}, [FOCUS, freeze]);
+}, [FOCUS, freeze, hold]);
 
 const rest = page => page.evaluate(id => {
   const cards = [...document.querySelectorAll(`.standing-match[data-match-id="${id}"] > .standing-side`)];
@@ -123,9 +125,7 @@ test.describe('a side overtakes in a tier', () => {
     const { list, byRank: [first, second, third] } = await board(page);
     overtake(list, second, first);
     await serveList(page, list);
-    await repaint(page);
-    await expect.poll(() => page.evaluate(() => document.getAnimations()
-      .some(a => !a.animationName && a.effect.target.classList.contains('standing-side') && a.currentTime > 250 && a.currentTime < SWAP_MS))).toBe(true);
+    expect((await repaint(page, false, true)).slides).toHaveLength(2);
 
     // The first takes the lead back, now: the cards turn round where they are.
     const back = JSON.parse(JSON.stringify(list));
