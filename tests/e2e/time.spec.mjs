@@ -531,17 +531,21 @@ test.describe('kills in steps, the score rising', () => {
       await r.open();
       let lit = 0;
       let out = 0;
+      // The 30 s steps keep the page's timers firing.
       for (let i = 1; i <= 60; i++) {
         await page.clock.fastForward(30 * 1000);
+        const silence = (await killCorner(page)).silence;
+        const inLit = silence > 7.5 * MIN && silence < 8.5 * MIN && !lit;
+        const inOut = silence > 10.2 * MIN && !out;
+        if (!inLit && !inOut) continue;
         await r.check(`swords, +${i / 2} min`, READ_OPEN_MS);
         const c = await killCorner(page);
         const hot = await page.locator('.info-popover .wvw-tab.is-hot').evaluateAll(t => t.map(b => b.dataset.type));
         const at = `the kills silent ${Math.round(c.silence / 1000)} s, swords on [${hot}]`;
-        if (c.silence > 7.5 * MIN && c.silence < 8.5 * MIN) {
+        if (inLit) {
           expect(hot, `${at}: they should stay on EBG`).toEqual(['Center']);
           lit++;
-        }
-        if (c.silence > 10.2 * MIN) {
+        } else {
           expect(hot, `${at}: they should be out`).toEqual([]);
           out++;
         }
@@ -559,17 +563,21 @@ test.describe('kills in steps, the score rising', () => {
       await r.open();
       let quiet = 0;
       let warned = 0;
+      // The 30 s steps keep the page's timers firing.
       for (let i = 1; i <= 60; i++) {
         await page.clock.fastForward(30 * 1000);
+        const silence = (await killCorner(page)).silence;
+        const inQuiet = silence > 9.2 * MIN && silence < 9.8 * MIN && !quiet;
+        // 9 min plus 15 kills at the window's pace, 12 to 17 a minute.
+        const inWarned = silence > 10.5 * MIN && silence < 15 * MIN && !warned;
+        if (!inQuiet && !inWarned) continue;
         await r.check(`stopped, +${i / 2} min`, READ_OPEN_MS);
         const c = await killCorner(page);
         const at = `the kills silent ${Math.round(c.silence / 1000)} s: "${c.line2}"`;
-        if (c.silence > 9.2 * MIN && c.silence < 9.8 * MIN) {
+        if (inQuiet) {
           expect(/^no new kills since \S+( \S+)?$/.test(c.line2) && !c.dim, `${at}, not a quiet map`).toBe(true);
           quiet++;
-        }
-        // 9 min plus 15 kills at the window's pace, 12 to 17 a minute.
-        if (c.silence > 10.5 * MIN && c.silence < 15 * MIN) {
+        } else {
           expect(/^\u26a0 data up to \S+( \S+)?$/.test(c.line2) && c.dim, `${at}, no warning`).toBe(true);
           warned++;
         }
