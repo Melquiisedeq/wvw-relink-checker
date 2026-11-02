@@ -31,12 +31,12 @@ async function mapOpen(page, wvw) {
 
 // `minutes` of the page's clock in STEP jumps, each let settle: the page time
 // and the score the map shows after each, and the copy reads in the span.
-async function watch(page, wvw, minutes) {
+async function watch(page, wvw, minutes, step = () => page.clock.fastForward(STEP)) {
   const copies = [];
   page.on('request', r => { if (COPY.test(r.url())) copies.push(r.url()); });
   const samples = [];
   for (let i = 0; i < minutes * MIN / STEP; i++) {
-    await page.clock.fastForward(STEP);
+    await step();
     await wvw.settle();
     const [shown, held] = await page.evaluate(id => [colorSum(freshRecall.data.scores), colorSum(newestMatches.get(id).match.scores)], FOCUS);
     samples.push({ t: await wvw.now(), shown, held, copies: copies.length });
@@ -48,18 +48,35 @@ async function watch(page, wvw, minutes) {
 // new body of the copy on the map within 22 s of its minute mark, and the
 // copy reads. `refused`: every match read of the game's fails from the open map on;
 // `within`: how soon after its minute mark a new body is on the map.
-async function behindWatched(page, wvw, { refused = false, within = 22 * 1000 } = {}) {
+// `copyMs`: each read of the copy answers that late.
+async function behindWatched(page, wvw, { refused = false, within = 22 * 1000, copyMs = 0 } = {}) {
   test.setTimeout(150 * 1000);   // six minutes of the page's clock, each STEP settled
+  // From the open map on, the page's clock is paused and moves only here, one
+  // move at a time: a STEP, or a late copy's wait. A running clock adds a busy
+  // machine's slow answers to the page's time, and a peek's retry ending 5 s
+  // past due skips the next aligned peek (peekNext, js/standings.js).
+  let moves = Promise.resolve(), paused = false;
+  const move = how => { const run = moves.then(how); moves = run.catch(() => {}); return run; };
+  const step = () => move(() => page.clock.fastForward(STEP));
+  if (copyMs) {
+    await page.route(COPY, async route => {
+      if (paused) await move(() => page.clock.runFor(copyMs));
+      else await new Promise(r => setTimeout(r, copyMs));
+      return route.fallback();
+    });
+  }
   await mapOpen(page, wvw);
+  await page.clock.pauseAt(await wvw.now() + STEP);
+  paused = true;
   if (refused) await fail(page, wvw, GAME, 429);
   // Before the first summary the map's read behind the kept body asks the
   // copy by the rule without one (js/api.js, latestWanted), under a minute
   // before the first minute mark's: the watch starts after it.
-  await expect.poll(async () => { await page.clock.fastForward(STEP); await wvw.settle(); return page.evaluate(() => latestSummaryAt); },
+  await expect.poll(async () => { await step(); await wvw.settle(); return page.evaluate(() => latestSummaryAt); },
     { message: 'the first summary read', timeout: 30 * 1000 }).toBeGreaterThan(0);
   const t0 = await wvw.now();
   const minutes = 5;
-  const { samples, copies } = await watch(page, wvw, minutes);
+  const { samples, copies } = await watch(page, wvw, minutes, step);
   const end = samples.at(-1).t;
   const copyAt = t => sum(wvw.timeline.body(FOCUS, t - wvw.recordedAt));
   const late = [];
@@ -123,8 +140,7 @@ test.describe("the visitor's whole group behind", () => {
   });
 
   test(`a copy that answers in 2 s: ${title}`, async ({ page, wvw }) => {
-    await page.route(COPY, async route => { await new Promise(r => setTimeout(r, 2000)); return route.fallback(); });
-    await behindWatched(page, wvw);
+    await behindWatched(page, wvw, { copyMs: 2000 });
   });
 });
 
@@ -145,8 +161,7 @@ test.describe("the visitor's match reads refused", () => {
   // The map's read again, once the late copy lands (offerLate), first waits
   // out the game's refusals and their retries (js/api.js, fetchJson).
   test(`a copy that answers in 2 s: each new body of the copy is on the map within 45 s; the copy reads are 51 s apart or more`, async ({ page, wvw }) => {
-    await page.route(COPY, async route => { await new Promise(r => setTimeout(r, 2000)); return route.fallback(); });
-    await behindWatched(page, wvw, { refused: true, within: 45 * 1000 });
+    await behindWatched(page, wvw, { refused: true, within: 45 * 1000, copyMs: 2000 });
   });
 });
 
