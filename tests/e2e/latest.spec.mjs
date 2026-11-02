@@ -346,7 +346,8 @@ test.describe('the tab hides during a peek', () => {
 // or /api/latest answered after the paint's wait) reaches the list at the next
 // peek from what is in hand: with a summary that says nothing newer, /api/latest
 // is not read; with one that says the match is further still and /api/latest
-// down, the body in hand is drawn all the same.
+// down, the body in hand is drawn all the same; with nothing in hand and
+// /api/latest down, the list is not touched.
 test.describe('a newer body in hand', () => {
   test.use({ timeline: playing(), clock: 'playwright' });
 
@@ -392,6 +393,9 @@ test.describe('a newer body in hand', () => {
       const m = [...matchDataCache.values()].find(x => matchIsLive(x));
       window.__peekLoads = 0;
       window.__peekDone = 0;
+      window.__shown = 0;
+      const show = showRegion;
+      showRegion = function (...a) { window.__shown++; return show.apply(this, a); };
       const load = loadStandings;
       loadStandings = async function (...a) {
         if (a[0] !== 'peek') return load.apply(this, a);
@@ -406,6 +410,7 @@ test.describe('a newer body in hand', () => {
       'the peek reloaded the list').toBeGreaterThan(0);
     expect(copies, 'the copy was asked for, and gave nothing').toBeGreaterThan(0);
     expect(game, 'reads of the game: a peek with nothing to draw reads none').toBe(0);
+    expect(await page.evaluate(() => window.__shown), 'regions redrawn (and the Synced time restamped) by that peek').toBe(0);
     expect(await scoreOf(page, id), 'the score the list draws').toBe(drawn);
   });
 });
