@@ -16,8 +16,7 @@ const DAY = 24 * HOUR;
 const allMoving = r => r.moved > 0 && r.still === 0 && r.onCss.length === 0;
 // Until every one of them moves on the clock: a sweep adopts what was rebuilt or resumed.
 const expectAllMoving = (page, message) => expect.poll(async () => allMoving(await looping(page)), { message, timeout: 5000 }).toBe(true);
-// At once: the sweep a start or a new animation asks for comes on the next frame, the
-// one a second only later.
+// At once: every frame of embers sweeps, so the next one takes a new animation.
 const expectAllMovingNow = async (page, message) => {
   const r = await looping(page, { ms: 300 });
   expect(allMoving(r), `${message}: ${JSON.stringify(r)}`).toBe(true);
@@ -122,6 +121,17 @@ test('reduced motion stops the looping animations and the canvas, and follows th
   expect(await quiet(), 'drawing after the setting returns').toBe(0);
 });
 
+// The run-once animations on the page: paused at or past their end (which never finish), and
+// all not yet finished. The clock moves them while it runs, so mid-way one may be paused.
+const runOnce = page => page.evaluate(() => {
+  const name = a => `${a.animationName || a.transitionProperty || 'animate'} on ${a.effect.target.getAttribute('class')}`;
+  const all = document.getAnimations().filter(a => a.effect && a.effect.getComputedTiming().iterations !== Infinity);
+  return {
+    pastEnd: all.filter(a => a.playState === 'paused' && a.currentTime >= a.effect.getComputedTiming().endTime).map(name),
+    left: all.filter(a => a.playState !== 'finished').map(name),
+  };
+});
+
 // A run-once animation frozen at its first frame leaves a blank or a stuck value.
 for (const when of ['with reduced motion', 'without focus', 'in a hidden tab']) {
   test(`${when} the run-once animations play: the found strip shows`, async ({ page, wvw }) => {
@@ -133,10 +143,7 @@ for (const when of ['with reduced motion', 'without focus', 'in a hidden tab']) 
     const strip = page.locator('.guild-found-strip');
     await expect(strip).toBeAttached();
     await expect.poll(() => strip.evaluate(e => getComputedStyle(e).opacity), { message: 'the strip fading in' }).toBe('1');
-    const paused = await page.evaluate(() => document.getAnimations()
-      .filter(a => a.effect.getComputedTiming().iterations !== Infinity && a.playState === 'paused')
-      .map(a => `${a.animationName} on ${a.effect.target.getAttribute('class')}`));
-    expect(paused, 'paused run-once animations').toEqual([]);
+    await expect.poll(() => runOnce(page), { message: 'run-once animations not finished', timeout: 5000 }).toEqual({ pastEnd: [], left: [] });
   });
 }
 
@@ -155,6 +162,10 @@ test('without focus the loading indicators turn', async ({ page, wvw }) => {
   const loaders = await looping(page, { loaders: true });
   expect(loaders.moved, 'loading indicators turning without focus').toBeGreaterThan(0);
   expect(loaders.still, 'loading indicators standing still without focus').toBe(0);
+  // The clock runs without focus: it moves them, paused, rather than CSS.
+  const onCss = await page.evaluate(sel => document.getAnimations()
+    .filter(a => a.effect && a.effect.target && a.effect.target.closest(sel) && a.playState !== 'paused').length, LOADERS);
+  expect(onCss, 'loading indicators left on CSS while the clock runs').toBe(0);
   release();
   await expect(page.locator('#statusMsg')).toHaveText(/^Done/, { timeout: 15000 });
 });
@@ -173,7 +184,7 @@ for (const when of ['before the search', 'during the search']) {
     await expect(page.locator('#runBtn .btn-pips')).toBeAttached();
     await expect(page.locator('#statusMsg .spinner')).toBeAttached();
     if (when === 'during the search') {
-      // Long enough for the clock to have swept: it must have left them to CSS.
+      // Long enough for the clock to have taken them: the stop must hand them back to CSS.
       await page.waitForTimeout(300);
       await page.emulateMedia({ reducedMotion: 'reduce' });
     }
@@ -238,8 +249,7 @@ for (const focused of [true, false]) {
     await expect(page.locator('#relinkBanner')).toHaveClass(/is-rebuild/);
     await watch(page, { focused });
     await expectAllMoving(page, 'looping animations moving in the rebuild week');
-    // A few frames after the new animations start, not a second: the sweep they ask for,
-    // not the one a second.
+    // A few frames after the new animations start: every frame sweeps.
     for (let i = 0; i < 5; i++) {
       const left = await page.evaluate(() => new Promise(done => {
         const frames = n => (n ? requestAnimationFrame(() => frames(n - 1)) : done(document.getAnimations()
@@ -255,7 +265,7 @@ for (const focused of [true, false]) {
 }
 
 // Rebuilt with the clock stopped, they start on CSS: the first frame back takes them, with
-// their animationstart held back so that only the sweep the start asks for can.
+// their animationstart held back so that only the frame's sweep can.
 test('the relink bar rebuilt in a hidden tab leaves no looping animation off the clock once shown', async ({ page, wvw }) => {
   await countEmberDraws(page);
   await bar(page, wvw, { lockout: -1 * HOUR, assign: { na: 2 * DAY, eu: 2 * DAY - 8 * HOUR }, na: { start: -2 * DAY, end: 5 * DAY } });
@@ -274,8 +284,8 @@ test('the relink bar rebuilt in a hidden tab leaves no looping animation off the
   await expectAllMoving(page, 'looping animations moving after the tab is shown');
 });
 
-// An animation can stay pending and its animationstart never come: held back here,
-// so the sweep once a second is all that can take it.
+// An animation can stay pending and its animationstart never come: held back here, it is
+// the frame's sweep that takes it.
 test('without animationstart, the relink bar rebuilt still leaves no looping animation off the clock', async ({ page, wvw }) => {
   await bar(page, wvw, { lockout: -1 * HOUR, assign: { na: 2 * DAY, eu: 2 * DAY - 8 * HOUR }, na: { start: -2 * DAY, end: 5 * DAY } });
   await expect(page.locator('#relinkBanner')).toHaveClass(/is-rebuild/);

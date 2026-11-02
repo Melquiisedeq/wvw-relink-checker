@@ -54,7 +54,7 @@ async function run() {
 
   // Everything past the setup is inside the try, so that however it ends
   // finish() runs: otherwise the button stays disabled, the trebuchet
-  // hauled back and followSling's rAF loop alive.
+  // hauled back and followSling's frame loop alive.
   try {
     let maps;
     try {
