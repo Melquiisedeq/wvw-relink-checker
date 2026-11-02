@@ -45,9 +45,10 @@ jobs:
           echo "indexes=$(seq -s, 1 "$RUNS" | sed 's/^/[/; s/$/]/')" >> "$GITHUB_OUTPUT"
 
   # The e2e job of checks.yml, kept in step with it by hand, except that the
-  # coverage is saved instead of compared; check-structure.py asserts the two
-  # timeouts are equal. A red run is not a coverage run, so a
-  # failure here fails the sweep.
+  # coverage is saved instead of compared, and the output is kept (tee) for a last
+  # step that fails on a test that passed only on a retry; check-structure.py asserts
+  # the two timeouts are equal. A run whose tests failed is not a coverage run, so it
+  # fails the sweep; a run that only oscillated is red too but keeps its coverage.
   run:
     needs: [plan]
     runs-on: ubuntu-latest
@@ -72,8 +73,8 @@ jobs:
           token="$(openssl rand -hex 16)"
           echo "::stop-commands::$token"
           set +e
-          E2E_COVERAGE=1 E2E_RESUME="$token" npx playwright test
-          code=$?
+          E2E_COVERAGE=1 E2E_RESUME="$token" npx playwright test 2>&1 | tee e2e-output.txt
+          code=${PIPESTATUS[0]}
           echo "::$token::"
           exit "$code"
 
@@ -90,6 +91,16 @@ jobs:
           path: tests/e2e/sweep-out/
           retention-days: 1
           if-no-files-found: error
+
+      # After the report is kept: a run that only oscillated still has full coverage,
+      # so failing here must not cost the sweep that run's artifact.
+      - name: A test that passed only on a retry
+        run: |
+          [ -f e2e-output.txt ] || { echo "no e2e-output.txt"; exit 1; }
+          if grep -qE '^e2e: all .* only on a retry' e2e-output.txt; then
+            grep '^e2e FLAKY ' e2e-output.txt
+            exit 1
+          fi
 
   report:
     needs: [plan, run]
@@ -108,7 +119,7 @@ jobs:
           pattern: coverage-*
           path: tests/e2e/sweep-in
 
-      # A run that failed has no report; the sweep says so and fails, then lists
+      # A run whose tests failed has no report; the sweep says so and fails, then lists
       # what the others show. The report reads JSON only: no npm ci.
       - name: What oscillates
         env:
