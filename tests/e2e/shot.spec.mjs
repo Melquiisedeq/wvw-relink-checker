@@ -116,7 +116,8 @@ test.describe('the screenshot button', () => {
     await page.addInitScript(() => {
       Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
       Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
-      navigator.share = () => Promise.reject(new DOMException(window.__shareError, window.__shareError));
+      window.__shares = 0;
+      navigator.share = () => { window.__shares++; return Promise.reject(new DOMException(window.__shareError, window.__shareError)); };
     });
     await openGuilds(page, wvw);
     await page.evaluate(() => { window.__shareError = 'NotAllowedError'; });
@@ -125,9 +126,16 @@ test.describe('the screenshot button', () => {
     await expect(page.locator('.shot-bubble')).toHaveText('Saved');
     await expect(page.locator('.shot-bubble')).toHaveCount(0);
     await page.evaluate(() => { window.__shareError = 'AbortError'; });
+    await expect(page.locator(`${POP} [role=status]`), 'the earlier Saved has cleared').toHaveText('');
+    const shares = await page.evaluate(() => window.__shares);
+    let downloads = 0;
+    page.on('download', () => { downloads++; });
     await page.locator(SHOT).click();
-    await page.waitForTimeout(500);
-    await expect(page.locator('.shot-bubble'), 'a cancel shows nothing').toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.__shares), 'the cancelled share was asked for').toBe(shares + 1);
+    await page.evaluate(() => new Promise(r => setTimeout(r, 0)));
+    expect(await page.locator('.shot-bubble').count(), 'a cancel shows nothing').toBe(0);
+    expect(await page.locator(`${POP} [role=status]`).evaluate(e => e.textContent), 'a cancel says nothing').toBe('');
+    expect(downloads, 'a cancel saves nothing').toBe(0);
   });
 
   test.describe('in Los Angeles', () => {

@@ -346,7 +346,8 @@ test.describe('the tab hides during a peek', () => {
 // or /api/latest answered after the paint's wait) reaches the list at the next
 // peek from what is in hand: with a summary that says nothing newer, /api/latest
 // is not read; with one that says the match is further still and /api/latest
-// down, the body in hand is drawn all the same.
+// down, the body in hand is drawn all the same; with nothing in hand and
+// /api/latest down, the list is not touched.
 test.describe('a newer body in hand', () => {
   test.use({ timeline: playing(), clock: 'playwright' });
 
@@ -376,6 +377,42 @@ test.describe('a newer body in hand', () => {
       else expect(copies, 'reads of /api/latest, the summary saying nothing newer').toBe(0);
     });
   }
+
+  test('a peek with the summary ahead, /api/latest down and nothing in hand leaves the list as it is', async ({ page, wvw }) => {
+    let summary = '{}';
+    await page.route(/\/api\/latest\/summary$/, route => route.fulfill({ status: 200, body: summary,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } }));
+    await fail(page, wvw, /\/api\/latest$/, 503);
+    await opened(page, wvw);
+    let copies = 0, game = 0;
+    page.on('request', r => {
+      if (/\/api\/latest$/.test(r.url())) copies++;
+      if (/\/v2\/wvw\/matches/.test(r.url())) game++;
+    });
+    const { id, start } = await page.evaluate(() => {
+      const m = [...matchDataCache.values()].find(x => matchIsLive(x));
+      window.__peekLoads = 0;
+      window.__peekDone = 0;
+      window.__shown = 0;
+      const show = showRegion;
+      showRegion = function (...a) { window.__shown++; return show.apply(this, a); };
+      const load = loadStandings;
+      loadStandings = async function (...a) {
+        if (a[0] !== 'peek') return load.apply(this, a);
+        window.__peekLoads++;
+        try { return await load.apply(this, a); } finally { window.__peekDone++; }
+      };
+      return { id: m.id, start: Date.parse(m.start_time) };
+    });
+    const drawn = await scoreOf(page, id);
+    summary = JSON.stringify({ [id]: { start, score: drawn + 1000, at: 0, by: 'a' } });
+    await expect.poll(async () => { await page.clock.fastForward(31 * 1000); return page.evaluate(() => window.__peekDone); },
+      'the peek reloaded the list').toBeGreaterThan(0);
+    expect(copies, 'the copy was asked for, and gave nothing').toBeGreaterThan(0);
+    expect(game, 'reads of the game: a peek with nothing to draw reads none').toBe(0);
+    expect(await page.evaluate(() => window.__shown), 'regions redrawn (and the Synced time restamped) by that peek').toBe(0);
+    expect(await scoreOf(page, id), 'the score the list draws').toBe(drawn);
+  });
 });
 
 // A tick that came while a popover was open was skipped; closing it reads the
