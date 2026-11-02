@@ -4,6 +4,7 @@
 // it: it runs once and ends.
 import { test, expect } from './support/fixtures.mjs';
 import { FOCUS } from './support/scenarios.mjs';
+import { pastEdge } from './support/edge.mjs';
 import { load, serveList } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
@@ -207,7 +208,7 @@ test.describe('a side overtakes in a tier', () => {
         return out;
       }, FOCUS);
       expect(spare, 'room left between the climber and the tier box at mid-slide').toBeGreaterThanOrEqual(0);
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      expect((await page.evaluate(pastEdge)).past, 'nothing past the edge at mid-slide').toEqual([]);
     });
   }
 });
