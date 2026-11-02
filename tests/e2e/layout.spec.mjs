@@ -11,6 +11,7 @@
 // One page per width and font goes through the three states, so a failure
 // names the state it was in.
 import { test, expect } from './support/fixtures.mjs';
+import { pastEdge } from './support/edge.mjs';
 import { openMap, search } from './support/steps.mjs';
 
 const WIDTHS = [320, 360, 390];
@@ -20,29 +21,6 @@ const FONTS = [
   { name: 'serif', css: 'serif' },
   { name: 'monospace', css: 'monospace' },
 ];
-
-// What sticks out past the right edge and widens the page: the innermost
-// elements whose right side is past innerWidth, unless something around them
-// clips or scrolls (then the page does not widen) or they are fixed.
-const measure = () => {
-  const clips = e => {
-    for (let p = e.parentElement; p && p !== document.documentElement; p = p.parentElement) {
-      if (getComputedStyle(p).overflowX !== 'visible') return true;
-    }
-    return false;
-  };
-  const name = e => {
-    const c = String(e.className?.baseVal ?? e.className).trim().split(/\s+/).filter(Boolean).slice(0, 2);
-    return e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + c.map(x => '.' + x).join('');
-  };
-  const past = [...document.body.querySelectorAll('*')].filter(e => {
-    const r = e.getBoundingClientRect(), cs = getComputedStyle(e);
-    return r.width > 0 && r.right > innerWidth + 0.5 && cs.position !== 'fixed' && cs.display !== 'none'
-      && !clips(e) && ![...e.children].some(c => c.getBoundingClientRect().right > innerWidth + 0.5);
-  });
-  return { inner: innerWidth, scroll: document.documentElement.scrollWidth,
-    past: past.slice(0, 5).map(e => { const r = e.getBoundingClientRect(); return `${name(e)} ${Math.round(r.width)} px wide, right ${Math.round(r.right)} > ${innerWidth}`; }) };
-};
 
 // The finale of a check shakes the page (.struck, translate up to 9 px) and
 // drops the panels in (.deploying): measured then, the page is wider than it
@@ -55,8 +33,8 @@ const quiet = page => page.evaluate(() => !document.querySelector('.siege-charge
 async function fits(page, wvw, what) {
   await wvw.settle();
   await expect.poll(() => quiet(page), { message: `${what}: the page still shaking or dropping its panels`, timeout: 15000 }).toBe(true);
-  const m = await page.evaluate(measure);
-  expect(m.scroll, `${what}: page ${m.scroll} px wide in ${m.inner} px; past the edge: ${m.past.join(' | ') || 'nothing found'}`).toBeLessThanOrEqual(m.inner);
+  const m = await page.evaluate(pastEdge);
+  expect(m.past, `${what}: past the edge of ${m.inner} px`).toEqual([]);
 }
 
 for (const width of WIDTHS) {
