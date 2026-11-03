@@ -36,6 +36,8 @@ const look = page => page.evaluate(id => {
     unmarked: all.filter(el => !el.__mark).length,
     order: [...card.querySelectorAll('.standing-side')].map(s => ['red', 'blue', 'green'].find(c => s.classList.contains('side-' + c))),
     badges: Object.fromEntries([...card.querySelectorAll('.standing-side')].map(s => [colorOf(s), s.querySelector('.rank-badge').textContent])),
+    badgeClasses: Object.fromEntries([...card.querySelectorAll('.standing-side')].map(s => [colorOf(s), s.querySelector('.rank-badge').className])),
+    moves: Object.fromEntries([...card.querySelectorAll('.standing-side')].map(s => [colorOf(s), s.querySelector('.movement-indicator').title])),
     flashed: [...document.querySelectorAll('.value-changed')].map(el =>
       `${el.closest('.standing-match').dataset.matchId} ${colorOf(el)} ${el.closest('.standing-vp') ? 'vp' : 'skirmish'}`).sort(),
     pulsed: [...document.querySelectorAll('.standing-side.side-pulse')].map(s => `${s.closest('.standing-match').dataset.matchId} ${colorOf(s)}`).sort(),
@@ -84,6 +86,10 @@ test.describe('a new score on the same board', () => {
     expect(after.unmarked, 'none of them a new element').toBe(0);
     expect(after.order, 'the side that overtook moved up').toEqual([second, first, third]);
     expect(after.badges).toEqual({ [second]: '1', [first]: '2', [third]: '3' });
+    expect(after.badgeClasses, 'each badge is coloured for its new rank').toEqual({
+      [second]: 'rank-badge rank-1', [first]: 'rank-badge rank-2', [third]: 'rank-badge rank-3' });
+    expect(after.moves, 'and each says where its rank sends it at the next reset (tier 1)').toEqual({
+      [second]: 'Already the top tier', [first]: 'Stays in this tier next reset', [third]: 'Moves down next reset' });
     expect(after.flashed, 'only the numbers that changed flash').toEqual(
       [`${FOCUS} ${first} vp`, `${FOCUS} ${second} vp`, `${FOCUS} ${third} skirmish`].sort());
     expect(after.pulsed).toEqual(COLORS.map(c => `${FOCUS} ${c}`).sort());
