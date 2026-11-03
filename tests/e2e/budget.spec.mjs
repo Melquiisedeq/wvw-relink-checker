@@ -32,7 +32,7 @@ const CYCLES = 20;
 // Under 14, so that one node or listener left behind per cycle (14 cycles
 // between the floors) fails, and over what the floors may wander.
 const TOLERANCE = { nodes: 8, listeners: 8 };
-const SHOT = '.flame-head, .flame-seg, .trail-smoke, .trail-spark';
+const SHOT = '.siege-shot, .shot-bloom, .bloom-lobe, .bloom-ray, .flame-head, .flame-seg, .trail-smoke, .trail-spark';
 const RAISE = 'if the rise is on purpose, raise the ceiling in data/budget.json in the same PR';
 
 const typeOf = (ct, url) => {
@@ -119,7 +119,7 @@ test('the load stays inside the budget, and 20 cycles leak nothing', async ({ pa
     await expect(page.locator('.info-popover')).toHaveCount(0);
     await wvw.settle();
     // A shot in flight carries a varying number of trail pieces, enough to move the floor past the tolerance.
-    await expect(page.locator(SHOT), `cycle ${i}: a shot still in flight after 5 s`).toHaveCount(0, { timeout: 5000 });
+    await expect(page.locator(SHOT), `cycle ${i}: pieces of a shot still on the page after 5 s`).toHaveCount(0, { timeout: 5000 });
     series.push(await counters(cdp));
   }
   console.log('e2e budget cycles: ' + series.map(s => `${s.nodes}/${s.listeners}`).join(' '));
