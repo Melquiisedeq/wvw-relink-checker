@@ -42,3 +42,15 @@ test('a region with no figures is not urgent', () => {
 test('the instant of the relink itself, with a tier still on the old week, is not urgent', () => {
   assert.equal(urgent(NOW, null, true), false);
 });
+
+test('regionResetting: the "resetting" clock holds for 15 minutes after the reset, until a tier on the new week is read (js/relink.js)', () => {
+  const lastNA = run(`lastResetOf('NA', ${NOW})`);
+  const at = lastNA + 5 * MIN;
+  run('resetNA = null');
+  assert.equal(run(`regionResetting('NA', ${at})`), true, 'no new week read yet');
+  run(`resetNA = ${lastNA - MORE}`);
+  assert.equal(run(`regionResetting('NA', ${at})`), true, 'every tier still on the old week');
+  run(`resetNA = ${lastNA + MIN}`);
+  assert.equal(run(`regionResetting('NA', ${at})`), false, 'a tier on the new week is out: counting, not "resetting"');
+  assert.equal(run(`regionResetting('NA', ${lastNA + 15 * MIN})`), false, 'after 15 minutes never');
+});
