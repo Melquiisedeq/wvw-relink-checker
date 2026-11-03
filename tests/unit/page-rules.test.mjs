@@ -419,6 +419,114 @@ test('weekStoreOffer: a later week always replaces an earlier one; an earlier bo
   assert.equal(stored(p, '1-2').s, t - 3 * day, 'the memory of a week begun a day ago no longer holds against an earlier body');
 });
 
+// Relink night: which team a guild is on and what line-up a tier shows. The NA tiers of the recording,
+// each by its id, all live and on one week.
+const naTiers = () => ['1-1', '1-2', '1-3', '1-4'].map((id) => clone(matches.find((m) => m.id === id)));
+const plain = (x) => JSON.parse(JSON.stringify(x));
+const teamsOf = (p, m) => ['red', 'blue', 'green'].map((c) => p.call('matchTeamId', m, c));
+const bodyAt = (m, startAt) => weekBody(m, m.id, startAt, startAt + 7 * 24 * 60 * MIN);
+
+test('weekStoreRead: every tier remembered survives a reload, not only the last one (js/api.js)', () => {
+  const p = fresh();
+  const start = p.clock.now - 10 * MIN;
+  for (const m of naTiers()) p.call('weekStoreOffer', bodyAt(m, start));
+  p.run('weekStore = null');   // the page loaded again: only localStorage is left
+  assert.deepEqual(plain([...p.run('weekStoreRead()').keys()].sort()), ['1-1', '1-2', '1-3', '1-4']);
+});
+
+test('weekLineup: the remembered line-up has the three teams and no score at all (js/api.js)', () => {
+  const p = fresh();
+  const [t1] = naTiers();
+  p.call('weekStoreOffer', bodyAt(t1, p.clock.now - 10 * MIN));
+  const line = p.call('weekLineup', '1-1');
+  assert.equal(line.lineupOnly, true);
+  assert.deepEqual(teamsOf(p, line), teamsOf(p, t1));
+  assert.equal(line.scores, undefined, 'a remembered line-up has no score to show');
+  assert.equal(JSON.stringify(line).includes('scores'), false);
+});
+
+test('standingsBoard: a tier remembered and left out of the list comes back as its line-up (js/panels.js)', () => {
+  const p = fresh();
+  const [a, b, c, d] = naTiers();
+  p.call('weekStoreOffer', bodyAt(d, p.clock.now - 10 * MIN));
+  const board = p.call('standingsBoard', [a, b, c]);
+  assert.deepEqual(plain(board.map((m) => m.id)), ['1-1', '1-2', '1-3', '1-4']);
+  assert.equal(board[3].lineupOnly, true, 'the fourth is the remembered line-up, not a waiting card');
+  assert.equal(board[3].waitingId, undefined);
+  assert.deepEqual(teamsOf(p, board[3]), teamsOf(p, d));
+});
+
+test('matchesToReread: a tier remembered this week and missing from the list is read again by id (js/api.js)', () => {
+  const p = fresh();
+  const [a, b, c, d] = naTiers();
+  p.call('weekStoreOffer', bodyAt(d, p.clock.now - 10 * MIN));
+  const r = p.call('matchesToReread', [a, b, c], ['1']);
+  assert.deepEqual(plain(r.need), ['1-4']);
+  assert.deepEqual(plain(r.holes), ['1-4']);
+});
+
+test('deduceLineup: a tier that ended in the week of the others is the late one, and its line-up is deduced (js/standings.js)', () => {
+  const p = fresh();
+  const list = naTiers();
+  const all = new Set(list.flatMap((m) => teamsOf(p, m)));
+  list[1].end_time = new Date(p.clock.now - MIN).toISOString();   // same start, already over
+  const line = p.call('deduceLineup', list, all, 4);
+  assert.equal(line && line.id, '1-2');
+  assert.deepEqual(teamsOf(p, line).sort(), teamsOf(p, naTiers()[1]).sort());
+});
+
+test('deduceLineup: more than three teams left over is no line-up, and nothing is guessed (js/standings.js)', () => {
+  const p = fresh();
+  const list = naTiers();
+  const all = new Set(list.flatMap((m) => teamsOf(p, m)));
+  list[1] = bodyAt(list[1], Date.parse(list[1].start_time) - 7 * 24 * 60 * MIN);
+  assert.ok(p.call('deduceLineup', list, all, 4), 'control: three left over closes');
+  // A live tier names a team the table has not got: its own team is left over too, 4 in all.
+  list[2].all_worlds.red = [99999];
+  assert.equal(p.call('deduceLineup', list, all, 4), null);
+});
+
+test('matchReplaces and keptMatchWithTeam: the same week\'s live body stands in for the team over an ended one (js/api.js)', () => {
+  const p = fresh();
+  const live = clone(matches.find((m) => m.id === '1-1'));
+  const ended = { ...clone(live), id: '1-2', end_time: new Date(p.clock.now - MIN).toISOString() };
+  assert.equal(p.call('matchReplaces', ended, live), false, 'an ended body does not take the live one\'s place');
+  assert.equal(p.call('matchReplaces', live, ended), true, 'the live body takes the ended one\'s');
+  p.run('matchDataCache').set(live.id, live);
+  p.run('matchDataCache').set(ended.id, ended);
+  const team = p.call('matchTeamId', live, 'red');
+  assert.equal(p.call('keptMatchWithTeam', team).id, '1-1');
+});
+
+test('getMatchForTeam: a first answer without the team is read again, and the answer that has it counts (js/api.js)', async () => {
+  const p = fresh();
+  const [other, mine] = naTiers();
+  const team = p.call('matchTeamId', mine, 'red');
+  let reads = 0;
+  p.ctx.URL = URL;
+  p.ctx.fetch = () => Promise.reject(new TypeError('offline'));
+  p.ctx.__answer = () => (++reads === 1 ? other : mine);
+  p.run('fetchJson = async () => __answer()');
+  const got = await p.call('getMatchForTeam', team);
+  assert.equal(got.id, '1-2');
+  assert.ok(reads > 1, 'read again');
+});
+
+test('fetchMatches: a whole region on one week is written to the memory even where it holds a later week (js/api.js)', async () => {
+  const p = fresh();
+  const list = naTiers();
+  const later = p.clock.now - 30 * MIN;
+  p.call('weekStoreOffer', bodyAt(list[1], later));
+  assert.equal(stored(p, '1-2').s, later);
+  p.ctx.URL = URL;
+  p.ctx.fetch = () => Promise.reject(new TypeError('offline'));
+  p.ctx.__list = list;
+  p.run('fetchJson = async (url) => (/ids=all/.test(url) ? __list : __list.filter((m) => url.includes(m.id)))');
+  await p.call('fetchMatches', 'https://api.guildwars2.com/v2/wvw/matches?ids=all', 4000, ['1']);
+  p.run('weekStore = null');
+  assert.equal(stored(p, '1-2').s, Date.parse(list[1].start_time), 'the list is the line-up, the older memory is replaced');
+});
+
 test('fightSamples: a reading older than three hours, or from before the match began, is no baseline (js/maps-early.js)', () => {
   const day = 24 * 60 * MIN;
   const row = (at) => ({ at, n: { Center: 100, RedHome: 0, BlueHome: 0, GreenHome: 0 } });

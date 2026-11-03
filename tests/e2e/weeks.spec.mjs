@@ -368,6 +368,19 @@ test.describe('week memory', () => {
     expect({ ...c, names: [...c.names].sort() }).toEqual({ sides: 0, map: false, vp: false, names: [...await names(page, t2)].sort(), waiting: [LINE] });
   });
 
+  // A line-up from the memory is this week's: no "→ Tier N" beside a team, even one the page also holds live in a later tier.
+  test('a remembered line-up shows the teams alone, none marked with another tier', async ({ page, wvw }) => {
+    const start = startOf(wvw.recordedAt);
+    const mine = Object.fromEntries(TEAMS.map((c, i) => [c, Number(team(t3)[i])]));
+    await serveList(page, all.map(m => (m.id === '1-2' ? old(t2) : m.id === '1-4' ? old(t4)
+      : m.id === '1-3' ? fresh(start + 5 * MIN, t3, t3.all_worlds) : m)));
+    await page.addInitScript(([k, v]) => localStorage.setItem(k, v), [KEY, JSON.stringify({ '1-2': { s: start, e: start + WEEK, t: mine, v: start } })]);
+    await opened(page, wvw);
+    const c = await card(page, '1-2');
+    expect({ ...c, names: [...c.names].sort() }).toEqual({ sides: 0, map: false, vp: false, names: [...await names(page, t3)].sort(), waiting: [LINE] });
+    expect(await page.locator(`${NA}[data-match-id="1-2"] .standing-moved`).count(), 'marks on the remembered line-up').toBe(0);
+  });
+
   // Two late tiers: nothing to deduce, so a corrupt memory is the only thing
   // that could change 1-2 - each would-be winner otherwise well formed.
   test('a corrupt memory is ignored quietly and cannot reach Object.prototype', async ({ page, wvw }) => {
