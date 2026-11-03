@@ -1196,3 +1196,203 @@ test('offerLate: a late copy that moves a match makes the open map read once; th
   page.clock.now += 60000;
   assert.equal(page.call('latestWanted', [live.id], true), false, 'a summary no further than the copy: no ask');
 });
+
+const openMatch = matches.find((m) => Date.parse(m.end_time) > recordedAt && m.maps.some((x) => x.kills));
+const OPEN_ID = openMatch.id;
+
+// The recorded open match match, `k` steps into its week: only ever more kills, deaths and score.
+function stepOf(k) {
+  const m = clone(openMatch);
+  m.kills.red += 100 * k;
+  m.deaths.red += 100 * k;
+  m.scores.red += 50 * k;
+  for (const map of m.maps) map.kills.red = Number(map.kills.red || 0) + 40 * k;
+  return m;
+}
+const shownOf = (m) => [m.kills.red, m.deaths.red, m.scores.red];
+
+// The game answers `game` (or fails), our copy answers `copy`; counts how often the copy was asked.
+function serveFrom(p, { game, copy }) {
+  p.ctx.URL = URL;
+  p.ctx.__copy = copy;
+  p.ctx.__game = game;
+  p.ctx.__asked = 0;
+  p.run('fetchJson = async () => { if (__game.message === "offline") throw __game; return __game; }');
+  p.run('latestRead = () => { __asked++; return Promise.resolve(__copy); }');
+  return () => p.ctx.__asked;
+}
+const ONE_URL = `https://api.guildwars2.com/v2/wvw/matches?id=${OPEN_ID}`;
+const LIST_URL = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
+
+test('matchIsBehind: more kills and deaths decide before the score, so older activity with a higher score is behind (js/api.js)', () => {
+  const p = fresh();
+  const kept = stepOf(2);
+  const stale = clone(kept);
+  stale.deaths.red -= 10;
+  stale.scores.red += 10;
+  assert.equal(p.call('matchIsBehind', stale, kept), true, 'fewer deaths is a body from before, whatever its score says');
+  assert.equal(p.call('matchIsBehind', kept, stale), false, 'and the other way round it is not');
+});
+
+test('keepNewestMatch: a new week with a low score still moves the data, so its time restarts (js/api.js)', () => {
+  const p = fresh();
+  p.call('keepNewestMatch', stepOf(2));
+  const first = p.run(`newestMatches.get('${OPEN_ID}').at`);
+  p.clock.now += 20 * MIN;
+  const week = 7 * 24 * 60 * MIN;
+  const next = clone(openMatch);
+  next.start_time = new Date(Date.parse(openMatch.start_time) + week).toISOString();
+  next.end_time = new Date(Date.parse(openMatch.end_time) + week).toISOString();
+  for (const f of ['kills', 'deaths', 'scores']) for (const c of Object.keys(next[f])) next[f][c] = 0;
+  p.call('keepNewestMatch', next);
+  assert.equal(p.run(`newestMatches.get('${OPEN_ID}').match.start_time`), next.start_time);
+  assert.equal(p.run(`newestMatches.get('${OPEN_ID}').at`), first + 20 * MIN, 'the new week is first seen now, not 20 minutes ago');
+});
+
+test('matchesToReread: a body from an earlier week is read again; one behind in its own week is not (js/api.js)', () => {
+  const p = fresh();
+  p.call('keepNewestMatch', stepOf(2));
+  const old = stepOf(1);
+  old.start_time = new Date(Date.parse(openMatch.start_time) - 7 * 24 * 60 * MIN).toISOString();
+  const earlier = p.call('matchesToReread', [old], []);
+  assert.deepEqual(JSON.parse(JSON.stringify(earlier.need)), [OPEN_ID]);
+  assert.deepEqual(JSON.parse(JSON.stringify(earlier.behind)), []);
+  const sameWeek = p.call('matchesToReread', [stepOf(1)], []);
+  assert.deepEqual(JSON.parse(JSON.stringify(sameWeek.need)), [], 'its own week is a question for our copy');
+  assert.deepEqual(JSON.parse(JSON.stringify(sameWeek.behind)), [OPEN_ID]);
+});
+
+test('fetchMatches: a list with a body behind asks our copy, and the copy\'s newer body is what is shownOf (js/api.js)', async () => {
+  const p = fresh();
+  p.call('keepNewestMatch', stepOf(1));
+  const asked = serveFrom(p, { game: [stepOf(0)], copy: [stepOf(2)] });
+  const list = await p.call('fetchMatches', LIST_URL, 4000, []);
+  assert.equal(asked(), 1);
+  assert.deepEqual(shownOf(list.find((m) => m.id === OPEN_ID)), shownOf(stepOf(2)));
+});
+
+test('fetchMatches: one open match answered behind asks our copy, and shows its newer body (js/api.js)', async () => {
+  const p = fresh();
+  p.call('keepNewestMatch', stepOf(1));
+  const asked = serveFrom(p, { game: stepOf(0), copy: [stepOf(2)] });
+  const got = await p.call('fetchMatches', ONE_URL, 4000, []);
+  assert.equal(asked(), 1);
+  assert.deepEqual(shownOf(got), shownOf(stepOf(2)));
+});
+
+test('fetchMatches: the game failing for an open match, our copy that is further along stands in; a copy that is not, the error stays (js/api.js)', async () => {
+  const p = fresh();
+  p.call('keepNewestMatch', stepOf(1));
+  serveFrom(p, { game: new TypeError('offline'), copy: [stepOf(3)] });
+  assert.deepEqual(shownOf(await p.call('fetchMatches', ONE_URL, 4000, [])), shownOf(stepOf(3)));
+  const q = fresh();
+  q.call('keepNewestMatch', stepOf(1));
+  serveFrom(q, { game: new TypeError('offline'), copy: [stepOf(0)] });
+  await assert.rejects(() => q.call('fetchMatches', ONE_URL, 4000, []), /offline/);
+});
+
+test('latestWanted: a map reading every 30 s asks the copy though the clock is a second short; 2 s short does not (js/api.js)', () => {
+  const p = fresh();
+  p.call('keepNewestMatch', stepOf(1));
+  p.run('latestAskedAt = Date.now()');
+  p.clock.now += 29 * 1000 + 500;
+  assert.equal(p.call('latestWanted', [OPEN_ID], true), true);
+  p.run('latestAskedAt = Date.now()');
+  p.clock.now += 28 * 1000;
+  assert.equal(p.call('latestWanted', [OPEN_ID], true), false);
+});
+
+test('recordFightSamples: only a score this page watched rise is written to the fight log (js/maps-early.js)', () => {
+  const p = fresh();
+  const asked = p.clock.now;
+  const log = () => p.call('readFightLog')[OPEN_ID] || [];
+  p.call('keepNewestMatch', stepOf(1));
+  p.call('recordFightSamples', [stepOf(1)], asked);
+  assert.equal(log().length, 0, 'a first sight may be the lagging group\'s: no line');
+  p.call('keepNewestMatch', stepOf(2));
+  p.call('recordFightSamples', [stepOf(2)], asked);
+  assert.equal(log().length, 1, 'the rise watched is written');
+});
+
+// A match gapNote: the body before the gap, the body after it, one map's kills at a time.
+function gapNote(p, before, after) {
+  p.call('missedMakeNote', before, after, p.clock.now - 20 * MIN, p.clock.now, 'pause');
+  return p.run(`missedNotes.get('${OPEN_ID}')`);
+}
+const withKills = (m, perType) => {
+  const x = clone(m);
+  for (const map of x.maps) map.kills = { red: perType[map.type] || 0, blue: 0, green: 0 };
+  return x;
+};
+
+test('missedView: a map the body says has fewer kills than before is not a negative count (js/maps-early.js)', () => {
+  const p = fresh();
+  const before = withKills(openMatch, { Center: 100, RedHome: 100 });
+  const after = withKills(openMatch, { Center: 90, RedHome: 150 });
+  const view = gapNote(p, before, after);
+  assert.deepEqual(JSON.parse(JSON.stringify(view.perMap.map((m) => [m.type, m.n]))), [['RedHome', 50]]);
+  assert.equal(view.kills, 50);
+});
+
+test('missedView: the kills count from the newest body kept, not from a lagging one the summary was made on (js/maps-early.js)', () => {
+  const p = fresh();
+  p.call('keepNewestMatch', withKills(openMatch, { Center: 100, RedHome: 300 }));
+  const view = gapNote(p, withKills(openMatch, { Center: 100, RedHome: 100 }), withKills(openMatch, { Center: 100, RedHome: 150 }));
+  assert.equal(view.kills, 200, 'what the page now holds, 300 less the 100 before');
+});
+
+test('ageByScoreSum: a first sight takes the time of the oldest line of its week with its score, never an earlier week\'s (js/maps-early.js)', () => {
+  const p = fresh();
+  const body = stepOf(1);
+  p.call('keepNewestMatch', body);
+  const sum = p.call('colorSum', body.scores);
+  const week = Date.parse(body.start_time);
+  const line = (at) => ({ at, n: {}, score: sum });
+  p.call('ageByScoreSum', new Map([[OPEN_ID, [line(week - 60 * MIN), line(p.clock.now - 30 * MIN)]]]));
+  assert.equal(p.run(`newestMatches.get('${OPEN_ID}').at`), p.clock.now - 30 * MIN);
+});
+
+test('ageByScoreSum: a score this page watched rise keeps its time (js/maps-early.js)', () => {
+  const p = fresh();
+  p.call('keepNewestMatch', stepOf(1));
+  p.call('keepNewestMatch', stepOf(2));
+  assert.equal(p.run(`newestMatches.get('${OPEN_ID}').rose`), true, 'control: the rise was watched');
+  const sum = p.call('colorSum', stepOf(2).scores);
+  p.call('ageByScoreSum', new Map([[OPEN_ID, [{ at: p.clock.now - 30 * MIN, n: {}, score: sum }]]]));
+  assert.equal(p.run(`newestMatches.get('${OPEN_ID}').at`), p.clock.now);
+});
+
+// What the standings cards print as a tie or a lead (js/panels.js).
+const withFigures = (field, figures) => ({ ...JSON.parse(JSON.stringify(matches[0])), [field]: figures });
+
+test('isTiedOnVp: tied is another side on the same VP, whatever the third has, and never on a score alone (js/panels.js)', () => {
+  const p = fresh();
+  const tied = (vp, color) => {
+    p.ctx.__m = withFigures('victory_points', vp);
+    return p.run(`isTiedOnVp(__m, '${color}')`);
+  };
+  const scores = (red, blue) => ({ red, blue, green: 0 });
+  const two = { red: 30, blue: 30, green: 10 };
+  assert.equal(tied(two, 'red'), true, 'two sides on 30: the first is tied');
+  assert.equal(tied(two, 'blue'), true, 'and the second');
+  assert.equal(tied(two, 'green'), false, 'the third, alone on 10, is not');
+  const apart = { red: 50, blue: 0, green: 30 };
+  assert.equal(tied(apart, 'red'), false, 'a side on 0 does not tie one on 50');
+  assert.equal(tied(apart, 'green'), false);
+  assert.equal(tied({ red: 0, blue: 0, green: 0 }, 'blue'), true, 'the new week: all on 0 are tied');
+  p.ctx.__m = { ...withFigures('victory_points', two), scores: scores(900, 100) };
+  assert.equal(p.run("isTiedOnVp(__m, 'red')"), true, 'the same VP with far apart scores is still a tie');
+  p.ctx.__m = { ...withFigures('victory_points', apart), scores: scores(500, 500) };
+  assert.equal(p.run("isTiedOnVp(__m, 'red')"), false, 'the same score on different VP is not a tie');
+});
+
+test('getStatLeaders: a side with no deaths has no K/D and cannot lead it (js/panels.js)', () => {
+  const p = fresh();
+  p.ctx.__m = {
+    ...withFigures('kills', { red: 100, blue: 50, green: 30 }),
+    deaths: { red: 0, blue: 25, green: 30 },
+  };
+  assert.equal(p.run('getStatLeaders(__m)').kd, 'blue', 'the dash is not a ratio: 2.00 leads over 1.00');
+  p.ctx.__m.deaths = { red: 0, blue: 0, green: 0 };
+  assert.equal(p.run('getStatLeaders(__m)').kd, null, 'nobody has a ratio, nobody leads');
+});

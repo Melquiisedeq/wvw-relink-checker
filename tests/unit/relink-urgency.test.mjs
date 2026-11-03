@@ -1,5 +1,5 @@
-// The hours that make a region's relink urgent (js/relink.js regionIsUrgent):
-// the edges of each of its three ways in, which a browser test would have to
+// The hours that make a region's relink urgent (js/relink.js regionIsUrgent) and the 15 minutes its
+// clock reads "resetting" (regionResetting): the edges of each, which a browser test would have to
 // wait out to the minute. What the bar shows for them is tests in
 // tests/e2e/banners.spec.mjs.
 import test from 'node:test';
@@ -41,4 +41,18 @@ test('a region with no figures is not urgent', () => {
 
 test('the instant of the relink itself, with a tier still on the old week, is not urgent', () => {
   assert.equal(urgent(NOW, null, true), false);
+});
+
+test('regionResetting: the "resetting" clock holds for 15 minutes after the reset, until a tier on the new week is read (js/relink.js)', () => {
+  const lastNA = run(`lastResetOf('NA', ${NOW})`);
+  const at = lastNA + 5 * MIN;
+  run('resetNA = null');
+  assert.equal(run(`regionResetting('NA', ${at})`), true, 'no new week read yet');
+  run(`resetNA = ${lastNA - MORE}`);
+  assert.equal(run(`regionResetting('NA', ${at})`), true, 'every tier still on the old week');
+  run(`resetNA = ${lastNA + MIN}`);
+  assert.equal(run(`regionResetting('NA', ${at})`), false, 'a tier on the new week is out: counting, not "resetting"');
+  run('resetNA = null');
+  assert.equal(run(`regionResetting('NA', ${lastNA + 15 * MIN - 1})`), true, 'one millisecond short of 15 minutes, still none read');
+  assert.equal(run(`regionResetting('NA', ${lastNA + 15 * MIN})`), false, 'after 15 minutes never, even with no tier read');
 });

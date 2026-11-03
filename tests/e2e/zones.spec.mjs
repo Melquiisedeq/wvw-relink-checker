@@ -214,6 +214,22 @@ for (const c of CROSSINGS) {
         expect(late.ago, 'the map corner').not.toBeNull();
         const last = wrong(late, c.zone, locale, { synced: times });
         expect(last, `${c.zone} ${locale}, map opened after the change: ${last.join(' | ')}`).toEqual([]);
+
+        // More than an hour past the change, "Synced" is still the zone's hour on the offset it has now,
+        // not on the one the page opened with.
+        await page.keyboard.press('Escape');
+        await page.keyboard.press('Escape');
+        await expect(page.locator('.info-popover')).toHaveCount(0);
+        let later = late;
+        const text1 = squash(later.synced[0].text);
+        await page.clock.fastForward(70 * MIN);
+        for (let i = 0; i < 12 && squash(later.synced[0].text) === text1; i++) {
+          await page.clock.fastForward(30 * 1000);
+          await wvw.settle();
+          later = (await look('over an hour after the change')).seen;
+        }
+        expect(squash(later.synced[0].text), 'Synced was written again').not.toBe(text1);
+        expect([0, 1, 2, 3].map(k => `Synced ${hhmm(later.now - k * 1000, c.zone, locale)}`), 'Synced an hour on, the zone\'s hour of a moment ago').toContain(squash(later.synced[0].text));
       });
     });
   }
