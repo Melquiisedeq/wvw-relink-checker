@@ -1641,6 +1641,16 @@ test('the object: of two crossed notices only the newer match and version are ke
     await notice({ matches: [m(at + 1, 6100), m(at + 1, 5000, '1-2')], version: vname(at + 1) });
     assert.deepEqual(state.sockets[0].sent.slice(1).map((x) => JSON.parse(x)), [{ matches: [m(at + 1, 5000, '1-2')], version: vname(at + 2) }]);
     assert.deepEqual((await state.storage.get('matches'))['1-1'], m(at + 2, 6200));
+    // A newer version with no newer match: nothing sent, nor the matches written again; the
+    // version is kept for the next socket.
+    const put = state.storage.put;
+    const wrote = [];
+    state.storage.put = (k, v) => { wrote.push(k); return put(k, v); };
+    await notice({ matches: [m(at + 2, 6200)], version: vname(at + 5) });
+    assert.equal(state.sockets[0].sent.length, 2);
+    assert.deepEqual(wrote, ['version']);
+    await openWs(live);
+    assert.equal(JSON.parse(state.sockets[1].sent[0]).version, vname(at + 5));
   });
 });
 
@@ -1912,6 +1922,34 @@ test('/api/latest?v=: a minted version passed over is a 404 kept under its key, 
     assert.equal(n.q, 1, 'one copy read for three asks');
     assert.equal(caches.store.get('https://wvwrelink.com/api/latest?v=' + at).status, 404);
   });
+});
+
+test('/api/latest?v=: a passed-over version read across the end of STALE_LATEST_S never says a negative max-age', async () => {
+  const w = setup({ env: VKEY_ENV });
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
+  const at = Math.floor(w.now / 1000);
+  w.advance(30e3);
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', scores: [1000, 2000, 3100] }]), 200);
+  w.advance((at + 600) * 1000 - w.now);
+  const realDb = w.env.DB;
+  let release, reached;
+  const gate = new Promise((r) => { release = r; });
+  const atRead = new Promise((r) => { reached = r; });
+  w.env.DB = {
+    prepare(q) {
+      const st = realDb.prepare(q);
+      if (!q.includes('FROM latest')) return st;
+      return { all: async () => { reached(); await gate; return st.all(); } };
+    }
+  };
+  const read = w.get('/api/latest?v=' + vname(at));
+  await atRead;
+  w.advance(1500);
+  release();
+  const r = await read;
+  assert.equal(r.status, 404);
+  const age = Number(/max-age=(-?\d+)/.exec(r.headers.get('cache-control'))[1]);
+  assert.ok(age >= 0, r.headers.get('cache-control'));
 });
 
 test('/api/latest?v=: two readers applying in the same second get two versions, each copy final', async () => {

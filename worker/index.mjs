@@ -937,12 +937,13 @@ async function readLatestVersion(env, ctx, url) {
     return miss(SUMMARY_MAX_AGE);
   }
   // Older than any copy /api/latest still serves: nothing to read.
-  if (nowS() - want > STALE_LATEST_S) return miss(LATEST_VERSION_MAX_AGE);
+  const now = nowS();
+  if (now - want > STALE_LATEST_S) return miss(LATEST_VERSION_MAX_AGE);
   return cached(ctx, LATEST_KEY + '?v=' + want, async () => {
     const copy = await latestCopy(env);
     if (!copy || copy.newest < want) return text(503, 'stale');
-    // Passed over: a 404 until it leaves STALE_LATEST_S.
-    if (copy.newest !== want) return miss(STALE_LATEST_S - (nowS() - want));
+    // Passed over: a 404 until it leaves STALE_LATEST_S, timed from before the read.
+    if (copy.newest !== want) return miss(STALE_LATEST_S - (now - want));
     return json(copy.body, LATEST_VERSION_MAX_AGE);
   });
 }
@@ -1156,19 +1157,20 @@ export class Live {
       MATCHES.includes(m.id) && isInt(m.start) && isInt(m.score) && isInt(m.at))
       .map((m) => ({ id: m.id, start: m.start, score: m.score, at: m.at }));
     if (!fresh.length) return text(400, 'refused');
-    // Two notices can cross: of a match and of the version only the newer is kept and sent,
-    // and a notice with nothing newer sends nothing.
+    // Two notices can cross: of a match and of the version only the newer is kept, and a
+    // notice with no newer match sends nothing (a new socket still gets the newer version).
     const known = await this.state.storage.get('matches') || {};
     const won = fresh.filter((m) => !known[m.id] || m.at > known[m.id].at);
     for (const m of won) known[m.id] = m;
-    for (const id of Object.keys(known)) if (nowSec - known[id].at > LATEST_KEEP_S) delete known[id];
-    await this.state.storage.put('matches', known);
+    const gone = Object.keys(known).filter((id) => nowSec - known[id].at > LATEST_KEEP_S);
+    for (const id of gone) delete known[id];
+    if (won.length || gone.length) await this.state.storage.put('matches', known);
     // The newest version minted, as the ingest named it; anything else is left out.
     const named = typeof body.version === 'string' && VERSION_RE.test(body.version) ? body.version : null;
     const had = await this.state.storage.get('version');
     const version = named && had && parseInt(had, 10) > parseInt(named, 10) ? had : named;
     if (version && version !== had) await this.state.storage.put('version', version);
-    if (!won.length && !(version && version !== had)) return text(200, 'ok');
+    if (!won.length) return text(200, 'ok');
     const msg = JSON.stringify(version ? { matches: won, version } : { matches: won });
     for (const ws of this.state.getWebSockets()) {
       try {
