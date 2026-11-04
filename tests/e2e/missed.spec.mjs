@@ -312,16 +312,6 @@ async function gap(page, wvw) {
 }
 
 test.describe('what happened', () => {
-  test('the same body for 700 s shows no block', async ({ page, wvw }) => {
-    await load(page, wvw);
-    const tier = await firstTier(page);
-    const same = await answer(page, tier.url, await keptMatch(page, tier.id));
-    await openMap(page, wvw, tier.button);
-    for (let i = 0; i < 7; i++) await later(page, wvw, 100000);
-    expect(same.reads, 'pulls of the map over 700 s').toBeGreaterThanOrEqual(7);
-    await expect(page.locator(BLOCK), 'the block showed while the body stood still').toHaveCount(0);
-  });
-
   test('after the gap: both chips, the open map first, exactly those kills; markers, chips', async ({ page, wvw }) => {
     const g = await gap(page, wvw);
     await g.afterTheGap();

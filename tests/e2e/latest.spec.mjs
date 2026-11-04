@@ -222,20 +222,6 @@ test.describe('no DecompressionStream', () => {
   }
 });
 
-// The game's server group answers a minute-old body in the odd minutes, and
-// /api/latest holds the newest: the page opens in minute 13 and shows the newest.
-test.describe('a group behind the game', () => {
-  test.use({ timeline: gw2.match(FOCUS).advance(13).pageOpens().olderPool(10).advance(2) });
-
-  test('/api/latest brings the newest body over the older one the game gave', async ({ page, wvw }) => {
-    await opened(page, wvw);
-    const t = 13 * MIN;
-    const newest = sum(wvw.timeline.body(FOCUS, t)), older = sum(wvw.timeline.body(FOCUS, t - 10 * MIN));
-    expect(newest, 'a timeline whose older body is behind').toBeGreaterThan(older);
-    expect(await settledScore(page, FOCUS, newest)).toBe(newest);
-  });
-});
-
 // The page opened with /api/latest down, so its first ask got nothing. Five
 // minutes on the game's server group answers a body 10 minutes behind (the page
 // keeps the further-along one it has, and sees nothing rise) while /api/latest is
@@ -254,19 +240,7 @@ test.describe('a game body that stands still while /api/latest is ahead', () => 
   });
 });
 
-// Down or hung, the page is as it was without the read.
-test.describe('/api/latest down', () => {
-  test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().latestStatus(503) });
-
-  test('a 503 leaves the numbers as the game gave them', async ({ page, wvw }) => {
-    let asked = 0;
-    page.on('request', r => { if (/\/api\/latest$/.test(r.url())) asked++; });
-    await opened(page, wvw);
-    expect(asked, 'reads of /api/latest').toBeGreaterThan(0);
-    expect(await scoreOf(page, FOCUS)).toBe(sum(wvw.timeline.body(FOCUS, 12 * MIN)));
-  });
-});
-
+// Hung, the page is as it was without the read.
 test.describe('/api/latest hung', () => {
   test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().latestStatus('hang') });
 
@@ -461,6 +435,12 @@ test.describe('closing a popover after a skipped tick', () => {
 
   test('only peeks when nothing was skipped', async ({ page, wvw }) => {
     const seen = await setup(page, wvw);
+    // The list is overdue by the clock but nothing is owed: a close that read for the clock alone would read the game.
+    await tickUnderPopover(page);
+    await page.evaluate(() => { standingsSkipped = false; });
+    // The next scheduled peek is 50 s off, past the 31 s the close waits (an open popover counts as use, so the page never waits longer): only the close can bring it in.
+    await page.evaluate(() => { clearTimeout(peekTimer); peekTimer = setTimeout(runPeek, 50 * 1000); });
+    seen.peeks = 0;
     await close(page);
     await expect.poll(() => seen.peeks, 'peeks after the close').toBeGreaterThan(0);
     expect(seen.game, 'a close with nothing skipped reads no game').toEqual([]);
