@@ -97,7 +97,8 @@ test.describe('the notice on the one-minute tick', () => {
     }
   }
   const MARKED_ICONS = ['assets/favicon-dot.png'];
-  const markedTitle = title => '\u25cf New teams are out \u2014 ' + title;
+  const NOTICE_TITLE = '\u{1F514} New teams are out!';
+  const FLIP = 2000;
 
   test('in the window the notice arrives within two minutes of the cell changing, with no reload', async ({ page, wvw }) => {
     const cell = await relinkWindow(page, wvw);
@@ -139,7 +140,7 @@ test.describe('the notice on the one-minute tick', () => {
       await quiet();
     }
     await expect(page.locator('#teamsNotice')).toHaveAttribute('data-window', String(cell.windowId));
-    expect(await tab(page), 'the notice went up hidden').toEqual({ title: markedTitle(was.title), icons: MARKED_ICONS });
+    expect(await tab(page), 'the notice went up hidden').toEqual({ title: NOTICE_TITLE, icons: MARKED_ICONS });
 
     await visible(page);
     expect(await tab(page), 'seen: the title and the icons back').toEqual(was);
@@ -161,7 +162,7 @@ test.describe('the notice on the one-minute tick', () => {
       cell.published = 5;
       await page.evaluate(() => { relinkStateAt = 0; updateRelinkBanner(); });
       await expect(page.locator('#teamsNotice')).toBeVisible();
-      expect(await tab(page), 'the notice went up hidden').toEqual({ title: markedTitle(was.title), icons: MARKED_ICONS });
+      expect(await tab(page), 'the notice went up hidden').toEqual({ title: NOTICE_TITLE, icons: MARKED_ICONS });
     };
 
     await raise();
@@ -169,12 +170,96 @@ test.describe('the notice on the one-minute tick', () => {
     await page.evaluate(() => { assignNA = Date.now() - 1000; updateRelinkBanner(); });
     await expect(page.locator('#teamsNotice')).toBeHidden();
     expect(await tab(page), 'the window over: the title and the icons back').toEqual(was);
+    await clockStopped(page, was);
 
     await page.evaluate(t => { assignNA = t; }, assigned);
     await raise();
     await page.locator('.teams-notice-close').click();
     await expect(page.locator('#teamsNotice')).toBeHidden();
     expect(await tab(page), 'dismissed: the title and the icons back').toEqual(was);
+    await clockStopped(page, was);
+  });
+
+  // Three flips (odd, so a clock still running would leave the other title) with no page error
+  // (a clock left running after the mark is gone throws instead of flipping).
+  async function clockStopped(page, was) {
+    const errors = [];
+    const onError = e => errors.push(e.message);
+    page.on('pageerror', onError);
+    for (let i = 0; i < 3; i++) await page.clock.fastForward(FLIP);
+    page.off('pageerror', onError);
+    expect((await tab(page)).title, 'the clock stopped').toBe(was.title);
+    expect(errors, 'nothing ran after the mark went').toEqual([]);
+  }
+
+  // Raises the notice in a hidden tab; returns the tab as it was.
+  async function raiseHidden(page, wvw, cell) {
+    const was = await tab(page);
+    await hidden(page, wvw, 0);
+    cell.published = 5;
+    await page.evaluate(() => { relinkStateAt = 0; updateRelinkBanner(); });
+    await expect(page.locator('#teamsNotice')).toBeVisible();
+    return was;
+  }
+
+  test('the dot is inserted after the old icons are gone, and the originals return after the dot is gone', async ({ page, wvw }) => {
+    const cell = await relinkWindow(page, wvw);
+    await page.evaluate(() => {
+      // The records are replayed in order, so `others` is what was in the document at that insertion.
+      window.iconLog = [];
+      const isIcon = n => n.nodeType === 1 && n.matches('link[rel~="icon"]');
+      const present = new Set(document.querySelectorAll('link[rel~="icon"]'));
+      const hrefs = () => [...present].map(l => l.getAttribute('href'));
+      new MutationObserver(records => {
+        for (const r of records) {
+          if (r.type === 'attributes' && isIcon(r.target)) window.iconLog.push({ op: 'href', href: r.target.getAttribute('href') });
+          for (const n of r.removedNodes) if (isIcon(n)) { present.delete(n); window.iconLog.push({ op: 'remove', href: n.getAttribute('href') }); }
+          for (const n of r.addedNodes) if (isIcon(n)) { window.iconLog.push({ op: 'insert', href: n.getAttribute('href'), others: hrefs() }); present.add(n); }
+        }
+      }).observe(document.head, { childList: true, attributes: true, attributeFilter: ['href'], subtree: true });
+    });
+    await raiseHidden(page, wvw, cell);
+    const marked = await page.evaluate(() => window.iconLog.splice(0));
+    const last = marked[marked.length - 1];
+    expect(last, 'marking ends on an insertion').toMatchObject({ op: 'insert', href: 'assets/favicon-dot.png' });
+    expect(last.others, 'no other icon in the document when the dot goes in').toEqual([]);
+
+    await visible(page);
+    const unmarked = await page.evaluate(() => window.iconLog.splice(0));
+    const end = unmarked[unmarked.length - 1];
+    expect(end.op, 'unmarking ends on an insertion').toBe('insert');
+    expect(end.href, 'of an original icon').not.toBe('assets/favicon-dot.png');
+    expect(end.others, 'the dot already gone').not.toContain('assets/favicon-dot.png');
+    expect(unmarked.find(e => e.op === 'remove' && e.href === 'assets/favicon-dot.png'), 'the dot was removed').toBeTruthy();
+  });
+
+  test('a marked tab alternates its title every two seconds until it is seen', async ({ page, wvw }) => {
+    const cell = await relinkWindow(page, wvw);
+    await page.clock.pauseAt(await wvw.now() + 1000); // no real second slips a flip in between
+    const was = await raiseHidden(page, wvw, cell);
+    expect((await tab(page)).title).toBe(NOTICE_TITLE);
+    await page.clock.fastForward(FLIP);
+    expect((await tab(page)).title).toBe(was.title);
+    await page.clock.fastForward(FLIP);
+    expect((await tab(page)).title).toBe(NOTICE_TITLE);
+    await page.clock.fastForward(FLIP);
+    expect((await tab(page)).title).toBe(was.title);
+
+    await visible(page);
+    expect((await tab(page)).title).toBe(was.title);
+    await clockStopped(page, was);
+  });
+
+  test('a marked tab keeps one fixed title for those who asked for reduced motion', async ({ page, wvw }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const cell = await relinkWindow(page, wvw);
+    const was = await raiseHidden(page, wvw, cell);
+    const fixed = NOTICE_TITLE + ' \u2014 ' + was.title;
+    expect((await tab(page)).title).toBe(fixed);
+    for (let i = 0; i < 4; i++) await page.clock.fastForward(FLIP);
+    expect((await tab(page)).title, 'no alternating').toBe(fixed);
+    await visible(page);
+    expect((await tab(page)).title).toBe(was.title);
   });
 
   test('a hidden tab whose asks fail still asks at most once in ten minutes', async ({ page, wvw }) => {

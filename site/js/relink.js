@@ -429,8 +429,11 @@ function buildTeamsNotice(windowId) {
 // A notice that goes up in a hidden tab marks the tab, until the tab is seen or the notice goes.
 // The icon links are swapped for a new one, not their href changed: Firefox for
 // Android ignores an href changed after load. The title is the signal; the dot is extra.
-const TAB_NOTICE_PREFIX = '\u25cf New teams are out \u2014 ';
-let tabMark = null; // { title, icons, dot } while marked
+// Chromium redraws the tab icon when an icon link is inserted, not when one is removed:
+// the old links go first, then the new one.
+const TAB_NOTICE_TITLE = '\u{1F514} New teams are out!';
+const TAB_FLIP_MS = 2000;
+let tabMark = null; // { title, icons, dot, flip } while marked
 
 function markTab() {
   if (tabMark) return;
@@ -439,19 +442,29 @@ function markTab() {
   dot.rel = 'icon';
   dot.type = 'image/png';
   dot.href = 'assets/favicon-dot.png';
-  tabMark = { title: document.title, icons, dot };
-  document.head.append(dot);
+  tabMark = { title: document.title, icons, dot, flip: null };
   icons.forEach((l) => l.remove());
-  document.title = TAB_NOTICE_PREFIX + tabMark.title;
+  document.head.append(dot);
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.title = TAB_NOTICE_TITLE + ' \u2014 ' + tabMark.title;
+  } else {
+    let showing = true;
+    document.title = TAB_NOTICE_TITLE;
+    tabMark.flip = setInterval(() => {
+      showing = !showing;
+      document.title = showing ? TAB_NOTICE_TITLE : tabMark.title;
+    }, TAB_FLIP_MS);
+  }
   document.addEventListener('visibilitychange', unmarkTabOnSight);
 }
 
 function unmarkTab() {
   if (!tabMark) return;
-  const { title, icons, dot } = tabMark;
+  const { title, icons, dot, flip } = tabMark;
   tabMark = null;
-  dot.before(...icons);
+  clearInterval(flip);
   dot.remove();
+  document.head.append(...icons);
   document.title = title;
   document.removeEventListener('visibilitychange', unmarkTabOnSight);
 }
