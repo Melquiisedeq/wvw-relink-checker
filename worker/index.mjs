@@ -11,10 +11,11 @@
 //   GET  /api/relink           relink!A1 as numbers, for the teams notice
 //   GET  /api/latest            each match's newest body, as the readers pushed it
 //   GET  /api/latest/summary     the same without the bodies: id, start, score, at, by, hist
-//   GET  /api/latest?v=<at>     the same, for the version a push named; 404 for any other
+//   GET  /api/latest?v=<at>.<tag>  the same, for the version a push named (tag: VERSION_KEY); 404 for any other
 //   GET  /api/history/<1|2>?v=<n>  a region's finished skirmishes, n of them, this week
 //   GET  /api/ws               a WebSocket that carries nothing in: each newer copy the ingest
-//                              stores, as {matches: [{id, start, score, at}]} (the Live object)
+//                              stores, as {matches: [{id, start, score, at}], version: "<at>.<tag>"}
+//                              (the Live object; no version without VERSION_KEY)
 //   daily, on a schedule       kills older than KEEP_DAYS are deleted
 //
 // A message is signed by its script with a secret of its own:
@@ -64,10 +65,10 @@ const SUMMARY_MAX_AGE = 5;
 // A version is the `at` of the ingest that wrote it, unique and rising (latestUpsertSql), so
 // its copy never changes once written and is kept from the first read.
 const LATEST_VERSION_MAX_AGE = 60;
-// A v past the cached summary has the summary read again when the summary was kept before
-// that second ended and is SUMMARY_RECHECK_MS old (asks that miss the cache together each
-// read it), and only up to LATEST_AHEAD_S past the clock.
-const SUMMARY_RECHECK_MS = 100;
+// A version is asked as <at>.<tag>, the tag the first 128 bits of the HMAC-SHA-256 under
+// VERSION_KEY of VERSION_DOMAIN and `at`: minted by the ingest, passed on by the Live object.
+// Only a version the ingest wrote reaches D1, and then the data centre's cache once a read fills it.
+const VERSION_DOMAIN = 'latest-version:';
 // How far past the clock an ingest's `at` may run (latestUpsertSql); past it the message is
 // not written. The score-rise rule compares `at` with the clock, and far ahead it would hold
 // the match still.
@@ -217,8 +218,9 @@ async function accept(request, env, ctx, source, path) {
 // The message's matches as [id, start, score, gz, sha, raw] in ?1, the clock in ?2, the reader in
 // ?3. Every row it writes gets one `at`: the clock, or one past the newest stored when that is
 // not under it, so each ingest that applies anything is a version of its own, even two in one
-// second; none, past LATEST_AHEAD_S. SQLite runs a SELECT that reads the table it inserts into to the end before writing,
-// so the newest is the one from before this message. RETURNING: the rows that went in.
+// second; none, past LATEST_AHEAD_S. SQLite runs a SELECT that reads the table it inserts
+// into to the end before writing, so the newest is the one from before this message.
+// RETURNING: the rows that went in.
 const latestUpsertSql =
   'INSERT INTO latest (id, start, score, at, reader, gz, sha, raw) ' +
   "SELECT json_extract(j.value, '$[0]'), json_extract(j.value, '$[1]'), json_extract(j.value, '$[2]'), v.at, ?3, " +
@@ -345,7 +347,8 @@ async function acceptLatest(env, ctx, source, body, t, now) {
   // Last, after every write, and outside the answer: the tabs fetch what this names, so it
   // must already be in D1, and the reader's message is taken whether the push works or not.
   if (applied.length) {
-    const told = tellLive(env, applied.map((m) => ({ id: m.id, start: m.start, score: m.score, at: version })));
+    const told = tellLive(env, applied.map((m) => ({ id: m.id, start: m.start, score: m.score, at: version })),
+      await versionName(env, version));
     if (ctx && ctx.waitUntil) ctx.waitUntil(told);
     else await told;
   }
@@ -885,7 +888,7 @@ const READS = {
 
   // Always 200, {} when empty: the readers need it to begin. `hist`: the finished
   // skirmishes the history table holds for that match and week, when it holds them.
-  '/api/latest/summary': (env, ctx, keep) => cached(ctx, SUMMARY_KEY, async () => {
+  '/api/latest/summary': (env, ctx) => cached(ctx, SUMMARY_KEY, async () => {
     let results;
     try {
       ({ results } = await env.DB.prepare('SELECT l.id, l.start, l.score, l.at, l.reader, h.n AS hist FROM latest l ' +
@@ -901,7 +904,7 @@ const READS = {
       if (Number.isInteger(r.hist)) out[r.id].hist = r.hist;
     }
     return json(JSON.stringify(out), SUMMARY_MAX_AGE);
-  }, keep)
+  })
 };
 
 // The copy /api/latest serves, and its newest `at`; null when it is stale.
@@ -919,31 +922,42 @@ async function latestCopy(env) {
   return { newest, body: '{"at":' + newest + ',"matches":[' + live.map(entry).join(',') + ']}' };
 }
 
-// GET /api/latest?v=<at>: the copy whose newest `at` is v, kept under that version's key. The
-// current version is read from the summary through its own cached read, so a v that is not it
-// is a miss before the copy's query. A v past it may be an ingest the cached summary has not
-// seen yet: the summary is read again (SUMMARY_RECHECK_MS), and a miss after that is a v
-// nobody wrote yet, with a max-age short enough for the page that asked too soon to ask again.
+// GET /api/latest?v=<at>.<tag>: the copy whose newest `at` is that, kept under the version's
+// key. The tag is checked first, with no D1, object or cache (none passes without
+// VERSION_KEY); a minted version is read from D1 until its copy is in the data centre's
+// cache, one since passed over kept as a miss. Its copy never changes once written.
 async function readLatestVersion(env, ctx, url) {
-  const v = /^\?v=([1-9]\d{9})$/.exec(url.search);
-  if (!v) return miss(SUMMARY_MAX_AGE);
+  const v = /^\?v=([1-9]\d{9})\.([0-9a-f]{32})$/.exec(url.search);
+  if (!v || !env.VERSION_KEY) return miss(SUMMARY_MAX_AGE);
   const want = Number(v[1]);
-  const current = async (keep) => {
-    const summary = await READS['/api/latest/summary'](env, ctx, keep);
-    return Math.max(0, ...Object.values(await summary.json()).map((e) => e.at));
-  };
-  let known = await current();
-  if (want > known && want <= nowS() + LATEST_AHEAD_S) {
-    known = await current((keptAt) => keptAt >= (want + 1) * 1000 || Date.now() - keptAt < SUMMARY_RECHECK_MS);
-  }
-  if (want !== known) return miss(SUMMARY_MAX_AGE);
+  if (!sameBytes(await versionTag(env, want), fromHex(v[2]))) return miss(SUMMARY_MAX_AGE);
+  // Older than any copy /api/latest still serves: nothing to read.
+  if (nowS() - want > STALE_LATEST_S) return miss(LATEST_VERSION_MAX_AGE);
   return cached(ctx, LATEST_KEY + '?v=' + want, async () => {
     const copy = await latestCopy(env);
-    if (!copy) return text(503, 'stale');
-    // A newer ingest since the summary was read: this v is past, and stays so.
-    if (copy.newest !== want) return miss(SUMMARY_MAX_AGE);
+    if (!copy || copy.newest < want) return text(503, 'stale');
+    if (copy.newest !== want) return miss(LATEST_VERSION_MAX_AGE);
     return json(copy.body, LATEST_VERSION_MAX_AGE);
   });
+}
+
+// The first 16 bytes of the HMAC-SHA-256 under VERSION_KEY of VERSION_DOMAIN + at.
+async function versionTag(env, at) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.VERSION_KEY),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(VERSION_DOMAIN + at))).slice(0, 16);
+}
+
+// "<at>.<tag>", or null without VERSION_KEY: the tabs are then told no version to read.
+async function versionName(env, at) {
+  return env.VERSION_KEY ? at + '.' + toHex(await versionTag(env, at)) : null;
+}
+
+// Equal bytes (two tags, 16 each), in a time that does not depend on where they differ.
+function sameBytes(a, b) {
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a[i] ^ b[i];
+  return d === 0;
 }
 
 // GET /api/history/<region>?v=<n>: the region's finished skirmishes of this week. n is how
@@ -994,18 +1008,16 @@ function miss(maxAge = HISTORY_MISS_MAX_AGE) {
 }
 
 // An answer that says `public, max-age=N` is kept N seconds (a 503 says no-store). No Cache API
-// outside Cloudflare (Node, the tests). `keep(keptAt)`, when given, says whether a kept answer
-// (kept at that ms, 0 if unknown) still serves; if not, it is made again.
-async function cached(ctx, key, make, keep = null) {
+// outside Cloudflare (Node, the tests).
+async function cached(ctx, key, make) {
   const cache = typeof caches !== 'undefined' ? caches.default : null;
   if (cache) {
     const hit = await cache.match(key);
-    if (hit && (!keep || keep(Number(hit.headers.get('x-kept-at')) || 0))) {
+    if (hit) {
       // The answer's own max-age is put back from x-max-age: a cached copy can carry another one.
       const out = new Response(hit.body, { status: hit.status, statusText: hit.statusText, headers: hit.headers });
       out.headers.set('cache-control', 'public, max-age=' + (out.headers.get('x-max-age') || '5'));
       out.headers.delete('x-max-age');
-      out.headers.delete('x-kept-at');
       return out;
     }
   }
@@ -1014,7 +1026,6 @@ async function cached(ctx, key, make, keep = null) {
   if (cache && age) {
     const kept = res.clone();
     kept.headers.set('x-max-age', age[1]);
-    kept.headers.set('x-kept-at', String(Date.now()));
     const put = cache.put(key, kept).catch(() => {});
     if (ctx && ctx.waitUntil) ctx.waitUntil(put);
     else await put;
@@ -1069,6 +1080,7 @@ const SITE_ORIGIN = 'https://wvwrelink.com';
 // was already a request. Cloudflare's own limit is 32,768 per object.
 const MAX_SOCKETS = 1000;
 const LIVE_NAME = 'live';
+const VERSION_RE = /^[1-9]\d{9}\.[0-9a-f]{32}$/;
 
 async function openSocket(request, env) {
   if (request.method !== 'GET' || (request.headers.get('upgrade') || '').toLowerCase() !== 'websocket') {
@@ -1083,11 +1095,12 @@ async function openSocket(request, env) {
 }
 
 // The ingest's notice to the object; its failure only logs, the message is already in D1.
-async function tellLive(env, matches) {
+async function tellLive(env, matches, version) {
   if (!env.LIVE) return;
   try {
     const res = await env.LIVE.get(env.LIVE.idFromName(LIVE_NAME)).fetch('https://live/notify', {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ matches })
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(version ? { matches, version } : { matches })
     });
     if (!res.ok) console.log(JSON.stringify({ push: 'failed', status: res.status }));
   } catch (e) {
@@ -1120,7 +1133,8 @@ export class Live {
     } else {
       this.state.acceptWebSocket(server);
       const known = Object.values(await this.state.storage.get('matches') || {}).filter((m) => nowS() - m.at <= LATEST_KEEP_S);
-      if (known.length) server.send(JSON.stringify({ matches: known }));
+      const version = await this.state.storage.get('version');
+      if (known.length) server.send(JSON.stringify(version ? { matches: known, version } : { matches: known }));
     }
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -1136,7 +1150,12 @@ export class Live {
     for (const m of fresh) known[m.id] = m;
     for (const id of Object.keys(known)) if (nowSec - known[id].at > LATEST_KEEP_S) delete known[id];
     await this.state.storage.put('matches', known);
-    const msg = JSON.stringify({ matches: fresh });
+    // The newest version minted, as the ingest named it; anything else is left out. Two
+    // notices can cross: an older one does not replace a newer.
+    const version = typeof body.version === 'string' && VERSION_RE.test(body.version) ? body.version : null;
+    const had = await this.state.storage.get('version');
+    if (version && !(had && parseInt(had, 10) > parseInt(version, 10))) await this.state.storage.put('version', version);
+    const msg = JSON.stringify(version ? { matches: fresh, version } : { matches: fresh });
     for (const ws of this.state.getWebSockets()) {
       try {
         ws.send(msg);

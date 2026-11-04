@@ -3,7 +3,7 @@
 // and when they refuse to. Run: node --test "tests/unit/*.test.mjs"
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import worker, { Live } from '../../worker/index.mjs';
 import { fakeD1 } from './fake-d1.mjs';
@@ -1601,6 +1601,27 @@ test('the object: any message from a tab closes it with 1008', async () => {
   });
 });
 
+test('the object: the version named by the ingest goes out with the notice and to new sockets; an older one never replaces it', async () => {
+  await withRuntime(async () => {
+    const state = fakeState();
+    const live = new Live(state);
+    const at = Math.floor(Date.now() / 1000);
+    const m = (a) => ({ id: '1-1', start: NA_WEEK, score: 6000, at: a });
+    const notice = (body) => live.fetch(new Request('https://live/notify', { method: 'POST', body: JSON.stringify(body) }));
+    await openWs(live);
+    assert.equal((await notice({ matches: [m(at)], version: vname(at) })).status, 200);
+    assert.deepEqual(JSON.parse(state.sockets[0].sent[0]), { matches: [m(at)], version: vname(at) });
+    // Crossed: the older notice comes second.
+    await notice({ matches: [m(at + 2)], version: vname(at + 2) });
+    await notice({ matches: [m(at + 1)], version: vname(at + 1) });
+    // Not a version: left out of the message, the stored one kept.
+    await notice({ matches: [m(at + 3)], version: '<b>' + at });
+    assert.equal(JSON.parse(state.sockets[0].sent[3]).version, undefined);
+    await openWs(live);
+    assert.equal(JSON.parse(state.sockets[1].sent[0]).version, vname(at + 2));
+  });
+});
+
 test('the object: a request that is neither an upgrade nor a notice is 404', async () => {
   await withRuntime(async () => {
     const state = fakeState();
@@ -1733,39 +1754,59 @@ test('the ingest: a notice that fails only logs, and the message is taken', asyn
   }
 });
 
-test('/api/latest?v=: only the current version, and any other is a short 404 before the copy is read', async () => {
-  const w = setup({ env: SUPA_ENV });
+// The version name the ingest mints: <at>.<first 128 bits of HMAC-SHA-256('latest-version:' + at) under VERSION_KEY>.
+const VERSION_KEY = 'test-version-key';
+const VKEY_ENV = { ...SUPA_ENV, VERSION_KEY };
+const vname = (at, key = VERSION_KEY) => at + '.' + createHmac('sha256', key).update('latest-version:' + at).digest('hex').slice(0, 32);
+
+test('/api/latest?v=: a version the ingest did not mint is a short 404 that reads no D1 and no cache', async () => {
+  const w = setup({ env: VKEY_ENV });
   assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }, { id: '2-1', start: EU_WEEK }]), 200);
   const at = Math.floor(w.now / 1000);
-  const copyReads = { n: 0 };
-  const real = w.env.DB;
-  w.env.DB = { prepare: (q) => { if (q.includes(' gz FROM latest')) copyReads.n++; return real.prepare(q); } };
-  for (const v of [String(at - 1), String(at + 1), '0', '0' + at, 'abc', at + '&x=1', at + '.0', '-' + at, '']) {
-    const r = await w.get('/api/latest?v=' + v);
-    assert.equal(r.status, 404, v);
-    assert.equal(r.headers.get('cache-control'), 'public, max-age=5', v);
-  }
-  assert.equal(copyReads.n, 0, 'the copy is never read for a version that is not current');
-  assert.equal((await w.get('/api/latest?v=' + at, 'POST')).status, 405);
-  const r = await w.get('/api/latest?v=' + at);
+  const good = vname(at).split('.')[1];
+  await withCache(async (caches) => {
+    const looked = [];
+    const match = caches.default.match;
+    caches.default.match = (k) => { looked.push(k); return match(k); };
+    const n = countQueries(w);
+    for (const v of [String(at), vname(at, 'another key'), (at + 1) + '.' + good, at + '.' + good.toUpperCase(), at + '.' + good.slice(1),
+      at + '.' + good + '00', at + '.' + good.slice(0, 31) + (good[31] === '0' ? '1' : '0'),
+      vname(at) + '&x=1', '0' + vname(at), 'abc', '']) {
+      const r = await w.get('/api/latest?v=' + v);
+      assert.equal(r.status, 404, v);
+      assert.equal(r.headers.get('cache-control'), 'public, max-age=5', v);
+    }
+    assert.equal(n.q, 0, 'no D1 statement for a version not minted');
+    assert.deepEqual(looked, [], 'nor a look in the cache');
+    assert.equal(caches.store.size, 0);
+  });
+  assert.equal((await w.get('/api/latest?v=' + vname(at), 'POST')).status, 405);
+  const r = await w.get('/api/latest?v=' + vname(at));
   assert.equal(r.status, 200);
   assert.equal(r.body, (await w.get('/api/latest')).body);
   assert.equal(r.headers.get('cache-control'), 'public, max-age=60', 'final from its first read');
   // Any other query is the plain read, as before.
   assert.equal((await w.get('/api/latest?x=' + at)).headers.get('cache-control'), 'public, max-age=5');
-  // A newer ingest makes the old version a miss.
-  w.advance(30e3);
-  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', scores: [1000, 2000, 3100] }]), 200);
-  const next = Math.floor(w.now / 1000);
-  assert.equal((await w.get('/api/latest?v=' + at)).status, 404);
-  assert.equal((await w.get('/api/latest?v=' + next)).status, 200);
-  // Stale: 503, as the plain read.
+  // Past STALE_LATEST_S: a 404, no D1.
   w.advance(11 * 60e3);
-  assert.equal((await w.get('/api/latest?v=' + next)).status, 503);
+  const m = countQueries(w);
+  assert.equal((await w.get('/api/latest?v=' + vname(at))).status, 404);
+  assert.equal(m.q, 0);
+});
+
+test('/api/latest?v=: without VERSION_KEY none is minted, every v is a 404 with no D1, and the tabs are told no version', async () => {
+  const live = fakeLive();
+  const w = setup({ env: { ...SUPA_ENV, LIVE: live.ns } });
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
+  const at = Math.floor(w.now / 1000);
+  assert.equal((await live.requests[0].json()).version, undefined);
+  const n = countQueries(w);
+  assert.equal((await w.get('/api/latest?v=' + vname(at))).status, 404);
+  assert.equal(n.q, 0);
 });
 
 test('/api/latest?v=: D1 failing is a 503, logged, never a thrown request', async () => {
-  const w = setup({ env: SUPA_ENV });
+  const w = setup({ env: VKEY_ENV });
   assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
   const at = Math.floor(w.now / 1000);
   w.env.DB = { prepare: () => { throw new Error('d1 down'); } };
@@ -1773,7 +1814,7 @@ test('/api/latest?v=: D1 failing is a 503, logged, never a thrown request', asyn
   const log = console.log;
   console.log = (line) => logged.push(line);
   try {
-    const r = await w.get('/api/latest?v=' + at);
+    const r = await w.get('/api/latest?v=' + vname(at));
     assert.equal(r.status, 503);
     assert.equal(r.body.trim(), 'unavailable');
   } finally {
@@ -1782,9 +1823,66 @@ test('/api/latest?v=: D1 failing is a 503, logged, never a thrown request', asyn
   assert.ok(logged.some((l) => l.includes('latest version') && l.includes('d1 down')));
 });
 
+test('/api/latest?v=: kept under its version\'s key from the first read, and a hit reads no copy', async () => {
+  const w = setup({ env: VKEY_ENV });
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
+  const at = Math.floor(w.now / 1000);
+  await withCache(async (caches) => {
+    const first = await w.get('/api/latest?v=' + vname(at));
+    assert.equal(first.status, 200);
+    assert.ok(caches.store.has('https://wvwrelink.com/api/latest?v=' + at), 'kept at the first read');
+    const n = countQueries(w);
+    const hit = await w.get('/api/latest?v=' + vname(at));
+    assert.equal(hit.body, first.body);
+    assert.equal(n.q, 0, 'the copy from the cache');
+    // A newer ingest leaves the version's copy as it was in the cache.
+    w.advance(30e3);
+    assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', scores: [1000, 2000, 3100] }]), 200);
+    assert.equal(await caches.store.get('https://wvwrelink.com/api/latest?v=' + at).clone().text(), first.body);
+  });
+});
+
+test('/api/latest?v=: a minted version passed over is a 404 kept under its key, read from D1 once', async () => {
+  const w = setup({ env: VKEY_ENV });
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
+  const at = Math.floor(w.now / 1000);
+  w.advance(30e3);
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', scores: [1000, 2000, 3100] }]), 200);
+  await withCache(async (caches) => {
+    const n = countQueries(w);
+    for (let i = 0; i < 3; i++) assert.equal((await w.get('/api/latest?v=' + vname(at))).status, 404);
+    assert.equal(n.q, 1, 'one copy read for three asks');
+    assert.equal(caches.store.get('https://wvwrelink.com/api/latest?v=' + at).status, 404);
+  });
+});
+
+test('/api/latest?v=: two readers applying in the same second get two versions, each copy final', async () => {
+  const live = fakeLive();
+  const w = setup({ env: { ...VKEY_ENV, LIVE: live.ns } });
+  const at = Math.floor(w.now / 1000);
+  await withCache(async () => {
+    assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }, { id: '1-2' }]), 200);
+    assert.deepEqual(w.sql.prepare('SELECT DISTINCT at FROM latest').all().map((r) => r.at), [at], 'one version for the whole message');
+    const first = await w.get('/api/latest?v=' + vname(at));
+    assert.deepEqual(JSON.parse(first.body).matches.map((m) => m.id), ['1-1', '1-2']);
+    assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '2-1', start: EU_WEEK }]), 200);
+    assert.equal(w.sql.prepare("SELECT at FROM latest WHERE id = '2-1'").get().at, at + 1, 'the same second, the next version');
+    const told = await live.requests[1].json();
+    assert.deepEqual(told.matches.map((m) => m.at), [at + 1], 'the tabs are told that version');
+    assert.equal(told.version, vname(at + 1));
+    assert.equal((await w.get('/api/latest?v=' + vname(at))).body, first.body, 'the first copy does not change');
+    const second = JSON.parse((await w.get('/api/latest?v=' + told.version)).body);
+    assert.deepEqual(second.matches.map((m) => m.id), ['1-1', '1-2', '2-1'], 'the second reader\'s match is in its own');
+    assert.equal(second.at, at + 1);
+  });
+  // A message that applies nothing takes no version.
+  assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '2-1', start: EU_WEEK }]), 200);
+  assert.equal(Math.max(...w.sql.prepare('SELECT at FROM latest').all().map((r) => r.at)), at + 1);
+});
+
 test('the latest ingest: rows written are known with or without RETURNING\'s results, and a message that applies nothing tells nobody', async () => {
   const live = fakeLive();
-  const w = setup({ env: { ...SUPA_ENV, LIVE: live.ns } });
+  const w = setup({ env: { ...VKEY_ENV, LIVE: live.ns } });
   const real = w.env.DB;
   w.env.DB = { prepare: (q) => {
     const st = real.prepare(q);
@@ -1795,8 +1893,10 @@ test('the latest ingest: rows written are known with or without RETURNING\'s res
   assert.equal((await post('latest-supa-us', [{ id: '1-1' }, { id: '1-2' }])).r, 200);
   const at = Math.floor(w.now / 1000);
   assert.deepEqual(w.sql.prepare('SELECT id, at FROM latest ORDER BY id').all().map((r) => [r.id, r.at]), [['1-1', at], ['1-2', at]]);
-  assert.equal((await w.get('/api/latest?v=' + at)).status, 200);
-  assert.deepEqual((await live.requests[0].json()).matches.map((m) => [m.id, m.at]), [['1-1', at], ['1-2', at]], 'both told, at the version');
+  assert.equal((await w.get('/api/latest?v=' + vname(at))).status, 200);
+  const first = await live.requests[0].json();
+  assert.deepEqual(first.matches.map((m) => [m.id, m.at]), [['1-1', at], ['1-2', at]], 'both told, at the version');
+  assert.equal(first.version, vname(at));
   // The other reader in the same second, then again with nothing new 200 ms on: its row
   // before, ahead of the clock, is not taken for this message's.
   assert.equal((await post('latest-supa-eu', [{ id: '2-1', start: EU_WEEK }])).r, 200);
@@ -1810,86 +1910,7 @@ test('the latest ingest: rows written are known with or without RETURNING\'s res
   // And again with a new match: only that one is this message's, at its own version.
   w.advance(200);
   assert.equal((await post('latest-supa-eu', [{ id: '2-1', start: EU_WEEK }, { id: '2-2', start: EU_WEEK }])).r, 200);
-  assert.deepEqual((await live.requests[2].json()).matches, [{ id: '2-2', start: EU_WEEK, score: 6000, at: at + 2 }]);
-});
-
-test('/api/latest?v=: kept under its version\'s key from the first read, and a hit reads no copy', async () => {
-  const w = setup({ env: SUPA_ENV });
-  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
-  const at = Math.floor(w.now / 1000);
-  await withCache(async (caches) => {
-    const first = await w.get('/api/latest?v=' + at);
-    assert.equal(first.status, 200);
-    assert.ok(caches.store.has('https://wvwrelink.com/api/latest?v=' + at), 'kept at the first read');
-    const n = countQueries(w);
-    const hit = await w.get('/api/latest?v=' + at);
-    assert.equal(hit.body, first.body);
-    assert.equal(n.q, 0, 'summary and copy both from the cache');
-    // A wrong version is never stored: its key would be anyone's to fill.
-    await w.get('/api/latest?v=' + (at + 1));
-    assert.ok(![...caches.store.keys()].some((k) => k.endsWith('?v=' + (at + 1))));
-    // A newer ingest leaves the version's copy as it was in the cache.
-    w.advance(30e3);
-    assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', scores: [1000, 2000, 3100] }]), 200);
-    assert.equal(await caches.store.get('https://wvwrelink.com/api/latest?v=' + at).clone().text(), first.body);
-  });
-});
-
-test('/api/latest?v=: a version past the cached summary reads the summary again, once per 100 ms at most', async () => {
-  const w = setup({ env: SUPA_ENV });
-  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
-  const at = Math.floor(w.now / 1000);
-  await withCache(async () => {
-    assert.equal((await w.get('/api/latest?v=' + at)).status, 200, 'the summary is now cached at this version');
-    w.advance(1e3);
-    assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '2-1', start: EU_WEEK }]), 200);
-    const next = Math.floor(w.now / 1000);
-    const r = await w.get('/api/latest?v=' + next);
-    assert.equal(r.status, 200, 'the newer version, behind a cached summary');
-    assert.deepEqual(JSON.parse(r.body).matches.map((m) => m.id), ['1-1', '2-1']);
-    // A v nobody wrote: one summary read, then none for SUMMARY_RECHECK_MS (100 ms); none
-    // for one the summary was kept after the end of; past LATEST_AHEAD_S (60 s), none at all.
-    const n = countQueries(w);
-    await w.get('/api/latest?v=' + (next + 5));
-    assert.equal(n.q, 0, 'the summary was read again just now');
-    w.advance(100);
-    for (let i = 0; i < 5; i++) assert.equal((await w.get('/api/latest?v=' + (next + 5))).status, 404);
-    assert.equal(n.q, 1, 'one summary read for five asks one after another');
-    w.advance(100);
-    await w.get('/api/latest?v=' + (next + 5));
-    assert.equal(n.q, 2, 'and one more 100 ms on');
-    w.advance(2000);
-    await w.get('/api/latest?v=' + (next + 1));
-    assert.equal(n.q, 3, 'a second the cached summary does not cover yet');
-    w.advance(200);
-    await w.get('/api/latest?v=' + (next + 1));
-    assert.equal(n.q, 3, 'one it was kept after the end of');
-    await w.get('/api/latest?v=' + (Math.floor(w.now / 1000) + 61));
-    assert.equal(n.q, 3, 'a v over 60 s ahead reads nothing');
-  });
-});
-
-test('/api/latest?v=: two readers applying in the same second get two versions, each copy final', async () => {
-  const live = fakeLive();
-  const w = setup({ env: { ...SUPA_ENV, LIVE: live.ns } });
-  const at = Math.floor(w.now / 1000);
-  await withCache(async () => {
-    assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }, { id: '1-2' }]), 200);
-    assert.deepEqual(w.sql.prepare('SELECT DISTINCT at FROM latest').all().map((r) => r.at), [at], 'one version for the whole message');
-    const first = await w.get('/api/latest?v=' + at);
-    assert.deepEqual(JSON.parse(first.body).matches.map((m) => m.id), ['1-1', '1-2']);
-    assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '2-1', start: EU_WEEK }]), 200);
-    assert.equal(w.sql.prepare("SELECT at FROM latest WHERE id = '2-1'").get().at, at + 1, 'the same second, the next version');
-    assert.deepEqual((await live.requests[1].json()).matches.map((m) => m.at), [at + 1], 'the tabs are told that version');
-    w.advance(200);
-    assert.equal((await w.get('/api/latest?v=' + at)).body, first.body, 'the first copy does not change');
-    const second = JSON.parse((await w.get('/api/latest?v=' + (at + 1))).body);
-    assert.deepEqual(second.matches.map((m) => m.id), ['1-1', '1-2', '2-1'], 'the second reader\'s match is in its own');
-    assert.equal(second.at, at + 1);
-  });
-  // A message that applies nothing takes no version.
-  assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '2-1', start: EU_WEEK }]), 200);
-  assert.equal(Math.max(...w.sql.prepare('SELECT at FROM latest').all().map((r) => r.at)), at + 1);
+  assert.deepEqual(await live.requests[2].json(), { matches: [{ id: '2-2', start: EU_WEEK, score: 6000, at: at + 2 }], version: vname(at + 2) });
 });
 
 test('the latest ingest: a message whose `at` would run over LATEST_AHEAD_S past the clock is not written', async () => {
