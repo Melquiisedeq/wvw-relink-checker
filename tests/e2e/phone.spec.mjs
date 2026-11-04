@@ -28,11 +28,18 @@ for (const width of [320, 360]) {
       const small = sel => [...pop.querySelectorAll(sel)].map(e => { const b = e.getBoundingClientRect(); return Math.round(Math.min(b.width, b.height)); });
       return { names: names.length, room: Math.min(...names.map(n => n.clientWidth)),
         head: pop.querySelector('.wvw-board-head .wvw-board-team').textContent,
+        slack: [...pop.querySelectorAll('.wvw-board-row[data-focus-color]')].map(r => {
+          const n = r.querySelector('.wvw-board-team').getBoundingClientRect(), c = r.querySelector('.wvw-board-counts').getBoundingClientRect();
+          return { gap: Math.round(c.left - n.right), counts: Math.round(c.left) };
+        }),
         tabs: small('.wvw-tab'), zoom: small('.wvw-zoom button'), shrink: !!pop.querySelector('.info-popover-expand'), close: !!pop.querySelector('.info-popover-close') };
     });
     // Names still end in an ellipsis when long; what counts is the room they
     // get: 16 px at 320 and 53 px at 360 before the board gave it back.
     expect(m.room, 'px of room the team names get').toBeGreaterThanOrEqual(width === 320 ? 30 : 65);
+    // The name takes the free width, so the numbers stand in one column down the rows.
+    expect(m.slack.length, 'rows').toBeGreaterThan(0);
+    expect(m.slack.filter(r => r.gap > 10 || r.counts !== m.slack[0].counts), `${width} px: rows whose numbers are not at the name's edge or in line (${JSON.stringify(m.slack)})`).toEqual([]);
     expect(m.head, 'the board header').toBe('Held');
     expect(m.tabs.length && m.zoom.length && m.tabs.every(h => h >= 34) && m.zoom.every(h => h >= 34),
       `tabs ${JSON.stringify(m.tabs)} and zoom ${JSON.stringify(m.zoom)} should all be 34 px or more`).toBe(true);
@@ -72,6 +79,14 @@ test('the result table stays inside its card at 320 and 390 px', async ({ page, 
     expect(fit.tags.filter(h => h > tagLine), `${width} px: tags wider than one line (heights ${JSON.stringify(fit.tags)}, one line is ${tagLine}px)`).toEqual([]);
     expect({ scroll: fit.scroll, past: fit.past, beyond: fit.beyond }, `${width} px: px the table overflows its card, px past the screen, px a cell past the card's edge`)
       .toEqual({ scroll: 0, past: 0, beyond: 0 });
+    // One line a guild: the name across the whole row, tag, region and team under it.
+    const rows = await page.evaluate(() => [...document.querySelectorAll('#resultBody tr')].map(tr => {
+      const [name, next] = [...tr.children].map(td => td.getBoundingClientRect());
+      const row = tr.getBoundingClientRect();
+      return { across: Math.round(name.width - row.width), under: Math.round(next.top - name.bottom) };
+    }));
+    expect(rows.length, 'result rows').toBeGreaterThan(0);
+    expect(rows.filter(r => r.across < -1 || r.under < -1), `${width} px: rows whose name does not take the whole line`).toEqual([]);
     await cdp.send('Emulation.clearDeviceMetricsOverride');
   }
 });
