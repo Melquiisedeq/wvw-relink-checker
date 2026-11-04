@@ -122,3 +122,5 @@ const RELINK_SHEET_URL =
   `https://docs.google.com/spreadsheets/d/${RELINK_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=relink&range=A1:A1`;
 // Once it says published the page stops asking.
 const RELINK_SHEET_TTL_MS = 10 * 60 * 1000;
+// An answer from /api/relink is asked again sooner: the one-minute tick lands the next ask two ticks on.
+const RELINK_OWN_TTL_MS = 90 * 1000;
