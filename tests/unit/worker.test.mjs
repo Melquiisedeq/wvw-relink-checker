@@ -1616,9 +1616,31 @@ test('the object: the version named by the ingest goes out with the notice and t
     await notice({ matches: [m(at + 1)], version: vname(at + 1) });
     // Not a version: left out of the message, the stored one kept.
     await notice({ matches: [m(at + 3)], version: '<b>' + at });
-    assert.equal(JSON.parse(state.sockets[0].sent[3]).version, undefined);
+    assert.equal(state.sockets[0].sent.length, 3, 'the older notice sends nothing');
+    assert.equal(JSON.parse(state.sockets[0].sent[2]).version, undefined);
     await openWs(live);
     assert.equal(JSON.parse(state.sockets[1].sent[0]).version, vname(at + 2));
+  });
+});
+
+test('the object: of two crossed notices only the newer match and version are kept, and the older sends nothing', async () => {
+  await withRuntime(async () => {
+    const state = fakeState();
+    const live = new Live(state);
+    const at = Math.floor(Date.now() / 1000);
+    const m = (a, score, id = '1-1') => ({ id, start: NA_WEEK, score, at: a });
+    const notice = (body) => live.fetch(new Request('https://live/notify', { method: 'POST', body: JSON.stringify(body) }));
+    await openWs(live);
+    await notice({ matches: [m(at + 2, 6200)], version: vname(at + 2) });
+    assert.equal((await notice({ matches: [m(at + 1, 6100)], version: vname(at + 1) })).status, 200);
+    assert.deepEqual(state.sockets[0].sent.map((x) => JSON.parse(x)), [{ matches: [m(at + 2, 6200)], version: vname(at + 2) }]);
+    assert.deepEqual((await state.storage.get('matches'))['1-1'], m(at + 2, 6200));
+    assert.equal(await state.storage.get('version'), vname(at + 2));
+    // The same `at` again is no newer; an older notice with one newer match sends that match alone.
+    await notice({ matches: [m(at + 2, 6300)] });
+    await notice({ matches: [m(at + 1, 6100), m(at + 1, 5000, '1-2')], version: vname(at + 1) });
+    assert.deepEqual(state.sockets[0].sent.slice(1).map((x) => JSON.parse(x)), [{ matches: [m(at + 1, 5000, '1-2')], version: vname(at + 2) }]);
+    assert.deepEqual((await state.storage.get('matches'))['1-1'], m(at + 2, 6200));
   });
 });
 
@@ -1755,7 +1777,7 @@ test('the ingest: a notice that fails only logs, and the message is taken', asyn
 });
 
 // The version name the ingest mints: <at>.<first 128 bits of HMAC-SHA-256('latest-version:' + at) under VERSION_KEY>.
-const VERSION_KEY = 'test-version-key';
+const VERSION_KEY = 'test-version-key-'.repeat(4);
 const VKEY_ENV = { ...SUPA_ENV, VERSION_KEY };
 const vname = (at, key = VERSION_KEY) => at + '.' + createHmac('sha256', key).update('latest-version:' + at).digest('hex').slice(0, 32);
 
@@ -1805,6 +1827,38 @@ test('/api/latest?v=: without VERSION_KEY none is minted, every v is a 404 with 
   assert.equal(n.q, 0);
 });
 
+test('/api/latest?v=: a VERSION_KEY under 64 characters is no key: no version minted, every v a 404 with no D1', async () => {
+  const live = fakeLive();
+  const short = VERSION_KEY.slice(0, 63);
+  const w = setup({ env: { ...SUPA_ENV, VERSION_KEY: short, LIVE: live.ns } });
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
+  const at = Math.floor(w.now / 1000);
+  assert.equal((await live.requests[0].json()).version, undefined);
+  const n = countQueries(w);
+  assert.equal((await w.get('/api/latest?v=' + vname(at, short))).status, 404);
+  assert.equal(n.q, 0);
+});
+
+test('/api/latest?v=: a minted version past LATEST_AHEAD_S ahead of the clock is a short 404, logged, with no D1 and no cache', async () => {
+  const w = setup({ env: VKEY_ENV });
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
+  const at = Math.floor(w.now / 1000);
+  await withCache(async (caches) => {
+    const looked = [];
+    const match = caches.default.match;
+    caches.default.match = (k) => { looked.push(k); return match(k); };
+    const n = countQueries(w);
+    const { r, lines } = await quiet(() => w.get('/api/latest?v=' + vname(at + 61)));
+    assert.equal(r.status, 404);
+    assert.equal(r.headers.get('cache-control'), 'public, max-age=5');
+    assert.equal(n.q, 0, 'no D1');
+    assert.deepEqual(looked, [], 'no look in the cache');
+    assert.deepEqual(lines, [{ read: 'latest version', refused: 'ahead', seconds: 61 }], 'the sign of a VERSION_KEY out of our hands');
+    // At the ceiling it is read.
+    assert.equal((await w.get('/api/latest?v=' + vname(at + 60))).status, 503);
+  });
+});
+
 test('/api/latest?v=: D1 failing is a 503, logged, never a thrown request', async () => {
   const w = setup({ env: VKEY_ENV });
   assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
@@ -1850,7 +1904,11 @@ test('/api/latest?v=: a minted version passed over is a 404 kept under its key, 
   assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', scores: [1000, 2000, 3100] }]), 200);
   await withCache(async (caches) => {
     const n = countQueries(w);
-    for (let i = 0; i < 3; i++) assert.equal((await w.get('/api/latest?v=' + vname(at))).status, 404);
+    for (let i = 0; i < 3; i++) {
+      const r = await w.get('/api/latest?v=' + vname(at));
+      assert.equal(r.status, 404);
+      assert.equal(r.headers.get('cache-control'), 'public, max-age=570', 'kept until it leaves STALE_LATEST_S');
+    }
     assert.equal(n.q, 1, 'one copy read for three asks');
     assert.equal(caches.store.get('https://wvwrelink.com/api/latest?v=' + at).status, 404);
   });
