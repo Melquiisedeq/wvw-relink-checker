@@ -44,6 +44,7 @@
 //   The skirmishes add up to the scores too.
 // The server checks the bodies it serves against these (served() below) and
 // reports a break as a problem of the test.
+import { createHmac } from 'node:crypto';
 import { recording } from './recordings.mjs';
 
 const MIN = 60 * 1000;
@@ -609,11 +610,32 @@ class Server {
       if (path === '/api/latest/summary') {
         return { ...json(200, Object.fromEntries(bodies.map(b => [b.id, { start: Date.parse(b.start_time), score: sum(b.scores), at: at(b.id), by: 'a' }]))), date: pageNow };
       }
-      return { ...json(200, { matches: bodies.map(b => ({ id: b.id, start: Date.parse(b.start_time), score: sum(b.scores), at: at(b.id), by: 'a',
+      // ?v=: only the newest `at`, with its tag, is a version; any other is the Worker's 404.
+      const newest = Math.max(...ids.map(at));
+      const v = new URL(url).searchParams.get('v');
+      if (v !== null && v !== versionName(newest)) {
+        this.#planted.add(url);
+        return json(404, { error: 'not found' });
+      }
+      return { ...json(200, { at: newest, matches: bodies.map(b => ({ id: b.id, start: Date.parse(b.start_time), score: sum(b.scores), at: at(b.id), by: 'a',
         v: 2, body: liveOf(b) })) }), date: pageNow };
     }
     if (path === '/api/kills') return json(200, { rows: this.#rows(t) });
     return null;
+  }
+
+  // What the push socket sends at pageNow (worker/index.mjs, Live): each match of
+  // /api/latest's summary, without `by`; null while /api/latest is down.
+  told(pageNow) {
+    const { anchor, ids } = Timeline.compiled(this.#tl);
+    const t = pageNow - anchor;
+    if (this.#tl.latestStatusAt(t)) return null;
+    const up = Math.min(this.#tl.lastUp(t), this.#tl.heldAt(t));
+    const matches = ids.map(id => {
+      const b = this.#body(id, up, anchor + up, false);
+      return { id, start: Date.parse(b.start_time), score: sum(b.scores), at: Math.floor(this.#tl.changedAt(id, up) / 1000) };
+    });
+    return { matches, version: versionName(Math.max(...matches.map(m => m.at))) };
   }
 
   // /api/kills: the recorded rows and a row per state of the timeline, the
@@ -634,6 +656,9 @@ class Server {
     return rows.sort((a, b) => a[0] - b[0] || byId(a[1], b[1]));
   }
 }
+
+// A version as the Worker names it (worker/index.mjs, versionName), under this world's own key.
+export const versionName = at => at + '.' + createHmac('sha256', 'e2e version key').update('latest-version:' + at).digest('hex').slice(0, 32);
 
 export const gw2 = Object.freeze({
   // The recording, with `id` as the match that plays.

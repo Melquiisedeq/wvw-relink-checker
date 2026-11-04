@@ -79,11 +79,15 @@ const fulfil = (route, status, type, body, date) => route.fulfill({
 // `problem(text)` records what fails the test. `own(url)`, when given, answers
 // first (a timeline of support/gw2.mjs): null passes the URL on to the
 // recording, 'hang' never answers, else { status, type, body }.
-export function answerFrom(base, problem, own = null) {
+// `origin`, when given, is where the page is opened instead (the site's own,
+// https://wvwrelink.com): its URLs are answered as `base`'s, the files fetched
+// from `base` with its headers.
+export function answerFrom(base, problem, own = null, origin = null) {
   const { entries } = recording();
   return async route => {
     const request = route.request();
-    const url = request.url();
+    const aliased = !!origin && request.url().startsWith(origin + '/');
+    const url = aliased ? base + request.url().slice(origin.length) : request.url();
     try {
       if (own && request.method() === 'GET' && (url.startsWith(base + '/api/') || !url.startsWith(base + '/'))) {
         const hit = await own(url);
@@ -106,6 +110,10 @@ export function answerFrom(base, problem, own = null) {
           return await route.abort('failed');
         }
         return await fulfil(route, hit[0], hit[1], key === OWN_API.get('/api/kills') ? withFight(bodyOf(hit)) : bodyOf(hit));
+      }
+      if (url.startsWith(base + '/') && aliased) {
+        const res = await fetch(url, { method: request.method() });
+        return await route.fulfill({ status: res.status, headers: Object.fromEntries(res.headers), body: Buffer.from(await res.arrayBuffer()) });
       }
       if (url.startsWith(base + '/')) return await route.continue();
       if (request.method() === 'OPTIONS') {

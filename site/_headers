@@ -8,7 +8,8 @@
 # and styles set from JS go through the CSSOM. One script comes from elsewhere,
 # named down to its path: Cloudflare Web Analytics' beacon.
 #
-# connect-src: this site's /api, the GW2 API, Google Sheets (three read-only
+# connect-src: this site's /api and its push socket (wss://wvwrelink.com/api/ws),
+# the GW2 API, Google Sheets (three read-only
 # sheets on one host: the community guild list, this project's kills history,
 # and the cell saying whether the new teams are out) and the Analytics collector.
 #
@@ -17,7 +18,7 @@
 # check-structure.py reads the policy from the line below; check-site.py compares
 # it with what wvwrelink.com serves.
 /*
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://static.cloudflareinsights.com/beacon.min.js; style-src 'self'; connect-src 'self' https://api.guildwars2.com https://docs.google.com https://cloudflareinsights.com; img-src 'self' https://render.guildwars2.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://static.cloudflareinsights.com/beacon.min.js; style-src 'self'; connect-src 'self' wss://wvwrelink.com https://api.guildwars2.com https://docs.google.com https://cloudflareinsights.com; img-src 'self' https://render.guildwars2.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Cross-Origin-Opener-Policy: same-origin
