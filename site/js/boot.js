@@ -11,7 +11,7 @@ showStandingsSkeleton(standingsGridNA);
 showStandingsSkeleton(standingsGridEU);
 refreshStandings();
 fetchTimers();
-setInterval(updateRelinkBanner, 60000); // ticks the countdown display only
+setInterval(updateRelinkBanner, 60000); // countdown display, and the pace of the teams notice's reads
 startPeeking(); // /api ahead of the board: load it now (js/standings.js)
 standingsTick = schedulePeriodicRefresh(refreshStandings, STANDINGS_REFRESH_MS);
 schedulePeriodicRefresh(fetchTimers, TIMERS_REFRESH_MS);
