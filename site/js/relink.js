@@ -284,6 +284,7 @@ let relinkState = null;        // { window, published }
 // old month's (getWvwMaps).
 let teamsNoticeUpAt = 0;
 let relinkStateAt = 0;
+let relinkStateOwn = false;    // the last answer came from /api/relink, not the sheet
 let relinkStateInFlight = null;
 let relinkStateFailedAt = 0;
 
@@ -292,7 +293,8 @@ let relinkStateFailedAt = 0;
 const RELINK_SHEET_RETRY_MS = 2 * 60 * 1000;
 
 async function getRelinkState() {
-  if (relinkState && Date.now() - relinkStateAt < RELINK_SHEET_TTL_MS) {
+  if (relinkState && Date.now() - relinkStateAt
+      < (relinkStateOwn ? RELINK_OWN_TTL_MS : RELINK_SHEET_TTL_MS)) {
     return relinkState;
   }
   if (relinkStateFailedAt
@@ -303,7 +305,9 @@ async function getRelinkState() {
 
   relinkStateInFlight = (async () => {
     try {
-      relinkState = await readOwnRelink().catch(readRelinkSheet);
+      let own = true;
+      relinkState = await readOwnRelink().catch(() => { own = false; return readRelinkSheet(); });
+      relinkStateOwn = own;
       relinkStateAt = Date.now();
       relinkStateFailedAt = 0;
     } catch {
