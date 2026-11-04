@@ -20,7 +20,7 @@ schedulePeriodicRefresh(fetchTimers, TIMERS_REFRESH_MS);
 // and pausing while nobody is watching is this file's job.
 const emberField = (function () {
   const canvas = document.getElementById('fxEmbers');
-  if (!canvas || !canvas.getContext) return { start() {}, stop() {}, blast() {} };
+  if (!canvas || !canvas.getContext) return { start() {}, stop() {}, blast() {}, nextFrame: (cb) => requestAnimationFrame(cb) };
   const ctx = canvas.getContext('2d');
 
   const WARM = { core: '#ffb765', glow: '255,150,60' };
@@ -232,39 +232,53 @@ const emberField = (function () {
   // Caps the draw rate. 85 sits between 60 and 144: every frame is drawn at 60 Hz, every second one at 144 Hz (Windows Chromium times frames by the primary monitor's vblank, ui/gl/vsync_thread_win_dxgi.cc).
   const MIN_FRAME_MS = 1000 / 85;
 
-  // Looping CSS animations are paused here and moved on by these frames, so the page draws only
-  // when the embers do (frames.spec.mjs). Not the loading indicators, which turn under reduced motion
-  // too. Paused through the API they no longer follow animation-play-state, so the
-  // stopped clock is what holds them still under reduced motion (embers.spec.mjs); handed
-  // back to CSS they would restart. One started while the tab is hidden runs on CSS, which
-  // draws nothing there, until the first frame back sweeps it.
+  // Every animation and transition on the page, CSS or element.animate, is paused here and moved
+  // on by these frames, so the page draws only when the embers do (frames.spec.mjs). Paused through
+  // the API they no longer follow animation-play-state, so the stopped clock is what holds the
+  // looping ones still under reduced motion (embers.spec.mjs); play() would set them moving there.
+  // The run-once ones and the loading indicators play under reduced motion and in a hidden tab, so
+  // a stop hands them back. element.animate fires no event: every frame sweeps.
   const driven = new Set();
-  let sweepDue = false, sinceSweep = 0;
+  const runsOnce = (a) => a.effect.getComputedTiming().iterations !== Infinity;
+  const handedBack = (a) => runsOnce(a) || !!a.effect.target.closest('.spinner, .btn-pips');
   function adopt() {
-    sweepDue = false; sinceSweep = 0;
     if (!document.getAnimations) return;
     for (const a of document.getAnimations()) {
       if (driven.has(a) || a.playState !== 'running' || !a.effect) continue;
-      const t = a.effect.target;
-      if (!t || !t.isConnected || t.closest('.spinner, .btn-pips')) continue;
-      if (a.effect.getComputedTiming().iterations !== Infinity) continue;
       a.pause();
       driven.add(a);
     }
   }
-  // An element rebuilt starts its animations again; animationstart asks for a sweep.
-  // It can fail to come (embers.spec.mjs holds it back), hence one a second too.
-  function moveLooping(dt) {
-    sinceSweep += dt;
-    if (sweepDue || sinceSweep >= 1) adopt();
+  function moveAnimations(dt) {
     for (const a of driven) {
       const t = a.effect && a.effect.target;
       // A CSS animation whose rule went away is idle, its currentTime null: moved on, it would come back.
       if (!t || !t.isConnected || a.currentTime === null) { driven.delete(a); continue; }
+      // Paused past its end it never finishes: no animationend, .finished never settles.
+      if (runsOnce(a) && Number(a.currentTime) + dt * 1000 >= a.effect.getComputedTiming().endTime) {
+        a.finish();
+        driven.delete(a);
+        continue;
+      }
       a.currentTime += dt * 1000;
     }
+    // After the move: the style it flushes is the one this frame draws.
+    adopt();
   }
-  document.addEventListener('animationstart', () => { sweepDue = true; }, true);
+  function handBack() {
+    for (const a of driven) {
+      if (!a.effect || !a.effect.target || !handedBack(a)) continue;
+      driven.delete(a);
+      if (a.playState === 'paused') a.play();
+    }
+  }
+
+  // Callbacks for the next frame of embers, with its timestamp (requestAnimationFrame's time base).
+  const waiting = [];
+  function nextFrame(cb) {
+    if (running && !settling) waiting.push(cb);
+    else requestAnimationFrame(cb);
+  }
 
   let clock = 0, last = 0, running = false, frameId = 0;
   // Stopped for reduced motion only: a blast may run the field until its sparks end.
@@ -275,9 +289,10 @@ const emberField = (function () {
     const dt = (now - last) / 1000;
     clock += dt;
     last = now;
+    for (const cb of waiting.splice(0)) cb(now);
     draw(dt);
     // A blast under reduced motion runs the embers only.
-    if (!settling) moveLooping(dt);
+    if (!settling) moveAnimations(dt);
     if (settling && !blasting.length) stop(true);
   }
 
@@ -295,11 +310,13 @@ const emberField = (function () {
   function stop(blastOk) {
     running = false; settling = false; blastMayRun = !!blastOk;
     cancelAnimationFrame(frameId);
+    handBack();
+    for (const cb of waiting.splice(0)) requestAnimationFrame(cb);
   }
 
   return {
     start() {
-      settling = false; blastMayRun = false; sweepDue = true;
+      settling = false; blastMayRun = false;
       if (running) return;
       running = true;
       last = performance.now();
@@ -307,6 +324,7 @@ const emberField = (function () {
     },
     // The clock stops with it, so coming back carries on instead of jumping forward.
     stop,
+    nextFrame,
     blast() {
       if (!running && blastMayRun) {
         running = settling = true;

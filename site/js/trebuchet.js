@@ -41,9 +41,9 @@ function followSling(el) {
     const p = slingTip();
     el.style.left = `${p.x}px`;
     el.style.top = `${p.y}px`;
-    requestAnimationFrame(step);
+    emberField.nextFrame(step);
   };
-  requestAnimationFrame(step);
+  emberField.nextFrame(step);
   return () => { live = false; };
 }
 
@@ -149,9 +149,9 @@ function trailFrom(ball, untilMs, big, power) {
       }
     }
     px = x; py = y;
-    requestAnimationFrame(step);
+    emberField.nextFrame(step);
   };
-  requestAnimationFrame(step);
+  emberField.nextFrame(step);
 }
 
 function layFlame(x, y, angle, len, cls, life) {
