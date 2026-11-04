@@ -14,6 +14,7 @@ const WAITING = '.info-popover .wvw-waiting';
 
 const blanked = m => ({ ...m, maps: m.maps.map(x => ({ ...x, objectives: [] })) });
 const owners = page => page.evaluate(sel => [...document.querySelectorAll(sel)].map(g => g.getAttribute('class').match(/own-(\w+)/)[1]), MARKERS);
+const tints = page => page.evaluate(() => [...document.querySelectorAll('.info-popover .wvw-sector')].map(g => g.getAttribute('class').match(/own-(\w+)/)[1]));
 const titles = page => page.evaluate(sel => [...document.querySelectorAll(sel)].map(g => g.querySelector('title').textContent), MARKERS);
 
 test.describe('a tier whose objective lists are blank', () => {
@@ -37,15 +38,18 @@ test.describe('a tier whose objective lists are blank', () => {
     const full = await keptMatch(page, tier.id);
     await openMap(page, wvw, tier.button);
     expect((await owners(page)).some(o => o !== 'neutral'), 'owners drawn before').toBe(true);
+    expect((await tints(page)).some(o => o !== 'neutral'), 'territory tinted before').toBe(true);
     await expect(page.locator(WAITING)).toBeHidden();
     const blank = await answer(page, tier.url, blanked(full));
     await later(page, wvw, 31000);
     await expect.poll(async () => [...new Set(await owners(page))], { message: 'owners once the list is blank' }).toEqual(['neutral']);
+    await expect.poll(async () => [...new Set(await tints(page))], { message: 'territory tint once the list is blank' }).toEqual(['neutral']);
     await expect(page.locator(WAITING)).toBeVisible();
     blank.off();
     await answer(page, tier.url, full);
     await later(page, wvw, 31000);
     await expect.poll(async () => (await owners(page)).some(o => o !== 'neutral'), { message: 'owners back' }).toBe(true);
+    await expect.poll(async () => (await tints(page)).some(o => o !== 'neutral'), { message: 'territory tint back' }).toBe(true);
     await expect(page.locator(WAITING)).toBeHidden();
   });
 
