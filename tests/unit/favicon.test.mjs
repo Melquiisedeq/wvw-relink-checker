@@ -71,3 +71,21 @@ test('every corner of favicon-192.png and apple-touch-icon.png is transparent', 
     }
   }
 });
+
+test('the crest in favicon-192.png and apple-touch-icon.png is 0.76 of the side and inside the circle', () => {
+  for (const name of ['favicon-192.png', 'apple-touch-icon.png']) {
+    const { width: side, alpha } = pixels(readFileSync(new URL(`../../site/assets/${name}`, import.meta.url)));
+    let rows = 0, reach = 0;
+    for (let y = 0; y < side; y++) {
+      let any = false;
+      for (let x = 0; x < side; x++) {
+        if (alpha(x, y) <= 16) continue;
+        any = true;
+        reach = Math.max(reach, Math.hypot(x + 0.5 - side / 2, y + 0.5 - side / 2));
+      }
+      if (any) rows++;
+    }
+    assert.ok(Math.abs(rows - 0.76 * side) <= 3, `${name}: crest height ${rows} of ${side}`);
+    assert.ok(reach <= 0.95 * side / 2, `${name}: farthest opaque pixel at ${(reach / (side / 2) * 100).toFixed(1)}% of the radius`);
+  }
+});
