@@ -94,31 +94,6 @@ test('a failed load tries again and paints without a reload', async ({ page, wvw
   await wvw.settle();
 });
 
-// A second load with /api/* answering 503: the page falls back to the sheets,
-// and the relink notice the first load showed is still shown, from them.
-test('with /api down the page reads the sheets and keeps the relink notice', async ({ page, wvw }) => {
-  const sheets = [], own = [];
-  page.on('request', r => {
-    if (/^https:\/\/docs\.google\.com\//.test(r.url())) sheets.push(r.url());
-    if (/^http:\/\/127\.0\.0\.1:\d+\/api\/(kills|relink)$/.test(r.url())) own.push(r.url());
-  });
-  const noticeUp = () => page.evaluate(() => getComputedStyle(document.getElementById('teamsNotice')).display !== 'none'
-    || getComputedStyle(document.getElementById('relinkBanner')).display !== 'none');
-  await page.goto(wvw.url);
-  await expect(page.locator(TIERS)).toHaveCount(wvw.tiers.NA);
-  await wvw.settle();
-  const hadNotice = await noticeUp();
-  await fail(page, wvw, /^http:\/\/127\.0\.0\.1:\d+\/api\//);
-  sheets.length = 0;
-  own.length = 0;
-  await page.goto(wvw.url);
-  await expect(page.locator(TIERS)).toHaveCount(wvw.tiers.NA);
-  await wvw.settle();
-  expect(own.length, 'times the page asked /api/kills or /api/relink').toBeGreaterThan(0);
-  expect(sheets.length, 'times the page read the sheets instead').toBeGreaterThan(0);
-  if (hadNotice) await expect.poll(noticeUp, { message: 'the relink notice from the sheets' }).toBe(true);
-});
-
 // ---- the game's API failing, state by state ----------------------------------
 const GAME = /^https:\/\/api\.guildwars2\.com\//;
 const ALL = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';

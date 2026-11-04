@@ -152,7 +152,7 @@ export async function boardOpen(page, wvw, width = 1280) {
   return tier;
 }
 
-// The loading indicators: they turn on CSS, off the embers' clock (js/boot.js).
+// The loading indicators: the embers' clock moves them like every looping animation, and hands them back to CSS under reduced motion and in a hidden tab (js/boot.js).
 export const LOADERS = '.spinner, .btn-pips';
 
 // The infinite animations on the page, `loaders` or the rest, over `ms`: how many

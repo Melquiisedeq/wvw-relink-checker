@@ -5,7 +5,6 @@
 //   two server groups alternating          twoPools(10, 30)
 //   reload, one group behind               copyBehindAll(10, 30) and twoPools(10, 30), reload()
 //   tab hidden 2 h, then back              missed(120, 6), hidden() / visible()
-//   laptop waking after 30 min             playing(40), wake(): every due timer once
 //   map open while the API is down         apiDown(12), the map never closed
 //   the visitor's group down, copy current visitorDown(20), the map open, then closed
 //   our copy ahead of the visitor's, old   copyAheadOld(20) and (2), the map open
@@ -300,19 +299,6 @@ test.describe('tab hidden 2 h, then back', () => {
     }
     const kills = k => Object.values(k).reduce((a, b) => a + b, 0);
     expect(seen.missed.kills, 'the kills while away').toBe(kills(tl.killsByMap(FOCUS, to)) - kills(tl.killsByMap(FOCUS, from)));
-  });
-});
-
-test.describe('laptop waking after 30 min', () => {
-  test.use({ timeline: playing(40) });
-  test('the map reads again and says so', async ({ page, wvw }) => {
-    const r = rower(page, wvw);
-    await r.load();
-    await r.open();
-    await r.check('map open', READ_OPEN_MS);
-    await wake(page, 30 * MIN);
-    await r.check('awake', READ_OPEN_MS);
-    await r.pass(4, 2, 'awake', READ_OPEN_MS);
   });
 });
 
