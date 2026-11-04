@@ -1601,6 +1601,16 @@ test('the object: any message from a tab closes it with 1008', async () => {
   });
 });
 
+test('the object: a request that is neither an upgrade nor a notice is 404', async () => {
+  await withRuntime(async () => {
+    const state = fakeState();
+    const live = new Live(state);
+    const r = await live.fetch(new Request('https://live/ws'));
+    assert.equal(r.status, 404);
+    assert.equal(state.sockets.length, 0);
+  });
+});
+
 test('the object: past its ceiling a new socket is closed with 1013 and never joins the others', async () => {
   await withRuntime(async () => {
     const state = fakeState();
@@ -1641,6 +1651,9 @@ test('the object: a notice goes to every socket as numbers, and a new socket get
       const b = { id: '2-1', start: EU_WEEK, score: 1, at };
       for (const ws of state.sockets) assert.deepEqual(ws.sent.map((m) => JSON.parse(m)), [{ matches: [a, b] }]);
       assert.equal((await notifyLive(live, [{ id: 'x', start: 1, score: 1, at }])).status, 400);
+      for (const body of ['null', '{"matches":5}', '[]']) {
+        assert.equal((await live.fetch(new Request('https://live/notify', { method: 'POST', body }))).status, 400, body);
+      }
       assert.ok(state.sockets.every((ws) => ws.sent.length === 1), 'nothing sent for nothing valid');
       // A socket that closed meanwhile does not stop the others.
       state.sockets[0].close(1000, '');
@@ -1755,6 +1768,24 @@ test('/api/latest?v=: only the current version, and any other is a short 404 bef
   assert.equal((await w.get('/api/latest?v=' + next)).status, 503);
 });
 
+test('/api/latest?v=: D1 failing is a 503, logged, never a thrown request', async () => {
+  const w = setup({ env: SUPA_ENV });
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
+  const at = Math.floor(w.now / 1000);
+  w.env.DB = { prepare: () => { throw new Error('d1 down'); } };
+  const logged = [];
+  const log = console.log;
+  console.log = (line) => logged.push(line);
+  try {
+    const r = await w.get('/api/latest?v=' + at);
+    assert.equal(r.status, 503);
+    assert.equal(r.body.trim(), 'unavailable');
+  } finally {
+    console.log = log;
+  }
+  assert.ok(logged.some((l) => l.includes('latest version') && l.includes('d1 down')));
+});
+
 test('/api/latest?v=: kept under its version\'s key, and a hit reads no copy', async () => {
   const w = setup({ env: SUPA_ENV });
   assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
@@ -1773,6 +1804,20 @@ test('/api/latest?v=: kept under its version\'s key, and a hit reads no copy', a
     // A wrong version is never stored: its key would be anyone's to fill.
     await w.get('/api/latest?v=' + (at + 1));
     assert.ok(![...caches.store.keys()].some((k) => k.endsWith('?v=' + (at + 1))));
+  });
+});
+
+test('/api/latest?v=: a newer ingest behind a cached summary makes its version a short 404, never the newer copy', async () => {
+  const w = setup({ env: SUPA_ENV });
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
+  const at = Math.floor(w.now / 1000);
+  await withCache(async () => {
+    assert.equal((await w.get('/api/latest?v=' + at)).status, 200, 'the summary is now cached at this version');
+    w.advance(1e3);
+    assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '2-1', start: EU_WEEK }]), 200);
+    const r = await w.get('/api/latest?v=' + at);
+    assert.equal(r.status, 404);
+    assert.equal(r.headers.get('cache-control'), 'public, max-age=5');
   });
 });
 
