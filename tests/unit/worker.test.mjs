@@ -1750,11 +1750,7 @@ test('/api/latest?v=: only the current version, and any other is a short 404 bef
   const r = await w.get('/api/latest?v=' + at);
   assert.equal(r.status, 200);
   assert.equal(r.body, (await w.get('/api/latest')).body);
-  assert.equal(r.headers.get('cache-control'), 'no-store', 'young: another ingest of its second may still land');
-  w.advance(9e3);
-  assert.equal((await w.get('/api/latest?v=' + at)).headers.get('cache-control'), 'no-store');
-  w.advance(1e3);
-  assert.equal((await w.get('/api/latest?v=' + at)).headers.get('cache-control'), 'public, max-age=60');
+  assert.equal(r.headers.get('cache-control'), 'public, max-age=60', 'final from its first read');
   // Any other query is the plain read, as before.
   assert.equal((await w.get('/api/latest?x=' + at)).headers.get('cache-control'), 'public, max-age=5');
   // A newer ingest makes the old version a miss.
@@ -1786,17 +1782,31 @@ test('/api/latest?v=: D1 failing is a 503, logged, never a thrown request', asyn
   assert.ok(logged.some((l) => l.includes('latest version') && l.includes('d1 down')));
 });
 
-test('/api/latest?v=: kept under its version\'s key, and a hit reads no copy', async () => {
+test('the latest ingest: rows written are known with or without RETURNING\'s results', async () => {
+  const live = fakeLive();
+  const w = setup({ env: { ...SUPA_ENV, LIVE: live.ns } });
+  const real = w.env.DB;
+  w.env.DB = { prepare: (q) => {
+    const st = real.prepare(q);
+    if (!q.includes('RETURNING')) return st;
+    return { bind: (...a) => { const b = st.bind(...a); return { all: async () => ({ ...(await b.all()), results: [] }) }; } };
+  } };
+  const out = await w.post('latest-supa-us', v2Body([{ id: '1-1' }, { id: '1-2' }]), { key: SUPA['latest-supa-us'] });
+  assert.equal(out, 200);
+  const at = Math.floor(w.now / 1000);
+  assert.deepEqual(w.sql.prepare('SELECT id, at FROM latest ORDER BY id').all().map((r) => [r.id, r.at]), [['1-1', at], ['1-2', at]]);
+  assert.equal((await w.get('/api/latest?v=' + at)).status, 200);
+  assert.deepEqual((await live.requests[0].json()).matches.map((m) => [m.id, m.at]), [['1-1', at], ['1-2', at]], 'both told, at the version');
+});
+
+test('/api/latest?v=: kept under its version\'s key from the first read, and a hit reads no copy', async () => {
   const w = setup({ env: SUPA_ENV });
   assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
   const at = Math.floor(w.now / 1000);
   await withCache(async (caches) => {
-    assert.equal((await w.get('/api/latest?v=' + at)).status, 200);
-    assert.equal(caches.store.size, 1, 'only the summary: a young version is kept nowhere');
-    w.advance(10e3);
     const first = await w.get('/api/latest?v=' + at);
     assert.equal(first.status, 200);
-    assert.ok(caches.store.has('https://wvwrelink.com/api/latest?v=' + at));
+    assert.ok(caches.store.has('https://wvwrelink.com/api/latest?v=' + at), 'kept at the first read');
     const n = countQueries(w);
     const hit = await w.get('/api/latest?v=' + at);
     assert.equal(hit.body, first.body);
@@ -1804,10 +1814,14 @@ test('/api/latest?v=: kept under its version\'s key, and a hit reads no copy', a
     // A wrong version is never stored: its key would be anyone's to fill.
     await w.get('/api/latest?v=' + (at + 1));
     assert.ok(![...caches.store.keys()].some((k) => k.endsWith('?v=' + (at + 1))));
+    // A newer ingest leaves the version's copy as it was.
+    w.advance(30e3);
+    assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', scores: [1000, 2000, 3100] }]), 200);
+    assert.equal((await w.get('/api/latest?v=' + at)).body, first.body);
   });
 });
 
-test('/api/latest?v=: a newer ingest behind a cached summary makes its version a short 404, never the newer copy', async () => {
+test('/api/latest?v=: a version past the cached summary reads the summary again, once per 100 ms at most', async () => {
   const w = setup({ env: SUPA_ENV });
   assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
   const at = Math.floor(w.now / 1000);
@@ -1815,21 +1829,51 @@ test('/api/latest?v=: a newer ingest behind a cached summary makes its version a
     assert.equal((await w.get('/api/latest?v=' + at)).status, 200, 'the summary is now cached at this version');
     w.advance(1e3);
     assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '2-1', start: EU_WEEK }]), 200);
-    const r = await w.get('/api/latest?v=' + at);
-    assert.equal(r.status, 404);
-    assert.equal(r.headers.get('cache-control'), 'public, max-age=5');
+    const next = Math.floor(w.now / 1000);
+    const r = await w.get('/api/latest?v=' + next);
+    assert.equal(r.status, 200, 'the newer version, behind a cached summary');
+    assert.deepEqual(JSON.parse(r.body).matches.map((m) => m.id), ['1-1', '2-1']);
+    // A v nobody wrote: one summary read, then none for SUMMARY_RECHECK_MS (100 ms); none
+    // for one the summary was kept after the end of; past LATEST_AHEAD_S (5 s), none at all.
+    const n = countQueries(w);
+    await w.get('/api/latest?v=' + (next + 5));
+    assert.equal(n.q, 0, 'the summary was read again just now');
+    w.advance(100);
+    for (let i = 0; i < 5; i++) assert.equal((await w.get('/api/latest?v=' + (next + 5))).status, 404);
+    assert.equal(n.q, 1, 'one summary read for five asks at once');
+    w.advance(100);
+    await w.get('/api/latest?v=' + (next + 5));
+    assert.equal(n.q, 2, 'and one more 100 ms on');
+    w.advance(2000);
+    await w.get('/api/latest?v=' + (next + 1));
+    assert.equal(n.q, 3, 'a second the cached summary does not cover yet');
+    w.advance(200);
+    await w.get('/api/latest?v=' + (next + 1));
+    assert.equal(n.q, 3, 'one it was kept after the end of');
+    await w.get('/api/latest?v=' + (Math.floor(w.now / 1000) + 6));
+    assert.equal(n.q, 3, 'a v over 5 s ahead reads nothing');
   });
 });
 
-test('/api/latest?v=: two readers applying in the same second give one version, and the copy has both', async () => {
-  const w = setup({ env: SUPA_ENV });
+test('/api/latest?v=: two readers applying in the same second get two versions, each copy final', async () => {
+  const live = fakeLive();
+  const w = setup({ env: { ...SUPA_ENV, LIVE: live.ns } });
   const at = Math.floor(w.now / 1000);
   await withCache(async () => {
-    assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
-    const first = JSON.parse((await w.get('/api/latest?v=' + at)).body);
-    assert.deepEqual(first.matches.map((m) => m.id), ['1-1']);
+    assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }, { id: '1-2' }]), 200);
+    assert.deepEqual(w.sql.prepare('SELECT DISTINCT at FROM latest').all().map((r) => r.at), [at], 'one version for the whole message');
+    const first = await w.get('/api/latest?v=' + at);
+    assert.deepEqual(JSON.parse(first.body).matches.map((m) => m.id), ['1-1', '1-2']);
     assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '2-1', start: EU_WEEK }]), 200);
-    const second = await w.get('/api/latest?v=' + at);
-    assert.deepEqual(JSON.parse(second.body).matches.map((m) => m.id), ['1-1', '2-1'], 'the second reader\'s match is in');
+    assert.equal(w.sql.prepare("SELECT at FROM latest WHERE id = '2-1'").get().at, at + 1, 'the same second, the next version');
+    assert.deepEqual((await live.requests[1].json()).matches.map((m) => m.at), [at + 1], 'the tabs are told that version');
+    w.advance(200);
+    assert.equal((await w.get('/api/latest?v=' + at)).body, first.body, 'the first copy does not change');
+    const second = JSON.parse((await w.get('/api/latest?v=' + (at + 1))).body);
+    assert.deepEqual(second.matches.map((m) => m.id), ['1-1', '1-2', '2-1'], 'the second reader\'s match is in its own');
+    assert.equal(second.at, at + 1);
   });
+  // A message that applies nothing takes no version.
+  assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '2-1', start: EU_WEEK }]), 200);
+  assert.equal(Math.max(...w.sql.prepare('SELECT at FROM latest').all().map((r) => r.at)), at + 1);
 });

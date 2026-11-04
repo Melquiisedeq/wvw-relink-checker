@@ -61,12 +61,15 @@ const SUMMARY_KEY = 'https://wvwrelink.com/api/latest/summary';
 // The max-age of each read, both in its answer and on a copy served from the cache.
 const LATEST_MAX_AGE = 5;
 const SUMMARY_MAX_AGE = 5;
-// A version is the second of its ingest, and the other reader can apply in the same second:
-// its copy is final only once no ingest of that second can still be writing. Younger, it is
-// read from D1 each time and kept nowhere. Once final it never changes, and once it is not
-// current the summary turns its v away, SUMMARY_MAX_AGE later at most.
-const LATEST_SETTLE_S = 10;
+// A version is the `at` of the ingest that wrote it, unique and rising (latestUpsertSql), so
+// its copy never changes once written and is kept from the first read.
 const LATEST_VERSION_MAX_AGE = 60;
+// A v past the cached summary has the summary read again when the summary was kept before
+// that second ended, at most once per SUMMARY_RECHECK_MS per data centre, and only up to
+// LATEST_AHEAD_S past the clock (how far latestUpsertSql can run ahead of it): a v nobody
+// wrote costs no more than that.
+const SUMMARY_RECHECK_MS = 100;
+const LATEST_AHEAD_S = 5;
 const HISTORY_KEY = 'https://wvwrelink.com/api/history/';
 // A version whose every match is in: it never changes. One with a match missing or behind: a minute.
 const HISTORY_MAX_AGE = 4 * 3600;
@@ -209,6 +212,22 @@ async function accept(request, env, ctx, source, path) {
   return text(200, 'ok');
 }
 
+// The message's matches as [id, start, score, gz, sha, raw] in ?1, the clock in ?2, the reader in
+// ?3. Every row it writes gets one `at`: the clock, or one past the newest stored when that is
+// not under it, so each ingest that applies anything is a version of its own, even two in one
+// second. SQLite runs a SELECT that reads the table it inserts into to the end before writing,
+// so the newest is the one from before this message. RETURNING: the rows that went in.
+const latestUpsertSql =
+  'INSERT INTO latest (id, start, score, at, reader, gz, sha, raw) ' +
+  "SELECT json_extract(j.value, '$[0]'), json_extract(j.value, '$[1]'), json_extract(j.value, '$[2]'), v.at, ?3, " +
+  "json_extract(j.value, '$[3]'), json_extract(j.value, '$[4]'), json_extract(j.value, '$[5]') " +
+  'FROM json_each(?1) j, (SELECT MAX(?2, COALESCE(MAX(at), 0) + 1) AS at FROM latest) v WHERE true ' +
+  'ON CONFLICT (id) DO UPDATE SET start = excluded.start, score = excluded.score, at = excluded.at, ' +
+  'reader = excluded.reader, gz = excluded.gz, sha = excluded.sha, raw = excluded.raw ' +
+  'WHERE excluded.start > latest.start OR (excluded.start = latest.start AND excluded.score > latest.score ' +
+  'AND excluded.score <= latest.score + ' + MAX_SCORE_PER_MIN + ' * ((?2 - latest.at) / 60.0) + ' + SCORE_SLACK + ') ' +
+  'RETURNING id, at';
+
 async function claimTime(db, source, t, now) {
   const claim = await db.prepare(
     'UPDATE source SET t = ?1, received = ?2 WHERE name = ?3 AND t < ?1'
@@ -259,24 +278,26 @@ async function acceptLatest(env, ctx, source, body, t, now) {
 
   if (!await claimTime(env.DB, source, t, now)) return refuse(409, source, 'replay or out of order');
 
-  // One command per match, atomic in SQLite: two readers at once cannot make a
+  // One statement for the whole message, atomic in SQLite: two readers at once cannot make a
   // match go back. A first write enters (it passed the checks above); after
   // that a newer week wins, and in the same week a higher score, but not past
   // what a score can rise since the stored one. Compared to the Worker's clock.
   // `gz` holds format 1's gzip as base64, or format 2's live part as JSON text,
   // which begins with "{" as base64 never does: /api/latest tells them apart by it.
+  const rows = ms.filter((m) => m.stored).map((m) => [m.id, m.start, m.score, m.stored.text, m.stored.sha256, m.stored.raw]);
   const applied = [];
   const lost = [];
-  for (const m of ms) {
-    if (!m.stored) continue;
-    const r = await env.DB.prepare(
-      'INSERT INTO latest (id, start, score, at, reader, gz, sha, raw) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) ' +
-      'ON CONFLICT (id) DO UPDATE SET start = excluded.start, score = excluded.score, at = excluded.at, ' +
-      'reader = excluded.reader, gz = excluded.gz, sha = excluded.sha, raw = excluded.raw ' +
-      'WHERE excluded.start > latest.start OR (excluded.start = latest.start AND excluded.score > latest.score ' +
-      'AND excluded.score <= latest.score + ' + MAX_SCORE_PER_MIN + ' * ((?9 - latest.at) / 60.0) + ' + SCORE_SLACK + ')'
-    ).bind(m.id, m.start, m.score, now, source, m.stored.text, m.stored.sha256, m.stored.raw, now).run();
-    (r.meta && r.meta.changes === 1 ? applied : lost).push(m);
+  let version = now;
+  if (rows.length) {
+    let { results } = await env.DB.prepare(latestUpsertSql).bind(JSON.stringify(rows), now, source).all();
+    // D1's page on statements says a write's results are empty: if RETURNING gave none, the
+    // rows are read back (this reader's, at this clock or past it: only this message's).
+    if (!results.length) {
+      ({ results } = await env.DB.prepare('SELECT id, at FROM latest WHERE reader = ?1 AND at >= ?2').bind(source, now).all());
+    }
+    const won = new Set(results.map((r) => r.id));
+    for (const m of ms) if (m.stored) (won.has(m.id) ? applied : lost).push(m);
+    if (results.length) version = results[0].at;
   }
   if (lost.length) await logJumps(env.DB, source, lost, now);
 
@@ -319,7 +340,7 @@ async function acceptLatest(env, ctx, source, body, t, now) {
   // Last, after every write, and outside the answer: the tabs fetch what this names, so it
   // must already be in D1, and the reader's message is taken whether the push works or not.
   if (applied.length) {
-    const told = tellLive(env, applied.map((m) => ({ id: m.id, start: m.start, score: m.score, at: now })));
+    const told = tellLive(env, applied.map((m) => ({ id: m.id, start: m.start, score: m.score, at: version })));
     if (ctx && ctx.waitUntil) ctx.waitUntil(told);
     else await told;
   }
@@ -859,7 +880,7 @@ const READS = {
 
   // Always 200, {} when empty: the readers need it to begin. `hist`: the finished
   // skirmishes the history table holds for that match and week, when it holds them.
-  '/api/latest/summary': (env, ctx) => cached(ctx, SUMMARY_KEY, async () => {
+  '/api/latest/summary': (env, ctx, keep) => cached(ctx, SUMMARY_KEY, async () => {
     let results;
     try {
       ({ results } = await env.DB.prepare('SELECT l.id, l.start, l.score, l.at, l.reader, h.n AS hist FROM latest l ' +
@@ -875,7 +896,7 @@ const READS = {
       if (Number.isInteger(r.hist)) out[r.id].hist = r.hist;
     }
     return json(JSON.stringify(out), SUMMARY_MAX_AGE);
-  })
+  }, keep)
 };
 
 // The copy /api/latest serves, and its newest `at`; null when it is stale.
@@ -895,24 +916,29 @@ async function latestCopy(env) {
 
 // GET /api/latest?v=<at>: the copy whose newest `at` is v, kept under that version's key. The
 // current version is read from the summary through its own cached read, so a v that is not it
-// is a miss before the copy's query: the cached summary runs up to SUMMARY_MAX_AGE behind an
-// ingest, and the miss's max-age is that long, so the page that asked too soon asks again.
+// is a miss before the copy's query. A v past it may be an ingest the cached summary has not
+// seen yet: the summary is read again (SUMMARY_RECHECK_MS), and a miss after that is a v
+// nobody wrote yet, with a max-age short enough for the page that asked too soon to ask again.
 async function readLatestVersion(env, ctx, url) {
   const v = /^\?v=([1-9]\d{9})$/.exec(url.search);
   if (!v) return miss(SUMMARY_MAX_AGE);
-  const summary = await READS['/api/latest/summary'](env, ctx);
-  const current = Math.max(0, ...Object.values(await summary.json()).map((e) => e.at));
   const want = Number(v[1]);
-  if (want !== current) return miss(SUMMARY_MAX_AGE);
-  const make = async (maxAge) => {
+  const current = async (keep) => {
+    const summary = await READS['/api/latest/summary'](env, ctx, keep);
+    return Math.max(0, ...Object.values(await summary.json()).map((e) => e.at));
+  };
+  let known = await current();
+  if (want > known && want <= nowS() + LATEST_AHEAD_S) {
+    known = await current((keptAt) => keptAt >= (want + 1) * 1000 || Date.now() - keptAt < SUMMARY_RECHECK_MS);
+  }
+  if (want !== known) return miss(SUMMARY_MAX_AGE);
+  return cached(ctx, LATEST_KEY + '?v=' + want, async () => {
     const copy = await latestCopy(env);
     if (!copy) return text(503, 'stale');
-    // A newer ingest since the summary was cached: this key is no longer anyone's version.
+    // A newer ingest since the summary was read: this v is past, and stays so.
     if (copy.newest !== want) return miss(SUMMARY_MAX_AGE);
-    return json(copy.body, maxAge);
-  };
-  if (nowS() - want < LATEST_SETTLE_S) return make(null);
-  return cached(ctx, LATEST_KEY + '?v=' + want, () => make(LATEST_VERSION_MAX_AGE));
+    return json(copy.body, LATEST_VERSION_MAX_AGE);
+  });
 }
 
 // GET /api/history/<region>?v=<n>: the region's finished skirmishes of this week. n is how
@@ -963,16 +989,18 @@ function miss(maxAge = HISTORY_MISS_MAX_AGE) {
 }
 
 // An answer that says `public, max-age=N` is kept N seconds (a 503 says no-store). No Cache API
-// outside Cloudflare (Node, the tests).
-async function cached(ctx, key, make) {
+// outside Cloudflare (Node, the tests). `keep(keptAt)`, when given, says whether a kept answer
+// (kept at that ms, 0 if unknown) still serves; if not, it is made again.
+async function cached(ctx, key, make, keep = null) {
   const cache = typeof caches !== 'undefined' ? caches.default : null;
   if (cache) {
     const hit = await cache.match(key);
-    if (hit) {
+    if (hit && (!keep || keep(Number(hit.headers.get('x-kept-at')) || 0))) {
       // The answer's own max-age is put back from x-max-age: a cached copy can carry another one.
       const out = new Response(hit.body, { status: hit.status, statusText: hit.statusText, headers: hit.headers });
       out.headers.set('cache-control', 'public, max-age=' + (out.headers.get('x-max-age') || '5'));
       out.headers.delete('x-max-age');
+      out.headers.delete('x-kept-at');
       return out;
     }
   }
@@ -981,6 +1009,7 @@ async function cached(ctx, key, make) {
   if (cache && age) {
     const kept = res.clone();
     kept.headers.set('x-max-age', age[1]);
+    kept.headers.set('x-kept-at', String(Date.now()));
     const put = cache.put(key, kept).catch(() => {});
     if (ctx && ctx.waitUntil) ctx.waitUntil(put);
     else await put;
