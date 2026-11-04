@@ -20,6 +20,10 @@ const opened = (id = FOCUS) => gw2.match(id).advance(12).pageOpens();
 // `min` minutes of play, the API answering as it goes.
 export const playing = (min = 40, id) => opened(id).advance(min);
 
+// The same, the game moving each 30 s: each version of our copy is under 30 s
+// old whenever it is read.
+export const playingHalfMinutes = (min = 40, id) => opened(id).advance(min, { every: 0.5 });
+
 // The API answers the same body for `min` minutes, after 4 of play, then 12
 // more of play.
 export const frozen = (min = 40, id) => opened(id).advance(4).freeze(min).advance(12);

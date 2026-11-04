@@ -6,9 +6,9 @@
 // no socket, a page anywhere else opens none, and a message that is not the
 // Worker's changes nothing.
 import { test, expect } from './support/fixtures.mjs';
-import { FOCUS, MIN, connectionDrops, hidden, livePush, playing, visible } from './support/scenarios.mjs';
+import { FOCUS, MIN, connectionDrops, hidden, livePush, playing, playingHalfMinutes, visible } from './support/scenarios.mjs';
 import { versionName } from './support/gw2.mjs';
-import { firstTier, load, openMap } from './support/steps.mjs';
+import { firstTier, load, openMap, play } from './support/steps.mjs';
 
 const SITE = 'https://wvwrelink.com';
 const SUMMARY = /\/api\/latest\/summary$/;
@@ -25,18 +25,6 @@ test.describe.configure({ timeout: 120 * 1000 });
 
 const scoreOf = (page, id) => page.evaluate(i => { const m = matchDataCache.get(i); return m ? colorSum(m.scores) : -1; }, id);
 
-// The clock in steps of 3 s, under OWN_API_TIMEOUT_MS (js/config.js), each
-// answer given its moment to land. `using`: a scroll each step, a visitor at
-// the page (the peek's fastest pace). `push`: each new version told, as the Worker does.
-async function play(page, ms, { using = false, push = null } = {}) {
-  for (let t = 0; t < ms; t += 3000) {
-    if (using) await page.evaluate(() => window.dispatchEvent(new Event('scroll')));
-    if (push) await push.sync();
-    await page.clock.runFor(Math.min(3000, ms - t));
-    await page.waitForTimeout(40);
-  }
-}
-
 function reads(page) {
   const n = { summary: 0, copy: 0, versions: [] };
   page.on('request', r => {
@@ -48,14 +36,20 @@ function reads(page) {
   return n;
 }
 
-// A minute on, the version pushed and read: the push live (again).
+// On to 10 s past one of the world's next writes, the version pushed and read:
+// the push live (again). A fixed place in the minute: a jump that lands just
+// before a write sees that write while its read waits, and the read asks for a
+// version no longer the newest (the Worker's 404).
 async function relive(page, wvw, push) {
   // On to a version this page holds neither by a push nor by another read.
   const known = await page.evaluate(() => Math.max(pushHeard, latestHeldAt));
+  const newestOf = msg => Math.max(...msg.matches.map(m => m.at));
   let at = 0;
   for (let i = 0; i < 3 && at <= known; i++) {
-    await page.clock.setSystemTime(await wvw.now() + MIN);
-    at = Math.max(...(await wvw.told()).matches.map(m => m.at));
+    const now = await wvw.now();
+    const grid = newestOf(await wvw.told()) * 1000 + 10 * 1000;
+    await page.clock.setSystemTime(grid + Math.max(1, Math.ceil((now + 1 - grid) / MIN)) * MIN);
+    at = newestOf(await wvw.told());
   }
   await push.sync();
   // The message on the page before the clock runs its wait.
@@ -201,6 +195,7 @@ test('a socket that stops answering is closed after the wait for its pong, and o
   await play(page, 57 * 1000);
   await expect.poll(() => push.opened, 'opened again').toBe(2);
   await expect.poll(() => push.open, 'the new socket open').toBe(1);
+  await relive(page, wvw, push);
 });
 
 test('a hidden tab closes its socket and opens none; shown, it opens one at once', async ({ page, wvw }) => {
@@ -221,6 +216,8 @@ test('a message that is not the Worker\'s asks nothing and changes nothing', asy
   const told = await wvw.told();
   const m = told.matches.find(x => x.id === FOCUS);
   const drawn = await scoreOf(page, FOCUS);
+  // 80 s past the clock: over the Worker's 60 s ahead and the page's 70 s.
+  const past = Math.floor(await wvw.now() / 1000) + 80;
   for (const bad of [
     'not json', '[]', '{"matches":{}}', JSON.stringify({ matches: [{ ...m, id: '9-9' }] }),
     JSON.stringify({ matches: [{ ...m, at: String(m.at) }] }), JSON.stringify({ matches: [{ ...m, at: m.at + 0.5 }] }),
@@ -228,6 +225,8 @@ test('a message that is not the Worker\'s asks nothing and changes nothing', asy
     '<img src=x onerror=alert(1)>',
     // An hour past the clock: no version of anyone's.
     JSON.stringify({ matches: [{ ...m, at: m.at + 3600 }], version: versionName(m.at + 3600) }),
+    JSON.stringify({ matches: [{ ...m, at: past }], version: versionName(past) }),
+    JSON.stringify({ matches: [m], version: versionName(past) }),
     // A version that is not one, or none: nothing to read.
     JSON.stringify({ matches: [m] }), JSON.stringify({ matches: [m], version: m.at + '.' + 'Z'.repeat(32) }),
     JSON.stringify({ matches: [m], version: m.at + '.' + 'a'.repeat(32) + '&x=1' }), JSON.stringify({ matches: [m], version: m.at }),
@@ -243,23 +242,25 @@ test('a message that is not the Worker\'s asks nothing and changes nothing', asy
   await expect.poll(() => n.versions, 'the real version read').toEqual([Math.max(...told.matches.map(x => x.at))]);
 });
 
-test('a socket that answers and tells nothing more: the peek sees the version missed and takes back its pace', async ({ page, wvw }) => {
-  const push = await live(page, wvw);
-  const n = reads(page);
-  await connectionDrops(push, { quiet: true });
-  // The world moves each minute; the next peek (2 min at most) sees a version 30 s old the push never named.
-  await play(page, 3 * MIN, { using: true, push });
-  expect(await page.evaluate(() => pushLive()), 'live with versions missed').toBe(false);
-  const before = n.summary;
-  await play(page, 3 * MIN, { using: true, push });
-  expect(n.summary - before, 'summary reads in 3 min after').toBeGreaterThanOrEqual(5);
-  expect(push.open, 'the socket stays open').toBe(1);
-  // The push comes back with the next version it tells.
-  push.quiet = false;
-  await page.clock.setSystemTime(await wvw.now() + MIN);
-  await push.sync();
-  await page.clock.runFor(1600);
-  await expect.poll(() => page.evaluate(() => pushLive()), 'live again').toBe(true);
+test.describe('a game that moves each 30 s', () => {
+  test.use({ timeline: playingHalfMinutes() });
+
+  test('a socket that answers and tells nothing more: the peek sees the version missed and takes back its pace', async ({ page, wvw }) => {
+    const push = await live(page, wvw);
+    const n = reads(page);
+    await connectionDrops(push, { quiet: true });
+    // Each version the peek sees is under 30 s old; the next peek (2 min at most)
+    // sees one over 30 s past the last the push named.
+    await play(page, 3 * MIN, { using: true, push });
+    expect(await page.evaluate(() => pushLive()), 'live with versions missed').toBe(false);
+    const before = n.summary;
+    await play(page, 3 * MIN, { using: true, push });
+    expect(n.summary - before, 'summary reads in 3 min after').toBeGreaterThanOrEqual(5);
+    expect(push.open, 'the socket stays open').toBe(1);
+    // The push comes back with the next version it tells.
+    push.quiet = false;
+    await relive(page, wvw, push);
+  });
 });
 
 test('a server that says hello and hangs up is tried on a doubling wait, not every second', async ({ page, wvw }) => {

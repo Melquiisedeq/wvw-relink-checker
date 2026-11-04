@@ -8,6 +8,7 @@
 //   gw2.match('1-1')                      // the recording, as the 1-1 focus
 //     .advance(12, { kills: { Center: 30 } })   // 12 min of play, one state a minute
 //     .advance(6, { kills: {} })          // the score rises, the kills stand still
+//     .advance(6, { every: 0.5 })         // a state each 30 s
 //     .pageOpens()                        // the page's clock starts here
 //     .olderPool(10).advance(20).olderPool(0)   // a server group 10 min behind
 //     .olderPool(30, { every: true })     // the visitor's whole group 30 min behind
@@ -129,16 +130,26 @@ class Timeline {
   // map type and minute, split over the colours, each kill a death of the next
   // colour. flips: how many objectives change hands, spread over the span, or
   // the objective ids. score: per colour and minute, on EBG and the skirmish.
-  advance(min, { kills = DEFAULT_KILLS, flips = 0, score = DEFAULT_SCORE } = {}) {
+  // `every`: minutes between states (0.5: one each 30 s, kills and score split
+  // between them); it must divide 1 and leave whole kills and points.
+  advance(min, { kills = DEFAULT_KILLS, flips = 0, score = DEFAULT_SCORE, every = 1 } = {}) {
     if (!(min > 0)) throw new Error('gw2: advance needs minutes');
+    const steps = Math.round(min / every);
+    const part = o => Object.fromEntries(Object.entries(o).map(([k, n]) => [k, n * every]));
+    if (!(every > 0 && every <= 1) || !Number.isInteger(1 / every) || Math.abs(steps * every - min) > 1e-9
+      || ![...Object.values(kills), ...Object.values(score)].every(n => Number.isInteger(n * every))) {
+      throw new Error('gw2: advance needs `every` to split the minutes, kills and score whole');
+    }
     const list = typeof flips === 'number' ? Array.from({ length: flips }, () => null) : [...flips];
-    const flipAt = new Map(list.map((obj, j) => [Math.max(1, Math.round((j + 1) * min / (list.length + 1))), obj]));
+    const flipAt = new Map(list.map((obj, j) => [Math.max(1, Math.round((j + 1) * steps / (list.length + 1))), obj]));
     const ops = [];
     let weekEnd = this.#weekEnd;
-    for (let i = 1; i <= min; i++) {
-      const at = this.#cursor + i * MIN;
+    const stepKills = every === 1 ? kills : part(kills);
+    const stepScore = every === 1 ? score : part(score);
+    for (let i = 1; i <= steps; i++) {
+      const at = this.#cursor + i * every * MIN;
       while (recording().recordedAt + at >= weekEnd) weekEnd += WEEK_MS;
-      ops.push({ kind: 'minute', at, kills, score, flip: flipAt.has(i) ? (flipAt.get(i) || true) : null });
+      ops.push({ kind: 'minute', at, kills: stepKills, score: stepScore, flip: flipAt.has(i) ? (flipAt.get(i) || true) : null });
     }
     return this.#with(ops, this.#cursor + min * MIN, this.#opensAt, weekEnd);
   }

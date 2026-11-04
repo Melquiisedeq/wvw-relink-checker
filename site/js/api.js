@@ -705,7 +705,8 @@ async function latestInstead(one, early, err) {
 // peek read (js/standings.js), while it is LATEST_SUMMARY_FRESH_MS old or
 // less; without one, when the game gave a body behind the kept one, or the
 // match has not risen here for LATEST_QUIET_MS (any one match, not all nine:
-// one of nine almost always rises). Each body goes through
+// one of nine almost always rises). A push (below) reads its version instead,
+// /api/latest?v=<at>.<tag>, outside that gap. Each body goes through
 // keepNewestMatch like any other, so it wins only by being further
 // along. Only ids the game already gave this visit are taken, id and start must
 // match the body's own, and each part's size is capped (an inflated one while it streams).
@@ -967,7 +968,9 @@ const PUSH_MESSAGE_MAX = 8 * 1024;
 const PUSH_AHEAD_MS = 70 * 1000;
 // "<at>.<tag>", as the Worker names a version; only this goes into the URL.
 const PUSH_VERSION_RE = /^([1-9]\d{9})\.[0-9a-f]{32}$/;
-// A version the summary shows, unheard and older than this, is one the push missed.
+// A summary whose newest `at` is more than this past the newest version heard by
+// the push or read (by its ?v= or a plain /api/latest) shows one the push missed:
+// each write is pushed at once.
 const PUSH_LATE_MS = 30 * 1000;
 let pushSocket = null;
 let pushFails = 0;
@@ -1108,10 +1111,9 @@ async function pushRead(at, version) {
 }
 
 // From the peek (js/standings.js): `newest` (ms) is the summary's newest `at`.
-// One the push never named, PUSH_LATE_MS old, says the socket stopped telling.
+// The socket stopped telling when it is PUSH_LATE_MS past the newest version known.
 function pushMissed(newest) {
-  if (!pushLive() || newest <= Math.max(pushHeard, latestHeldAt) * 1000
-    || Date.now() - ownClockLead - newest <= PUSH_LATE_MS) return;
+  if (!pushLive() || newest - Math.max(pushHeard, latestHeldAt) * 1000 <= PUSH_LATE_MS) return;
   pushOk = false;
   pushDropped();
 }
