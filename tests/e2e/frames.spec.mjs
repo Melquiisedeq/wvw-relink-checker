@@ -133,6 +133,30 @@ for (const [cut, stop] of Object.entries(cuts)) {
   });
 }
 
+// Hiding the tab hands the run-once effects back to CSS; one cancelled since the last frame stays cancelled.
+test('a run-once effect cancelled on the clock just before the tab hides is not played again', async ({ page, wvw }) => {
+  await load(page, wvw);
+  await page.locator('.tier-map-btn').first().click();
+  await expect.poll(async () => (await runOnce(page)).onClock, { message: 'run-once effects on the clock' }).toBeGreaterThan(0);
+  const cancelled = await page.evaluate(() => {
+    const a = document.getAnimations().find(x => x.effect.getComputedTiming().iterations !== Infinity
+      && x.playState === 'paused' && x.currentTime < x.effect.getComputedTiming().endTime);
+    window.__cancelled = a;
+    a.cancel();
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+    return a.playState;
+  });
+  expect(cancelled, 'the cancelled effect once the tab is hidden').toBe('idle');
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => window.__cancelled.playState), 'the cancelled effect with the tab shown again').toBe('idle');
+  await allFinish(page, 'the other run-once effects');
+});
+
 for (const reduced of [false, true]) {
   test(`the trebuchet's shots${reduced ? ' under reduced motion' : ''} fly and leave nothing behind`, async ({ page, wvw }) => {
     if (reduced) await page.emulateMedia({ reducedMotion: 'reduce' });

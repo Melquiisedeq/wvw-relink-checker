@@ -245,8 +245,6 @@ const emberField = (function () {
     if (!document.getAnimations) return;
     for (const a of document.getAnimations()) {
       if (driven.has(a) || a.playState !== 'running' || !a.effect) continue;
-      const t = a.effect.target;
-      if (!t || !t.isConnected) continue;
       a.pause();
       driven.add(a);
     }
