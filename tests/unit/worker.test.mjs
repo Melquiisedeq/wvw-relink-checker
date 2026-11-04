@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
-import worker from '../../worker/index.mjs';
+import worker, { Live } from '../../worker/index.mjs';
 import { fakeD1 } from './fake-d1.mjs';
 import { signHeaders } from './signed.mjs';
 
@@ -25,7 +25,7 @@ function setup(opts = {}) {
     const real = Date.now;
     Date.now = () => clock;
     try {
-      return await worker.fetch(req, env);
+      return await worker.fetch(req, env, opts.ctx);
     } finally {
       Date.now = real;
     }
@@ -34,6 +34,7 @@ function setup(opts = {}) {
     sql,
     ran,
     env,
+    fetch: call,
     get now() { return clock; },
     advance(ms) { clock += ms; },
     signed(path, body, { key = KILLS_KEY, t, sigPath = path } = {}) {
@@ -1138,7 +1139,7 @@ function v2Body(entries) {
     const start = e.start ?? NA_WEEK;
     const scores = e.scores || [1000, 2000, 3000];
     const live = bytes(e.live ?? liveOf(e.id, start, scores));
-    const out = { id: e.id, start, scores, kills: [1, 2, 3, 4], live: { bytes: live.length, sha256: e.sha || sha(live) } };
+    const out = { id: e.id, start, scores, kills: [1, 2, 3, 4], live: { bytes: live.length, sha256: e.sha || sha(live) }, ...e.board };
     parts.push(live);
     if (e.hist) {
       const h = bytes(e.hist.body ?? skirmishList(e.hist.n));
@@ -1475,4 +1476,315 @@ test('/api/history: on the reset day before the reset hour the week is still the
   assert.equal(JSON.parse(r.body).start, NA_WEEK);
   w.advance(3600e3);
   assert.equal((await w.get('/api/history/1?v=' + done)).status, 404, 'at the reset the week is a new one, and the old version is gone');
+});
+
+// The push. A namespace whose one object is a stub the test writes, counting each time it is reached.
+function fakeLive(fetch = async () => new Response('ok')) {
+  const live = { got: 0, requests: [], names: [] };
+  live.ns = {
+    idFromName: (name) => { live.names.push(name); return name; },
+    get: () => {
+      live.got++;
+      return { fetch: async (url, init) => { const r = new Request(url, init); live.requests.push(r); return fetch(r); } };
+    }
+  };
+  return live;
+}
+
+const wsRequest = (headers, method = 'GET') => new Request('https://wvwrelink.com/api/ws', { method, headers });
+const SITE = { upgrade: 'websocket', origin: 'https://wvwrelink.com' };
+
+test('the socket: anything but a GET upgrade is 426, before the object is touched', async () => {
+  const live = fakeLive();
+  const w = setup({ env: { LIVE: live.ns } });
+  for (const [headers, method] of [
+    [{ origin: SITE.origin }, 'GET'], [{ ...SITE, upgrade: 'h2c' }, 'GET'], [{ ...SITE, upgrade: '' }, 'GET'],
+    [SITE, 'POST'], [SITE, 'PUT'], [SITE, 'HEAD']
+  ]) {
+    const r = await w.fetch(wsRequest(headers, method));
+    assert.equal(r.status, 426, method + ' ' + JSON.stringify(headers));
+    assert.equal(r.headers.get('upgrade'), 'websocket');
+  }
+  assert.equal(live.got, 0, 'the object never reached');
+  // The header's case is the client's.
+  assert.equal((await w.fetch(wsRequest({ ...SITE, upgrade: 'WebSocket' }))).status, 200);
+  assert.equal(live.got, 1);
+});
+
+test('the socket: an Origin that is not the site is 403, before the object; the object gets none of the visitor\'s headers', async () => {
+  const live = fakeLive();
+  const w = setup({ env: { LIVE: live.ns } });
+  for (const origin of [null, 'null', 'http://wvwrelink.com', 'https://wvwrelink.com.example.net', 'https://www.wvwrelink.com',
+    'https://wvwrelink.com/', 'https://example.net', 'https://x-wvwrelink.wvwgw2.workers.dev']) {
+    const headers = origin === null ? { upgrade: 'websocket' } : { upgrade: 'websocket', origin };
+    assert.equal((await w.fetch(wsRequest(headers))).status, 403, String(origin));
+  }
+  assert.equal(live.got, 0);
+  assert.equal((await w.fetch(wsRequest({ ...SITE, cookie: 'a=1', 'x-forwarded-for': '1.2.3.4' }))).status, 200);
+  assert.deepEqual(live.names, ['live']);
+  const [req] = live.requests;
+  assert.equal(req.url, 'https://live/ws');
+  assert.deepEqual([...req.headers.keys()], ['upgrade']);
+  // Without the binding: 503, and the page peeks as before.
+  assert.equal((await setup().fetch(wsRequest(SITE))).status, 503);
+});
+
+// The runtime's side of the object: a socket pair, the auto-response pair, a 101, and its state.
+class FakeSocket {
+  constructor() { this.sent = []; this.closed = null; this.accepted = false; }
+  accept() { this.accepted = true; }
+  send(m) { if (this.closed) throw new Error('closed'); this.sent.push(m); }
+  close(code, reason) { this.closed = { code, reason }; }
+}
+function fakeState() {
+  const store = new Map();
+  return {
+    sockets: [],
+    auto: null,
+    acceptWebSocket(ws) { this.sockets.push(ws); },
+    getWebSockets() { return [...this.sockets]; },
+    setWebSocketAutoResponse(pair) { this.auto = pair; },
+    storage: {
+      get: async (k) => (store.has(k) ? structuredClone(store.get(k)) : undefined),
+      put: async (k, v) => { store.set(k, structuredClone(v)); }
+    }
+  };
+}
+async function withRuntime(fn) {
+  const real = { Response: globalThis.Response, WebSocketPair: globalThis.WebSocketPair, Pair: globalThis.WebSocketRequestResponsePair };
+  const RealResponse = real.Response;
+  globalThis.Response = class extends RealResponse {
+    constructor(body, init = {}) {
+      super(body, init.status === 101 ? { ...init, status: 200 } : init);
+      if (init.status === 101) Object.defineProperty(this, 'status', { value: 101 });
+      this.webSocket = init.webSocket;
+    }
+  };
+  globalThis.WebSocketPair = class { constructor() { this[0] = new FakeSocket(); this[1] = new FakeSocket(); } };
+  globalThis.WebSocketRequestResponsePair = class { constructor(request, response) { this.request = request; this.response = response; } };
+  try {
+    return await fn();
+  } finally {
+    globalThis.Response = real.Response;
+    globalThis.WebSocketPair = real.WebSocketPair;
+    globalThis.WebSocketRequestResponsePair = real.Pair;
+  }
+}
+const openWs = (live) => live.fetch(new Request('https://live/ws', { headers: { upgrade: 'websocket' } }));
+const notifyLive = (live, matches) => live.fetch(new Request('https://live/notify', { method: 'POST', body: JSON.stringify({ matches }) }));
+
+test('the object: a socket is hibernatable, and "ping" is answered by the runtime, never by the object', async () => {
+  await withRuntime(async () => {
+    const state = fakeState();
+    const live = new Live(state);
+    assert.deepEqual({ ...state.auto }, { request: 'ping', response: 'pong' });
+    const r = await openWs(live);
+    assert.equal(r.status, 101);
+    assert.equal(state.sockets.length, 1);
+    assert.equal(state.sockets[0].accepted, false, 'acceptWebSocket, never ws.accept()');
+    assert.ok(r.webSocket instanceof FakeSocket);
+    assert.notEqual(r.webSocket, state.sockets[0], 'the tab gets the other end');
+    assert.deepEqual(state.sockets[0].sent, [], 'nothing known yet, nothing sent');
+  });
+});
+
+test('the object: any message from a tab closes it with 1008', async () => {
+  await withRuntime(async () => {
+    const state = fakeState();
+    const live = new Live(state);
+    await openWs(live);
+    for (const m of ['hello', 'ping ', new ArrayBuffer(4), '']) {
+      const ws = new FakeSocket();
+      live.webSocketMessage(ws, m);
+      assert.deepEqual(ws.closed, { code: 1008, reason: 'policy violation' });
+    }
+  });
+});
+
+test('the object: past its ceiling a new socket is closed with 1013 and never joins the others', async () => {
+  await withRuntime(async () => {
+    const state = fakeState();
+    const live = new Live(state);
+    for (let i = 0; i < 999; i++) state.sockets.push(new FakeSocket());
+    await openWs(live);
+    assert.equal(state.sockets.length, 1000, 'the thousandth is taken');
+    const pairs = [];
+    const RealPair = globalThis.WebSocketPair;
+    globalThis.WebSocketPair = class extends RealPair { constructor() { super(); pairs.push(this); } };
+    const r = await openWs(live);
+    globalThis.WebSocketPair = RealPair;
+    assert.equal(r.status, 101, 'the tab gets a socket, to read the close code on');
+    assert.equal(state.sockets.length, 1000);
+    assert.deepEqual(pairs[0][1].closed, { code: 1013, reason: 'try again later' });
+    assert.ok(state.sockets.every((ws) => ws.closed === null), 'the ones inside stay open');
+    assert.equal(await notifyLive(live, [{ id: '1-1', start: NA_WEEK, score: 6000, at: 1790000000 }]).then((x) => x.status), 200);
+    assert.ok(state.sockets.every((ws) => ws.sent.length === 1));
+  });
+});
+
+test('the object: a notice goes to every socket as numbers, and a new socket gets what is known', async () => {
+  await withRuntime(async () => {
+    const real = Date.now;
+    const now = Date.parse('2026-09-30T12:00:00Z');
+    Date.now = () => now;
+    try {
+      const state = fakeState();
+      const live = new Live(state);
+      await openWs(live);
+      await openWs(live);
+      const at = Math.floor(now / 1000);
+      const a = { id: '1-1', start: NA_WEEK, score: 6000, at };
+      // Text, a forged id, a fraction and an old entry are dropped; only what is left is sent.
+      const r = await notifyLive(live, [a, { id: '1-2', start: NA_WEEK, score: '<b>', at }, { id: '__proto__', start: 1, score: 1, at },
+        { id: '1-3', start: NA_WEEK, score: 1.5, at }, { id: '2-1', start: EU_WEEK, score: 1, at, by: '<script>' }]);
+      assert.equal(r.status, 200);
+      const b = { id: '2-1', start: EU_WEEK, score: 1, at };
+      for (const ws of state.sockets) assert.deepEqual(ws.sent.map((m) => JSON.parse(m)), [{ matches: [a, b] }]);
+      assert.equal((await notifyLive(live, [{ id: 'x', start: 1, score: 1, at }])).status, 400);
+      assert.ok(state.sockets.every((ws) => ws.sent.length === 1), 'nothing sent for nothing valid');
+      // A socket that closed meanwhile does not stop the others.
+      state.sockets[0].close(1000, '');
+      const a2 = { ...a, score: 6100, at: at + 30 };
+      await notifyLive(live, [a2]);
+      assert.deepEqual(JSON.parse(state.sockets[1].sent.at(-1)), { matches: [a2] });
+      const fresh = (await openWs(live), state.sockets.at(-1));
+      assert.deepEqual(JSON.parse(fresh.sent[0]), { matches: [a2, b] });
+      // Two hours on, with the readers stopped, a new socket is sent nothing old.
+      Date.now = () => now + 2 * 3600e3 + 60e3;
+      await openWs(live);
+      assert.deepEqual(state.sockets.at(-1).sent, []);
+      // And a notice of one match leaves the other out of what a new socket gets.
+      Date.now = () => now + 2 * 3600e3 + 60e3;
+      await notifyLive(live, [{ ...b, at: at + 7260 }]);
+      await openWs(live);
+      assert.deepEqual(JSON.parse(state.sockets.at(-1).sent[0]), { matches: [{ ...b, at: at + 7260 }] });
+    } finally {
+      Date.now = real;
+    }
+  });
+});
+
+test('the ingest tells the object after D1, outside the answer, only what was applied', async () => {
+  const waits = [];
+  const ctx = { waitUntil: (p) => waits.push(p) };
+  let rowAtNotice = null;
+  let release;
+  const held = new Promise((r) => { release = r; });
+  let w;
+  let writesAtNotice = null;
+  const live = fakeLive(async (req) => {
+    const one = (q) => ({ ...w.sql.prepare(q).get() });
+    rowAtNotice = one("SELECT score, at FROM latest WHERE id = '1-1'");
+    writesAtNotice = {
+      board: one("SELECT count(*) n FROM board WHERE match = '1-1'").n,
+      history: one("SELECT n FROM history WHERE match = '1-1'").n,
+      kills: one('SELECT count(*) n FROM kills').n,
+      recent: one('SELECT at FROM recent WHERE id = 1').at
+    };
+    await held;
+    return new Response('ok');
+  });
+  w = setup({ env: { ...SUPA_ENV, LIVE: live.ns }, ctx });
+  const board = { vp: [500, 400, 300], skirmishes: [[NA_DONE, 100, 200, 300], [NA_DONE + 1, 1, 2, 3]] };
+  const { r, lines } = await quiet(() => pushV2(w, 'latest-supa-us', [{ id: '1-1', board, hist: { n: NA_DONE } }, { id: '1-2' }]));
+  assert.equal(r, 200, 'answered while the notice is still held');
+  assert.equal(waits.length, 1);
+  await new Promise((res) => setImmediate(res));
+  const at = Math.floor(w.now / 1000);
+  assert.deepEqual(rowAtNotice, { score: 6000, at }, 'the row was in D1 when the object was told');
+  assert.deepEqual(writesAtNotice, { board: 1, history: NA_DONE, kills: 2, recent: w.now }, 'and every other write of the message');
+  assert.deepEqual(await live.requests[0].json(), { matches: [
+    { id: '1-1', start: NA_WEEK, score: 6000, at }, { id: '1-2', start: NA_WEEK, score: 6000, at }] });
+  assert.equal(live.requests[0].url, 'https://live/notify');
+  release();
+  await Promise.all(waits);
+  assert.ok(!lines.some((l) => l.push));
+  // A message that applied nothing (the same score again) tells nobody.
+  assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '1-1' }]), 200);
+  assert.equal(waits.length, 1);
+});
+
+test('the ingest: a notice that fails only logs, and the message is taken', async (sub) => {
+  for (const [name, fetch] of [
+    ['throws', async () => { throw new Error('quota'); }],
+    ['answers 500', async () => new Response('x', { status: 500 })]
+  ]) {
+    await sub.test(name, async () => {
+      const waits = [];
+      const w = setup({ env: { ...SUPA_ENV, LIVE: fakeLive(fetch).ns }, ctx: { waitUntil: (p) => waits.push(p) } });
+      const { r, lines } = await quiet(async () => { const s = await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]); await Promise.all(waits); return s; });
+      assert.equal(r, 200);
+      assert.equal(w.sql.prepare("SELECT score FROM latest WHERE id = '1-1'").get().score, 6000);
+      assert.equal(lines.filter((l) => l.push === 'failed').length, 1);
+    });
+  }
+});
+
+test('/api/latest?v=: only the current version, and any other is a short 404 before the copy is read', async () => {
+  const w = setup({ env: SUPA_ENV });
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }, { id: '2-1', start: EU_WEEK }]), 200);
+  const at = Math.floor(w.now / 1000);
+  const copyReads = { n: 0 };
+  const real = w.env.DB;
+  w.env.DB = { prepare: (q) => { if (q.includes(' gz FROM latest')) copyReads.n++; return real.prepare(q); } };
+  for (const v of [String(at - 1), String(at + 1), '0', '0' + at, 'abc', at + '&x=1', at + '.0', '-' + at, '']) {
+    const r = await w.get('/api/latest?v=' + v);
+    assert.equal(r.status, 404, v);
+    assert.equal(r.headers.get('cache-control'), 'public, max-age=5', v);
+  }
+  assert.equal(copyReads.n, 0, 'the copy is never read for a version that is not current');
+  assert.equal((await w.get('/api/latest?v=' + at, 'POST')).status, 405);
+  const r = await w.get('/api/latest?v=' + at);
+  assert.equal(r.status, 200);
+  assert.equal(r.body, (await w.get('/api/latest')).body);
+  assert.equal(r.headers.get('cache-control'), 'no-store', 'young: another ingest of its second may still land');
+  w.advance(9e3);
+  assert.equal((await w.get('/api/latest?v=' + at)).headers.get('cache-control'), 'no-store');
+  w.advance(1e3);
+  assert.equal((await w.get('/api/latest?v=' + at)).headers.get('cache-control'), 'public, max-age=60');
+  // Any other query is the plain read, as before.
+  assert.equal((await w.get('/api/latest?x=' + at)).headers.get('cache-control'), 'public, max-age=5');
+  // A newer ingest makes the old version a miss.
+  w.advance(30e3);
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', scores: [1000, 2000, 3100] }]), 200);
+  const next = Math.floor(w.now / 1000);
+  assert.equal((await w.get('/api/latest?v=' + at)).status, 404);
+  assert.equal((await w.get('/api/latest?v=' + next)).status, 200);
+  // Stale: 503, as the plain read.
+  w.advance(11 * 60e3);
+  assert.equal((await w.get('/api/latest?v=' + next)).status, 503);
+});
+
+test('/api/latest?v=: kept under its version\'s key, and a hit reads no copy', async () => {
+  const w = setup({ env: SUPA_ENV });
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
+  const at = Math.floor(w.now / 1000);
+  await withCache(async (caches) => {
+    assert.equal((await w.get('/api/latest?v=' + at)).status, 200);
+    assert.equal(caches.store.size, 1, 'only the summary: a young version is kept nowhere');
+    w.advance(10e3);
+    const first = await w.get('/api/latest?v=' + at);
+    assert.equal(first.status, 200);
+    assert.ok(caches.store.has('https://wvwrelink.com/api/latest?v=' + at));
+    const n = countQueries(w);
+    const hit = await w.get('/api/latest?v=' + at);
+    assert.equal(hit.body, first.body);
+    assert.equal(n.q, 0, 'summary and copy both from the cache');
+    // A wrong version is never stored: its key would be anyone's to fill.
+    await w.get('/api/latest?v=' + (at + 1));
+    assert.ok(![...caches.store.keys()].some((k) => k.endsWith('?v=' + (at + 1))));
+  });
+});
+
+test('/api/latest?v=: two readers applying in the same second give one version, and the copy has both', async () => {
+  const w = setup({ env: SUPA_ENV });
+  const at = Math.floor(w.now / 1000);
+  await withCache(async () => {
+    assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
+    const first = JSON.parse((await w.get('/api/latest?v=' + at)).body);
+    assert.deepEqual(first.matches.map((m) => m.id), ['1-1']);
+    assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '2-1', start: EU_WEEK }]), 200);
+    const second = await w.get('/api/latest?v=' + at);
+    assert.deepEqual(JSON.parse(second.body).matches.map((m) => m.id), ['1-1', '2-1'], 'the second reader\'s match is in');
+  });
 });

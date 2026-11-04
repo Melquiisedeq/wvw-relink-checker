@@ -11,7 +11,10 @@
 //   GET  /api/relink           relink!A1 as numbers, for the teams notice
 //   GET  /api/latest            each match's newest body, as the readers pushed it
 //   GET  /api/latest/summary     the same without the bodies: id, start, score, at, by, hist
+//   GET  /api/latest?v=<at>     the same, for the version a push named; 404 for any other
 //   GET  /api/history/<1|2>?v=<n>  a region's finished skirmishes, n of them, this week
+//   GET  /api/ws               a WebSocket that carries nothing in: each newer copy the ingest
+//                              stores, as {matches: [{id, start, score, at}]} (the Live object)
 //   daily, on a schedule       kills older than KEEP_DAYS are deleted
 //
 // A message is signed by its script with a secret of its own:
@@ -58,6 +61,12 @@ const SUMMARY_KEY = 'https://wvwrelink.com/api/latest/summary';
 // The max-age of each read, both in its answer and on a copy served from the cache.
 const LATEST_MAX_AGE = 5;
 const SUMMARY_MAX_AGE = 5;
+// A version is the second of its ingest, and the other reader can apply in the same second:
+// its copy is final only once no ingest of that second can still be writing. Younger, it is
+// read from D1 each time and kept nowhere. Once final it never changes, and once it is not
+// current the summary turns its v away, SUMMARY_MAX_AGE later at most.
+const LATEST_SETTLE_S = 10;
+const LATEST_VERSION_MAX_AGE = 60;
 const HISTORY_KEY = 'https://wvwrelink.com/api/history/';
 // A version whose every match is in: it never changes. One with a match missing or behind: a minute.
 const HISTORY_MAX_AGE = 4 * 3600;
@@ -89,10 +98,20 @@ for (const r of [1, 2]) for (let t = 1; t <= 9; t++) MATCHES.push(r + '-' + t);
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (url.pathname === '/api/ws') return openSocket(request, env);
     const m = /^\/api\/ingest\/([a-z]+(?:-[a-z]+)*)$/.exec(url.pathname);
     if (m) {
       if (request.method !== 'POST') return text(405, 'method');
-      return accept(request, env, m[1], url.pathname);
+      return accept(request, env, ctx, m[1], url.pathname);
+    }
+    if (url.pathname === '/api/latest' && url.search.startsWith('?v=')) {
+      if (request.method !== 'GET') return text(405, 'method');
+      try {
+        return await readLatestVersion(env, ctx, url);
+      } catch (e) {
+        console.log(JSON.stringify({ read: 'latest version', failed: String(e) }));
+        return text(503, 'unavailable');
+      }
     }
     if (url.pathname.startsWith('/api/history/')) {
       if (request.method !== 'GET') return text(405, 'method');
@@ -130,7 +149,7 @@ export default {
   }
 };
 
-async function accept(request, env, source, path) {
+async function accept(request, env, ctx, source, path) {
   const secret = Object.hasOwn(SOURCES, source) && env[SOURCES[source]];
   if (!secret) return refuse(404, source, 'unknown source or no secret');
   if (secret.length < MIN_SECRET) return refuse(404, source, 'secret too short');
@@ -158,7 +177,7 @@ async function accept(request, env, source, path) {
     return refuse(401, source, 'bad signature');
   }
 
-  if (source.startsWith('latest-')) return acceptLatest(env, source, body, Number(t), now);
+  if (source.startsWith('latest-')) return acceptLatest(env, ctx, source, body, Number(t), now);
 
   // Signed from here on, so a failure below is our bug or Google's; it is still never written.
   let data;
@@ -202,7 +221,7 @@ async function claimTime(db, source, t, now) {
 // Format 2 (v 2): per match the live part (the body with only its running skirmish) when the
 // entry has `live`, then its finished skirmishes when it has `hist`; both plain JSON. Each part
 // is checked alone, and one that fails is left out with the reason logged, the others kept.
-async function acceptLatest(env, source, body, t, now) {
+async function acceptLatest(env, ctx, source, body, t, now) {
   const nl = body.indexOf(10);
   if (nl < 0) return refuse(400, source, 'no summary line');
   let summary;
@@ -296,6 +315,13 @@ async function acceptLatest(env, source, body, t, now) {
     } catch (e) {
       console.log(JSON.stringify({ source, recent: 'failed', why: String(e) }));
     }
+  }
+  // Last, after every write, and outside the answer: the tabs fetch what this names, so it
+  // must already be in D1, and the reader's message is taken whether the push works or not.
+  if (applied.length) {
+    const told = tellLive(env, applied.map((m) => ({ id: m.id, start: m.start, score: m.score, at: now })));
+    if (ctx && ctx.waitUntil) ctx.waitUntil(told);
+    else await told;
   }
   return new Response(JSON.stringify({ applied: applied.map((m) => m.id) }) + '\n', {
     headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }
@@ -827,17 +853,8 @@ const READS = {
   // Each entry in the format it came in: format 1 {id, start, score, at, by, gz}, the gzip
   // as base64; format 2 {id, start, score, at, by, v: 2, body}, the live part as JSON.
   '/api/latest': (env, ctx) => cached(ctx, LATEST_KEY, async () => {
-    const { results } = await env.DB.prepare('SELECT id, start, score, at, reader, gz FROM latest').all();
-    // Two hours without an update: a tier that no longer exists.
-    const live = results.filter((r) => nowS() - r.at <= LATEST_KEEP_S);
-    const newest = Math.max(0, ...live.map((r) => r.at));
-    if (!live.length || nowS() - newest > STALE_LATEST_S) return text(503, 'stale');
-    // Format 2's text was parsed whole by the entrance, so it goes in as it is.
-    const entry = (r) => {
-      const head = JSON.stringify({ id: r.id, start: r.start, score: r.score, at: r.at, by: r.reader }).slice(0, -1);
-      return r.gz.startsWith('{') ? head + ',"v":2,"body":' + r.gz + '}' : head + ',"gz":' + JSON.stringify(r.gz) + '}';
-    };
-    return json('{"at":' + newest + ',"matches":[' + live.map(entry).join(',') + ']}', LATEST_MAX_AGE);
+    const copy = await latestCopy(env);
+    return copy ? json(copy.body, LATEST_MAX_AGE) : text(503, 'stale');
   }),
 
   // Always 200, {} when empty: the readers need it to begin. `hist`: the finished
@@ -860,6 +877,43 @@ const READS = {
     return json(JSON.stringify(out), SUMMARY_MAX_AGE);
   })
 };
+
+// The copy /api/latest serves, and its newest `at`; null when it is stale.
+async function latestCopy(env) {
+  const { results } = await env.DB.prepare('SELECT id, start, score, at, reader, gz FROM latest').all();
+  // Two hours without an update: a tier that no longer exists.
+  const live = results.filter((r) => nowS() - r.at <= LATEST_KEEP_S);
+  const newest = Math.max(0, ...live.map((r) => r.at));
+  if (!live.length || nowS() - newest > STALE_LATEST_S) return null;
+  // Format 2's text was parsed whole by the entrance, so it goes in as it is.
+  const entry = (r) => {
+    const head = JSON.stringify({ id: r.id, start: r.start, score: r.score, at: r.at, by: r.reader }).slice(0, -1);
+    return r.gz.startsWith('{') ? head + ',"v":2,"body":' + r.gz + '}' : head + ',"gz":' + JSON.stringify(r.gz) + '}';
+  };
+  return { newest, body: '{"at":' + newest + ',"matches":[' + live.map(entry).join(',') + ']}' };
+}
+
+// GET /api/latest?v=<at>: the copy whose newest `at` is v, kept under that version's key. The
+// current version is read from the summary through its own cached read, so a v that is not it
+// is a miss before the copy's query: the cached summary runs up to SUMMARY_MAX_AGE behind an
+// ingest, and the miss's max-age is that long, so the page that asked too soon asks again.
+async function readLatestVersion(env, ctx, url) {
+  const v = /^\?v=([1-9]\d{9})$/.exec(url.search);
+  if (!v) return miss(SUMMARY_MAX_AGE);
+  const summary = await READS['/api/latest/summary'](env, ctx);
+  const current = Math.max(0, ...Object.values(await summary.json()).map((e) => e.at));
+  const want = Number(v[1]);
+  if (want !== current) return miss(SUMMARY_MAX_AGE);
+  const make = async (maxAge) => {
+    const copy = await latestCopy(env);
+    if (!copy) return text(503, 'stale');
+    // A newer ingest since the summary was cached: this key is no longer anyone's version.
+    if (copy.newest !== want) return miss(SUMMARY_MAX_AGE);
+    return json(copy.body, maxAge);
+  };
+  if (nowS() - want < LATEST_SETTLE_S) return make(null);
+  return cached(ctx, LATEST_KEY + '?v=' + want, () => make(LATEST_VERSION_MAX_AGE));
+}
 
 // GET /api/history/<region>?v=<n>: the region's finished skirmishes of this week. n is how
 // many have finished by the clock, or one fewer (a reader sends them a little after the
@@ -901,10 +955,10 @@ function weekStart(region, nowMs) {
   return s > nowMs ? s - 7 * 86400e3 : s;
 }
 
-function miss() {
+function miss(maxAge = HISTORY_MISS_MAX_AGE) {
   return new Response('not found\n', {
     status: 404,
-    headers: { 'content-type': 'text/plain', 'cache-control': 'public, max-age=' + HISTORY_MISS_MAX_AGE, 'x-content-type-options': 'nosniff' }
+    headers: { 'content-type': 'text/plain', 'cache-control': 'public, max-age=' + maxAge, 'x-content-type-options': 'nosniff' }
   });
 }
 
@@ -938,11 +992,12 @@ function nowS() {
   return Math.floor(Date.now() / 1000);
 }
 
+// maxAge null: no-store, kept by no cache.
 function json(body, maxAge) {
   return new Response(body, {
     headers: {
       'content-type': 'application/json',
-      'cache-control': 'public, max-age=' + maxAge,
+      'cache-control': maxAge === null ? 'no-store' : 'public, max-age=' + maxAge,
       'x-content-type-options': 'nosniff'
     }
   });
@@ -968,4 +1023,98 @@ function text(status, body) {
   return new Response(body + '\n', {
     status, headers: { 'content-type': 'text/plain', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }
   });
+}
+
+// The push. Anyone can open /api/ws, so in this order: only a WebSocket upgrade reaches the
+// object (426 before it is touched), only from the site's own pages (a browser cannot forge
+// Origin; a script can, and gets no more than a tab), and the object refuses past MAX_SOCKETS.
+// The object takes nothing in: a message closes its socket, and the request it is handed is
+// built here, so no header of the visitor's reaches it.
+const SITE_ORIGIN = 'https://wvwrelink.com';
+// Bounds the object's memory and the time of one broadcast, not the quota: a refused socket
+// was already a request. Cloudflare's own limit is 32,768 per object.
+const MAX_SOCKETS = 1000;
+const LIVE_NAME = 'live';
+
+async function openSocket(request, env) {
+  if (request.method !== 'GET' || (request.headers.get('upgrade') || '').toLowerCase() !== 'websocket') {
+    return new Response('websocket only\n', {
+      status: 426,
+      headers: { upgrade: 'websocket', 'content-type': 'text/plain', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }
+    });
+  }
+  if (request.headers.get('origin') !== SITE_ORIGIN) return text(403, 'refused');
+  if (!env.LIVE) return text(503, 'unavailable');
+  return env.LIVE.get(env.LIVE.idFromName(LIVE_NAME)).fetch('https://live/ws', { headers: { upgrade: 'websocket' } });
+}
+
+// The ingest's notice to the object; its failure only logs, the message is already in D1.
+async function tellLive(env, matches) {
+  if (!env.LIVE) return;
+  try {
+    const res = await env.LIVE.get(env.LIVE.idFromName(LIVE_NAME)).fetch('https://live/notify', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ matches })
+    });
+    if (!res.ok) console.log(JSON.stringify({ push: 'failed', status: res.status }));
+  } catch (e) {
+    console.log(JSON.stringify({ push: 'failed', why: String(e) }));
+  }
+}
+
+// One object, idFromName(LIVE_NAME), holds every tab's socket through the hibernation API:
+// acceptWebSocket, never ws.accept(), or it pays duration while the sockets sit open. Its
+// fields are lost when it hibernates; what a new socket is sent lives in its storage.
+export class Live {
+  constructor(state) {
+    this.state = state;
+    // Answered by the runtime without waking the object; it never reaches webSocketMessage.
+    state.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+  }
+
+  async fetch(request) {
+    if (request.headers.get('upgrade') === 'websocket') return this.open();
+    if (request.method === 'POST') return this.notify(await request.json());
+    return text(404, 'not found');
+  }
+
+  async open() {
+    const [client, server] = Object.values(new WebSocketPair());
+    // getWebSockets counts the closing ones too, so the ceiling errs on the side of refusing.
+    if (this.state.getWebSockets().length >= MAX_SOCKETS) {
+      server.accept();
+      server.close(1013, 'try again later');
+    } else {
+      this.state.acceptWebSocket(server);
+      const known = Object.values(await this.state.storage.get('matches') || {}).filter((m) => nowS() - m.at <= LATEST_KEEP_S);
+      if (known.length) server.send(JSON.stringify({ matches: known }));
+    }
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  // Only numbers and the fixed match ids go out, whoever reads them.
+  async notify(body) {
+    const nowSec = nowS();
+    const fresh = (Array.isArray(body && body.matches) ? body.matches : []).filter((m) =>
+      MATCHES.includes(m.id) && isInt(m.start) && isInt(m.score) && isInt(m.at))
+      .map((m) => ({ id: m.id, start: m.start, score: m.score, at: m.at }));
+    if (!fresh.length) return text(400, 'refused');
+    const known = await this.state.storage.get('matches') || {};
+    for (const m of fresh) known[m.id] = m;
+    for (const id of Object.keys(known)) if (nowSec - known[id].at > LATEST_KEEP_S) delete known[id];
+    await this.state.storage.put('matches', known);
+    const msg = JSON.stringify({ matches: fresh });
+    for (const ws of this.state.getWebSockets()) {
+      try {
+        ws.send(msg);
+      } catch {
+        // A socket that closed as this ran throws; the rest are still sent to.
+      }
+    }
+    return text(200, 'ok');
+  }
+
+  // The page sends nothing: anything that arrives is a misuse, and costs the quota.
+  webSocketMessage(ws) {
+    ws.close(1008, 'policy violation');
+  }
 }

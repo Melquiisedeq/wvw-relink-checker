@@ -15,6 +15,10 @@
   "d1_databases": [
     { "binding": "DB", "database_name": "wvwrelink", "database_id": "8d7859f0-f132-4c4d-8883-bab659827110" }
   ],
+  // The push's one object (Live in index.mjs). The Free plan takes only SQLite-backed classes,
+  // and a migration applies only through `wrangler deploy`; a rollback cannot cross it.
+  "durable_objects": { "bindings": [{ "name": "LIVE", "class_name": "Live" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Live"] }],
   // The daily cleanup of old kills. Any hour does: it deletes one day of rows.
   "triggers": { "crons": ["17 9 * * *"] },
   // Each refused message says why, here and nowhere public.
