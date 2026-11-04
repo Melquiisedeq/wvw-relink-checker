@@ -1111,7 +1111,6 @@ async function pushRead(at, version) {
 }
 
 // From the peek (js/standings.js): `newest` (ms) is the summary's newest `at`.
-// The socket stopped telling when it is PUSH_LATE_MS past the newest version known.
 function pushMissed(newest) {
   if (!pushLive() || newest - Math.max(pushHeard, latestHeldAt) * 1000 <= PUSH_LATE_MS) return;
   pushOk = false;

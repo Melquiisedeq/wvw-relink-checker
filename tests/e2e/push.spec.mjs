@@ -216,8 +216,10 @@ test('a message that is not the Worker\'s asks nothing and changes nothing', asy
   const told = await wvw.told();
   const m = told.matches.find(x => x.id === FOCUS);
   const drawn = await scoreOf(page, FOCUS);
-  // 80 s past the clock: over the Worker's 60 s ahead and the page's 70 s.
-  const past = Math.floor(await wvw.now() / 1000) + 80;
+  // The clock held, so the page's server time is what it was when `past` was named:
+  // the first whole second over the page's 70 s past it.
+  await page.clock.pauseAt(await wvw.now() + 1000);
+  const past = await page.evaluate(() => Math.floor((Date.now() - ownClockLead) / 1000) + 71);
   for (const bad of [
     'not json', '[]', '{"matches":{}}', JSON.stringify({ matches: [{ ...m, id: '9-9' }] }),
     JSON.stringify({ matches: [{ ...m, at: String(m.at) }] }), JSON.stringify({ matches: [{ ...m, at: m.at + 0.5 }] }),
@@ -261,6 +263,46 @@ test.describe('a game that moves each 30 s', () => {
     push.quiet = false;
     await relive(page, wvw, push);
   });
+
+  test('one write the push missed is 30 s of silence and keeps it live; two give the peek its pace back', async ({ page, wvw }) => {
+    const push = await live(page, wvw);
+    const n = reads(page);
+    const heard = await page.evaluate(() => pushHeard);
+    await connectionDrops(push, { quiet: true });
+    // Past the next write, 10 s on from the one read, and before the one after.
+    // The peek runs here, and its next is due a minute and more later.
+    await play(page, 22 * 1000);
+    await page.evaluate(() => { runPeek(); });
+    await play(page, 3000);
+    expect(await page.evaluate(() => pushLive()), 'live with one write missed').toBe(true);
+    expect(n.versions, 'versions read').toEqual([]);
+    // The peek read the copy that write made: that is the newest version known now.
+    const known = await page.evaluate(() => Math.max(pushHeard, latestHeldAt));
+    expect(known, 'the version the peek\'s copy brought').toBe(heard + 30);
+    // Two writes more, neither pushed: 60 s past it.
+    await play(page, 60 * 1000);
+    await page.evaluate(() => { runPeek(); });
+    await play(page, 3000);
+    expect(await page.evaluate(() => pushLive()), 'live with two writes missed').toBe(false);
+  });
+});
+
+test('a version another read brought before its push is known: the peek leaves the push live', async ({ page, wvw }) => {
+  const push = await live(page, wvw);
+  const n = reads(page);
+  await connectionDrops(push, { quiet: true });
+  // Past the next write (a minute on), and before its push.
+  await play(page, 55 * 1000);
+  const next = Math.max(...(await wvw.told()).matches.map(m => m.at));
+  await page.evaluate(() => startLatest().then(offerLate));
+  expect(await page.evaluate(() => latestHeldAt), 'the version read').toBe(next);
+  push.quiet = false;
+  await push.sync();
+  await play(page, READ_BY);
+  expect(n.versions, 'versions read for a push of one already read').toEqual([]);
+  await page.evaluate(() => { runPeek(); });
+  await play(page, 3000);
+  expect(await page.evaluate(() => pushLive()), 'live after the summary shows that version').toBe(true);
 });
 
 test('a server that says hello and hangs up is tried on a doubling wait, not every second', async ({ page, wvw }) => {
