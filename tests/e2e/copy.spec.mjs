@@ -53,8 +53,8 @@ async function behindWatched(page, wvw, { refused = false, within = 22 * 1000, c
   test.setTimeout(150 * 1000);   // six minutes of the page's clock, each STEP settled
   // From the open map on, the page's clock is paused and moves only here, one
   // move at a time: a STEP, or a late copy's wait. A running clock adds a busy
-  // machine's slow answers to the page's time, and a peek's retry ending 5 s
-  // past due skips the next aligned peek (peekNext, js/standings.js).
+  // machine's slow answers to the page's time, and a peek that begins
+  // over 5 s late skips its next mark (peekNext, js/standings.js).
   let moves = Promise.resolve(), paused = false;
   const move = how => { const run = moves.then(how); moves = run.catch(() => {}); return run; };
   const step = () => move(() => page.clock.fastForward(STEP));

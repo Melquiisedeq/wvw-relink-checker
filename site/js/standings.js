@@ -640,24 +640,25 @@ function summaryAt(sum) {
 }
 
 // Ms until the next peek, from `now`: the last aligned moment within `delay`,
-// or the next when that is under `gap` away. Never zero, so it cannot spin.
-function peekWait(delay, now, gap = peekFloor() - 5000) {
+// or the next when that is under `gap` from `began`, when the read now ending
+// started (a slow read does not push the peek a mark on).
+function peekWait(delay, now, gap = peekFloor() - 5000, began = now) {
   if (!peekAnchor) return delay;
   const base = peekAnchor + PEEK_AFTER_MS;
   let t = base + Math.floor((now + delay - base) / PEEK_EVERY_MS) * PEEK_EVERY_MS;
-  if (t < now + gap) t += PEEK_EVERY_MS;
+  if (t < began + gap) t += PEEK_EVERY_MS;
   return t - now;
 }
 
 // An aligned peek that read no newer `at` is followed by one retry after
-// PEEK_RETRY_MS, never under Save-Data; the retry is not aligned, so no more
-// follow. A show or an input adds a read, never within the floor of the last.
-function peekNext(delay, now) {
-  if (peekStill && peekAligned && peekFloor() === PEEK_MS) { peekAligned = false; peekRetried = true; return PEEK_RETRY_MS; }
+// PEEK_RETRY_MS after that peek began (not under a second away), never under
+// Save-Data; the retry is not aligned, so no more follow. A show or an input adds a read, never within the floor of the last.
+function peekNext(delay, now, began = now) {
+  if (peekStill && peekAligned && peekFloor() === PEEK_MS) { peekAligned = false; peekRetried = true; return Math.max(PEEK_RETRY_MS - (now - began), 1000); }
   const gap = peekRetried ? PEEK_EVERY_MS - PEEK_RETRY_MS - 5000 : undefined;
   peekRetried = false;
   peekAligned = peekAnchor > 0;
-  return peekWait(delay, now, gap);
+  return peekWait(delay, now, gap, began);
 }
 
 // What a summary teaches: the newest `at`, and whether it moved.
@@ -699,13 +700,15 @@ async function peekLatest() {
 async function runPeek() {
   peekTimer = null;
   if (document.visibilityState === 'hidden') return;
+  const t0 = Date.now();
   await peekLatest();
   const floor = peekFloor();
   const using = Date.now() - inputAt < PEEK_ACTIVE_MS || !!activeTrigger;
   peekDelay = using ? floor : Math.min(Math.max(peekDelay * 2, floor), PEEK_IDLE_MAX_MS);
   if (document.visibilityState !== 'hidden') {
     clearTimeout(peekTimer);   // a show or an input during the peek may have armed one
-    peekTimer = setTimeout(runPeek, peekNext(peekDelay, Date.now() - ownClockLead));
+    const now = Date.now() - ownClockLead;
+    peekTimer = setTimeout(runPeek, peekNext(peekDelay, now, now - (Date.now() - t0)));
   }
 }
 
