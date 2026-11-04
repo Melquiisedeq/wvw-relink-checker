@@ -291,6 +291,8 @@ let relinkStateFailedAt = 0;
 // After a failed read, wait before asking again, or the one-minute tick retries
 // for the whole window.
 const RELINK_SHEET_RETRY_MS = 2 * 60 * 1000;
+// A hidden tab asks at most this often, answered or not: every open tab asks for the whole window.
+const RELINK_HIDDEN_ASK_MS = 10 * 60 * 1000;
 
 async function getRelinkState() {
   if (relinkState && Date.now() - relinkStateAt
@@ -410,6 +412,7 @@ function buildTeamsNotice(windowId) {
   close.addEventListener('click', () => {
     try { localStorage.setItem(TEAMS_NOTICE_KEY, String(windowId)); }
     catch { /* no storage: it comes back on the next load, and that is fine */ }
+    unmarkTab();
     teamsNotice.textContent = '';
     teamsNotice.style.display = 'none';
   });
@@ -423,7 +426,55 @@ function buildTeamsNotice(windowId) {
   teamsNotice.style.display = 'block';
 }
 
+// A notice that goes up in a hidden tab marks the tab, until the tab is seen or the notice goes.
+// The icon links are swapped for a new one, not their href changed: Firefox for
+// Android ignores an href changed after load. The title is the signal; the dot is extra.
+// Chromium redraws the tab icon when an icon link is inserted, not when one is removed:
+// the old links go first, then the new one.
+const TAB_NOTICE_TITLE = '\u{1F514} New teams are out!';
+const TAB_FLIP_MS = 2000;
+let tabMark = null; // { title, icons, dot, flip } while marked
+
+function markTab() {
+  if (tabMark) return;
+  const icons = [...document.querySelectorAll('link[rel="icon"]')];
+  const dot = document.createElement('link');
+  dot.rel = 'icon';
+  dot.type = 'image/png';
+  dot.href = 'assets/favicon-dot.png';
+  tabMark = { title: document.title, icons, dot, flip: null };
+  icons.forEach((l) => l.remove());
+  document.head.append(dot);
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.title = TAB_NOTICE_TITLE + ' \u2014 ' + tabMark.title;
+  } else {
+    let showing = true;
+    document.title = TAB_NOTICE_TITLE;
+    tabMark.flip = setInterval(() => {
+      showing = !showing;
+      document.title = showing ? TAB_NOTICE_TITLE : tabMark.title;
+    }, TAB_FLIP_MS);
+  }
+  document.addEventListener('visibilitychange', unmarkTabOnSight);
+}
+
+function unmarkTab() {
+  if (!tabMark) return;
+  const { title, icons, dot, flip } = tabMark;
+  tabMark = null;
+  clearInterval(flip);
+  dot.remove();
+  document.head.append(...icons);
+  document.title = title;
+  document.removeEventListener('visibilitychange', unmarkTabOnSight);
+}
+
+function unmarkTabOnSight() {
+  if (document.visibilityState !== 'hidden') unmarkTab();
+}
+
 function hideTeamsNotice() {
+  unmarkTab();
   if (teamsNotice.dataset.window) delete teamsNotice.dataset.window;
   teamsNotice.textContent = '';
   teamsNotice.style.display = 'none';
@@ -440,9 +491,12 @@ function updateTeamsNotice(rebuilding) {
   // Already up: no fetch or redraw, which would take focus off the strip's button.
   if (teamsNotice.dataset.window === String(windowId)) return;
 
-  // Nothing runs with the tab hidden (see schedulePeriodicRefresh and the map poll).
+  // A hidden tab asks too, spaced out, or a tab left in the background never sees the notice.
   // visibilityState only, not document.hasFocus(), like the map poll.
-  if (document.visibilityState === 'hidden') return;
+  if (document.visibilityState === 'hidden'
+      && Date.now() - Math.max(relinkStateAt, relinkStateFailedAt) < RELINK_HIDDEN_ASK_MS) {
+    return;
+  }
 
   getRelinkState().then((state) => {
     // Decided again on arrival: the window may close or the strip be dismissed meanwhile.
@@ -458,6 +512,7 @@ function updateTeamsNotice(rebuilding) {
     if (teamsNotice.dataset.window === String(windowId)) return;
     teamsNoticeUpAt = Date.now();
     buildTeamsNotice(windowId);
+    if (document.visibilityState === 'hidden') markTab();
   });
 }
 
