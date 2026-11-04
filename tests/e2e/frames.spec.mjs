@@ -133,21 +133,21 @@ for (const [cut, stop] of Object.entries(cuts)) {
   });
 }
 
-// Hiding the tab hands the run-once effects back to CSS; one cancelled since the last frame stays cancelled.
 test('a run-once effect cancelled on the clock just before the tab hides is not played again', async ({ page, wvw }) => {
   await load(page, wvw);
   await page.locator('.tier-map-btn').first().click();
-  await expect.poll(async () => (await runOnce(page)).onClock, { message: 'run-once effects on the clock' }).toBeGreaterThan(0);
-  const cancelled = await page.evaluate(() => {
+  // Found, cancelled and hidden in one script: no clock frame can finish the effect in between.
+  await expect.poll(() => page.evaluate(() => {
+    if (window.__cancelled) return window.__cancelled.playStateOnHide;
     const a = document.getAnimations().find(x => x.effect.getComputedTiming().iterations !== Infinity
       && x.playState === 'paused' && x.currentTime < x.effect.getComputedTiming().endTime);
+    if (!a) return 'none on the clock';
     window.__cancelled = a;
     a.cancel();
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
     document.dispatchEvent(new Event('visibilitychange'));
-    return a.playState;
-  });
-  expect(cancelled, 'the cancelled effect once the tab is hidden').toBe('idle');
+    return (a.playStateOnHide = a.playState);
+  }), { message: 'the cancelled effect once the tab is hidden' }).toBe('idle');
   await page.evaluate(() => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
     document.dispatchEvent(new Event('visibilitychange'));
