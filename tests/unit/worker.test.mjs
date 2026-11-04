@@ -1782,7 +1782,7 @@ test('/api/latest?v=: D1 failing is a 503, logged, never a thrown request', asyn
   assert.ok(logged.some((l) => l.includes('latest version') && l.includes('d1 down')));
 });
 
-test('the latest ingest: rows written are known with or without RETURNING\'s results', async () => {
+test('the latest ingest: rows written are known with or without RETURNING\'s results, and a message that applies nothing tells nobody', async () => {
   const live = fakeLive();
   const w = setup({ env: { ...SUPA_ENV, LIVE: live.ns } });
   const real = w.env.DB;
@@ -1791,12 +1791,26 @@ test('the latest ingest: rows written are known with or without RETURNING\'s res
     if (!q.includes('RETURNING')) return st;
     return { bind: (...a) => { const b = st.bind(...a); return { all: async () => ({ ...(await b.all()), results: [] }) }; } };
   } };
-  const out = await w.post('latest-supa-us', v2Body([{ id: '1-1' }, { id: '1-2' }]), { key: SUPA['latest-supa-us'] });
-  assert.equal(out, 200);
+  const post = (source, entries) => quiet(() => w.post(source, v2Body(entries), { key: SUPA[source] }));
+  assert.equal((await post('latest-supa-us', [{ id: '1-1' }, { id: '1-2' }])).r, 200);
   const at = Math.floor(w.now / 1000);
   assert.deepEqual(w.sql.prepare('SELECT id, at FROM latest ORDER BY id').all().map((r) => [r.id, r.at]), [['1-1', at], ['1-2', at]]);
   assert.equal((await w.get('/api/latest?v=' + at)).status, 200);
   assert.deepEqual((await live.requests[0].json()).matches.map((m) => [m.id, m.at]), [['1-1', at], ['1-2', at]], 'both told, at the version');
+  // The other reader in the same second, then again with nothing new 200 ms on: its row
+  // before, ahead of the clock, is not taken for this message's.
+  assert.equal((await post('latest-supa-eu', [{ id: '2-1', start: EU_WEEK }])).r, 200);
+  assert.equal(live.requests.length, 2);
+  w.advance(200);
+  const again = await post('latest-supa-eu', [{ id: '2-1', start: EU_WEEK }]);
+  assert.equal(again.r, 200);
+  assert.equal(again.lines.find((l) => l.ok).applied, 0, 'nothing applied');
+  assert.equal(live.requests.length, 2, 'nobody told');
+  assert.equal(w.sql.prepare('SELECT count(*) n FROM kills').get().n, 3, 'no kills line for it');
+  // And again with a new match: only that one is this message's, at its own version.
+  w.advance(200);
+  assert.equal((await post('latest-supa-eu', [{ id: '2-1', start: EU_WEEK }, { id: '2-2', start: EU_WEEK }])).r, 200);
+  assert.deepEqual((await live.requests[2].json()).matches, [{ id: '2-2', start: EU_WEEK, score: 6000, at: at + 2 }]);
 });
 
 test('/api/latest?v=: kept under its version\'s key from the first read, and a hit reads no copy', async () => {
@@ -1814,10 +1828,10 @@ test('/api/latest?v=: kept under its version\'s key from the first read, and a h
     // A wrong version is never stored: its key would be anyone's to fill.
     await w.get('/api/latest?v=' + (at + 1));
     assert.ok(![...caches.store.keys()].some((k) => k.endsWith('?v=' + (at + 1))));
-    // A newer ingest leaves the version's copy as it was.
+    // A newer ingest leaves the version's copy as it was in the cache.
     w.advance(30e3);
     assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', scores: [1000, 2000, 3100] }]), 200);
-    assert.equal((await w.get('/api/latest?v=' + at)).body, first.body);
+    assert.equal(await caches.store.get('https://wvwrelink.com/api/latest?v=' + at).clone().text(), first.body);
   });
 });
 
@@ -1834,13 +1848,13 @@ test('/api/latest?v=: a version past the cached summary reads the summary again,
     assert.equal(r.status, 200, 'the newer version, behind a cached summary');
     assert.deepEqual(JSON.parse(r.body).matches.map((m) => m.id), ['1-1', '2-1']);
     // A v nobody wrote: one summary read, then none for SUMMARY_RECHECK_MS (100 ms); none
-    // for one the summary was kept after the end of; past LATEST_AHEAD_S (5 s), none at all.
+    // for one the summary was kept after the end of; past LATEST_AHEAD_S (60 s), none at all.
     const n = countQueries(w);
     await w.get('/api/latest?v=' + (next + 5));
     assert.equal(n.q, 0, 'the summary was read again just now');
     w.advance(100);
     for (let i = 0; i < 5; i++) assert.equal((await w.get('/api/latest?v=' + (next + 5))).status, 404);
-    assert.equal(n.q, 1, 'one summary read for five asks at once');
+    assert.equal(n.q, 1, 'one summary read for five asks one after another');
     w.advance(100);
     await w.get('/api/latest?v=' + (next + 5));
     assert.equal(n.q, 2, 'and one more 100 ms on');
@@ -1850,8 +1864,8 @@ test('/api/latest?v=: a version past the cached summary reads the summary again,
     w.advance(200);
     await w.get('/api/latest?v=' + (next + 1));
     assert.equal(n.q, 3, 'one it was kept after the end of');
-    await w.get('/api/latest?v=' + (Math.floor(w.now / 1000) + 6));
-    assert.equal(n.q, 3, 'a v over 5 s ahead reads nothing');
+    await w.get('/api/latest?v=' + (Math.floor(w.now / 1000) + 61));
+    assert.equal(n.q, 3, 'a v over 60 s ahead reads nothing');
   });
 });
 
@@ -1876,4 +1890,15 @@ test('/api/latest?v=: two readers applying in the same second get two versions, 
   // A message that applies nothing takes no version.
   assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '2-1', start: EU_WEEK }]), 200);
   assert.equal(Math.max(...w.sql.prepare('SELECT at FROM latest').all().map((r) => r.at)), at + 1);
+});
+
+test('the latest ingest: a message whose `at` would run over LATEST_AHEAD_S past the clock is not written', async () => {
+  const w = setup({ env: SUPA_ENV });
+  const at = Math.floor(w.now / 1000);
+  w.sql.prepare("INSERT INTO latest (id, start, score, at, reader, gz, sha, raw) VALUES ('2-9', ?, 1, ?, 'x', '{}', 'x', 2)").run(EU_WEEK, at + 60);
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
+  assert.equal(w.sql.prepare("SELECT count(*) n FROM latest WHERE id = '1-1'").get().n, 0, 'at + 61 is past the ceiling');
+  w.advance(1e3);
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
+  assert.equal(w.sql.prepare("SELECT at FROM latest WHERE id = '1-1'").get().at, at + 61, 'at the ceiling it is');
 });

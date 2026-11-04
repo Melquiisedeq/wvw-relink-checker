@@ -65,11 +65,13 @@ const SUMMARY_MAX_AGE = 5;
 // its copy never changes once written and is kept from the first read.
 const LATEST_VERSION_MAX_AGE = 60;
 // A v past the cached summary has the summary read again when the summary was kept before
-// that second ended, at most once per SUMMARY_RECHECK_MS per data centre, and only up to
-// LATEST_AHEAD_S past the clock (how far latestUpsertSql can run ahead of it): a v nobody
-// wrote costs no more than that.
+// that second ended and is SUMMARY_RECHECK_MS old (asks that miss the cache together each
+// read it), and only up to LATEST_AHEAD_S past the clock.
 const SUMMARY_RECHECK_MS = 100;
-const LATEST_AHEAD_S = 5;
+// How far past the clock an ingest's `at` may run (latestUpsertSql); past it the message is
+// not written. The score-rise rule compares `at` with the clock, and far ahead it would hold
+// the match still.
+const LATEST_AHEAD_S = 60;
 const HISTORY_KEY = 'https://wvwrelink.com/api/history/';
 // A version whose every match is in: it never changes. One with a match missing or behind: a minute.
 const HISTORY_MAX_AGE = 4 * 3600;
@@ -215,13 +217,13 @@ async function accept(request, env, ctx, source, path) {
 // The message's matches as [id, start, score, gz, sha, raw] in ?1, the clock in ?2, the reader in
 // ?3. Every row it writes gets one `at`: the clock, or one past the newest stored when that is
 // not under it, so each ingest that applies anything is a version of its own, even two in one
-// second. SQLite runs a SELECT that reads the table it inserts into to the end before writing,
+// second; none, past LATEST_AHEAD_S. SQLite runs a SELECT that reads the table it inserts into to the end before writing,
 // so the newest is the one from before this message. RETURNING: the rows that went in.
 const latestUpsertSql =
   'INSERT INTO latest (id, start, score, at, reader, gz, sha, raw) ' +
   "SELECT json_extract(j.value, '$[0]'), json_extract(j.value, '$[1]'), json_extract(j.value, '$[2]'), v.at, ?3, " +
   "json_extract(j.value, '$[3]'), json_extract(j.value, '$[4]'), json_extract(j.value, '$[5]') " +
-  'FROM json_each(?1) j, (SELECT MAX(?2, COALESCE(MAX(at), 0) + 1) AS at FROM latest) v WHERE true ' +
+  'FROM json_each(?1) j, (SELECT MAX(?2, COALESCE(MAX(at), 0) + 1) AS at FROM latest) v WHERE v.at <= ?2 + ' + LATEST_AHEAD_S + ' ' +
   'ON CONFLICT (id) DO UPDATE SET start = excluded.start, score = excluded.score, at = excluded.at, ' +
   'reader = excluded.reader, gz = excluded.gz, sha = excluded.sha, raw = excluded.raw ' +
   'WHERE excluded.start > latest.start OR (excluded.start = latest.start AND excluded.score > latest.score ' +
@@ -289,11 +291,14 @@ async function acceptLatest(env, ctx, source, body, t, now) {
   const lost = [];
   let version = now;
   if (rows.length) {
-    let { results } = await env.DB.prepare(latestUpsertSql).bind(JSON.stringify(rows), now, source).all();
-    // D1's page on statements says a write's results are empty: if RETURNING gave none, the
-    // rows are read back (this reader's, at this clock or past it: only this message's).
-    if (!results.length) {
-      ({ results } = await env.DB.prepare('SELECT id, at FROM latest WHERE reader = ?1 AND at >= ?2').bind(source, now).all());
+    let { results, meta } = await env.DB.prepare(latestUpsertSql).bind(JSON.stringify(rows), now, source).all();
+    // https://developers.cloudflare.com/d1/worker-api/prepared-statements/ says a write's
+    // `results` are empty: if RETURNING gave none and rows changed, this message's are the
+    // reader's newest (its messages are one at a time, claimTime).
+    if (!results.length && meta && meta.changes > 0) {
+      ({ results } = await env.DB.prepare(
+        'SELECT id, at FROM latest WHERE reader = ?1 AND at = (SELECT MAX(at) FROM latest WHERE reader = ?1)'
+      ).bind(source).all());
     }
     const won = new Set(results.map((r) => r.id));
     for (const m of ms) if (m.stored) (won.has(m.id) ? applied : lost).push(m);
