@@ -280,7 +280,7 @@ export async function handle(req, env) {
   if (secret.length < MIN_SECRET) return generic(500);
 
   try {
-    const api = await fetch(API_URL, { signal: AbortSignal.timeout(8000) });
+    const api = await fetch(API_URL, { signal: AbortSignal.timeout(7000) });
     if (!api.ok) return generic(502);
     const text = await readCapped(api, MAX_API_BYTES);
     if (text === null) return generic(502);
@@ -288,7 +288,7 @@ export async function handle(req, env) {
     const read = checkRead(JSON.parse(text), now);
     if (typeof read === 'string') return generic(502);
 
-    const res = await fetch(SUMMARY_URL, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(SUMMARY_URL, { signal: AbortSignal.timeout(4000) });
     if (!res.ok) return generic(502);
     const summary = checkSummaryBody(JSON.parse(await readCapped(res, 64 * 1024) ?? 'null'));
     if (!summary) return generic(502);
@@ -300,7 +300,7 @@ export async function handle(req, env) {
     }
     // One deadline for every push, so the scheduler's timeout still covers the run; each
     // message is signed a second after the one before, as the Worker's replay guard asks.
-    const deadline = AbortSignal.timeout(8000);
+    const deadline = AbortSignal.timeout(7000);
     const t0 = Math.floor(Date.now() / 1000);
     const path = new URL(INGEST_URL + source).pathname;
     let status = 0;

@@ -267,7 +267,7 @@ test.describe('/api/latest hung', () => {
 });
 
 // The peek (a read of /api/latest/summary while the tab is shown: every 30 s
-// until one has been read, then aligned to the minute the readers write)
+// until one has been read, then aligned to the marks the readers write)
 // does not arm its next turn for a tab that went to the background while the
 // read was out; the tab coming back arms it. The read is held here until the
 // tab is hidden, so the state is reached every time, not when a timer happens

@@ -1,5 +1,5 @@
 // An open map and our copy (/api/latest): the copy is read when the summary
-// (/api/latest/summary, which the peek reads every 30 s) shows the
+// (/api/latest/summary, which the peek reads every 40 s) shows the
 // map's match further along than the page holds, and then at once. With the
 // visitor's whole group behind (copyBehindAll), each new body of the copy
 // reaches the map within 22 s of being written (the peek at `at` + 11 s,
@@ -97,11 +97,14 @@ async function behindWatched(page, wvw, { refused = false, within = 22 * 1000, c
   // `at`), but fires at the end of the jump that passes its due time, and is
   // timed by the sample after it: two reads a minute apart are seen a STEP
   // closer for each, and a refused read (a sleep per jump) moves either by a
-  // STEP more, so 51 s apart is a minute's read, whatever the game answers;
-  // a second read per mark would be 30 s.
+  // STEP more. The peek's marks are 20 s apart and its floor puts it two marks
+  // on (40 s), so a read lands 11 s past a minute mark, or 1 s past it when the
+  // peek at 51 s saw no newer `at` and its retry came 10 s later: 50 or 70 s
+  // apart, 41 s once the sample slack is taken off, whatever the game answers;
+  // a second read per mark would be under 40 s.
   const when = samples.filter((s, i) => s.copies > (i ? samples[i - 1].copies : 0)).map(s => s.t - t0);
-  const close = when.filter((t, i) => i && t - when[i - 1] < MIN - 3 * STEP);
-  expect(close, `reads of /api/latest under 51 s apart (all at ${when.map(t => Math.round(t / 1000)).join(' ')} s into the watch)`).toEqual([]);
+  const close = when.filter((t, i) => i && t - when[i - 1] < MIN - 10 * 1000 - 3 * STEP);
+  expect(close, `reads of /api/latest under 41 s apart (all at ${when.map(t => Math.round(t / 1000)).join(' ')} s into the watch)`).toEqual([]);
   expect(copies.length, 'reads of /api/latest, a new body of the copy each minute').toBeGreaterThanOrEqual(minutes - 1);
 }
 
@@ -130,7 +133,7 @@ async function twoReads(page, wvw, { refused }) {
 test.describe("the visitor's whole group behind", () => {
   test.use({ timeline: copyBehindAll(10, 30) });
 
-  const title = 'each new body of the copy is on the map within 22 s; once the summary is read, the copy reads are 51 s apart or more';
+  const title = 'each new body of the copy is on the map within 22 s; once the summary is read, the copy reads are 41 s apart or more';
   test(title, async ({ page, wvw }) => { await behindWatched(page, wvw); });
 
   // Past LATEST_WAIT_MS (js/api.js) the map's read paints the game's body;
@@ -150,7 +153,7 @@ test.describe("the visitor's match reads refused", () => {
   test.use({ timeline: playing() });
 
   // The copy is asked once the game's refusals and their two retries (js/api.js, fetchJson) are spent.
-  test('each new body of the copy is on the map within 40 s; the copy reads are 51 s apart or more', async ({ page, wvw }) => {
+  test('each new body of the copy is on the map within 40 s; the copy reads are 41 s apart or more', async ({ page, wvw }) => {
     await behindWatched(page, wvw, { refused: true, within: 40 * 1000 });
   });
 
@@ -160,7 +163,7 @@ test.describe("the visitor's match reads refused", () => {
 
   // The map's read again, once the late copy lands (offerLate), first waits
   // out the game's refusals and their retries (js/api.js, fetchJson).
-  test(`a copy that answers in 2 s: each new body of the copy is on the map within 45 s; the copy reads are 51 s apart or more`, async ({ page, wvw }) => {
+  test(`a copy that answers in 2 s: each new body of the copy is on the map within 45 s; the copy reads are 41 s apart or more`, async ({ page, wvw }) => {
     await behindWatched(page, wvw, { refused: true, within: 45 * 1000, copyMs: 2000 });
   });
 });

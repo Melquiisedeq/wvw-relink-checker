@@ -17,20 +17,20 @@ test('call_reader timeout is longer than the reader\'s serial deadlines', () => 
   assert.ok(timeouts[0] > sum, `timeout ${timeouts[0]} ms must exceed the reader's ${sum} ms`);
 });
 
-test('one job turns the two readers every 15 seconds and the peek follows', () => {
+test('one job turns the two readers every 10 seconds and the peek follows', () => {
   const sql = read('scheduler.sql');
   const jobs = [...sql.matchAll(/cron\.schedule\('(readers)',\s*'([^']+)',\s*\$\$select public\.(\w+)\(\)\$\$/g)].map((m) => [m[1], m[2], m[3]]);
-  assert.deepEqual(jobs, [['readers', '15 seconds', 'call_next_reader']]);
+  assert.deepEqual(jobs, [['readers', '10 seconds', 'call_next_reader']]);
   const names = [...sql.matchAll(/cron\.schedule\('([^']+)'/g)].map((m) => m[1]);
   assert.deepEqual(names, ['readers', 'heartbeat-cleanup']);
   const turn = sql.slice(sql.indexOf('function public.call_next_reader'));
   assert.match(turn, /from public\.heartbeat order by id desc limit 1/, 'the turn reads the last beat');
   assert.match(turn, /case when last_region = 'us-east-1' then 'eu-central-1' else 'us-east-1' end/, 'the two regions swap');
   const page = readFileSync(new URL('../../site/js/standings.js', import.meta.url), 'utf8');
-  assert.match(page, /const PEEK_EVERY_MS = 30 \* 1000;/, 'each region still beats every 30 seconds');
+  assert.match(page, /const PEEK_EVERY_MS = 20 \* 1000;/, 'each region beats every 20 seconds');
 });
 
 test('the serial waits fit in one beat', () => {
   const waits = [...read('reader.mjs').matchAll(/AbortSignal\.timeout\((\d+)\)/g)].map((m) => Number(m[1]));
-  assert.ok(waits.reduce((a, b) => a + b, 0) < 30000, 'the serial waits fit in one beat');
+  assert.ok(waits.reduce((a, b) => a + b, 0) < 20000, 'the serial waits fit in one beat');
 });
