@@ -18,6 +18,17 @@ const COPY = /\/api\/latest$/;
 const READ_BY = 3 * 1000;
 // Math.random() at its middle: every wait the page draws is half its ceiling.
 const HALF = 'Math.random = () => 0.5;';
+// Whether the push was live within a second of the first version the page heard (pushHeard): the
+// read waits 1.5 s (HALF), so on the page's clock it cannot be.
+const EARLY = `globalThis.liveEarly = false;
+(() => {
+  let heardAt = 0;
+  setInterval(() => {
+    if (typeof pushHeard === 'undefined' || !pushHeard) return;
+    heardAt ||= Date.now();
+    if (Date.now() - heardAt < 1000 && pushLive()) liveEarly = true;
+  }, 100);
+})();`;
 
 // Reduced motion: the ember field stands still, so the minutes of clock below run fast.
 test.use({ viewport: { width: 1280, height: 800 }, timeline: playing(), clock: 'playwright', origin: SITE, reducedMotion: 'reduce' });
@@ -61,11 +72,12 @@ async function relive(page, wvw, push) {
 // The page loaded with its socket open, and live: a minute on, a version pushed and read.
 async function live(page, wvw) {
   await page.addInitScript(HALF);
+  await page.addInitScript(EARLY);
   const push = await livePush(page, wvw);
   await load(page, wvw);
   await expect.poll(() => push.open, 'the socket is open').toBe(1);
-  expect(await page.evaluate(() => pushLive()), 'live on the connection\'s own message').toBe(false);
   await relive(page, wvw, push);
+  expect(await page.evaluate(() => liveEarly), 'live on the connection\'s own message').toBe(false);
   return push;
 }
 
@@ -139,6 +151,8 @@ test('with the socket live the peek reads one summary in two minutes; without, i
   const peeked = n.summary;
   push.refuse = true;
   await connectionDrops(push);
+  // The page has seen the close before the clock runs: a late close would leave the peek too little of the 31 s.
+  await expect.poll(() => page.evaluate(() => pushLive()), 'the drop reached the page').toBe(false);
   // No input meanwhile: only the drop itself can bring the peek forward.
   await play(page, 31 * 1000);
   expect(n.summary - peeked, 'summary reads in the 31 s after the drop').toBeGreaterThanOrEqual(1);
