@@ -167,25 +167,113 @@ test('a version that is not there gives the peek back its pace until the next pu
   await relive(page, wvw, push);
 });
 
-test('a dropped socket comes back after a doubling wait, and the first after a message is short again', async ({ page, wvw }) => {
+test('a socket that fails five times in a row rests 10 min, and the first try after a message is short again', async ({ page, wvw }) => {
   const push = await live(page, wvw);
-  push.refuse = true;
-  await connectionDrops(push);
-  await play(page, 5 * MIN);
-  const early = push.opened;
-  await play(page, 5 * MIN);
-  // Waits of half 1, 2, 4 ... 60 s: once at the ceiling, one try each 30 s.
-  expect(push.opened - early, 'tries in the second five minutes').toBeLessThanOrEqual(11);
-  expect(push.opened - early, 'tries in the second five minutes').toBeGreaterThanOrEqual(9);
-  push.refuse = false;
-  await play(page, 30 * 1000);
-  await expect.poll(() => push.open, 'back').toBe(1);
-  await relive(page, wvw, push);
   const before = push.opened;
+  // Closed at once by a server in trouble, not refused by a ceiling.
+  push.refuse = 1011;
+  const dropped = await page.evaluate(() => Date.now());
+  await connectionDrops(push);
+  // Waits of half 1, 2, 4, 8, 16 s: tries at 0.5, 1.5, 3.5, 7.5 and 15.5 s, then 10 min of rest.
+  // Steps of 100 ms: each close reaches the page between steps, so a wait starts late by one at most.
+  for (const [s, tries] of [[4, 3], [8, 4]]) {
+    while (await page.evaluate(() => Date.now()) < dropped + s * 1000) {
+      await page.clock.runFor(100);
+      await page.waitForTimeout(20);
+    }
+    expect(push.opened - before, `tries in the ${s} s after the drop`).toBe(tries);
+  }
+  await play(page, 22 * 1000);
+  expect(push.opened - before, 'tries in the 30 s after the drop').toBe(5);
+  await play(page, 9 * MIN);
+  expect(push.opened - before, 'tries in the 9 min after').toBe(5);
+  push.refuse = false;
+  await play(page, MIN);
+  await expect.poll(() => push.open, 'back after the rest').toBe(1);
+  expect(push.opened - before, 'tries in all').toBe(6);
+  await relive(page, wvw, push);
+  const again = push.opened;
   await connectionDrops(push);
   // Half of PUSH_RETRY_MS: the count of failures was zeroed by the message.
   await page.clock.runFor(600);
-  await expect.poll(() => push.opened, 'the try after a message').toBe(before + 1);
+  await expect.poll(() => push.opened, 'the try after a message').toBe(again + 1);
+});
+
+// The Worker's ceilings: all its sockets (4013), or those of one address (1013).
+for (const code of [4013, 1013]) {
+  test(`a socket refused with ${code}: two connections at most in 10 min, the peek at its 30 s, and showing the tab tries again, not at each show`, async ({ page, wvw }) => {
+    const push = await live(page, wvw);
+    const n = reads(page);
+    const before = push.opened;
+    push.refuse = code;
+    await connectionDrops(push);
+    await play(page, 10 * MIN, { using: true });
+    expect(push.opened - before, 'connections in 10 min, refused').toBeLessThanOrEqual(2);
+    expect(n.summary, 'summary reads in 10 min, refused').toBeGreaterThanOrEqual(18);
+    // The rest's end, then shown again and again within the minute: no try at once.
+    await play(page, 30 * 1000);
+    const rested = push.opened;
+    expect(rested - before, 'connections after the rest').toBe(2);
+    for (let i = 0; i < 5; i++) {
+      await hidden(page, wvw, 0);
+      await visible(page);
+      await page.evaluate(() => window.dispatchEvent(new Event('online')));
+      await page.clock.runFor(1000);
+    }
+    expect(push.opened, 'tries on five shows and five networks back in 5 s').toBe(rested);
+    // A minute from the last try: one.
+    await play(page, 30 * 1000);
+    expect(push.opened, 'tries a minute after the last').toBe(rested + 1);
+    // Away for two minutes: shown, it tries at once.
+    await hidden(page, wvw, 2 * MIN);
+    await visible(page);
+    await expect.poll(() => push.opened, 'the try when shown').toBe(rested + 2);
+    push.refuse = false;
+    await hidden(page, wvw, 2 * MIN);
+    await visible(page);
+    await expect.poll(() => push.open, 'back when shown').toBe(1);
+  });
+}
+
+test('the rest is drawn between 5 and 15 min', async ({ page, wvw }) => {
+  const push = await live(page, wvw);
+  push.refuse = 4013;
+  for (const [draw, early, late] of [[0, 4.5, 5.5], [0.999, 14.5, 15.5]]) {
+    await page.evaluate(r => { Math.random = () => r; }, draw);
+    const before = push.opened;
+    await hidden(page, wvw, 2 * MIN);
+    await visible(page);
+    await expect.poll(() => push.opened, 'the try when shown').toBe(before + 1);
+    await play(page, early * MIN);
+    expect(push.opened - before, `tries in ${early} min, drawn ${draw}`).toBe(1);
+    await play(page, (late - early) * MIN);
+    expect(push.opened - before, `tries in ${late} min, drawn ${draw}`).toBe(2);
+  }
+});
+
+test('hiding and showing a tab with its socket open, before any pong, is not a failed try', async ({ page, wvw }) => {
+  const push = await live(page, wvw);
+  const before = push.opened;
+  for (let i = 0; i < 6; i++) {
+    await hidden(page, wvw, 0);
+    await expect.poll(() => push.open, 'closed when hidden').toBe(0);
+    await visible(page);
+    await expect.poll(() => page.evaluate(() => pushSocket && pushSocket.readyState), 'open at once when shown').toBe(1);
+  }
+  expect(push.opened - before, 'tries on six shows').toBe(6);
+});
+
+test('a socket lost with the network rests after its tries, and is tried at once when the network is back', async ({ page, wvw }) => {
+  const push = await live(page, wvw);
+  const before = push.opened;
+  push.refuse = 1011;
+  await connectionDrops(push);
+  await play(page, 2 * MIN);
+  expect(push.opened - before, 'tries in 2 min').toBe(5);
+  push.refuse = false;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect.poll(() => push.open, 'open again when the network is back').toBe(1);
+  expect(push.opened - before, 'tries in all').toBe(6);
 });
 
 test('a socket that stops answering is closed after the wait for its pong, and opened again', async ({ page, wvw }) => {
@@ -310,8 +398,8 @@ test('a server that says hello and hangs up is tried on a doubling wait, not eve
   push.hangUp = true;
   push.drop();
   await play(page, 2 * MIN);
-  // Waits of half 1, 2, 4 ... 60 s: about 8 in two minutes; zeroed by each hello, over 200.
-  expect(push.opened, 'connections in two minutes').toBeLessThanOrEqual(12);
+  // The first socket, then five hung up on a doubling wait, then the rest; zeroed by each hello, over 200.
+  expect(push.opened, 'connections in two minutes').toBe(6);
 });
 
 test('a tab hidden before its push read is due reads that version when it comes back', async ({ page, wvw }) => {

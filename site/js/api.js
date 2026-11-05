@@ -955,11 +955,18 @@ async function mergeLatest(list, early) {
 // the database by the first ask in each data centre and from its cache after:
 // so the read waits a random part of PUSH_SPREAD_MS, for the asks of the other
 // tabs to find it there. The page sends only 'ping'; anything else closes the
-// socket. Closed, it comes back after a random part of a doubling wait.
+// socket. Closed, it comes back after a random part of a doubling wait; refused
+// (the Worker's ceilings) or PUSH_TRIES times in a row without a 'pong' or a version
+// read, after PUSH_REST_MS: each try is a request on the day's quota. Showing
+// the tab or the network back ('online') ends any wait.
 const PUSH_URL = location.origin === 'https://wvwrelink.com' ? 'wss://wvwrelink.com/api/ws' : null;
 const PUSH_SPREAD_MS = 3 * 1000;
 const PUSH_RETRY_MS = 1000;            // the first wait's ceiling, doubled per failure
-const PUSH_RETRY_MAX_MS = 60 * 1000;
+const PUSH_TRIES = 5;
+const PUSH_REST_MS = 10 * 60 * 1000;   // half of it to half as much again
+const PUSH_REFUSED = [4013, 1013];
+// A resting tab shown again or back online tries no sooner than this after its last try.
+const PUSH_SHOWN_MS = 60 * 1000;
 const PUSH_PING_MS = 30 * 1000;        // plus a random part of as much again
 const PUSH_PONG_MS = 10 * 1000;
 const PUSH_MESSAGE_MAX = 8 * 1024;
@@ -973,7 +980,8 @@ const PUSH_VERSION_RE = /^([1-9]\d{9})\.[0-9a-f]{32}$/;
 // each write is pushed at once.
 const PUSH_LATE_MS = 30 * 1000;
 let pushSocket = null;
-let pushFails = 0;
+let pushFails = 0;   // sockets opened since the last 'pong' or version read
+let pushTried = 0;
 let pushRetryTimer = null;
 let pushPingTimer = null;
 let pushPongTimer = null;
@@ -988,21 +996,30 @@ function startPush() {
   if (!PUSH_URL || typeof WebSocket !== 'function') return;
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') pushClose();
-    else pushOpen();
+    else pushShown();
   });
+  addEventListener('online', pushShown);
   pushOpen();
+}
+
+function pushShown() {
+  const wait = pushFails < PUSH_TRIES ? 0 : pushTried + PUSH_SHOWN_MS - Date.now();
+  if (wait <= 0) pushOpen();
+  else if (!pushRetryTimer) pushRetryTimer = setTimeout(() => { pushRetryTimer = null; pushOpen(); }, wait);
 }
 
 function pushOpen() {
   if (pushSocket || document.visibilityState === 'hidden') return;
   clearTimeout(pushRetryTimer);
   pushRetryTimer = null;
+  pushTried = Date.now();
+  pushFails = Math.min(pushFails + 1, PUSH_TRIES);
   let ws;
   try { ws = new WebSocket(PUSH_URL); } catch { pushRetry(); return; }
   pushSocket = ws;
   ws.onopen = () => pushPing(ws);
   ws.onmessage = (e) => pushMessage(ws, e.data);
-  ws.onclose = () => pushGone(ws);
+  ws.onclose = (e) => pushGone(ws, e.code);
 }
 
 function pushClose() {
@@ -1014,6 +1031,8 @@ function pushClose() {
   pushReadTimer = null;
   const ws = pushSocket;
   pushDrop();
+  // A healthy socket closed by hiding the tab is not a failed try.
+  if (ws && ws.readyState === 1) pushFails = Math.max(0, pushFails - 1);
   if (ws) ws.close();
 }
 
@@ -1025,19 +1044,20 @@ function pushDrop() {
 }
 
 // The socket closed, failed, or stopped answering.
-function pushGone(ws) {
+function pushGone(ws, code) {
   if (pushSocket !== ws) return;
   const was = pushOk;
   pushDrop();
+  if (PUSH_REFUSED.includes(code)) pushFails = PUSH_TRIES;
   pushRetry();
   if (was) pushDropped();
 }
 
 function pushRetry() {
   if (pushRetryTimer || document.visibilityState === 'hidden') return;
-  const ceiling = Math.min(PUSH_RETRY_MAX_MS, PUSH_RETRY_MS * 2 ** pushFails);
-  pushFails = Math.min(pushFails + 1, 16);
-  pushRetryTimer = setTimeout(() => { pushRetryTimer = null; pushOpen(); }, Math.random() * ceiling);
+  const wait = pushFails < PUSH_TRIES ? Math.random() * PUSH_RETRY_MS * 2 ** pushFails
+    : PUSH_REST_MS * (0.5 + Math.random());
+  pushRetryTimer = setTimeout(() => { pushRetryTimer = null; pushOpen(); }, wait);
 }
 
 function pushPing(ws) {

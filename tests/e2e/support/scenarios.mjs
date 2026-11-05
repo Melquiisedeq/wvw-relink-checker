@@ -194,7 +194,7 @@ export async function wake(page, ms) {
 //   const push = await livePush(page, wvw);
 //   await push.tell();             // the ingest stored a newer copy: every open socket hears it
 //   await push.sync();             // told only if the world has a version not told yet (each step of a test)
-//   push.refuse = true;            // each new connection closed at once, 1013
+//   push.refuse = true;            // each new connection closed at once, 1013 (or the code given: 4013, 1011)
 //   push.hangUp = true;            // each new connection gets its first message, then is closed, 1011
 //   await connectionDrops(push);   // the connection falls mid-visit (below)
 export async function livePush(page, wvw) {
@@ -218,7 +218,7 @@ export async function livePush(page, wvw) {
   };
   await page.routeWebSocket('wss://wvwrelink.com/api/ws', async ws => {
     push.opened++;
-    if (push.refuse) return ws.close({ code: 1013, reason: 'try again later' });
+    if (push.refuse) return ws.close({ code: push.refuse === true ? 1013 : push.refuse, reason: 'try again later' });
     open.add(ws);
     ws.onClose(() => open.delete(ws));
     ws.onMessage(m => {
