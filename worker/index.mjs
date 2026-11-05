@@ -1083,13 +1083,22 @@ function text(status, body) {
 
 // The push. Anyone can open /api/ws, so in this order: only a WebSocket upgrade reaches the
 // object (426 before it is touched), only from the site's own pages (a browser cannot forge
-// Origin; a script can, and gets no more than a tab), and the object refuses past MAX_SOCKETS.
-// The object takes nothing in: a message closes its socket, and the request it is handed is
-// built here, so no header of the visitor's reaches it.
+// Origin; a script can, and gets no more than a tab), and the object refuses past
+// MAX_PER_ADDRESS from one address and past MAX_SOCKETS in all. The object takes nothing in: a
+// message closes its socket, and the request it is handed is built here, so no header of the
+// visitor's reaches it; the address it counts by is the PEER_HEADER set below, from
+// CF-Connecting-IP alone.
 const SITE_ORIGIN = 'https://wvwrelink.com';
-// Bounds the object's memory and the time of one broadcast, not the quota: a refused socket
-// was already a request. Cloudflare's own limit is 32,768 per object.
-const MAX_SOCKETS = 1000;
+// Bounds the CPU of one broadcast, which goes to every socket in one event, and the object's
+// memory; not the quota: a refused socket was already a request.
+const MAX_SOCKETS = 300;
+// Without it one address fills MAX_SOCKETS for every tab; the two pull against each other.
+const MAX_PER_ADDRESS = 20;
+const PEER_HEADER = 'x-live-peer';
+const PEER_RE = /^[0-9a-f]{16}$/;
+// 4013: past MAX_SOCKETS; 1013: one address past MAX_PER_ADDRESS; the page rests on either.
+const CLOSE_FULL = 4013;
+const CLOSE_ADDRESS = 1013;
 const LIVE_NAME = 'live';
 const VERSION_RE = /^[1-9]\d{9}\.[0-9a-f]{32}$/;
 
@@ -1102,7 +1111,35 @@ async function openSocket(request, env) {
   }
   if (request.headers.get('origin') !== SITE_ORIGIN) return text(403, 'refused');
   if (!env.LIVE) return text(503, 'unavailable');
-  return env.LIVE.get(env.LIVE.idFromName(LIVE_NAME)).fetch('https://live/ws', { headers: { upgrade: 'websocket' } });
+  const peer = await peerTag(request.headers.get('cf-connecting-ip') || '');
+  return env.LIVE.get(env.LIVE.idFromName(LIVE_NAME)).fetch('https://live/ws', { headers: { upgrade: 'websocket', [PEER_HEADER]: peer } });
+}
+
+// One holder of an IPv6 /64 has all of it, so the /64 is the address; an IPv4 is whole. The
+// tag is a truncated hash, never the address itself. With no address (only off Cloudflare)
+// every socket shares one tag.
+async function peerTag(ip) {
+  return (await sha256(new TextEncoder().encode(addressKey(ip)))).slice(0, 16);
+}
+
+function addressKey(ip) {
+  if (!ip.includes(':')) return ip;
+  const halves = ip.toLowerCase().split('::');
+  const dotted = (g) => g.split('.').map((n) => parseInt(n, 10) || 0);
+  const groups = (part) => (part ? part.split(':').flatMap((g) => {
+    if (!g.includes('.')) return [g];
+    const [a, b, c, d] = dotted(g);
+    return [((a << 8) | b).toString(16), ((c << 8) | d).toString(16)];
+  }) : []);
+  const head = groups(halves[0]);
+  const tail = halves.length > 1 ? groups(halves[1]) : [];
+  const full = [...head, ...Array(Math.max(0, 8 - head.length - tail.length)).fill('0'), ...tail]
+    .map((g) => parseInt(g, 16) || 0);
+  // An IPv4 written as IPv6 (::ffff:a.b.c.d) is that IPv4, not one /64 shared by all of them.
+  if (full.slice(0, 5).every((g) => g === 0) && full[5] === 0xffff) {
+    return [full[6] >> 8, full[6] & 255, full[7] >> 8, full[7] & 255].join('.');
+  }
+  return full.slice(0, 4).map((g) => g.toString(16)).join(':') + '::/64';
 }
 
 // The ingest's notice to the object; its failure only logs, the message is already in D1.
@@ -1130,19 +1167,23 @@ export class Live {
   }
 
   async fetch(request) {
-    if (request.headers.get('upgrade') === 'websocket') return this.open();
+    if (request.headers.get('upgrade') === 'websocket') return this.open(request.headers.get(PEER_HEADER));
     if (request.method === 'POST') return this.notify(await request.json());
     return text(404, 'not found');
   }
 
-  async open() {
+  async open(peer) {
     const [client, server] = Object.values(new WebSocketPair());
-    // getWebSockets counts the closing ones too, so the ceiling errs on the side of refusing.
-    if (this.state.getWebSockets().length >= MAX_SOCKETS) {
+    const tag = PEER_RE.test(peer || '') ? peer : 'unknown';
+    // getWebSockets also returns the ones still closing; only the open ones count.
+    const open = (list) => list.filter((ws) => ws.readyState === 1).length;
+    const refuse = open(this.state.getWebSockets()) >= MAX_SOCKETS ? CLOSE_FULL
+      : open(this.state.getWebSockets(tag)) >= MAX_PER_ADDRESS ? CLOSE_ADDRESS : 0;
+    if (refuse) {
       server.accept();
-      server.close(1013, 'try again later');
+      server.close(refuse, 'try again later');
     } else {
-      this.state.acceptWebSocket(server);
+      this.state.acceptWebSocket(server, [tag]);
       const known = Object.values(await this.state.storage.get('matches') || {}).filter((m) => nowS() - m.at <= LATEST_KEEP_S);
       const version = await this.state.storage.get('version');
       if (known.length) server.send(JSON.stringify(version ? { matches: known, version } : { matches: known }));
@@ -1185,5 +1226,15 @@ export class Live {
   // The page sends nothing: anything that arrives is a misuse, and costs the quota.
   webSocketMessage(ws) {
     ws.close(1008, 'policy violation');
+  }
+
+  // The runtime may leave the tab's close unanswered; answering ends it at once. 1005 and 1006
+  // say no code came, and cannot be sent back.
+  webSocketClose(ws, code) {
+    try {
+      ws.close(code === 1005 || code === 1006 ? 1000 : code, 'closed');
+    } catch {
+      // Already closed by the runtime, or a code close() refuses: nothing left to answer.
+    }
   }
 }

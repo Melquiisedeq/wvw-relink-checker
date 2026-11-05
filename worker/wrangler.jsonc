@@ -6,6 +6,9 @@
   "name": "wvwrelink-api",
   "main": "index.mjs",
   "compatibility_date": "2026-09-29",
+  // A compressed message the object must inflate whole before it can refuse it: off, so a
+  // large one costs the sender its full size.
+  "compatibility_flags": ["no_web_socket_compression"],
   // Runs in front of the site's custom domain for these paths only.
   "routes": [{ "pattern": "wvwrelink.com/api/*", "zone_name": "wvwrelink.com" }],
   // No second door: a workers.dev address or a preview would reach the same
