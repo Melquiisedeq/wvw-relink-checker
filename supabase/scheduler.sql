@@ -54,9 +54,11 @@ end;
 $$;
 revoke all on function public.call_reader(text) from public, anon, authenticated;
 
--- 4. The turn. One job every 15 seconds calls the region the last beat did not, so
--- the two readers stay half a cycle apart; each region still runs every 30 seconds
--- (site/js/standings.js PEEK_EVERY_MS). A project that ran reader-us and reader-eu
+-- 4. The turn. One job every 10 seconds calls the region the last beat did not, so
+-- the two readers stay half a cycle apart; each region runs every 20 seconds
+-- (site/js/standings.js PEEK_EVERY_MS). A project already running the 15-second job
+-- redeploys reader.mjs first, then runs only: select cron.unschedule('readers');
+-- followed by the cron.schedule line for 'readers' below. A project that ran reader-us and reader-eu
 -- (steps 1 to 3 already ran) pastes from here down; the select below drops the old
 -- pair, and only if they exist, since cron.unschedule of a missing name is an error.
 -- No beat yet (a new project, or one stopped for 7 days): us-east-1 goes first.
@@ -74,8 +76,8 @@ $$;
 revoke all on function public.call_next_reader() from public, anon, authenticated;
 
 select cron.unschedule(jobname) from cron.job where jobname in ('reader-us', 'reader-eu');
--- The '15 seconds' syntax needs pg_cron 1.5 or later.
-select cron.schedule('readers', '15 seconds', $$select public.call_next_reader()$$);
+-- The '10 seconds' syntax needs pg_cron 1.5 or later.
+select cron.schedule('readers', '10 seconds', $$select public.call_next_reader()$$);
 select cron.schedule('heartbeat-cleanup', '17 3 * * *',
   $$delete from public.heartbeat where at < now() - interval '7 days'$$);
 

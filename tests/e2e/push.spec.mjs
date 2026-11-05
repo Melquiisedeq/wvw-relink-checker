@@ -428,6 +428,7 @@ test.describe('anywhere but wvwrelink.com', () => {
     const n = reads(page);
     await load(page, wvw);
     await play(page, 2 * MIN);
+    await wvw.settle();
     expect(push.opened, 'sockets opened').toBe(0);
     expect(n.summary, 'summary reads in 2 min').toBeGreaterThanOrEqual(3);
   });
