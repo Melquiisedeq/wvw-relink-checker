@@ -16,6 +16,9 @@
 //             wvw.skew(ms). 'playwright': no shim, page.clock installed at the
 //             same instant, for tests that drive the timers (runFor,
 //             fastForward); wvw.skew(ms) then jumps it with setSystemTime.
+//   origin    null (default): the page at the test server's address. A URL
+//             (https://wvwrelink.com): the page opened there, answered the same,
+//             for code that runs only on the site's own address (the push).
 // A device clock ahead of the servers': wvw.ahead(ms) jumps the page's clock
 // by ms and answers the timeline at the page's time minus the total, so the
 // servers' time stays what it was (wvw.skew moves both).
@@ -44,6 +47,7 @@ const clockShim = anchor => `(() => {
 export const test = base.extend({
   timeline: [null, { option: true }],
   clock: ['shim', { option: true }],
+  origin: [null, { option: true }],
 
   // One server per worker, on that worker's fixed port.
   site: [async ({}, use, workerInfo) => {
@@ -52,7 +56,7 @@ export const test = base.extend({
     await site.close();
   }, { scope: 'worker' }],
 
-  wvw: async ({ page, context, site, timeline, clock }, use) => {
+  wvw: async ({ page, context, site, timeline, clock, origin }, use) => {
     const problems = [];
     // One line each, whitespace folded: page text must never start a line.
     const problem = text => {
@@ -79,7 +83,8 @@ export const test = base.extend({
     cdp.on('Log.entryAdded', ({ entry: e }) => {
       // The 503 /api/latest answers on purpose (support/recordings.mjs), or, with
       // a timeline, what it failed on purpose; and the analytics refused there.
-      const expected = (!server && /\/api\/latest$/.test(e.url || '')) || (server && server.planted(e.url || ''))
+      const url = e.url && origin && e.url.startsWith(origin + '/') ? site.url + e.url.slice(origin.length) : e.url || '';
+      const expected = (!server && /\/api\/latest$/.test(url)) || (server && server.planted(url))
         || allowed.some(re => re.test(e.url || '')) || BLOCKED.test(e.url || '') || BLOCKED.test(e.text);
       if (e.level === 'error' && !expected) problem(`log error (${e.source}): ${e.text}${e.url ? ' ' + e.url : ''}`);
     });
@@ -133,11 +138,13 @@ export const test = base.extend({
       else await page.clock.setSystemTime(await now() + ms);
     };
     let lead = 0;
-    await page.route('**/*', answerFrom(site.url, problem, server && (async url => server.answer(url, await now() - lead))));
+    await page.route('**/*', answerFrom(site.url, problem, server && (async url => server.answer(url, await now() - lead)), origin));
 
     const ahead = async ms => { lead += ms; await skew(ms); };
 
-    await use({ url: site.url + '/', recordedAt, opensAt, guilds, tiers: expectedTiers(), problems, problem, allowLog: re => allowed.push(re), settle, now, skew, ahead, timeline });
+    // What the Live object would send now (worker/index.mjs): the timeline's summary.
+    const told = async () => (server ? server.told(await now() - lead) : null);
+    await use({ url: (origin || site.url) + '/', told, recordedAt, opensAt, guilds, tiers: expectedTiers(), problems, problem, allowLog: re => allowed.push(re), settle, now, skew, ahead, timeline });
 
     // A failure here must not hide the test's own: it joins the problems below.
     await addCoverage(covering).catch(e => problem('coverage: ' + (e?.message || e)));

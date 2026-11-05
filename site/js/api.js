@@ -705,7 +705,8 @@ async function latestInstead(one, early, err) {
 // peek read (js/standings.js), while it is LATEST_SUMMARY_FRESH_MS old or
 // less; without one, when the game gave a body behind the kept one, or the
 // match has not risen here for LATEST_QUIET_MS (any one match, not all nine:
-// one of nine almost always rises). Each body goes through
+// one of nine almost always rises). A push (below) reads its version instead,
+// /api/latest?v=<at>.<tag>, outside that gap. Each body goes through
 // keepNewestMatch like any other, so it wins only by being further
 // along. Only ids the game already gave this visit are taken, id and start must
 // match the body's own, and each part's size is capped (an inflated one while it streams).
@@ -730,6 +731,7 @@ const LATEST_HISTORY_RETRY_MS = 60 * 1000;
 let latestHistory = new Map();
 let latestAsked = false;
 let latestAskedAt = 0;
+let latestHeldAt = 0;   // s: the newest `at` of a copy read
 // The last summary read: id -> { start, score, at } (ms, the score sum, ms), and when.
 let latestSummary = new Map();
 let latestSummaryAt = 0;
@@ -768,10 +770,11 @@ async function latestInflate(b64) {
 const latestOver = (text, part) => text.length > LATEST_BODY_MAX && JSON.stringify(part).length > LATEST_BODY_MAX;
 
 // Resolves, never rejects, to the bodies that passed every check.
-async function latestRead() {
+async function latestRead(url = LATEST_URL) {
   try {
-    const text = await fetchOwnApi(LATEST_URL, 'no-store', true);
+    const text = await fetchOwnApi(url, 'no-store', true);
     const data = JSON.parse(text);
+    if (data && Number.isSafeInteger(data.at) && data.at > latestHeldAt) latestHeldAt = data.at;
     const list = data && Array.isArray(data.matches) ? data.matches.slice(0, LATEST_MATCHES_MAX) : [];
     const out = [];
     for (const e of list) {
@@ -845,11 +848,11 @@ async function latestHistoryRead(v) {
   return out;
 }
 
-function startLatest() {
+function startLatest(url) {
   latestAsked = true;
   latestAskedAt = Date.now();
   if (document.visibilityState !== 'hidden') latestMissed = false;
-  return latestRead();
+  return latestRead(url);
 }
 
 // The slack: a map's reads are MAP_REFRESH_MS (= LATEST_GAP_MS) apart, each
@@ -860,8 +863,9 @@ const latestTold = (now) => now - latestSummaryAt <= LATEST_SUMMARY_FRESH_MS;
 
 // Keeps what a summary of /api/latest says of each match, checked like the
 // copy's own entries; anything else is dropped. Returns the kept table.
-function latestSummaryLearn(sum) {
-  const out = new Map();
+// `merge`: a push names only the matches it moved; the others stay as known.
+function latestSummaryLearn(sum, merge = false) {
+  const out = merge ? new Map(latestSummary) : new Map();
   for (const [id, e] of Object.entries(sum).slice(0, LATEST_MATCHES_MAX)) {
     if (!WEEK_ID_RE.test(id) || !e || typeof e !== 'object') continue;
     if (Number.isFinite(e.start) && Number.isFinite(e.score)) {
@@ -895,7 +899,8 @@ function summaryAhead(m) {
 // the kept one.
 function latestWanted(ids, behind = false) {
   const now = Date.now();
-  if (!latestGapOver(now)) return false;
+  // A push read is due: the copy is on its way.
+  if (!latestGapOver(now) || pushReadTimer) return false;
   const told = latestTold(now);
   return ids.some((id) => {
     const k = newestMatches.get(id);
@@ -939,6 +944,197 @@ async function mergeLatest(list, early) {
   }
   const kept = offerLatest(got);
   return list.map((m) => kept.get(m.id) || m);
+}
+
+// ---- The push: wss://wvwrelink.com/api/ws -------------------------------
+// Only on wvwrelink.com (the Worker refuses any other Origin), while the tab is
+// visible: a socket brings each newer copy's {matches: [{id, start, score, at}],
+// version} (Live, worker/index.mjs), the matches learned as the summary is; that
+// version, /api/latest?v=<at>.<tag>, is then read and offered like any other copy. Every tab
+// hears a push at once, and a version's copy, final once written, is read from
+// the database by the first ask in each data centre and from its cache after:
+// so the read waits a random part of PUSH_SPREAD_MS, for the asks of the other
+// tabs to find it there. The page sends only 'ping'; anything else closes the
+// socket. Closed, it comes back after a random part of a doubling wait; refused
+// (the Worker's ceilings) or PUSH_TRIES times in a row without a 'pong' or a version
+// read, after PUSH_REST_MS: each try is a request on the day's quota. Showing
+// the tab or the network back ('online') ends any wait.
+const PUSH_URL = location.origin === 'https://wvwrelink.com' ? 'wss://wvwrelink.com/api/ws' : null;
+const PUSH_SPREAD_MS = 3 * 1000;
+const PUSH_RETRY_MS = 1000;            // the first wait's ceiling, doubled per failure
+const PUSH_TRIES = 5;
+const PUSH_REST_MS = 10 * 60 * 1000;   // half of it to half as much again
+const PUSH_REFUSED = [4013, 1013];
+// A resting tab shown again or back online tries no sooner than this after its last try.
+const PUSH_SHOWN_MS = 60 * 1000;
+const PUSH_PING_MS = 30 * 1000;        // plus a random part of as much again
+const PUSH_PONG_MS = 10 * 1000;
+const PUSH_MESSAGE_MAX = 8 * 1024;
+// A version further past the server clock than this is no one's (the Worker writes none
+// over 60 s ahead, LATEST_AHEAD_S in worker/index.mjs).
+const PUSH_AHEAD_MS = 70 * 1000;
+// "<at>.<tag>", as the Worker names a version; only this goes into the URL.
+const PUSH_VERSION_RE = /^([1-9]\d{9})\.[0-9a-f]{32}$/;
+// A summary whose newest `at` is more than this past the newest version heard by
+// the push or read (by its ?v= or a plain /api/latest) shows one the push missed:
+// each write is pushed at once.
+const PUSH_LATE_MS = 30 * 1000;
+let pushSocket = null;
+let pushFails = 0;   // sockets opened since the last 'pong' or version read
+let pushTried = 0;
+let pushRetryTimer = null;
+let pushPingTimer = null;
+let pushPongTimer = null;
+let pushReadTimer = null;
+let pushHeard = 0;   // s: the `at` of the newest version a message named, read or being read
+// On this socket the last version read came by a push and nothing says one was missed since.
+let pushOk = false;
+
+const pushLive = () => pushOk && !!pushSocket && pushSocket.readyState === 1;
+
+function startPush() {
+  if (!PUSH_URL || typeof WebSocket !== 'function') return;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') pushClose();
+    else pushShown();
+  });
+  addEventListener('online', pushShown);
+  pushOpen();
+}
+
+function pushShown() {
+  const wait = pushFails < PUSH_TRIES ? 0 : pushTried + PUSH_SHOWN_MS - Date.now();
+  if (wait <= 0) pushOpen();
+  else if (!pushRetryTimer) pushRetryTimer = setTimeout(() => { pushRetryTimer = null; pushOpen(); }, wait);
+}
+
+function pushOpen() {
+  if (pushSocket || document.visibilityState === 'hidden') return;
+  clearTimeout(pushRetryTimer);
+  pushRetryTimer = null;
+  pushTried = Date.now();
+  pushFails = Math.min(pushFails + 1, PUSH_TRIES);
+  let ws;
+  try { ws = new WebSocket(PUSH_URL); } catch { pushRetry(); return; }
+  pushSocket = ws;
+  ws.onopen = () => pushPing(ws);
+  ws.onmessage = (e) => pushMessage(ws, e.data);
+  ws.onclose = (e) => pushGone(ws, e.code);
+}
+
+function pushClose() {
+  clearTimeout(pushRetryTimer);
+  pushRetryTimer = null;
+  // A read given up: the next socket's first message names that version again.
+  if (pushReadTimer) pushHeard = 0;
+  clearTimeout(pushReadTimer);
+  pushReadTimer = null;
+  const ws = pushSocket;
+  pushDrop();
+  // A healthy socket closed by hiding the tab is not a failed try.
+  if (ws && ws.readyState === 1) pushFails = Math.max(0, pushFails - 1);
+  if (ws) ws.close();
+}
+
+function pushDrop() {
+  pushSocket = null;
+  pushOk = false;
+  clearTimeout(pushPingTimer);
+  clearTimeout(pushPongTimer);
+}
+
+// The socket closed, failed, or stopped answering.
+function pushGone(ws, code) {
+  if (pushSocket !== ws) return;
+  const was = pushOk;
+  pushDrop();
+  if (PUSH_REFUSED.includes(code)) pushFails = PUSH_TRIES;
+  pushRetry();
+  if (was) pushDropped();
+}
+
+function pushRetry() {
+  if (pushRetryTimer || document.visibilityState === 'hidden') return;
+  const wait = pushFails < PUSH_TRIES ? Math.random() * PUSH_RETRY_MS * 2 ** pushFails
+    : PUSH_REST_MS * (0.5 + Math.random());
+  pushRetryTimer = setTimeout(() => { pushRetryTimer = null; pushOpen(); }, wait);
+}
+
+function pushPing(ws) {
+  clearTimeout(pushPingTimer);
+  pushPingTimer = setTimeout(() => {
+    if (pushSocket !== ws) return;
+    try { ws.send('ping'); } catch { /* closing: onclose follows */ }
+    clearTimeout(pushPongTimer);
+    pushPongTimer = setTimeout(() => {
+      if (pushSocket !== ws) return;
+      // A dead link can hold the close handshake for long: gone now.
+      pushGone(ws);
+      ws.close();
+    }, PUSH_PONG_MS);
+  }, PUSH_PING_MS * (1 + Math.random()));
+}
+
+// The wait before a retry starts again from its first only once a socket has
+// lasted: a 'pong', or a version read through it.
+function pushMessage(ws, data) {
+  if (pushSocket !== ws) return;
+  if (data === 'pong') {
+    pushFails = 0;
+    clearTimeout(pushPongTimer);
+    pushPing(ws);
+    return;
+  }
+  let list, version;
+  try {
+    if (typeof data !== 'string' || data.length > PUSH_MESSAGE_MAX) return;
+    const msg = JSON.parse(data);
+    list = msg && Array.isArray(msg.matches) ? msg.matches.slice(0, LATEST_MATCHES_MAX) : [];
+    version = msg && typeof msg.version === 'string' ? PUSH_VERSION_RE.exec(msg.version) : null;
+  } catch { return; }
+  const sum = {};
+  let newest = 0;
+  const ahead = (Date.now() - ownClockLead + PUSH_AHEAD_MS) / 1000;
+  for (const m of list) {
+    if (!m || typeof m.id !== 'string' || !WEEK_ID_RE.test(m.id)
+      || ![m.start, m.score, m.at].every(Number.isSafeInteger) || m.at <= 0 || m.at > ahead) continue;
+    sum[m.id] = { start: m.start, score: m.score, at: m.at };
+    newest = Math.max(newest, m.at);
+  }
+  if (!newest) return;
+  latestSummaryLearn(sum, true);
+  // Without a version (no VERSION_KEY on the Worker) nothing can be read: the peek stays.
+  const at = version ? Number(version[1]) : 0;
+  if (at > Math.max(pushHeard, latestHeldAt) && at <= ahead) {
+    pushHeard = at;
+    clearTimeout(pushReadTimer);
+    pushReadTimer = setTimeout(() => pushRead(at, version[0]), Math.random() * PUSH_SPREAD_MS);
+  }
+}
+
+async function pushRead(at, version) {
+  pushReadTimer = null;
+  if (document.visibilityState === 'hidden') return;
+  const ws = pushSocket;
+  const lasted = () => { if (ws && ws === pushSocket) { pushOk = true; pushFails = 0; } };
+  // Another read brought that version first: the push named it all the same.
+  if (at <= latestHeldAt) { lasted(); return; }
+  const bodies = await startLatest(LATEST_URL + '?v=' + version);
+  if (bodies.length) {
+    lasted();
+    offerLate(bodies);
+    pushLanded();
+  } else if (at === pushHeard && pushLive()) {
+    pushOk = false;
+    pushDropped();
+  }
+}
+
+// From the peek (js/standings.js): `newest` (ms) is the summary's newest `at`.
+function pushMissed(newest) {
+  if (!pushLive() || newest - Math.max(pushHeard, latestHeldAt) * 1000 <= PUSH_LATE_MS) return;
+  pushOk = false;
+  pushDropped();
 }
 
 // True when `offered` should take the place of `kept` as a team's match:

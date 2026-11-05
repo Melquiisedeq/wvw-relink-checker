@@ -8,6 +8,7 @@
 //   gw2.match('1-1')                      // the recording, as the 1-1 focus
 //     .advance(12, { kills: { Center: 30 } })   // 12 min of play, one state a minute
 //     .advance(6, { kills: {} })          // the score rises, the kills stand still
+//     .advance(6, { every: 0.5 })         // a state each 30 s
 //     .pageOpens()                        // the page's clock starts here
 //     .olderPool(10).advance(20).olderPool(0)   // a server group 10 min behind
 //     .olderPool(30, { every: true })     // the visitor's whole group 30 min behind
@@ -44,6 +45,7 @@
 //   The skirmishes add up to the scores too.
 // The server checks the bodies it serves against these (served() below) and
 // reports a break as a problem of the test.
+import { createHmac } from 'node:crypto';
 import { recording } from './recordings.mjs';
 
 const MIN = 60 * 1000;
@@ -128,16 +130,26 @@ class Timeline {
   // map type and minute, split over the colours, each kill a death of the next
   // colour. flips: how many objectives change hands, spread over the span, or
   // the objective ids. score: per colour and minute, on EBG and the skirmish.
-  advance(min, { kills = DEFAULT_KILLS, flips = 0, score = DEFAULT_SCORE } = {}) {
+  // `every`: minutes between states (0.5: one each 30 s, kills and score split
+  // between them); it must divide 1 and leave whole kills and points.
+  advance(min, { kills = DEFAULT_KILLS, flips = 0, score = DEFAULT_SCORE, every = 1 } = {}) {
     if (!(min > 0)) throw new Error('gw2: advance needs minutes');
+    const steps = Math.round(min / every);
+    const part = o => Object.fromEntries(Object.entries(o).map(([k, n]) => [k, n * every]));
+    if (!(every > 0 && every <= 1) || !Number.isInteger(1 / every) || Math.abs(steps * every - min) > 1e-9
+      || ![...Object.values(kills), ...Object.values(score)].every(n => Number.isInteger(n * every))) {
+      throw new Error('gw2: advance needs `every` to split the minutes, kills and score whole');
+    }
     const list = typeof flips === 'number' ? Array.from({ length: flips }, () => null) : [...flips];
-    const flipAt = new Map(list.map((obj, j) => [Math.max(1, Math.round((j + 1) * min / (list.length + 1))), obj]));
+    const flipAt = new Map(list.map((obj, j) => [Math.max(1, Math.round((j + 1) * steps / (list.length + 1))), obj]));
     const ops = [];
     let weekEnd = this.#weekEnd;
-    for (let i = 1; i <= min; i++) {
-      const at = this.#cursor + i * MIN;
+    const stepKills = every === 1 ? kills : part(kills);
+    const stepScore = every === 1 ? score : part(score);
+    for (let i = 1; i <= steps; i++) {
+      const at = this.#cursor + i * every * MIN;
       while (recording().recordedAt + at >= weekEnd) weekEnd += WEEK_MS;
-      ops.push({ kind: 'minute', at, kills, score, flip: flipAt.has(i) ? (flipAt.get(i) || true) : null });
+      ops.push({ kind: 'minute', at, kills: stepKills, score: stepScore, flip: flipAt.has(i) ? (flipAt.get(i) || true) : null });
     }
     return this.#with(ops, this.#cursor + min * MIN, this.#opensAt, weekEnd);
   }
@@ -609,11 +621,32 @@ class Server {
       if (path === '/api/latest/summary') {
         return { ...json(200, Object.fromEntries(bodies.map(b => [b.id, { start: Date.parse(b.start_time), score: sum(b.scores), at: at(b.id), by: 'a' }]))), date: pageNow };
       }
-      return { ...json(200, { matches: bodies.map(b => ({ id: b.id, start: Date.parse(b.start_time), score: sum(b.scores), at: at(b.id), by: 'a',
+      // ?v=: only the newest `at`, with its tag, is a version; any other is the Worker's 404.
+      const newest = Math.max(...ids.map(at));
+      const v = new URL(url).searchParams.get('v');
+      if (v !== null && v !== versionName(newest)) {
+        this.#planted.add(url);
+        return json(404, { error: 'not found' });
+      }
+      return { ...json(200, { at: newest, matches: bodies.map(b => ({ id: b.id, start: Date.parse(b.start_time), score: sum(b.scores), at: at(b.id), by: 'a',
         v: 2, body: liveOf(b) })) }), date: pageNow };
     }
     if (path === '/api/kills') return json(200, { rows: this.#rows(t) });
     return null;
+  }
+
+  // What the push socket sends at pageNow (worker/index.mjs, Live): each match of
+  // /api/latest's summary, without `by`; null while /api/latest is down.
+  told(pageNow) {
+    const { anchor, ids } = Timeline.compiled(this.#tl);
+    const t = pageNow - anchor;
+    if (this.#tl.latestStatusAt(t)) return null;
+    const up = Math.min(this.#tl.lastUp(t), this.#tl.heldAt(t));
+    const matches = ids.map(id => {
+      const b = this.#body(id, up, anchor + up, false);
+      return { id, start: Date.parse(b.start_time), score: sum(b.scores), at: Math.floor(this.#tl.changedAt(id, up) / 1000) };
+    });
+    return { matches, version: versionName(Math.max(...matches.map(m => m.at))) };
   }
 
   // /api/kills: the recorded rows and a row per state of the timeline, the
@@ -634,6 +667,9 @@ class Server {
     return rows.sort((a, b) => a[0] - b[0] || byId(a[1], b[1]));
   }
 }
+
+// A version as the Worker names it (worker/index.mjs, versionName), under this world's own key.
+export const versionName = at => at + '.' + createHmac('sha256', 'e2e version key').update('latest-version:' + at).digest('hex').slice(0, 32);
 
 export const gw2 = Object.freeze({
   // The recording, with `id` as the match that plays.

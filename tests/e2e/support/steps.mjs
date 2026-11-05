@@ -121,6 +121,19 @@ export async function later(page, wvw, ms) {
   await wvw.settle();
 }
 
+// The page's clock (clock: 'playwright') run `ms` in steps of 3 s, under
+// OWN_API_TIMEOUT_MS (js/config.js), each answer given its moment to land.
+// `using`: a scroll each step, a visitor at the page (the peek's fastest pace).
+// `push`: support/scenarios.mjs's livePush, each new version told as the Worker does.
+export async function play(page, ms, { using = false, push = null } = {}) {
+  for (let t = 0; t < ms; t += 3000) {
+    if (using) await page.evaluate(() => window.dispatchEvent(new Event('scroll')));
+    if (push) await push.sync();
+    await page.clock.runFor(Math.min(3000, ms - t));
+    await page.waitForTimeout(40);
+  }
+}
+
 // The match a page keeps for a tier, as a copy, its score last rising now.
 export function keptMatch(page, id) {
   return page.evaluate(i => { const k = newestMatches.get(i); k.at = Date.now(); return JSON.parse(JSON.stringify(k.match)); }, id);

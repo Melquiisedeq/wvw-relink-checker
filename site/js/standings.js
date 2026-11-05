@@ -601,7 +601,10 @@ let peekAt = 0;                 // when the last peek ran
 let peekAnchor = 0;             // ms: the newest `at` in the last summary read (server time)
 let inputAt = Date.now();
 
-const peekFloor = () => (navigator.connection?.saveData === true ? PEEK_SAVE_MS : PEEK_MS);
+// With the push live (js/api.js) the copy comes without a peek: the peek keeps
+// the idle pace, and tells the push when it saw a version the push missed.
+const peekFloor = () => (pushLive() ? PEEK_IDLE_MAX_MS
+  : navigator.connection?.saveData === true ? PEEK_SAVE_MS : PEEK_MS);
 
 // The board as this page holds it: each body on show, or the further-along
 // one in hand, after what /api/latest gave when `copy` asks for it. Null when
@@ -678,16 +681,11 @@ async function peekLatest() {
   if (!sum || typeof sum !== 'object') return;
   const now = Date.now();
   peekLearn(sum);
+  pushMissed(summaryAt(sum));
   latestSummaryLearn(sum);
   const copied = new Set();   // live matches our copy holds further along than this page
-  let inHand = false;         // a body in hand (the open map, or an answer past LATEST_WAIT_MS) the list does not draw yet
-  for (const [id, k] of newestMatches) {
-    if (!matchIsLive(k.match)) continue;
-    const drawn = matchDataCache.get(id);
-    if (drawn && drawn.start_time === k.match.start_time
-      && colorSum(k.match.scores) > colorSum(drawn.scores)) inHand = true;
-    if (summaryAhead(k.match)) copied.add(id);
-  }
+  const inHand = handAhead();
+  for (const [id, k] of newestMatches) if (matchIsLive(k.match) && summaryAhead(k.match)) copied.add(id);
   if (copied.size && mapAhead) mapAhead(copied);
   const behind = [...copied].some((id) => now - newestMatches.get(id).at >= PEEK_BEHIND_MS);
   if (!inHand && !behind) return;
@@ -695,6 +693,35 @@ async function peekLatest() {
   peekLoadedAt = now;
   peekCopy = behind;
   await loadStandings('peek');
+}
+
+// A body in hand (the open map, an answer past LATEST_WAIT_MS, a push) that the list does not draw yet.
+function handAhead() {
+  for (const [id, k] of newestMatches) {
+    const drawn = matchDataCache.get(id);
+    if (matchIsLive(k.match) && drawn && drawn.start_time === k.match.start_time
+      && colorSum(k.match.scores) > colorSum(drawn.scores)) return true;
+  }
+  return false;
+}
+
+// The list takes what is in hand as a peek's load would, without reading. True when it loads.
+function boardFromHand() {
+  if (activeTrigger || standingsInFlight || standingsFailed.length || document.visibilityState === 'hidden' || !handAhead()) return false;
+  peekCopy = false;
+  loadStandings('peek');
+  return true;
+}
+
+// A push read landed (js/api.js); a popover open now gets it on closing (peekSoon).
+function pushLanded() {
+  boardFromHand();
+}
+
+// The push stopped: the peek takes back its own pace from now.
+function pushDropped() {
+  peekDelay = peekFloor();
+  peekSoon();
 }
 
 async function runPeek() {
@@ -714,7 +741,7 @@ async function runPeek() {
 
 // Now, unless a peek ran less than the floor ago: then when the floor is up.
 function peekSoon() {
-  if (document.visibilityState === 'hidden') return;
+  if (document.visibilityState === 'hidden' || (pushLive() && boardFromHand())) return;
   clearTimeout(peekTimer);
   peekAligned = false;
   peekRetried = false;
@@ -737,6 +764,7 @@ function startPeeking() {
   for (const type of ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll']) {
     window.addEventListener(type, onInput, { passive: true, capture: true });
   }
+  startPush();
 }
 
 // Set by a tick skipped under an open popover; readOwed pays it once none is open.

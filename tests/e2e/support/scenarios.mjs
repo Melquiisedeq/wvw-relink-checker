@@ -20,6 +20,10 @@ const opened = (id = FOCUS) => gw2.match(id).advance(12).pageOpens();
 // `min` minutes of play, the API answering as it goes.
 export const playing = (min = 40, id) => opened(id).advance(min);
 
+// The same, the game moving each 30 s: each version of our copy is under 30 s
+// old whenever it is read.
+export const playingHalfMinutes = (min = 40, id) => opened(id).advance(min, { every: 0.5 });
+
 // The API answers the same body for `min` minutes, after 4 of play, then 12
 // more of play.
 export const frozen = (min = 40, id) => opened(id).advance(4).freeze(min).advance(12);
@@ -178,4 +182,64 @@ export async function awayAndBack(page, wvw, ms, { othersSeen = false } = {}) {
 // (page.clock.fastForward). Needs the fixture's clock: 'playwright'.
 export async function wake(page, ms) {
   await page.clock.fastForward(ms);
+}
+
+// ---- the push ----------------------------------------------------------
+// The Live object's socket (worker/index.mjs) for a page opened on the site's own
+// address (test.use({ origin: 'https://wvwrelink.com' }); the page opens no
+// socket anywhere else): each connection gets the timeline's summary as it stands
+// with its version (support/gw2.mjs, versionName),
+// 'pong' to 'ping' (setWebSocketAutoResponse) and, for anything else, a close 1008.
+// Set before the page opens.
+//   const push = await livePush(page, wvw);
+//   await push.tell();             // the ingest stored a newer copy: every open socket hears it
+//   await push.sync();             // told only if the world has a version not told yet (each step of a test)
+//   push.refuse = true;            // each new connection closed at once, 1013 (or the code given: 4013, 1011)
+//   push.hangUp = true;            // each new connection gets its first message, then is closed, 1011
+//   await connectionDrops(push);   // the connection falls mid-visit (below)
+export async function livePush(page, wvw) {
+  const open = new Set();
+  let synced = 0;
+  const newestOf = msg => Math.max(0, ...msg.matches.map(m => m.at));
+  const push = {
+    opened: 0, pings: 0, misuse: 0, refuse: false, mute: false, quiet: false, hangUp: false,
+    get open() { return open.size; },
+    async tell(msg) {
+      const text = typeof msg === 'string' ? msg : JSON.stringify(msg ?? await wvw.told());
+      for (const ws of open) ws.send(text);
+    },
+    async sync() {
+      const msg = await wvw.told();
+      if (push.quiet || !msg || newestOf(msg) <= synced) return;
+      synced = newestOf(msg);
+      await push.tell(msg);
+    },
+    drop(code = 1001) { for (const ws of [...open]) { open.delete(ws); ws.close({ code, reason: 'going away' }); } },
+  };
+  await page.routeWebSocket('wss://wvwrelink.com/api/ws', async ws => {
+    push.opened++;
+    if (push.refuse) return ws.close({ code: push.refuse === true ? 1013 : push.refuse, reason: 'try again later' });
+    open.add(ws);
+    ws.onClose(() => open.delete(ws));
+    ws.onMessage(m => {
+      if (m === 'ping') { push.pings++; if (!push.mute) ws.send('pong'); return; }
+      push.misuse++;
+      open.delete(ws);
+      ws.close({ code: 1008, reason: 'policy violation' });
+    });
+    const known = await wvw.told();
+    if (known) { ws.send(JSON.stringify(known)); synced = Math.max(synced, newestOf(known)); }
+    if (push.hangUp) { open.delete(ws); ws.close({ code: 1011, reason: 'internal error' }); }
+  });
+  return push;
+}
+
+// The connection falls mid-visit: the Worker closes it (a deploy: 1001); or,
+// `silent`, it stays open and stops answering, so only the page's own wait for
+// its 'pong' can tell; or, `quiet`, it stays open and answers, and no ingest
+// tells it anything more (the object's notice failing), so only the peek can tell.
+export async function connectionDrops(push, { silent = false, quiet = false } = {}) {
+  if (silent) push.mute = true;
+  else if (quiet) push.quiet = true;
+  else push.drop();
 }

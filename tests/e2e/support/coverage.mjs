@@ -58,10 +58,11 @@ const options = () => ({
   logging: 'error',
 });
 
-// What the browser calls a script: http://127.0.0.1:<port>/js/maps.js. The port is
+// What the browser calls a script: http://127.0.0.1:<port>/js/maps.js, or
+// https://wvwrelink.com/js/maps.js under the fixture's `origin`. The port is
 // the worker's, so the same file must answer to one name: the real file's.
 const fileUrl = url => {
-  const m = /^https?:\/\/127\.0\.0\.1:\d+\/(js\/[^?#]+\.js)(?:[?#].*)?$/.exec(url);
+  const m = /^(?:https?:\/\/127\.0\.0\.1:\d+|https:\/\/wvwrelink\.com)\/(js\/[^?#]+\.js)(?:[?#].*)?$/.exec(url);
   return m && pathToFileURL(join(ROOT, 'site', m[1])).href;
 };
 
