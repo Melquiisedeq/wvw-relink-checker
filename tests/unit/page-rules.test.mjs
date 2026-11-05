@@ -856,7 +856,7 @@ test('runPeek: a show during the peek leaves one pending timer, not two (js/stan
   assert.equal(pending.size, 1);
 });
 
-test('runPeek: the next peek lands PEEK_AFTER_MS after a 30 s mark on the server\'s clock, whatever this device\'s (js/standings.js)', async () => {
+test('runPeek: the next peek lands PEEK_AFTER_MS after a 20 s mark on the server\'s clock, whatever this device\'s (js/standings.js)', async () => {
   const page = fresh();
   const MIN = 60000, anchor = 1000 * MIN + 3000, lead = 20000;
   const device = anchor + 5 * MIN + 40000 + lead;   // the server's clock reads 40 s past the mark: this device's, 20 s more
@@ -874,7 +874,7 @@ test('runPeek: the next peek lands PEEK_AFTER_MS after a 30 s mark on the server
 test('runPeek: a read of 6 s is followed by the next mark, counted from where it began (js/standings.js)', async () => {
   const page = fresh();
   const MIN = 60000, anchor = 1000 * MIN + 3000, mark = anchor + 11000 + 9 * MIN;
-  let clock = mark;
+  let clock = mark - 5000;   // begun 5 s before a mark; the one after it, 25 s from the start, clears the floor
   const delays = [];
   page.ctx.setTimeout = (fn, ms) => { delays.push(ms); return delays.length; };
   page.ctx.clearTimeout = () => {};
@@ -883,7 +883,7 @@ test('runPeek: a read of 6 s is followed by the next mark, counted from where it
   page.ctx.__slow = async () => { clock += 6000; };
   page.run('peekLatest = __slow; peekAnchor = ' + anchor + '; ownClockLead = 0; peekDelay = 30000');
   await page.run('runPeek()');
-  assert.deepEqual(delays, [24000]);
+  assert.deepEqual(delays, [19000]);
 });
 
 test('emberField: stop then start in the same frame leaves one frame chain (js/boot.js)', () => {
@@ -1014,18 +1014,18 @@ test('KEEP_SPAWN_TEAM: every borderland and EBG keep of the recording has an ent
   assert.deepEqual([...missing], []);
 });
 
-test('the aligned peek: lands PEEK_AFTER_MS after a 30 s mark of the summary, never under the floor (js/standings.js)', () => {
+test('the aligned peek: lands PEEK_AFTER_MS after a 20 s mark of the summary, never under the floor (js/standings.js)', () => {
   const page = fresh();
   const nav = { connection: { saveData: false } };
   page.ctx.navigator = nav;
-  const MIN = 60000, HALF = 30000, mark = 1000 * MIN + 3000, aligned = (k) => mark + 11000 + k * MIN;
+  const MIN = 60000, HALF = 20000, mark = 1000 * MIN + 3000, aligned = (k) => mark + 11000 + k * MIN;
   const wait = (anchor, delay, now) => { page.ctx.__a = anchor; return page.run(`peekAnchor = __a; peekWait(${delay}, ${now})`); };
   assert.equal(page.run('PEEK_BEHIND_MS'), 30000);
   assert.equal(page.run('PEEK_AFTER_MS'), 11000);
   assert.equal(page.run('PEEK_EVERY_MS'), HALF);
   assert.equal(wait(0, 30000, 5), 30000, 'no summary read yet: the delay as it was');
-  assert.equal(wait(mark, 30000, mark + 11000), 30000, 'asked at its own peek: the next mark, 30 s on');
-  assert.equal(wait(mark, 30000, mark), 41000, 'asked on the mark: +11 s is under the floor less its slack, so the next mark, +41 s');
+  assert.equal(wait(mark, 30000, mark + 11000), 40000, 'asked at its own peek: the second mark on, 40 s (the first is under the floor)');
+  assert.equal(wait(mark, 30000, mark), 31000, 'asked on the mark: the mark at +11 s is under the floor less its slack, so the next, +31 s');
   for (const delay of [30000, 120000]) {
     for (const from of [0, 4000, 12000, 59000, 61000, 90000]) {
       const now = 1000 * MIN + 9 * MIN + from;
@@ -1063,26 +1063,27 @@ test('the aligned peek: a summary that did not move gets one more ask, and reads
   assert.deepEqual([...next(true, true)].slice(0, 2), [10000, false], 'aligned and still: ask again in 10 s');
   assert.equal(next(true, false)[0] > 10000, true, 'that ask, or a show or an input, is not followed by another');
   assert.equal(next(false, true)[0] > 10000, true, 'moved: the rhythm');
-  // The retry sits 20 s short of the next mark: the peek after it takes that mark, it does not skip to the one after.
+  // The retry sits 10 s short of the next mark: the peek after it takes the last mark within its delay.
   page.run('peekAnchor = 1000 * 60000 + 3000; peekAligned = true; peekStill = true');
   const mark = 1000 * 60000 + 3000 + 11000 + 9 * 60000;
   assert.equal(page.run(`peekNext(30000, ${mark})`), 10000);
-  assert.equal(page.run(`peekStill = false; peekNext(30000, ${mark + 10500})`), 19500, 'after the retry: the next mark');
+  assert.equal(page.run(`peekStill = false; peekNext(30000, ${mark + 10500})`), 29500, 'after the retry: the last mark within its 30 s, 40 s past the aligned one');
   // A read that took 6 s (the aligned one, or the retry) is followed by the next mark, counted from where it began.
   page.run('peekAnchor = 1000 * 60000 + 3000; peekAligned = false; peekStill = false; peekRetried = false');
-  assert.equal(page.run(`peekNext(30000, ${mark + 6000}, ${mark})`), 24000, 'aligned read of 6 s: the next mark, not the one after');
+  assert.equal(page.run(`peekNext(30000, ${mark + 6000}, ${mark})`), 34000, 'aligned read of 6 s: the last mark within the delay, counted from where it began');
+  assert.equal(page.run(`peekNext(30000, ${mark + 1000}, ${mark - 5000})`), 19000, 'a read of 6 s begun 5 s before a mark: the next mark, 25 s from its start, not the one after');
   page.run('peekRetried = true');
-  assert.equal(page.run(`peekNext(30000, ${mark + 16000}, ${mark + 10000})`), 14000, 'retry of 6 s: the next mark');
-  assert.equal(page.run(`peekNext(30000, ${mark + 50000}, ${mark})`), 10000, 'a read longer than the floor: the next mark still ahead');
+  assert.equal(page.run(`peekNext(30000, ${mark + 16000}, ${mark + 10000})`), 24000, 'retry of 6 s: the last mark within the delay');
+  assert.equal(page.run(`peekNext(30000, ${mark + 50000}, ${mark})`), 30000, 'a read longer than the floor: the last mark within the delay still ahead');
   // The same 6 s on an aligned read that did not move: the retry still lands 10 s after its start, then the next mark.
   page.run('peekAligned = true; peekStill = true; peekRetried = false');
   assert.equal(page.run(`peekNext(30000, ${mark + 6000}, ${mark})`), 4000, 'still aligned read of 6 s: retry 10 s after it began');
-  assert.equal(page.run(`peekStill = false; peekNext(30000, ${mark + 16000}, ${mark + 10000})`), 14000, 'retry of 6 s: the mark 30 s after the aligned one');
+  assert.equal(page.run(`peekStill = false; peekNext(30000, ${mark + 16000}, ${mark + 10000})`), 24000, 'retry of 6 s: the mark 40 s after the aligned one');
   nav.connection.saveData = true;
   assert.equal(next(true, true)[0] > 10000, true, 'Save-Data never asks under its floor');
   nav.connection.saveData = false;
   // Ten minutes of a clock that never sees the summary move, a show (the real peekSoon) every `every` ms:
-  // never more than four reads in a minute (two marks, each with its retry; a show replaces the aligned peek), whatever the phase.
+  // never more than four reads in a minute (an aligned read and its retry, and the shows, which replace the aligned peek), whatever the phase.
   for (const every of [40000, 50000, 75000, 100000, Infinity]) {
     page.run('peekAnchor = 1000 * 60000 + 3000; peekAligned = true');
     let now = 1000 * 60000 + 9 * 60000, lastSoon = now;
@@ -1098,7 +1099,7 @@ test('the aligned peek: a summary that did not move gets one more ask, and reads
     }
     const reads = times.length;
     assert.ok(times.every((t) => times.filter((u) => u >= t && u < t + 60000).length <= 4), `a show every ${every / 1000} s: more than four reads in a minute`);
-    if (every === Infinity) assert.equal(reads, 40, 'no show: an aligned read and its retry at each of two marks a minute');
+    if (every === Infinity) assert.equal(reads, 31, 'no show: an aligned read and its retry at every second mark, three a minute, the first one counted');
     assert.ok(reads <= 40, `a show every ${every / 1000} s: ${reads} reads in 10 min`);
   }
 });
