@@ -54,13 +54,31 @@ end;
 $$;
 revoke all on function public.call_reader(text) from public, anon, authenticated;
 
--- 4. Every 30 seconds (pg_cron 1.5 or later; site/js/standings.js PEEK_EVERY_MS follows it), both
--- sides; and a daily cleanup of the beat.
-select cron.schedule('reader-us', '30 seconds', $$select public.call_reader('us-east-1')$$);
-select cron.schedule('reader-eu', '30 seconds', $$select public.call_reader('eu-central-1')$$);
+-- 4. The turn. One job every 15 seconds calls the region the last beat did not, so
+-- the two readers stay half a cycle apart; each region still runs every 30 seconds
+-- (site/js/standings.js PEEK_EVERY_MS). A project that ran reader-us and reader-eu
+-- (steps 1 to 3 already ran) pastes from here down; the select below drops the old
+-- pair, and only if they exist, since cron.unschedule of a missing name is an error.
+-- No beat yet (a new project, or one stopped for 7 days): us-east-1 goes first.
+create or replace function public.call_next_reader() returns void
+language plpgsql
+set search_path = ''
+as $$
+declare
+  last_region text;
+begin
+  select region into last_region from public.heartbeat order by id desc limit 1;
+  perform public.call_reader(case when last_region = 'us-east-1' then 'eu-central-1' else 'us-east-1' end);
+end;
+$$;
+revoke all on function public.call_next_reader() from public, anon, authenticated;
+
+select cron.unschedule(jobname) from cron.job where jobname in ('reader-us', 'reader-eu');
+-- The '15 seconds' syntax needs pg_cron 1.5 or later.
+select cron.schedule('readers', '15 seconds', $$select public.call_next_reader()$$);
 select cron.schedule('heartbeat-cleanup', '17 3 * * *',
   $$delete from public.heartbeat where at < now() - interval '7 days'$$);
 
--- To stop:  select cron.unschedule('reader-us'); select cron.unschedule('reader-eu');
+-- To stop:  select cron.unschedule('readers');
 -- To change the pace of a schedule that exists: run its cron.schedule again with the
 -- same name; pg_cron updates the job in place. Check with: select jobname, schedule from cron.job;
