@@ -2,8 +2,8 @@
 // ---------------------------------------------------------------------
 // The two static catalogues the objective maps are built from, written out instead of
 // fetched: the objectives on the four WvW maps and the polygons of their sectors. They
-// sit on the popover's critical path; getObjectiveCatalogue and getSectors still fetch
-// the live lists and take over for the next opening.
+// sit on the popover's critical path; the page never refreshes them from the game, and
+// scripts/check-catalogue.py compares this copy with the game every six hours.
 //
 // Only the fields the drawing code reads; coordinates rounded to one decimal (the
 // smallest marker has a radius of 80 map units). To rebuild by hand:

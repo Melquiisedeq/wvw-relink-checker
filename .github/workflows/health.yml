@@ -120,3 +120,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Every relink produced a notice
         run: python3 scripts/check-notice.py
+
+  # The page draws the objectives and the sectors from the copy in
+  # js/wvw-static.js and never asks the game for them; this asks instead. Its
+  # own job, so the email says "catalogue" and the fix is to rebuild the copy.
+  catalogue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The written-out objectives and sectors against the game
+        run: python3 scripts/check-catalogue.py

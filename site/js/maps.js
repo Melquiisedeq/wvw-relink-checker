@@ -98,17 +98,6 @@ function staticPack() {
   return (typeof WVW_STATIC === 'object' && WVW_STATIC) || null;
 }
 
-// Started once in the background. What comes back is what the NEXT opening uses; it never repaints
-// under a cursor, so a map is never half from one catalogue and half from another.
-function refreshCatalogueSoon() {
-  fetchJsonCached(`${API_BASE}/wvw/objectives?ids=all`).then((list) => {
-    if (!Array.isArray(list) || !list.length) return;
-    const byId = new Map();
-    for (const o of list) byId.set(o.id, o);
-    objectiveCatalogue = byId;
-  }).catch(() => { /* the baked copy stands */ });
-}
-
 async function getObjectiveCatalogue() {
   if (objectiveCatalogue) return objectiveCatalogue;
   const pack = staticPack();
@@ -116,7 +105,6 @@ async function getObjectiveCatalogue() {
     const byId = new Map();
     for (const o of pack.objectives) byId.set(o.id, o);
     objectiveCatalogue = byId;
-    refreshCatalogueSoon();
     return byId;
   }
   const list = await fetchJsonCached(`${API_BASE}/wvw/objectives?ids=all`);
@@ -418,24 +406,12 @@ function guildEmblem(guildId) {
   return emblemPending.get(guildId);
 }
 
-// As with the catalogue, the result serves the next drawing.
-function refreshSectorsSoon(mapId) {
-  fetchJsonCached(
-    `${API_BASE}/continents/2/floors/3/regions/7/maps/${encodeURIComponent(mapId)}/sectors?ids=all`)
-    .then((list) => {
-      const arr = (Array.isArray(list) ? list : []).filter((x) => Array.isArray(x.bounds));
-      if (arr.length) sectorCache.set(mapId, arr);
-    })
-    .catch(() => { /* the baked copy stands */ });
-}
-
 async function getSectors(mapId) {
   if (sectorCache.has(mapId)) return sectorCache.get(mapId);
   const pack = staticPack();
   const baked = pack && pack.sectors && pack.sectors[String(mapId)];
   if (Array.isArray(baked) && baked.length) {
     sectorCache.set(mapId, baked);
-    refreshSectorsSoon(mapId);
     return baked;
   }
   const list = await fetchJsonCached(
