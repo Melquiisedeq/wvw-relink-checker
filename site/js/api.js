@@ -715,8 +715,8 @@ const LATEST_URL = '/api/latest';
 const LATEST_SUMMARY_URL = '/api/latest/summary';
 const LATEST_QUIET_MS = 90 * 1000;
 const LATEST_GAP_MS = 30 * 1000;
-// The peek reads the summary every 30 s with a map open; past this,
-// the quiet rule above judges instead.
+// The peek reads the summary every 30 s with a map open; past this, the quiet rule
+// above judges instead, and the five-minute refresh reads the game (copyHolds).
 const LATEST_SUMMARY_FRESH_MS = 90 * 1000;
 const LATEST_WAIT_MS = 1200;           // how long a read holds the paint; a late answer waits for the next one
 const LATEST_BODY_MAX = 256 * 1024;    // per part: inflated bytes (format 1), characters (format 2, a history)
@@ -892,6 +892,20 @@ function summaryDate(m) {
 function summaryAhead(m) {
   const e = latestSummary.get(m.id);
   return !!e && e.start === Date.parse(m.start_time) && e.score > colorSum(m.scores);
+}
+
+// True when the copy's summary holds every match in `shown` for the week drawn and its
+// newest `at`, on the servers' clock, is within LATEST_SUMMARY_FRESH_MS: then the
+// five-minute cycle has nothing to ask the game. A week the summary does not know
+// (a reset, a tier added) is the game's to tell.
+function copyHolds(shown) {
+  let newest = 0;
+  for (const m of shown) {
+    const e = latestSummary.get(m.id);
+    if (!e || e.start !== Date.parse(m.start_time)) return false;
+    newest = Math.max(newest, e.at || 0);
+  }
+  return newest > 0 && Date.now() - ownClockLead - newest <= LATEST_SUMMARY_FRESH_MS;
 }
 
 // True when one of `ids` is a live match behind what our copy holds, and the

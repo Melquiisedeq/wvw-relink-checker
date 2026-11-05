@@ -464,7 +464,7 @@ test.describe('a side\'s VP moves on a refresh', () => {
         headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } });
     });
     expect(await pulsing(), 'cards pulsing before the refresh').toEqual([]);
-    await page.evaluate(() => loadStandings());
+    await page.evaluate(() => loadStandings('manual'));
     await expect(page.locator(`.standing-match[data-match-id="${FOCUS}"] .side-red .standing-vp .stat-value`),
       'red VP after the refresh').toHaveText(mine.victory_points.red.toLocaleString('en-US'));
     expect(await pulsing(), 'the sides whose card pulsed after red VP moved').toEqual(['red']);
