@@ -11,7 +11,11 @@
 //   GET  /api/relink           relink!A1 as numbers, for the teams notice
 //   GET  /api/latest            each match's newest body, as the readers pushed it
 //   GET  /api/latest/summary     the same without the bodies: id, start, score, at, by, hist
+//   GET  /api/latest?v=<at>.<tag>  the same, for the version a push named (tag: VERSION_KEY); 404 for any other
 //   GET  /api/history/<1|2>?v=<n>  a region's finished skirmishes, n of them, this week
+//   GET  /api/ws               a WebSocket that carries nothing in: each newer copy the ingest
+//                              stores, as {matches: [{id, start, score, at}], version: "<at>.<tag>"}
+//                              (the Live object; no version without VERSION_KEY)
 //   daily, on a schedule       kills older than KEEP_DAYS are deleted
 //
 // A message is signed by its script with a secret of its own:
@@ -58,6 +62,17 @@ const SUMMARY_KEY = 'https://wvwrelink.com/api/latest/summary';
 // The max-age of each read, both in its answer and on a copy served from the cache.
 const LATEST_MAX_AGE = 5;
 const SUMMARY_MAX_AGE = 5;
+// A version is the `at` of the ingest that wrote it, unique and rising (latestUpsertSql), so
+// its copy never changes once written and is kept from the first read.
+const LATEST_VERSION_MAX_AGE = 60;
+// A version is asked as <at>.<tag> (versionTag): minted by the ingest, passed on by the Live
+// object. Only a version the ingest wrote reaches D1, and then the data centre's cache once a
+// read fills it. A VERSION_KEY under MIN_SECRET characters is no key.
+const VERSION_DOMAIN = 'latest-version:';
+// How far past the clock an ingest's `at` may run (latestUpsertSql); past it the message is
+// not written. The score-rise rule compares `at` with the clock, and far ahead it would hold
+// the match still.
+const LATEST_AHEAD_S = 60;
 const HISTORY_KEY = 'https://wvwrelink.com/api/history/';
 // A version whose every match is in: it never changes. One with a match missing or behind: a minute.
 const HISTORY_MAX_AGE = 4 * 3600;
@@ -89,10 +104,20 @@ for (const r of [1, 2]) for (let t = 1; t <= 9; t++) MATCHES.push(r + '-' + t);
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (url.pathname === '/api/ws') return openSocket(request, env);
     const m = /^\/api\/ingest\/([a-z]+(?:-[a-z]+)*)$/.exec(url.pathname);
     if (m) {
       if (request.method !== 'POST') return text(405, 'method');
-      return accept(request, env, m[1], url.pathname);
+      return accept(request, env, ctx, m[1], url.pathname);
+    }
+    if (url.pathname === '/api/latest' && url.search.startsWith('?v=')) {
+      if (request.method !== 'GET') return text(405, 'method');
+      try {
+        return await readLatestVersion(env, ctx, url);
+      } catch (e) {
+        console.log(JSON.stringify({ read: 'latest version', failed: String(e) }));
+        return text(503, 'unavailable');
+      }
     }
     if (url.pathname.startsWith('/api/history/')) {
       if (request.method !== 'GET') return text(405, 'method');
@@ -130,7 +155,7 @@ export default {
   }
 };
 
-async function accept(request, env, source, path) {
+async function accept(request, env, ctx, source, path) {
   const secret = Object.hasOwn(SOURCES, source) && env[SOURCES[source]];
   if (!secret) return refuse(404, source, 'unknown source or no secret');
   if (secret.length < MIN_SECRET) return refuse(404, source, 'secret too short');
@@ -158,7 +183,7 @@ async function accept(request, env, source, path) {
     return refuse(401, source, 'bad signature');
   }
 
-  if (source.startsWith('latest-')) return acceptLatest(env, source, body, Number(t), now);
+  if (source.startsWith('latest-')) return acceptLatest(env, ctx, source, body, Number(t), now);
 
   // Signed from here on, so a failure below is our bug or Google's; it is still never written.
   let data;
@@ -190,6 +215,23 @@ async function accept(request, env, source, path) {
   return text(200, 'ok');
 }
 
+// The message's matches as [id, start, score, gz, sha, raw] in ?1, the clock in ?2, the reader in
+// ?3. Every row it writes gets one `at`: the clock, or one past the newest stored when that is
+// not under it, so each ingest that applies anything is a version of its own, even two in one
+// second; none, past LATEST_AHEAD_S. SQLite runs a SELECT that reads the table it inserts
+// into to the end before writing, so the newest is the one from before this message.
+// RETURNING: the rows that went in.
+const latestUpsertSql =
+  'INSERT INTO latest (id, start, score, at, reader, gz, sha, raw) ' +
+  "SELECT json_extract(j.value, '$[0]'), json_extract(j.value, '$[1]'), json_extract(j.value, '$[2]'), v.at, ?3, " +
+  "json_extract(j.value, '$[3]'), json_extract(j.value, '$[4]'), json_extract(j.value, '$[5]') " +
+  'FROM json_each(?1) j, (SELECT MAX(?2, COALESCE(MAX(at), 0) + 1) AS at FROM latest) v WHERE v.at <= ?2 + ' + LATEST_AHEAD_S + ' ' +
+  'ON CONFLICT (id) DO UPDATE SET start = excluded.start, score = excluded.score, at = excluded.at, ' +
+  'reader = excluded.reader, gz = excluded.gz, sha = excluded.sha, raw = excluded.raw ' +
+  'WHERE excluded.start > latest.start OR (excluded.start = latest.start AND excluded.score > latest.score ' +
+  'AND excluded.score <= latest.score + ' + MAX_SCORE_PER_MIN + ' * ((?2 - latest.at) / 60.0) + ' + SCORE_SLACK + ') ' +
+  'RETURNING id, at';
+
 async function claimTime(db, source, t, now) {
   const claim = await db.prepare(
     'UPDATE source SET t = ?1, received = ?2 WHERE name = ?3 AND t < ?1'
@@ -202,7 +244,7 @@ async function claimTime(db, source, t, now) {
 // Format 2 (v 2): per match the live part (the body with only its running skirmish) when the
 // entry has `live`, then its finished skirmishes when it has `hist`; both plain JSON. Each part
 // is checked alone, and one that fails is left out with the reason logged, the others kept.
-async function acceptLatest(env, source, body, t, now) {
+async function acceptLatest(env, ctx, source, body, t, now) {
   const nl = body.indexOf(10);
   if (nl < 0) return refuse(400, source, 'no summary line');
   let summary;
@@ -240,24 +282,29 @@ async function acceptLatest(env, source, body, t, now) {
 
   if (!await claimTime(env.DB, source, t, now)) return refuse(409, source, 'replay or out of order');
 
-  // One command per match, atomic in SQLite: two readers at once cannot make a
+  // One statement for the whole message, atomic in SQLite: two readers at once cannot make a
   // match go back. A first write enters (it passed the checks above); after
   // that a newer week wins, and in the same week a higher score, but not past
   // what a score can rise since the stored one. Compared to the Worker's clock.
   // `gz` holds format 1's gzip as base64, or format 2's live part as JSON text,
   // which begins with "{" as base64 never does: /api/latest tells them apart by it.
+  const rows = ms.filter((m) => m.stored).map((m) => [m.id, m.start, m.score, m.stored.text, m.stored.sha256, m.stored.raw]);
   const applied = [];
   const lost = [];
-  for (const m of ms) {
-    if (!m.stored) continue;
-    const r = await env.DB.prepare(
-      'INSERT INTO latest (id, start, score, at, reader, gz, sha, raw) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) ' +
-      'ON CONFLICT (id) DO UPDATE SET start = excluded.start, score = excluded.score, at = excluded.at, ' +
-      'reader = excluded.reader, gz = excluded.gz, sha = excluded.sha, raw = excluded.raw ' +
-      'WHERE excluded.start > latest.start OR (excluded.start = latest.start AND excluded.score > latest.score ' +
-      'AND excluded.score <= latest.score + ' + MAX_SCORE_PER_MIN + ' * ((?9 - latest.at) / 60.0) + ' + SCORE_SLACK + ')'
-    ).bind(m.id, m.start, m.score, now, source, m.stored.text, m.stored.sha256, m.stored.raw, now).run();
-    (r.meta && r.meta.changes === 1 ? applied : lost).push(m);
+  let version = now;
+  if (rows.length) {
+    let { results, meta } = await env.DB.prepare(latestUpsertSql).bind(JSON.stringify(rows), now, source).all();
+    // https://developers.cloudflare.com/d1/worker-api/prepared-statements/ says a write's
+    // `results` are empty: if RETURNING gave none and rows changed, this message's are the
+    // reader's newest (supabase/reader.mjs sends its messages one at a time).
+    if (!results.length && meta && meta.changes > 0) {
+      ({ results } = await env.DB.prepare(
+        'SELECT id, at FROM latest WHERE reader = ?1 AND at = (SELECT MAX(at) FROM latest WHERE reader = ?1)'
+      ).bind(source).all());
+    }
+    const won = new Set(results.map((r) => r.id));
+    for (const m of ms) if (m.stored) (won.has(m.id) ? applied : lost).push(m);
+    if (results.length) version = results[0].at;
   }
   if (lost.length) await logJumps(env.DB, source, lost, now);
 
@@ -296,6 +343,14 @@ async function acceptLatest(env, source, body, t, now) {
     } catch (e) {
       console.log(JSON.stringify({ source, recent: 'failed', why: String(e) }));
     }
+  }
+  // Last, after every write, and outside the answer: the tabs fetch what this names, so it
+  // must already be in D1, and the reader's message is taken whether the push works or not.
+  if (applied.length) {
+    const told = tellLive(env, applied.map((m) => ({ id: m.id, start: m.start, score: m.score, at: version })),
+      await versionName(env, version));
+    if (ctx && ctx.waitUntil) ctx.waitUntil(told);
+    else await told;
   }
   return new Response(JSON.stringify({ applied: applied.map((m) => m.id) }) + '\n', {
     headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }
@@ -827,17 +882,8 @@ const READS = {
   // Each entry in the format it came in: format 1 {id, start, score, at, by, gz}, the gzip
   // as base64; format 2 {id, start, score, at, by, v: 2, body}, the live part as JSON.
   '/api/latest': (env, ctx) => cached(ctx, LATEST_KEY, async () => {
-    const { results } = await env.DB.prepare('SELECT id, start, score, at, reader, gz FROM latest').all();
-    // Two hours without an update: a tier that no longer exists.
-    const live = results.filter((r) => nowS() - r.at <= LATEST_KEEP_S);
-    const newest = Math.max(0, ...live.map((r) => r.at));
-    if (!live.length || nowS() - newest > STALE_LATEST_S) return text(503, 'stale');
-    // Format 2's text was parsed whole by the entrance, so it goes in as it is.
-    const entry = (r) => {
-      const head = JSON.stringify({ id: r.id, start: r.start, score: r.score, at: r.at, by: r.reader }).slice(0, -1);
-      return r.gz.startsWith('{') ? head + ',"v":2,"body":' + r.gz + '}' : head + ',"gz":' + JSON.stringify(r.gz) + '}';
-    };
-    return json('{"at":' + newest + ',"matches":[' + live.map(entry).join(',') + ']}', LATEST_MAX_AGE);
+    const copy = await latestCopy(env);
+    return copy ? json(copy.body, LATEST_MAX_AGE) : text(503, 'stale');
   }),
 
   // Always 200, {} when empty: the readers need it to begin. `hist`: the finished
@@ -860,6 +906,70 @@ const READS = {
     return json(JSON.stringify(out), SUMMARY_MAX_AGE);
   })
 };
+
+// The copy /api/latest serves, and its newest `at`; null when it is stale.
+async function latestCopy(env) {
+  const { results } = await env.DB.prepare('SELECT id, start, score, at, reader, gz FROM latest').all();
+  // Two hours without an update: a tier that no longer exists.
+  const live = results.filter((r) => nowS() - r.at <= LATEST_KEEP_S);
+  const newest = Math.max(0, ...live.map((r) => r.at));
+  if (!live.length || nowS() - newest > STALE_LATEST_S) return null;
+  // Format 2's text was parsed whole by the entrance, so it goes in as it is.
+  const entry = (r) => {
+    const head = JSON.stringify({ id: r.id, start: r.start, score: r.score, at: r.at, by: r.reader }).slice(0, -1);
+    return r.gz.startsWith('{') ? head + ',"v":2,"body":' + r.gz + '}' : head + ',"gz":' + JSON.stringify(r.gz) + '}';
+  };
+  return { newest, body: '{"at":' + newest + ',"matches":[' + live.map(entry).join(',') + ']}' };
+}
+
+// GET /api/latest?v=<at>.<tag>: the copy whose newest `at` is that, kept under the version's
+// key. The tag is checked first, with no D1, object or cache (none passes without
+// VERSION_KEY); a minted version is read from D1 until its copy is in the data centre's
+// cache, one since passed over kept as a miss. Its copy never changes once written.
+async function readLatestVersion(env, ctx, url) {
+  const v = /^\?v=([1-9]\d{9})\.([0-9a-f]{32})$/.exec(url.search);
+  if (!v || !hasVersionKey(env)) return miss(SUMMARY_MAX_AGE);
+  const want = Number(v[1]);
+  if (!sameBytes(await versionTag(env, want), fromHex(v[2]))) return miss(SUMMARY_MAX_AGE);
+  // The ingest never mints one this far ahead: whoever did holds VERSION_KEY.
+  if (want - nowS() > LATEST_AHEAD_S) {
+    console.log(JSON.stringify({ read: 'latest version', refused: 'ahead', seconds: want - nowS() }));
+    return miss(SUMMARY_MAX_AGE);
+  }
+  // Older than any copy /api/latest still serves: nothing to read.
+  const now = nowS();
+  if (now - want > STALE_LATEST_S) return miss(LATEST_VERSION_MAX_AGE);
+  return cached(ctx, LATEST_KEY + '?v=' + want, async () => {
+    const copy = await latestCopy(env);
+    if (!copy || copy.newest < want) return text(503, 'stale');
+    // Passed over: a 404 until it leaves STALE_LATEST_S, timed from before the read.
+    if (copy.newest !== want) return miss(STALE_LATEST_S - (now - want));
+    return json(copy.body, LATEST_VERSION_MAX_AGE);
+  });
+}
+
+// The first 16 bytes of the HMAC-SHA-256 under VERSION_KEY of VERSION_DOMAIN + at.
+async function versionTag(env, at) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.VERSION_KEY),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(VERSION_DOMAIN + at))).slice(0, 16);
+}
+
+// "<at>.<tag>", or null without VERSION_KEY: the tabs are then told no version to read.
+async function versionName(env, at) {
+  return hasVersionKey(env) ? at + '.' + toHex(await versionTag(env, at)) : null;
+}
+
+function hasVersionKey(env) {
+  return typeof env.VERSION_KEY === 'string' && env.VERSION_KEY.length >= MIN_SECRET;
+}
+
+// Equal bytes (two tags, 16 each), in a time that does not depend on where they differ.
+function sameBytes(a, b) {
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a[i] ^ b[i];
+  return d === 0;
+}
 
 // GET /api/history/<region>?v=<n>: the region's finished skirmishes of this week. n is how
 // many have finished by the clock, or one fewer (a reader sends them a little after the
@@ -901,10 +1011,10 @@ function weekStart(region, nowMs) {
   return s > nowMs ? s - 7 * 86400e3 : s;
 }
 
-function miss() {
+function miss(maxAge = HISTORY_MISS_MAX_AGE) {
   return new Response('not found\n', {
     status: 404,
-    headers: { 'content-type': 'text/plain', 'cache-control': 'public, max-age=' + HISTORY_MISS_MAX_AGE, 'x-content-type-options': 'nosniff' }
+    headers: { 'content-type': 'text/plain', 'cache-control': 'public, max-age=' + maxAge, 'x-content-type-options': 'nosniff' }
   });
 }
 
@@ -938,11 +1048,12 @@ function nowS() {
   return Math.floor(Date.now() / 1000);
 }
 
+// maxAge null: no-store, kept by no cache.
 function json(body, maxAge) {
   return new Response(body, {
     headers: {
       'content-type': 'application/json',
-      'cache-control': 'public, max-age=' + maxAge,
+      'cache-control': maxAge === null ? 'no-store' : 'public, max-age=' + maxAge,
       'x-content-type-options': 'nosniff'
     }
   });
@@ -968,4 +1079,162 @@ function text(status, body) {
   return new Response(body + '\n', {
     status, headers: { 'content-type': 'text/plain', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }
   });
+}
+
+// The push. Anyone can open /api/ws, so in this order: only a WebSocket upgrade reaches the
+// object (426 before it is touched), only from the site's own pages (a browser cannot forge
+// Origin; a script can, and gets no more than a tab), and the object refuses past
+// MAX_PER_ADDRESS from one address and past MAX_SOCKETS in all. The object takes nothing in: a
+// message closes its socket, and the request it is handed is built here, so no header of the
+// visitor's reaches it; the address it counts by is the PEER_HEADER set below, from
+// CF-Connecting-IP alone.
+const SITE_ORIGIN = 'https://wvwrelink.com';
+// Bounds the CPU of one broadcast, which goes to every socket in one event, and the object's
+// memory; not the quota: a refused socket was already a request.
+const MAX_SOCKETS = 300;
+// Without it one address fills MAX_SOCKETS for every tab; the two pull against each other.
+const MAX_PER_ADDRESS = 20;
+const PEER_HEADER = 'x-live-peer';
+const PEER_RE = /^[0-9a-f]{16}$/;
+// 4013: past MAX_SOCKETS; 1013: one address past MAX_PER_ADDRESS; the page rests on either.
+const CLOSE_FULL = 4013;
+const CLOSE_ADDRESS = 1013;
+const LIVE_NAME = 'live';
+const VERSION_RE = /^[1-9]\d{9}\.[0-9a-f]{32}$/;
+
+async function openSocket(request, env) {
+  if (request.method !== 'GET' || (request.headers.get('upgrade') || '').toLowerCase() !== 'websocket') {
+    return new Response('websocket only\n', {
+      status: 426,
+      headers: { upgrade: 'websocket', 'content-type': 'text/plain', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }
+    });
+  }
+  if (request.headers.get('origin') !== SITE_ORIGIN) return text(403, 'refused');
+  if (!env.LIVE) return text(503, 'unavailable');
+  const peer = await peerTag(request.headers.get('cf-connecting-ip') || '');
+  return env.LIVE.get(env.LIVE.idFromName(LIVE_NAME)).fetch('https://live/ws', { headers: { upgrade: 'websocket', [PEER_HEADER]: peer } });
+}
+
+// One holder of an IPv6 /64 has all of it, so the /64 is the address; an IPv4 is whole. The
+// tag is a truncated hash, never the address itself. With no address (only off Cloudflare)
+// every socket shares one tag.
+async function peerTag(ip) {
+  return (await sha256(new TextEncoder().encode(addressKey(ip)))).slice(0, 16);
+}
+
+function addressKey(ip) {
+  if (!ip.includes(':')) return ip;
+  const halves = ip.toLowerCase().split('::');
+  const dotted = (g) => g.split('.').map((n) => parseInt(n, 10) || 0);
+  const groups = (part) => (part ? part.split(':').flatMap((g) => {
+    if (!g.includes('.')) return [g];
+    const [a, b, c, d] = dotted(g);
+    return [((a << 8) | b).toString(16), ((c << 8) | d).toString(16)];
+  }) : []);
+  const head = groups(halves[0]);
+  const tail = halves.length > 1 ? groups(halves[1]) : [];
+  const full = [...head, ...Array(Math.max(0, 8 - head.length - tail.length)).fill('0'), ...tail]
+    .map((g) => parseInt(g, 16) || 0);
+  // An IPv4 written as IPv6 (::ffff:a.b.c.d) is that IPv4, not one /64 shared by all of them.
+  if (full.slice(0, 5).every((g) => g === 0) && full[5] === 0xffff) {
+    return [full[6] >> 8, full[6] & 255, full[7] >> 8, full[7] & 255].join('.');
+  }
+  return full.slice(0, 4).map((g) => g.toString(16)).join(':') + '::/64';
+}
+
+// The ingest's notice to the object; its failure only logs, the message is already in D1.
+async function tellLive(env, matches, version) {
+  if (!env.LIVE) return;
+  try {
+    const res = await env.LIVE.get(env.LIVE.idFromName(LIVE_NAME)).fetch('https://live/notify', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(version ? { matches, version } : { matches })
+    });
+    if (!res.ok) console.log(JSON.stringify({ push: 'failed', status: res.status }));
+  } catch (e) {
+    console.log(JSON.stringify({ push: 'failed', why: String(e) }));
+  }
+}
+
+// One object, idFromName(LIVE_NAME), holds every tab's socket through the hibernation API:
+// acceptWebSocket, never ws.accept(), or it pays duration while the sockets sit open. Its
+// fields are lost when it hibernates; what a new socket is sent lives in its storage.
+export class Live {
+  constructor(state) {
+    this.state = state;
+    // Answered by the runtime without waking the object; it never reaches webSocketMessage.
+    state.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+  }
+
+  async fetch(request) {
+    if (request.headers.get('upgrade') === 'websocket') return this.open(request.headers.get(PEER_HEADER));
+    if (request.method === 'POST') return this.notify(await request.json());
+    return text(404, 'not found');
+  }
+
+  async open(peer) {
+    const [client, server] = Object.values(new WebSocketPair());
+    const tag = PEER_RE.test(peer || '') ? peer : 'unknown';
+    // getWebSockets also returns the ones still closing; only the open ones count.
+    const open = (list) => list.filter((ws) => ws.readyState === 1).length;
+    const refuse = open(this.state.getWebSockets()) >= MAX_SOCKETS ? CLOSE_FULL
+      : open(this.state.getWebSockets(tag)) >= MAX_PER_ADDRESS ? CLOSE_ADDRESS : 0;
+    if (refuse) {
+      server.accept();
+      server.close(refuse, 'try again later');
+    } else {
+      this.state.acceptWebSocket(server, [tag]);
+      const known = Object.values(await this.state.storage.get('matches') || {}).filter((m) => nowS() - m.at <= LATEST_KEEP_S);
+      const version = await this.state.storage.get('version');
+      if (known.length) server.send(JSON.stringify(version ? { matches: known, version } : { matches: known }));
+    }
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  // Only numbers and the fixed match ids go out, whoever reads them.
+  async notify(body) {
+    const nowSec = nowS();
+    const fresh = (Array.isArray(body && body.matches) ? body.matches : []).filter((m) =>
+      MATCHES.includes(m.id) && isInt(m.start) && isInt(m.score) && isInt(m.at))
+      .map((m) => ({ id: m.id, start: m.start, score: m.score, at: m.at }));
+    if (!fresh.length) return text(400, 'refused');
+    // Two notices can cross: of a match and of the version only the newer is kept, and a
+    // notice with no newer match sends nothing (a new socket still gets the newer version).
+    const known = await this.state.storage.get('matches') || {};
+    const won = fresh.filter((m) => !known[m.id] || m.at > known[m.id].at);
+    for (const m of won) known[m.id] = m;
+    const gone = Object.keys(known).filter((id) => nowSec - known[id].at > LATEST_KEEP_S);
+    for (const id of gone) delete known[id];
+    if (won.length || gone.length) await this.state.storage.put('matches', known);
+    // The newest version minted, as the ingest named it; anything else is left out.
+    const named = typeof body.version === 'string' && VERSION_RE.test(body.version) ? body.version : null;
+    const had = await this.state.storage.get('version');
+    const version = named && had && parseInt(had, 10) > parseInt(named, 10) ? had : named;
+    if (version && version !== had) await this.state.storage.put('version', version);
+    if (!won.length) return text(200, 'ok');
+    const msg = JSON.stringify(version ? { matches: won, version } : { matches: won });
+    for (const ws of this.state.getWebSockets()) {
+      try {
+        ws.send(msg);
+      } catch {
+        // A socket that closed as this ran throws; the rest are still sent to.
+      }
+    }
+    return text(200, 'ok');
+  }
+
+  // The page sends nothing: anything that arrives is a misuse, and costs the quota.
+  webSocketMessage(ws) {
+    ws.close(1008, 'policy violation');
+  }
+
+  // The runtime may leave the tab's close unanswered; answering ends it at once. 1005 and 1006
+  // say no code came, and cannot be sent back.
+  webSocketClose(ws, code) {
+    try {
+      ws.close(code === 1005 || code === 1006 ? 1000 : code, 'closed');
+    } catch {
+      // Already closed by the runtime, or a code close() refuses: nothing left to answer.
+    }
+  }
 }

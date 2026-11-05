@@ -25,7 +25,10 @@ export function fakeD1({ skip = [] } = {}) {
       const r = sql.prepare(this.q).run(...this.args);
       return { meta: { changes: Number(r.changes) } };
     }
-    async all() { return { results: sql.prepare(this.q).all(...this.args) }; }
+    async all() {
+      const results = sql.prepare(this.q).all(...this.args);
+      return { results, meta: { changes: Number(sql.prepare('SELECT changes() n').get().n) } };
+    }
     async first() { return sql.prepare(this.q).get(...this.args) ?? null; }
   }
   return { sql, ran, DB: { prepare: (q) => new Statement(q) } };
