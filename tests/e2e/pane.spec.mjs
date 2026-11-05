@@ -126,6 +126,8 @@ for (const width of [1280, 360]) {
       expect(new Set(boardH).size, `the board (height/popover) moved over 6 s: ${boardH.join(' ')}`).toBe(1);
       st = await state(page);
       expect(st.board - st.rows, `the board is ${st.board} px for ${st.rows} px of rows`).toBeLessThan(40);
+      // Beside the map the pane itself shrinks to the box it holds.
+      if (!stacked) expect(st.pane.height - st.box.height, `the pane is ${st.pane.height} px for a box of ${st.box.height} px`).toBeLessThan(40);
     });
 
     test('a marker opens the Objective tab and nothing moves; back to the board; the captures; where each tab ends', async ({ page, wvw }) => {
@@ -195,6 +197,36 @@ for (const width of [1280, 360]) {
       } else {
         expect(Object.values(ends).some(b => !b || b > st.plot.bottom + 1), `the tabs end at ${JSON.stringify(ends)}, past the map's bottom ${st.plot.bottom}`).toBe(false);
       }
+    });
+
+    test('a map tab change with an objective picked puts the pane back on the board and switches the Objective tab off', async ({ page, wvw }) => {
+      await opened(page, wvw);
+      await pressMarker(page, 3);
+      await expect(activePane(page), 'the Objective tab after the marker').toHaveAttribute('data-pane', 'objective');
+      await page.locator(`${POP} .wvw-tab:not(.is-active)`).first().click();
+      await expect(activePane(page), 'the pane after a map tab change').toHaveAttribute('data-pane', 'board');
+      await expect(tab(page, 'objective')).toBeDisabled();
+      expect((await state(page)).shown, 'the box shown').toEqual(['wvw-board']);
+    });
+
+    test('the pane is given its height, and a stretched map does not resize it on the next refresh', async ({ page, wvw }) => {
+      const tier = await opened(page, wvw);
+      const paneH = () => page.evaluate(() => document.querySelector('.info-popover .wvw-side').style.getPropertyValue('--pane-h'));
+      const h0 = await paneH();
+      expect(h0, 'the pane height the page sets').toMatch(/^\d+px$/);
+      await tab(page, 'captures').click();
+      await frame(page);
+      const st = await state(page);
+      if (stacked) expect(st.pane.height, 'the stacked pane is as tall as it was given').toBe(parseInt(h0, 10));
+      else expect(Math.abs(st.box.bottom - st.plot.bottom), `a long list ends at the map's bottom (${st.box.bottom} / ${st.plot.bottom})`).toBeLessThanOrEqual(6);
+      // The drawing moves under the open pane, as a late image or font would move it: not measured again.
+      await page.evaluate(() => { document.querySelector('.info-popover .wvw-plot-wrap').style.paddingTop = '90px'; });
+      await answer(page, tier.url, await keptMatch(page, tier.id));
+      await wvw.skew(31000);
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await wvw.settle();
+      await frame(page);
+      expect(await paneH(), 'the pane height after a refresh').toBe(h0);
     });
 
     test('three objectives picked in turn, then fifteen switches: the board and the popover as they were', async ({ page, wvw }) => {

@@ -21,6 +21,20 @@ test('the NA/EU swap moves the columns, and back', async ({ page, wvw }) => {
   await wvw.settle();
 });
 
+test('the swap is remembered when the page is reloaded', async ({ page, wvw }) => {
+  await page.goto(wvw.url);
+  await expect(page.locator('#standingsGridNA > .standing-match').first()).toBeVisible();
+  const root = page.locator('html');
+  const was = await root.evaluate(h => h.dataset.railFirst);
+  await page.locator('.rail-swap').first().click();
+  await expect(root).not.toHaveAttribute('data-rail-first', was);
+  const now = await root.evaluate(h => h.dataset.railFirst);
+  await page.reload();
+  await expect(page.locator('#standingsGridNA > .standing-match').first()).toBeVisible();
+  await expect(root, 'the side chosen before the reload').toHaveAttribute('data-rail-first', now);
+  await wvw.settle();
+});
+
 // A swap slides the four halves of the relink bar (NA, NA time, EU, EU time);
 // a swap undone before its first frame (two in the same task) slides none. The
 // move is measured with the running animation included, so the second swap

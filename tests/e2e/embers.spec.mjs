@@ -95,6 +95,30 @@ test('a burst of resize events reallocates the embers canvas once, at the final 
   expect(c[0]).toBe(c[1]);
 });
 
+test.describe('on a sharp screen', () => {
+  test.use({ deviceScaleFactor: 2 });
+
+  test('the embers canvas has a pixel for every device pixel and the embers still cover the screen', async ({ page, wvw }) => {
+    await load(page, wvw);
+    await page.waitForTimeout(500);
+    const c = await page.evaluate(() => {
+      const k = document.getElementById('fxEmbers');
+      return { w: k.width, h: k.height, cw: k.clientWidth, ch: k.clientHeight, dpr: devicePixelRatio };
+    });
+    expect(c.dpr).toBe(2);
+    expect([c.w, c.h], 'backing store').toEqual([c.cw * 2, c.ch * 2]);
+    // Embers are lit in every quarter of the width; one drawn in CSS pixels on a doubled store crowds the top-left.
+    const columns = await page.evaluate(() => {
+      const k = document.getElementById('fxEmbers');
+      const px = k.getContext('2d').getImageData(0, 0, k.width, k.height).data;
+      const lit = [0, 0, 0, 0];
+      for (let i = 3; i < px.length; i += 4) if (px[i]) lit[Math.min(3, Math.floor(((i >> 2) % k.width) / (k.width / 4)))]++;
+      return lit;
+    });
+    expect(columns.filter(n => n === 0), `lit pixels in the four columns of the canvas: ${JSON.stringify(columns)}`).toEqual([]);
+  });
+});
+
 test('reduced motion stops the looping animations and the canvas, and follows the setting live', async ({ page, wvw }) => {
   await countEmberDraws(page);
   await page.emulateMedia({ reducedMotion: 'reduce' });
