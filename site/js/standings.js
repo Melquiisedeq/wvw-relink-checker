@@ -506,9 +506,26 @@ async function loadStandings(origin = 'cycle') {
     const asked = Date.now();
     let idList, naMatches, euMatches;
     // A peek's load reads /api when the summary is ahead; with nothing newer in
-    // hand it leaves the board be.
-    let all = origin === 'peek' ? await latestBoard(peekCopy) : await fetchAllMatches(timeoutMs);
-    if (!all && origin === 'peek') return;
+    // hand it leaves the board be. So does a cycle whose copy is fresh and holds
+    // the weeks on show and no region is resetting, reading the game only if the copy asked for gave nothing;
+    // the summary is read first when the one in hand is too old to say (an idle tab peeks every PEEK_IDLE_MAX_MS).
+    let fromHand = origin === 'peek', askCopy = peekCopy;
+    if (origin === 'cycle' && standingsEverLoaded && !standingsFailed.length && matchDataCache.size
+      && !regionResetting('NA', Date.now()) && !regionResetting('EU', Date.now())) {
+      if (!copyHolds([...matchDataCache.values()])) {
+        try {
+          const sum = await fetchOwnApi(LATEST_SUMMARY_URL, 'no-store');
+          if (sum && typeof sum === 'object') latestSummaryLearn(sum);
+        } catch { /* the game is read, as ever */ }
+      }
+      fromHand = copyHolds([...matchDataCache.values()]);
+      askCopy = [...matchDataCache.values()].some(summaryAhead);
+    }
+    let all = fromHand ? await latestBoard(askCopy) : await fetchAllMatches(timeoutMs);
+    if (!all && fromHand) {
+      if (origin === 'peek' || !askCopy) return;
+      all = await fetchAllMatches(timeoutMs);
+    }
     if (!all) {
       try {
         [idList, naMatches, euMatches] = await loadStandingsByRegion();
