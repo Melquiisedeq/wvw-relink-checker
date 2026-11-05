@@ -2,7 +2,8 @@
 // page whose written-out copy (js/wvw-static.js) did not arrive. What a player
 // sees: every objective drawn, none with an owner (Neutral), the line that says
 // the colours are late; and, when the static copy is missing, the same map drawn
-// from the API, or the plain sentence when the read of /v2/wvw/objectives fails too (503).
+// from the API, or the plain sentence when the read of /v2/wvw/objectives fails too (503). With the copy present the
+// map asks the game for neither list.
 import { test, expect } from './support/fixtures.mjs';
 import { answer, fail } from './support/faults.mjs';
 import { firstTier, keptMatch, later, load, openMap, recordedJson, serveList } from './support/steps.mjs';
@@ -12,6 +13,7 @@ const ALL = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
 const MARKERS = '.info-popover .wvw-marker';
 const WAITING = '.info-popover .wvw-waiting';
 
+const noStatic = page => page.route(/\/js\/wvw-static\.js(\?|$)/, route => route.abort('failed'));
 const blanked = m => ({ ...m, maps: m.maps.map(x => ({ ...x, objectives: [] })) });
 const owners = page => page.evaluate(sel => [...document.querySelectorAll(sel)].map(g => g.getAttribute('class').match(/own-(\w+)/)[1]), MARKERS);
 const tints = page => page.evaluate(() => [...document.querySelectorAll('.info-popover .wvw-sector')].map(g => g.getAttribute('class').match(/own-(\w+)/)[1]));
@@ -67,7 +69,6 @@ test.describe('a tier whose objective lists are blank', () => {
 });
 
 test.describe('js/wvw-static.js did not load', () => {
-  const noStatic = page => page.route(/\/js\/wvw-static\.js(\?|$)/, route => route.abort('failed'));
 
   test('the map is drawn from the API alone, with its owners', async ({ page, wvw }) => {
     wvw.allowLog(/\/js\/wvw-static\.js/);
@@ -91,5 +92,35 @@ test.describe('js/wvw-static.js did not load', () => {
     await tier.button.click();
     await expect(page.locator('.info-popover')).toHaveText("Couldn't load the map data right now.", { timeout: 15000 });
     await expect(page.locator(MARKERS)).toHaveCount(0);
+  });
+});
+
+test.describe('what opening a map asks the game for', () => {
+  const LISTS = /\/v2\/(wvw\/objectives\?ids=all|continents\/2\/floors\/3\/regions\/7\/maps\/\d+\/sectors\?ids=all)/;
+  const listReads = page => {
+    const urls = [];
+    page.on('request', r => { if (LISTS.test(r.url())) urls.push(r.url()); });
+    return urls;
+  };
+
+  test('with the copy, neither the objectives nor the sectors are read', async ({ page, wvw }) => {
+    const urls = listReads(page);
+    await load(page, wvw);
+    await openMap(page, wvw, (await firstTier(page)).button);
+    expect((await owners(page)).length, 'objectives drawn').toBeGreaterThan(10);
+    expect((await tints(page)).length, 'sectors drawn').toBeGreaterThan(0);
+    expect(urls).toEqual([]);
+  });
+
+  test('without the copy, both are read and the map is drawn', async ({ page, wvw }) => {
+    wvw.allowLog(/\/js\/wvw-static\.js/);
+    await noStatic(page);
+    const urls = listReads(page);
+    await load(page, wvw);
+    await openMap(page, wvw, (await firstTier(page)).button);
+    expect((await owners(page)).length, 'objectives drawn').toBeGreaterThan(10);
+    expect((await tints(page)).length, 'sectors drawn').toBeGreaterThan(0);
+    expect(urls.filter(u => u.includes('/wvw/objectives')), 'objectives read').toHaveLength(1);
+    expect(urls.filter(u => u.includes('/sectors')).length, 'sectors read').toBeGreaterThan(0);
   });
 });
