@@ -1,1 +1,195 @@
 /* LAB - never merged. Design C: every rule under html[data-lab-design="c"]. */
+
+/* ---- the tabs ------------------------------------------------------------ */
+html[data-lab-design="c"] .lab-search-btn{display:none;}
+html[data-lab-design="c"] .labc-tabs{
+  margin-left:auto;flex-shrink:0;display:flex;gap:3px;padding:3px;border-radius:14px;
+  background:rgba(10,13,17,.72);border:1px solid rgba(255,255,255,.08);
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.45),0 1px 0 rgba(255,255,255,.04);
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+}
+html[data-lab-design="c"] .labc-tab{
+  position:relative;display:inline-flex;align-items:center;gap:7px;
+  height:38px;padding:0 14px;border-radius:11px;
+  background:none;color:var(--muted);box-shadow:none;text-shadow:none;
+  font-size:.86rem;font-weight:700;letter-spacing:.02em;
+}
+html[data-lab-design="c"] .labc-tab svg{flex-shrink:0;opacity:.85;}
+html[data-lab-design="c"] .labc-tab:hover:not(:disabled){color:var(--text);background:rgba(255,255,255,.05);}
+html[data-lab-design="c"] .labc-tab:active{box-shadow:none;}
+html[data-lab-design="c"] .labc-tab[aria-current="page"]{
+  color:#eaf8fd;
+  background:linear-gradient(180deg,rgba(127,214,242,.26),rgba(127,214,242,.12));
+  box-shadow:inset 0 0 0 1px rgba(127,214,242,.45),inset 0 1px 0 rgba(255,255,255,.12);
+}
+html[data-lab-design="c"] .labc-tab[aria-current="page"] svg{color:var(--accent-bright);opacity:1;}
+html[data-lab-design="c"] .labc-tab.is-later{opacity:.5;cursor:default;}
+html[data-lab-design="c"] .labc-soon{
+  padding:1px 5px;border-radius:4px;background:rgba(154,164,178,.16);color:#a3adbb;
+  font-size:.58rem;font-weight:800;letter-spacing:.06em;
+}
+
+/* ---- what each tab shows ------------------------------------------------- */
+html[data-lab-design="c"][data-labc-tab="maps"] #page,html[data-lab-design="c"][data-labc-tab="guilds"] #page{display:none;}
+html[data-lab-design="c"] .labc-maps{display:none;}
+html[data-lab-design="c"][data-labc-tab="maps"] .labc-maps{
+  display:block;position:relative;z-index:2;
+  max-width:1172px;margin:0 auto;padding:12px 16px 28px;
+}
+
+/* ---- Standings: one team per line ---------------------------------------- */
+html[data-lab-design="c"] .standing-match{padding:9px 8px 8px;}
+html[data-lab-design="c"] .standing-match-title{
+  display:grid;grid-template-columns:auto auto minmax(0,1fr) 78px 58px;column-gap:8px;
+  align-items:center;margin:0 0 4px;padding:0 6px;opacity:1;
+}
+html[data-lab-design="c"] .standing-match-title .tier-map-btn{display:none;}
+html[data-lab-design="c"] .labc-cols{display:contents;}
+html[data-lab-design="c"] .labc-col-vp,html[data-lab-design="c"] .labc-col-sk{
+  font-size:.58rem;font-weight:700;color:#8d97a6;text-transform:uppercase;letter-spacing:.08em;text-align:right;
+}
+html[data-lab-design="c"] .labc-col-vp{grid-column:4;padding-right:27px;}
+html[data-lab-design="c"] .labc-col-sk{grid-column:5;}
+html[data-lab-design="c"] .labc-tier-maps{
+  display:inline-flex;align-items:center;min-height:var(--lab-target);padding:0 9px;border-radius:7px;
+  background:var(--accent-soft);color:var(--accent);border:1px solid rgba(127,214,242,.22);
+  box-shadow:none;text-shadow:none;font-size:.7rem;font-weight:700;letter-spacing:.03em;
+}
+html[data-lab-design="c"] .labc-tier-maps:hover{color:var(--accent-bright);border-color:rgba(127,214,242,.45);}
+html[data-lab-design="c"] .labc-tier-maps.lab-more::after{margin-left:4px;}
+html[data-lab-design="c"] .standing-side{
+  display:grid;grid-template-columns:20px 8px minmax(0,1fr) 78px 58px;column-gap:8px;
+  align-items:center;min-height:32px;margin:0;padding:3px 6px;border-radius:8px;
+}
+html[data-lab-design="c"] .standing-side + .standing-side{margin-top:2px;}
+html[data-lab-design="c"] .standing-side:nth-of-type(odd){background:rgba(255,255,255,.025);}
+html[data-lab-design="c"] .standing-side-top,html[data-lab-design="c"] .standing-side-stats{display:contents;}
+html[data-lab-design="c"] .standing-side .server-guilds-btn,
+html[data-lab-design="c"] .standing-side .activity-btn,
+html[data-lab-design="c"] .standing-side-stats > .stat-label,
+html[data-lab-design="c"] .standing-side-stats > :nth-child(n+3),
+html[data-lab-design="c"] .standing-side .skirmish-bar-row,
+html[data-lab-design="c"] .standing-vp .stat-label{display:none;}
+html[data-lab-design="c"] .standing-vp{margin:0;justify-self:end;display:inline-flex;align-items:center;}
+html[data-lab-design="c"] .standing-side-stats > .stat-value{justify-self:end;font-size:.8rem;font-variant-numeric:tabular-nums;}
+html[data-lab-design="c"] .standing-vp .stat-value{font-variant-numeric:tabular-nums;}
+html[data-lab-design="c"] .guild-found-strip{margin:2px 6px 4px;}
+
+/* ---- Maps: the pick ------------------------------------------------------ */
+html[data-lab-design="c"] .labc-pick{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin-bottom:12px;}
+html[data-lab-design="c"] .labc-seg{
+  display:flex;gap:3px;padding:3px;border-radius:14px;
+  background:rgba(12,15,19,.85);border:1px solid rgba(255,255,255,.08);
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+}
+html[data-lab-design="c"] .labc-seg-btn{
+  min-width:58px;height:38px;padding:0 12px;border-radius:11px;
+  background:none;color:var(--muted);box-shadow:none;text-shadow:none;
+  font-size:.9rem;font-weight:700;letter-spacing:.06em;
+}
+html[data-lab-design="c"] .labc-seg-btn:active,html[data-lab-design="c"] .labc-chip:active{box-shadow:none;}
+html[data-lab-design="c"] .labc-seg-btn[aria-pressed="true"],html[data-lab-design="c"] .labc-chip[aria-pressed="true"]{
+  color:#eaf8fd;
+  background:linear-gradient(180deg,rgba(127,214,242,.26),rgba(127,214,242,.12));
+  box-shadow:inset 0 0 0 1px rgba(127,214,242,.45),inset 0 1px 0 rgba(255,255,255,.12);
+}
+html[data-lab-design="c"] .labc-tiers{display:flex;align-items:center;gap:10px;}
+html[data-lab-design="c"] .labc-tiers-label{font-size:.62rem;font-weight:800;color:#a3adbb;text-transform:uppercase;letter-spacing:.09em;}
+html[data-lab-design="c"] .labc-chips{display:flex;flex-wrap:wrap;gap:6px;}
+html[data-lab-design="c"] .labc-chip{
+  width:44px;height:44px;padding:0;border-radius:12px;
+  background:var(--lab-surface);border:1px solid var(--lab-edge);border-top-color:var(--lab-edge-top);
+  color:var(--text);box-shadow:var(--lab-lift);text-shadow:0 1px 2px rgba(0,0,0,.6);
+  font-size:.95rem;font-weight:800;
+}
+html[data-lab-design="c"] .labc-maps-empty{
+  padding:28px 16px;text-align:center;color:var(--muted);border-radius:14px;
+  background:var(--lab-surface);border:1px solid var(--lab-edge);box-shadow:var(--lab-lift);
+}
+html[data-lab-design="c"] .labc-maps-empty[hidden]{display:none;}
+html[data-lab-design="c"] .labc-maps-note{margin:0 0 10px;}
+html[data-lab-design="c"] .labc-maps-note:only-child{margin:0;}
+html[data-lab-design="c"] .labc-open{height:40px;padding:0 16px;}
+
+/* ---- Maps: the site's popover, docked; the 2x2 beside its side panel ----- */
+html[data-lab-design="c"] .labc-host .info-popover.labc-docked{
+  position:relative;left:auto !important;top:auto !important;transform:none;z-index:auto;
+  width:auto;max-width:none;max-height:none;overflow:visible;resize:none;
+  padding:12px;border-radius:14px;
+  background:linear-gradient(180deg,rgba(30,36,45,.92),rgba(17,21,27,.9));
+  border:1px solid var(--lab-edge);border-top-color:var(--lab-edge-top);box-shadow:var(--lab-lift);
+}
+html[data-lab-design="c"] .labc-docked .info-popover-header{display:none;}
+html[data-lab-design="c"] .labc-host .info-popover.labc-docked:focus{outline:none;}
+html[data-lab-design="c"] .is-quad .labc-host{position:sticky;top:calc(var(--lab-notice-h) + 12px);}
+html[data-lab-design="c"] body:has(.labc-docked) .info-popover-backdrop{display:none;}
+html[data-lab-design="c"] .labc-quad{display:none;}
+html[data-lab-design="c"] .labc-maps-body.is-quad{display:grid;grid-template-columns:minmax(0,1fr) 392px;gap:14px;align-items:start;}
+html[data-lab-design="c"] .is-quad .labc-quad{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+html[data-lab-design="c"] .is-quad .labc-docked .wvw-tabs,
+html[data-lab-design="c"] .is-quad .labc-docked .wvw-stage > .wvw-plot-wrap,
+html[data-lab-design="c"] .is-quad .labc-docked .wvw-stage-msg{display:none;}
+html[data-lab-design="c"] .is-quad .labc-docked .wvw-side{flex:1 1 auto;--pane-h:calc(var(--labc-quad-h, 640px) - 120px) !important;}
+html[data-lab-design="c"] .labc-cell{position:relative;margin:0;}
+html[data-lab-design="c"] .labc-cell .wvw-plot-wrap{aspect-ratio:1 / 1;max-height:none;box-shadow:var(--lab-lift);border-radius:12px;}
+html[data-lab-design="c"] .labc-cell .wvw-plot{width:100%;height:100%;max-height:none;}
+html[data-lab-design="c"] .labc-cell-name{
+  position:absolute;bottom:8px;left:8px;z-index:3;pointer-events:none;
+  padding:2px 8px;border-radius:6px;background:rgba(10,13,17,.78);
+  color:#e7ebf0;font-size:.68rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+}
+
+/* ---- Guilds: the base's search panel, in the flow ------------------------ */
+html[data-lab-design="c"] .lab-search-close{display:none;}
+html[data-lab-design="c"][data-labc-tab="guilds"] main.wrap{
+  display:block;position:relative;z-index:2;
+  width:calc(100% - 32px);max-width:760px;margin:12px auto 24px;padding:12px 16px 4px;
+  background:rgba(13,17,22,.74);
+  border:1px solid rgba(127,214,242,.2);border-radius:16px;
+  box-shadow:0 2px 3px rgba(0,0,0,.4),0 22px 44px -18px rgba(0,0,0,.9);
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+}
+html[data-lab-design="c"] .lab-show-board{
+  display:inline-flex;align-items:center;height:36px;padding:0 14px;font-size:.84rem;
+}
+html[data-lab-design="c"] .lab-show-board.lab-more::after{margin-left:6px;color:inherit;}
+html[data-lab-design="c"] .lab-show-board[hidden]{display:none;}
+
+/* ---- under 800 px: the bar at the bottom --------------------------------- */
+@media (max-width:799px){
+  html[data-lab-design="c"] body{padding-bottom:calc(62px + env(safe-area-inset-bottom));}
+  html[data-lab-design="c"] .lab-panel{bottom:calc(72px + env(safe-area-inset-bottom));}
+  html[data-lab-design="c"] .labc-tabs{
+    position:fixed;left:0;right:0;bottom:0;z-index:50;margin:0;
+    display:grid;grid-template-columns:repeat(4,1fr);gap:0;
+    height:calc(62px + env(safe-area-inset-bottom));padding:0 4px env(safe-area-inset-bottom);
+    border:0;border-top:1px solid rgba(255,255,255,.09);border-radius:0;
+    background:rgba(11,14,18,.94);
+    box-shadow:0 -10px 24px -12px rgba(0,0,0,.9);
+  }
+  html[data-lab-design="c"] .labc-tab{
+    flex-direction:column;justify-content:center;gap:3px;height:62px;padding:0 2px;border-radius:0;
+    font-size:.68rem;letter-spacing:.03em;
+  }
+  html[data-lab-design="c"] .labc-tab[aria-current="page"]{background:none;box-shadow:none;color:var(--accent-bright);}
+  html[data-lab-design="c"] .labc-tab[aria-current="page"]::before{
+    content:'';position:absolute;top:0;left:22%;right:22%;height:3px;border-radius:0 0 3px 3px;
+    background:var(--accent-bright);box-shadow:0 0 10px rgba(102,245,255,.55);
+  }
+  html[data-lab-design="c"] .labc-tab:hover:not(:disabled){background:none;}
+  html[data-lab-design="c"] .labc-soon{position:absolute;top:7px;right:calc(50% - 26px);font-size:.5rem;padding:0 3px;}
+  html[data-lab-design="c"][data-labc-tab="maps"] .relink-banner{display:none !important;}
+  html[data-lab-design="c"][data-labc-tab="guilds"] main.wrap{width:calc(100% - 24px);margin-top:10px;padding:10px 12px 2px;}
+  html[data-lab-design="c"] .lab-show-board{height:44px;}
+  html[data-lab-design="c"] .lab-search-head{position:static;margin:0 0 8px;padding:0;background:none;box-shadow:none;}
+  html[data-lab-design="c"] .labc-pick{gap:10px 12px;}
+  html[data-lab-design="c"] .labc-seg-btn{min-width:46px;padding:0 8px;}
+}
+@media (max-width:420px){
+  html[data-lab-design="c"][data-labc-tab="maps"] .labc-maps{padding:10px 12px 20px;}
+  html[data-lab-design="c"] .labc-host .info-popover.labc-docked{padding:8px;}
+  html[data-lab-design="c"] .standing-side,html[data-lab-design="c"] .standing-match-title{grid-template-columns:20px 8px minmax(0,1fr) 70px 46px;column-gap:6px;}
+  html[data-lab-design="c"] .standing-match-title{grid-template-columns:auto auto minmax(0,1fr) 70px 46px;}
+  html[data-lab-design="c"] .labc-col-sk{font-size:0;}
+  html[data-lab-design="c"] .labc-col-sk::after{content:'Skirm.';font-size:.58rem;}
+}
