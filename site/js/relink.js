@@ -284,7 +284,7 @@ let relinkState = null;        // { window, published }
 // old month's (getWvwMaps).
 let teamsNoticeUpAt = 0;
 let relinkStateAt = 0;
-let relinkStateOwn = false;    // the last answer came from /api/relink, not the sheet
+let relinkSheetAt = 0;         // the sheet's last read, kept apart: a failed /api/relink does not hold /api back
 let relinkStateInFlight = null;
 let relinkStateFailedAt = 0;
 
@@ -295,10 +295,7 @@ const RELINK_SHEET_RETRY_MS = 2 * 60 * 1000;
 const RELINK_HIDDEN_ASK_MS = 10 * 60 * 1000;
 
 async function getRelinkState() {
-  if (relinkState && Date.now() - relinkStateAt
-      < (relinkStateOwn ? RELINK_OWN_TTL_MS : RELINK_SHEET_TTL_MS)) {
-    return relinkState;
-  }
+  if (relinkState && Date.now() - relinkStateAt < RELINK_OWN_TTL_MS) return relinkState;
   if (relinkStateFailedAt
     && Date.now() - relinkStateFailedAt < RELINK_SHEET_RETRY_MS) {
     return relinkState;
@@ -307,9 +304,10 @@ async function getRelinkState() {
 
   relinkStateInFlight = (async () => {
     try {
-      let own = true;
-      relinkState = await readOwnRelink().catch(() => { own = false; return readRelinkSheet(); });
-      relinkStateOwn = own;
+      relinkState = await readOwnRelink().catch(() => {
+        if (relinkState && Date.now() - relinkSheetAt < RELINK_SHEET_TTL_MS) return relinkState;
+        return readRelinkSheet().then(state => { relinkSheetAt = Date.now(); return state; });
+      });
       relinkStateAt = Date.now();
       relinkStateFailedAt = 0;
     } catch {

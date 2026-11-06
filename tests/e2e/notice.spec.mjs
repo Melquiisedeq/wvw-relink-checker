@@ -125,6 +125,25 @@ test.describe('the notice on the one-minute tick', () => {
     expect(await tab(page), 'a notice seen going up leaves the tab alone').toEqual(was);
   });
 
+  test('after /api/relink fails for five minutes, the notice is up within two minutes of it answering', async ({ page, wvw }) => {
+    const cell = await relinkWindow(page, wvw);
+    await page.route('**/api/relink', route => route.fulfill({ status: 200, contentType: 'application/json',
+      headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' },
+      body: JSON.stringify({ window: cell.windowId, published: 5 }) }));
+    const down = await fail(page, wvw, /\/api\/relink$/);
+    let sheetReads = 0;
+    await page.route(/^https:\/\/docs\.google\.com\/spreadsheets\//, route => { sheetReads++; return route.fulfill({
+      status: 200, contentType: 'text/csv', headers: { 'Access-Control-Allow-Origin': '*' }, body: `"${cell.windowId}:0"` }); });
+    for (let m = 0; m < 5; m++) { await page.clock.fastForward(MIN); await quiet(); }
+    expect(down.reads, '/api/relink asked again while down').toBeGreaterThanOrEqual(2);
+    expect(sheetReads, 'the sheet read once in ten minutes').toBe(1);
+    await expect(page.locator('#teamsNotice')).toBeHidden();
+    down.off();
+    for (let m = 0; m < 2; m++) { await page.clock.fastForward(MIN); await quiet(); }
+    await expect(page.locator('#teamsNotice'), 'two minutes after /api/relink answers')
+      .toHaveAttribute('data-window', String(cell.windowId));
+  });
+
   test('a hidden tab in the window asks at most once in ten minutes, and the notice marks its title and icon until it is seen', async ({ page, wvw }) => {
     const cell = await relinkWindow(page, wvw);
     const was = await tab(page);
