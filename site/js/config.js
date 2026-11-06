@@ -120,7 +120,7 @@ const RELINK_SHEET_ID = '14kWfueHYO2-aLKGDVFgdkuO9pHkmYs1fghCO9eMIEl4';
 // `range=A1:A1` is load-bearing: A2 holds the trigger's heartbeat, and RELINK_STATE_RE anchors the whole body, so a second row is refused.
 const RELINK_SHEET_URL =
   `https://docs.google.com/spreadsheets/d/${RELINK_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=relink&range=A1:A1`;
-// Once it says published the page stops asking.
+// The least time between two reads of the sheet; once it says published the page stops asking.
 const RELINK_SHEET_TTL_MS = 10 * 60 * 1000;
-// An answer from /api/relink is asked again sooner: the one-minute tick lands the next ask two ticks on.
+// How long any answer is kept before /api/relink is asked again: the one-minute tick lands the next ask two ticks on.
 const RELINK_OWN_TTL_MS = 90 * 1000;
