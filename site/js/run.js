@@ -162,6 +162,7 @@ async function run() {
 
     statusMsg.textContent = `Done, checked ${names.length} guild(s).` +
       (cut ? ` Only the first ${MAX_ENTRIES} guilds were checked.` : '');
+    if (typeof labAfterRun === 'function') labAfterRun(); // LAB (never merged)
 
     // The first guild of the list that landed on a team: that team's card.
     if (successEntries.length > 0) showGuildFound(successEntries[0].teamId, successEntries[0].name);

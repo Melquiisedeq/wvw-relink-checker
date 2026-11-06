@@ -62,6 +62,7 @@ function openPopover(triggerEl, label, render, extraClass) {
 
   render(popover);
   positionPopover(popover, triggerEl);
+  if (typeof labAfterPopoverOpen === 'function') labAfterPopoverOpen(popover, triggerEl); // LAB (never merged)
   popover.focus({ preventScroll: true });
   return popover;
 }

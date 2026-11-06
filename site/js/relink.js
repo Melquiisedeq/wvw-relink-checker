@@ -527,6 +527,7 @@ function updateRelinkBanner() {
   if (!hasRelink && !hasLockout) {
     relinkBanner.style.display = 'none';
     updateTeamsNotice(false);
+    if (typeof labAfterBanner === 'function') labAfterBanner(relinkBanner); // LAB (never merged)
     return;
   }
 
@@ -539,6 +540,7 @@ function updateRelinkBanner() {
   updateTeamsNotice(rebuilding);
   if (rebuilding) {
     buildRebuildBanner(assignNaLeft, assignEuLeft);
+    if (typeof labAfterBanner === 'function') labAfterBanner(relinkBanner); // LAB (never merged)
     return;
   }
 
@@ -637,4 +639,5 @@ function updateRelinkBanner() {
     alert.appendChild(text);
     relinkBanner.appendChild(alert);
   }
+  if (typeof labAfterBanner === 'function') labAfterBanner(relinkBanner); // LAB (never merged)
 }

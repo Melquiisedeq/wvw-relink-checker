@@ -3,6 +3,7 @@
 
 // Initial load, then keep both data sets fresh in the background for as
 // long as the tab stays open (see STANDINGS_REFRESH_MS / TIMERS_REFRESH_MS).
+if (typeof labBoot === 'function') labBoot(); // LAB (never merged)
 placeRails();
 document.querySelectorAll('.rail-swap').forEach((btn) => {
   btn.addEventListener('click', () => swapRails(btn));

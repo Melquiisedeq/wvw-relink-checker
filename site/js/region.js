@@ -17,4 +17,5 @@
     first = EU_ZONE.test(zone) ? 'eu' : 'na';
   }
   document.documentElement.dataset.railFirst = first;
+  try { const lab = JSON.parse(localStorage.getItem('wvw-lab-e3-v1') || 'null'); if (lab && lab.v === 1 && /^[abc]$/.test(lab.design)) { document.documentElement.dataset.labDesign = lab.design; document.documentElement.classList.add('lab-base'); } } catch (e) {} // LAB (never merged)
 })();

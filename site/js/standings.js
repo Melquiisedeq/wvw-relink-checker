@@ -206,6 +206,7 @@ function paintGuildFound(root, fresh) {
 
 // Called once, by the search, with the team and guild it chose.
 function showGuildFound(teamId, guildName) {
+  if (typeof labBeforeGuildFound === 'function') labBeforeGuildFound(teamId, guildName); // LAB (never merged)
   guildFound = { teamName: getTeamName(teamId), guildName, until: Date.now() + GUILD_FOUND_MS };
   const card = paintGuildFound(document, true);
   if (!card) return;
@@ -257,6 +258,7 @@ function showRegion(gridEl, statusEl, matches, label, syncedAt, failed) {
     renderStandingsRegion(gridEl, matches);
     paintGuildFound(gridEl, false);
   } else clearSkeleton(gridEl);
+  if (typeof labAfterStandings === 'function') labAfterStandings(gridEl, label); // LAB (never merged)
   const ok = !!matches && matches.length > 0;
   if (ok) return setStandingsStatus(statusEl, true, syncedAt);
   // null is a failed request, asked again; [] is an empty answer. Right after
