@@ -1,1 +1,152 @@
 /* LAB - never merged. Design B: every rule under html[data-lab-design="b"]. */
+[data-lab-design="b"]{
+  --lab-b-chip-h:32px;
+  --lab-b-chip-bg:linear-gradient(180deg,rgba(255,255,255,.065),rgba(255,255,255,.025));
+  --lab-b-chip-edge:rgba(255,255,255,.09);
+  --lab-b-chip-edge-top:rgba(255,255,255,.15);
+}
+@media (pointer:coarse){[data-lab-design="b"]{--lab-b-chip-h:44px;}}
+
+/* ---- the chips: Skirmish · Activity · K/D --------------------------- */
+[data-lab-design="b"] .standing-side{gap:6px;}
+[data-lab-design="b"] .standing-side-stats{
+  display:flex;flex-wrap:wrap;gap:6px;padding-left:27px;
+  font-size:.74rem;
+}
+[data-lab-design="b"] .standing-side-stats > .sep{display:none;}
+[data-lab-design="b"] .lab-b-chip{
+  position:relative;display:inline-flex;align-items:center;gap:5px;
+  min-height:var(--lab-b-chip-h);padding:0 24px 0 10px;border-radius:8px;
+  background:var(--lab-b-chip-bg);
+  border:1px solid var(--lab-b-chip-edge);border-top-color:var(--lab-b-chip-edge-top);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 1px 2px rgba(0,0,0,.35);
+  white-space:nowrap;
+  transition:background-color .15s ease,border-color .15s ease,transform .1s ease,filter .15s ease;
+}
+[data-lab-design="b"] .lab-b-chip .stat-label{color:#9aa4b2;}
+[data-lab-design="b"] .lab-b-chip .stat-value{position:static;font-variant-numeric:tabular-nums;}
+[data-lab-design="b"] .lab-b-chip .stat-leader{text-underline-offset:4px;}
+
+/* The site's button, stretched over the whole chip: its click, its focus, its popover. */
+[data-lab-design="b"] .lab-b-chip .icon-btn{
+  position:absolute;inset:-1px;width:auto;height:auto;margin:0;padding:0 8px 0 0;
+  display:flex;align-items:center;justify-content:flex-end;
+  border-radius:inherit;background:none;opacity:1;transform:none;color:var(--accent);
+}
+[data-lab-design="b"] .lab-b-chip .icon-btn svg:not(.lab-b-arrow){display:none;}
+[data-lab-design="b"] .lab-b-chip .icon-btn .lab-b-arrow{filter:none;opacity:.8;transition:transform .15s ease,opacity .15s ease;}
+[data-lab-design="b"] .lab-b-chip .icon-btn:focus-visible{outline:var(--lab-ring);outline-offset:2px;}
+[data-lab-design="b"] .lab-b-chip:has(.icon-btn:hover){filter:var(--lab-hover);border-color:rgba(127,214,242,.32);}
+[data-lab-design="b"] .lab-b-chip:has(.icon-btn:hover) .lab-b-arrow{opacity:1;transform:translateX(1px);}
+[data-lab-design="b"] .lab-b-chip:has(.icon-btn:active){filter:var(--lab-press);transform:translateY(var(--lab-sink));}
+[data-lab-design="b"] .lab-b-chip:has(.icon-btn.active){
+  background:linear-gradient(180deg,rgba(127,214,242,.2),rgba(127,214,242,.08));
+  border-color:rgba(127,214,242,.55);
+}
+[data-lab-design="b"] .lab-b-chip:has(.icon-btn.active) .lab-b-arrow{opacity:1;transform:rotate(90deg);}
+
+/* ---- Guilds: the shield and its word -------------------------------- */
+[data-lab-design="b"] .standing-side-top .server-guilds-btn{
+  width:auto;height:24px;margin-left:2px;padding:0 9px 0 6px;gap:4px;
+  border-radius:999px;font:inherit;font-size:.7rem;font-weight:700;letter-spacing:.02em;
+  background:rgba(127,214,242,.1);border:1px solid rgba(127,214,242,.28);
+  transform:none;
+}
+[data-lab-design="b"] .server-guilds-btn svg{width:13px;height:15px;}
+[data-lab-design="b"] .standing-side-top .server-guilds-btn:hover{filter:var(--lab-hover);transform:none;border-color:rgba(127,214,242,.5);}
+[data-lab-design="b"] .standing-side-top .server-guilds-btn:active{filter:var(--lab-press);transform:translateY(var(--lab-sink));}
+[data-lab-design="b"] .standing-side-top .server-guilds-btn.active{background:rgba(127,214,242,.22);border-color:rgba(127,214,242,.6);color:var(--accent-bright);}
+[data-lab-design="b"] .standing-side-top .server-guilds-btn:focus-visible{outline:var(--lab-ring);outline-offset:2px;}
+.lab-b-guilds-label{line-height:1;color:var(--text);}
+@media (pointer:coarse){
+  [data-lab-design="b"] .standing-side-top .server-guilds-btn{height:36px;padding:0 11px 0 8px;}
+  [data-lab-design="b"] .standing-side-top .server-guilds-btn::before{content:'';position:absolute;inset:-4px 0;}
+}
+
+/* ---- the tier: Stats (later) and Live maps -------------------------- */
+[data-lab-design="b"] .standing-match-title{gap:8px;margin-bottom:8px;}
+[data-lab-design="b"] .lab-b-stats,
+[data-lab-design="b"] .standing-match-title .tier-map-btn{
+  display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;
+  border-radius:8px;font:inherit;font-size:.72rem;font-weight:700;line-height:1;
+  text-shadow:none;box-shadow:none;
+}
+[data-lab-design="b"] .lab-b-stats{
+  margin-left:auto;background:none;border:1px dashed rgba(255,255,255,.14);
+  color:#7e8899;cursor:default;
+}
+.lab-b-soon{
+  padding:2px 4px;border-radius:4px;background:rgba(154,164,178,.14);
+  font-size:.58rem;font-weight:800;letter-spacing:.06em;color:#8d97a6;
+}
+[data-lab-design="b"] .standing-match-title .tier-map-btn{
+  position:relative;background:var(--lab-b-chip-bg);
+  border:1px solid rgba(127,214,242,.3);border-top-color:rgba(127,214,242,.42);
+  color:var(--accent);transform:none;
+}
+[data-lab-design="b"] .standing-match-title .tier-map-btn .tier-map-label{
+  order:2;font-size:.72rem;font-weight:700;color:var(--text);transform:none;
+}
+[data-lab-design="b"] .standing-match-title .tier-map-btn svg{width:16px;height:16px;opacity:1;}
+[data-lab-design="b"] .standing-match-title .tier-map-badge{right:-7px;top:-7px;}
+[data-lab-design="b"] .standing-match-title .tier-map-btn:hover{filter:var(--lab-hover);transform:none;border-color:rgba(127,214,242,.55);}
+[data-lab-design="b"] .standing-match-title .tier-map-btn:active{filter:var(--lab-press);transform:translateY(var(--lab-sink));}
+[data-lab-design="b"] .standing-match-title .tier-map-btn.active{
+  background:linear-gradient(180deg,rgba(127,214,242,.24),rgba(127,214,242,.1));border-color:rgba(127,214,242,.6);
+}
+[data-lab-design="b"] .standing-match-title .tier-map-btn:focus-visible{outline:var(--lab-ring);outline-offset:2px;}
+@media (pointer:coarse){
+  [data-lab-design="b"] .lab-b-stats,
+  [data-lab-design="b"] .standing-match-title .tier-map-btn{height:44px;padding:0 14px;}
+}
+
+/* ---- the phone: three equal chips, the label above its value -------- */
+@media (max-width:599px){
+  [data-lab-design="b"] .standing-side-stats{
+    display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;padding-left:0;
+  }
+  [data-lab-design="b"] .lab-b-chip{
+    flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;
+    min-height:max(var(--lab-b-chip-h),38px);padding:3px 20px 3px 9px;min-width:0;
+  }
+  [data-lab-design="b"] .lab-b-chip .stat-label{
+    font-size:.6rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;line-height:1.1;
+  }
+  [data-lab-design="b"] .lab-b-chip .stat-value{font-size:.82rem;line-height:1.15;}
+  [data-lab-design="b"] .lab-b-chip .icon-btn{padding-right:6px;}
+}
+
+/* ---- the phone: guilds and maps on the whole screen ------------------ */
+[data-lab-design="b"] .info-popover.lab-b-full{
+  left:0 !important;top:0 !important;right:0;bottom:0;transform:none;
+  width:auto;max-width:none;height:auto;max-height:none;min-height:0;resize:none;
+  border-radius:0;border:0;padding:0 14px 24px;
+  background:linear-gradient(180deg,#1d232c,#12161c 40%);
+}
+[data-lab-design="b"]:has(.lab-b-full){overflow:hidden;}
+[data-lab-design="b"] .lab-b-full .info-popover-header{
+  position:sticky;top:0;z-index:3;min-height:56px;margin:0 -14px 10px;padding:6px 6px 6px 14px;
+  background:#1b2129;box-shadow:0 8px 16px -10px rgba(0,0,0,.9);
+  font-size:.95rem;
+}
+[data-lab-design="b"] .lab-b-full .info-popover-close{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:44px;height:44px;padding:0;border-radius:10px;font-size:1.7rem;color:var(--text);
+}
+[data-lab-design="b"] .lab-b-full .info-popover-close:active{background:rgba(255,255,255,.08);}
+[data-lab-design="b"] .lab-b-full .info-popover-close:focus-visible{outline:var(--lab-ring);outline-offset:-2px;}
+[data-lab-design="b"] .lab-b-full .info-popover-shot{width:44px;height:44px;}
+[data-lab-design="b"] .lab-b-full .info-popover-expand{display:none;}
+/* Until the content arrives: the stand-in X, top right; the real header replaces it. */
+[data-lab-design="b"] .lab-b-full > .lab-b-close{position:absolute;top:6px;right:6px;}
+[data-lab-design="b"] .lab-b-full > .hint{padding-top:18px;padding-right:50px;}
+
+/* Under 480 px the word would take the team name's room: the shield keeps its body, the
+   button keeps its name ("Show guilds on …"). */
+@media (max-width:479px){
+  [data-lab-design="b"] .standing-side-top .server-guilds-btn{width:28px;height:28px;padding:0;justify-content:center;}
+  [data-lab-design="b"] .lab-b-guilds-label{display:none;}
+}
+@media (max-width:479px) and (pointer:coarse){
+  [data-lab-design="b"] .standing-side-top .server-guilds-btn{width:36px;height:36px;}
+}
