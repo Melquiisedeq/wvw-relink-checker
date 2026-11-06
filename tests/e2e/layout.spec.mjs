@@ -1,5 +1,5 @@
 // Nothing past the screen's edge: the page at 320, 360 and 390 px, in five
-// fonts, at rest, after a guild search, and with a tier's map open.
+// fonts, at rest, after a guild search, with a tier's map open, and with the teams notice up.
 //
 // The viewport is a plain narrow window, not a phone's (support/steps.mjs,
 // phone()): a mobile viewport widens itself to fit whatever sticks out, so
@@ -8,11 +8,10 @@
 // font each row asked for is confirmed as the one Chrome painted with (the
 // named one is among the fonts painted; serif and monospace differ from the
 // default's).
-// One page per width and font goes through the three states, so a failure
-// names the state it was in.
+// One page per width and font goes through the states, so a failure names the one it was in.
 import { test, expect } from './support/fixtures.mjs';
 import { pastEdge } from './support/edge.mjs';
-import { openMap, search } from './support/steps.mjs';
+import { openMap, raiseNotice, search } from './support/steps.mjs';
 
 const WIDTHS = [320, 360, 390];
 const FONTS = [
@@ -29,6 +28,18 @@ const FONTS = [
 const quiet = page => page.evaluate(() => !document.querySelector('.siege-charge')
   && !document.getElementById('page').matches('.struck, .deploying')
   && !document.querySelector('.impact-overlay.play'));
+
+// Reachable: scrolled to the middle of the screen, the point at its centre hits the element itself
+// (the sticky notice does not cover it) and the centre is inside the screen.
+async function reachable(page, locator, what) {
+  await locator.evaluate(e => e.scrollIntoView({ block: 'center' }));
+  const hit = await locator.evaluate(e => {
+    const b = e.getBoundingClientRect(), x = b.left + b.width / 2, y = b.top + b.height / 2;
+    const top = document.elementFromPoint(x, y);
+    return { in: x >= 0 && x <= innerWidth && y >= 0 && y <= innerHeight, hit: !!top && e.contains(top), under: top ? top.tagName.toLowerCase() + '.' + top.className : null };
+  });
+  expect(hit.hit && hit.in, `${what}: on screen, and its centre hits the element (hit: ${hit.under})`).toBe(true);
+}
 
 async function fits(page, wvw, what) {
   await wvw.settle();
@@ -72,6 +83,14 @@ for (const width of WIDTHS) {
       await fits(page, wvw, `${width} px, ${font.name}, after a search`);
       await openMap(page, wvw, page.locator('.tier-map-btn').first());
       await fits(page, wvw, `${width} px, ${font.name}, map open`);
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.info-popover-backdrop'), 'the map\'s popover closed').toHaveCount(0);
+      await raiseNotice(page);
+      await expect(page.locator('#teamsNotice')).toBeVisible();
+      await fits(page, wvw, `${width} px, ${font.name}, teams notice up`);
+      await reachable(page, page.locator('.teams-notice-close'), `${width} px, ${font.name}: the notice's close button`);
+      await reachable(page, page.locator('#runBtn'), `${width} px, ${font.name}: the Check button`);
+      await reachable(page, page.locator('#standingsGridNA > .standing-match').first(), `${width} px, ${font.name}: a standings card`);
     });
   }
 }

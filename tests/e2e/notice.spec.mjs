@@ -6,7 +6,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { answer, fail } from './support/faults.mjs';
 import { hidden, visible } from './support/scenarios.mjs';
-import { check, recordedJson } from './support/steps.mjs';
+import { check, raiseNotice, recordedJson } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 const GAME = 'https://api.guildwars2.com/v2/';
@@ -39,13 +39,7 @@ test('the Check after the teams notice reads the new guild table', async ({ page
   const moved = structuredClone(tables[where[0].r].body);
   moved[where[0].gid] = next;
   await answer(page, tables[where[0].r].url, moved);
-  await page.evaluate(() => {
-    const win = 1900000000;
-    lockoutTime = Date.now() - 60000; assignNA = win * 1000;
-    relinkState = { window: win, published: 1 }; relinkStateAt = Date.now();
-    localStorage.removeItem('wvw-relink-checker:teams-notice');
-    updateRelinkBanner();
-  });
+  await raiseNotice(page);
   await expect(page.locator('#teamsNotice')).toHaveAttribute('data-window', '1900000000');
   await check(page, wvw, [wvw.guilds[0]]);
   expect(String((await rows())[0]), `after the notice, wanted the new team (the kept table has "${wasName}")`).toContain(nextName);

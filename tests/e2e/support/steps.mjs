@@ -188,3 +188,12 @@ export function looping(page, { ms = 400, loaders = false } = {}) {
     return { moved, still, onCss };
   }, [ms, loaders, LOADERS]);
 }
+
+// The teams notice raised the way the page raises it: NA's teams assigned, one guild list published.
+export const raiseNotice = page => page.evaluate(() => {
+  const win = 1900000000;
+  lockoutTime = Date.now() - 60000; assignNA = win * 1000;
+  relinkState = { window: win, published: 1 }; relinkStateAt = Date.now();
+  localStorage.removeItem('wvw-relink-checker:teams-notice');
+  updateRelinkBanner();
+});
