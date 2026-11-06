@@ -1,1 +1,253 @@
 /* LAB - never merged. Design A: every rule under html[data-lab-design="a"]. */
+
+/* ---- the board: a tier is one card, opened by the button in its title ------ */
+html[data-lab-design="a"] .standings-grid .lab-a-card{position:relative;cursor:pointer;transition:filter .15s ease, transform .08s ease, box-shadow .15s ease;}
+html[data-lab-design="a"] .lab-a-card:has(.lab-a-open:hover){filter:var(--lab-hover);border-color:rgba(127,214,242,.22);}
+html[data-lab-design="a"] .lab-a-card:has(.lab-a-open:active){filter:var(--lab-press);transform:translateY(var(--lab-sink));box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 1px 2px rgba(0,0,0,.4);}
+/* The card's clip-path (facets.css) would cut an outline: the ring is drawn inside. */
+html[data-lab-design="a"] .lab-a-card:has(.lab-a-open:focus-visible){box-shadow:inset 0 0 0 2px var(--accent-bright),var(--lab-lift);}
+/* No opacity on the title: it would make a stacking context and keep the hit area
+   below under the team rows. */
+html[data-lab-design="a"] .lab-a-card .standing-match-title{margin-bottom:8px;min-height:32px;opacity:1;}
+
+html[data-lab-design="a"] .lab-a-open,
+html[data-lab-design="a"] .lab-a-open:hover,
+html[data-lab-design="a"] .lab-a-open:active{
+  position:static;display:inline-flex;align-items:center;
+  padding:0;margin:0;background:none;border:none;box-shadow:none;filter:none;transform:none;
+  color:inherit;font:inherit;text-shadow:none;cursor:pointer;
+}
+html[data-lab-design="a"] .lab-a-open:focus-visible{outline:none;}
+html[data-lab-design="a"] .lab-a-open > span{font-size:.72rem;letter-spacing:.11em;color:#c9d2dd;}
+html[data-lab-design="a"] .lab-a-open::after,
+html[data-lab-design="a"] .lab-a-open:active::after{
+  content:'\203A';position:static;height:auto;font-size:1.05rem;line-height:1;margin-left:7px;font-weight:700;color:var(--accent);
+  transition:transform .15s ease;
+}
+html[data-lab-design="a"] .lab-a-card:has(.lab-a-open:hover) .lab-a-open::after{transform:translateX(2px);}
+/* The whole card is the button's hit area. The site's pressed strip (controls.css)
+   redraws button::after while held; this one keeps covering the card. */
+html[data-lab-design="a"] .lab-a-open::before,
+html[data-lab-design="a"] .lab-a-open:active::before{
+  content:'';position:absolute;inset:0;z-index:3;border-radius:inherit;
+}
+html[data-lab-design="a"] .lab-a-card .standing-match-title .tier-map-btn{position:relative;z-index:4;}
+
+/* The secondary "Maps": a chip over the card's hit area. */
+html[data-lab-design="a"] .lab-a-card .tier-map-btn,
+html[data-lab-design="a"] .lab-a-card .tier-map-btn:hover,
+html[data-lab-design="a"] .lab-a-card .tier-map-btn.active{
+  height:32px;padding:0 11px 0 10px;gap:6px;margin:0;border-radius:8px;
+  color:var(--accent);transform:none;
+  background:linear-gradient(180deg,rgba(127,214,242,.13),rgba(127,214,242,.06));
+  border:1px solid rgba(127,214,242,.28);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 1px 2px rgba(0,0,0,.35);
+}
+html[data-lab-design="a"] .lab-a-card .tier-map-btn{flex-direction:row-reverse;}
+html[data-lab-design="a"] .lab-a-card .tier-map-btn:hover{filter:var(--lab-hover);border-color:rgba(127,214,242,.5);}
+html[data-lab-design="a"] .lab-a-card .tier-map-btn:active{filter:var(--lab-press);transform:translateY(var(--lab-sink));}
+html[data-lab-design="a"] .lab-a-card .tier-map-btn:focus-visible{outline:var(--lab-ring);outline-offset:2px;}
+html[data-lab-design="a"] .lab-a-card .tier-map-label{font-size:.74rem;font-weight:700;color:#d8f3fb;transform:none;letter-spacing:.02em;}
+html[data-lab-design="a"] .lab-a-card .tier-map-btn svg{width:16px;height:16px;}
+html[data-lab-design="a"] .lab-a-card .tier-map-badge{right:-5px;top:-6px;}
+@media (pointer:coarse){
+  html[data-lab-design="a"] .lab-a-card .tier-map-btn{height:44px;padding:0 14px 0 12px;}
+  html[data-lab-design="a"] .lab-a-card .standing-match-title{min-height:44px;}
+}
+
+/* Inside: the numbers as text, the VP large. The icons go, and with them their Tab stops. */
+html[data-lab-design="a"] .standings-grid .standing-match .standing-side .icon-btn{display:none;}
+html[data-lab-design="a"] .lab-a-card .standing-side + .standing-side{margin-top:6px;}
+html[data-lab-design="a"] .lab-a-card .standing-side-top .rank-badge{width:22px;height:22px;font-size:.68rem;}
+html[data-lab-design="a"] .lab-a-card .standing-side-name{font-size:.9rem;}
+html[data-lab-design="a"] .lab-a-card .standing-vp{display:inline-flex;align-items:baseline;}
+html[data-lab-design="a"] .lab-a-card .standing-vp .stat-label{font-size:.66rem;letter-spacing:.06em;}
+html[data-lab-design="a"] .lab-a-card .standing-vp .stat-value{font-size:1.18rem;letter-spacing:-.01em;font-variant-numeric:tabular-nums;}
+html[data-lab-design="a"] .lab-a-card .standing-vp .movement-indicator{align-self:center;}
+html[data-lab-design="a"] .lab-a-card .standing-side-stats{padding-left:29px;font-size:.74rem;}
+
+/* ---- the room ------------------------------------------------------------------- */
+.lab-a-room{
+  width:min(960px,94vw);max-width:94vw;max-height:90svh;height:auto;
+  padding:0;margin:auto;border-radius:14px;overflow:hidden;
+  color:var(--text);font-size:.85rem;
+  background:linear-gradient(180deg,#232a34,#151a21 260px,#12161c);
+  border:1px solid #333c48;border-top-color:rgba(255,255,255,.17);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 30px 80px -20px rgba(0,0,0,.95),0 0 0 1px rgba(0,0,0,.5);
+}
+.lab-a-room[open]{display:flex;flex-direction:column;animation:lab-a-in .18s ease-out;}
+.lab-a-room::backdrop{
+  background:rgba(4,6,9,.68);
+  -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+}
+@keyframes lab-a-in{from{opacity:0;transform:translateY(8px) scale(.985);}to{opacity:1;transform:none;}}
+@media (prefers-reduced-motion:reduce){.lab-a-room[open]{animation:none;}}
+html:has(.lab-a-room[open]){overflow:hidden;}
+
+.lab-a-shell{display:flex;flex-direction:column;min-height:0;flex:1 1 auto;}
+.lab-a-head{
+  flex:0 0 auto;padding:14px 18px 0;
+  background:linear-gradient(180deg,rgba(127,214,242,.07),rgba(127,214,242,0) 70%);
+  border-bottom:1px solid rgba(255,255,255,.07);
+}
+.lab-a-top{display:flex;align-items:center;gap:12px;}
+.lab-a-title{
+  margin:0;flex:1 1 auto;min-width:0;
+  font-size:.82rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#c9d2dd;
+}
+.lab-a-close{
+  flex:0 0 auto;width:36px;height:36px;padding:0;border-radius:10px;
+  display:inline-flex;align-items:center;justify-content:center;
+  color:var(--muted);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+  box-shadow:none;text-shadow:none;
+}
+.lab-a-close:hover{color:var(--text);background:rgba(255,255,255,.08);}
+.lab-a-close:active{box-shadow:none;}
+@media (pointer:coarse){.lab-a-close{width:44px;height:44px;}}
+
+.lab-a-teams{list-style:none;margin:10px 0 12px;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.lab-a-team{
+  display:flex;align-items:center;gap:8px;min-width:0;
+  padding:8px 10px;border-radius:10px;
+  background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06);
+  border-left:3px solid currentColor;
+}
+.lab-a-team.side-red{color:var(--red);}
+.lab-a-team.side-blue{color:var(--blue);}
+.lab-a-team.side-green{color:var(--green);}
+.lab-a-team .rank-badge{width:22px;height:22px;font-size:.68rem;flex:0 0 auto;}
+.lab-a-team .dot{width:8px;height:8px;flex:0 0 auto;}
+.lab-a-team-name{flex:1 1 auto;min-width:0;color:#f2f6fa;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.lab-a-team-vp{flex:0 0 auto;display:inline-flex;align-items:baseline;white-space:nowrap;}
+.lab-a-team-vp .stat-label{font-size:.64rem;}
+.lab-a-team-vp .stat-value{color:#fff;font-weight:800;font-size:1.05rem;font-variant-numeric:tabular-nums;}
+.lab-a-team-vp .movement-indicator{align-self:center;}
+
+.lab-a-tabs{display:flex;gap:2px;margin:0 -4px;overflow-x:auto;scrollbar-width:none;}
+.lab-a-tab{
+  position:relative;flex:0 0 auto;height:44px;padding:0 16px;
+  display:inline-flex;align-items:center;gap:7px;
+  background:none;border:none;border-radius:8px 8px 0 0;box-shadow:none;text-shadow:none;
+  color:var(--muted);font-size:.86rem;font-weight:700;letter-spacing:.02em;
+}
+.lab-a-tab:hover{color:var(--text);background:rgba(255,255,255,.04);filter:none;}
+.lab-a-tab:active{transform:none;box-shadow:none;background:rgba(255,255,255,.07);}
+.lab-a-tab:active::after{content:none;}
+.lab-a-tab:focus-visible{outline:var(--lab-ring);outline-offset:-4px;}
+.lab-a-tab[aria-selected="true"]{color:#eaf8fd;}
+.lab-a-tab[aria-selected="true"]::before{
+  content:'';position:absolute;left:12px;right:12px;bottom:0;height:3px;border-radius:3px 3px 0 0;
+  background:linear-gradient(90deg,var(--accent),var(--accent-bright));
+  box-shadow:0 0 10px rgba(102,245,255,.45);
+}
+.lab-a-tab:disabled{opacity:.5;cursor:default;transform:none;box-shadow:none;}
+.lab-a-soon{
+  font-size:.62rem;font-weight:800;letter-spacing:.06em;padding:2px 6px;border-radius:6px;
+  color:var(--muted);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);
+}
+
+.lab-a-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:16px 18px 20px;}
+.lab-a-panel:focus{outline:none;}
+.lab-a-anchor{display:block;height:0;}
+
+/* The popovers' content in the open: their own close buttons have nothing to close here. */
+.lab-a-room .info-popover-close,
+.lab-a-room .info-popover-expand{display:none;}
+
+/* Overview: the three teams, then the site's three explanations for the chosen one. */
+.lab-a-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:14px;}
+.lab-a-pick{
+  display:flex;flex-direction:column;align-items:stretch;gap:5px;min-width:0;min-height:44px;
+  padding:9px 12px;border-radius:10px;text-align:left;
+  color:var(--text);font-weight:400;font-size:.82rem;text-shadow:none;
+  background:var(--lab-surface);border:1px solid var(--lab-edge);border-top-color:var(--lab-edge-top);
+  box-shadow:var(--lab-lift);
+}
+.lab-a-pick:hover{filter:var(--lab-hover);}
+.lab-a-pick:active{filter:var(--lab-press);transform:translateY(var(--lab-sink));box-shadow:none;}
+.lab-a-pick:active::after{content:none;}
+.lab-a-pick[aria-pressed="true"]{
+  border-color:rgba(127,214,242,.55);
+  background:linear-gradient(180deg,rgba(127,214,242,.16),rgba(127,214,242,.05)),var(--lab-surface);
+  box-shadow:inset 0 0 0 1px rgba(127,214,242,.25),var(--lab-lift);
+}
+.lab-a-pick-top{display:flex;align-items:center;gap:7px;min-width:0;}
+.lab-a-pick .rank-badge{width:20px;height:20px;font-size:.64rem;flex:0 0 auto;}
+.lab-a-pick .dot{width:8px;height:8px;flex:0 0 auto;}
+.lab-a-pick-name{font-weight:700;color:#f2f6fa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.lab-a-pick-stats{color:#8d97a6;font-size:.74rem;padding-left:27px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+.lab-a-panes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start;}
+.lab-a-pane{
+  min-width:0;padding:13px 15px;border-radius:12px;font-size:.8rem;
+  background:var(--lab-surface);border:1px solid var(--lab-edge);border-top-color:var(--lab-edge-top);
+  box-shadow:var(--lab-lift);
+}
+.lab-a-pane--trend{grid-row:span 2;}
+.lab-a-pane .info-popover-header{margin-bottom:10px;}
+
+/* Maps: the site's popover, laid into the room's flow. */
+.lab-a-room .info-popover.lab-a-inroom{
+  position:static;transform:none;z-index:auto;
+  width:auto;max-width:none;max-height:none;min-height:0;overflow:visible;resize:none;
+  padding:0;border:none;border-radius:0;background:none;box-shadow:none;font-size:.8rem;
+}
+.lab-a-room .info-popover.lab-a-inroom:focus{outline:none;}
+.lab-a-room .info-popover.lab-a-inroom > .info-popover-header{display:none;}
+
+/* Guilds: the site's list, in the expanded columns. */
+.lab-a-guilds{font-size:.82rem;}
+.lab-a-guilds .info-popover-header{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  font-weight:700;color:#f2f6fa;margin-bottom:10px;
+}
+.lab-a-guilds .info-popover-body{display:flex;flex-direction:column;gap:16px;}
+.lab-a-guilds .alliance-grid{display:flex;gap:12px;align-items:flex-start;}
+.lab-a-guilds .alliance-grid-col{display:flex;flex-direction:column;gap:12px;flex:1 1 0;min-width:0;}
+.lab-a-guilds .alliance-block{
+  margin-bottom:0;background:rgba(255,255,255,.03);
+  border:1px solid var(--border);border-radius:8px;padding:8px 10px;
+}
+.lab-a-wait{margin:0;}
+
+/* ---- the search: "Open match" beside the team ----------------------------------- */
+html[data-lab-design="a"] .lab-a-openmatch{
+  display:flex;width:max-content;align-items:center;margin:6px 0 2px;padding:0 10px;height:var(--lab-target);min-height:28px;
+  font-size:.74rem;font-weight:700;border-radius:8px;white-space:nowrap;
+  color:var(--accent);background:rgba(127,214,242,.08);border:1px solid rgba(127,214,242,.3);
+  box-shadow:none;text-shadow:none;
+}
+html[data-lab-design="a"] .lab-a-openmatch::after{content:'\203A';margin-left:5px;font-weight:700;}
+html[data-lab-design="a"] .lab-a-openmatch:hover{border-color:rgba(127,214,242,.55);}
+html[data-lab-design="a"] .lab-a-openmatch:active{box-shadow:none;transform:translateY(var(--lab-sink));}
+html[data-lab-design="a"] .lab-a-openmatch:focus-visible{outline:var(--lab-ring);outline-offset:2px;}
+
+@media (max-width:820px){
+  .lab-a-panes{grid-template-columns:minmax(0,1fr);}
+  .lab-a-pane--trend{grid-row:auto;}
+}
+/* Narrow: the head keeps one line per team; the picker turns into three short
+   columns, as each team's numbers are in the panes below it. */
+@media (max-width:720px){
+  .lab-a-teams{grid-template-columns:minmax(0,1fr);gap:4px;margin:8px 0 10px;}
+  .lab-a-team{padding:4px 10px;}
+  .lab-a-picker{gap:6px;margin-bottom:12px;}
+  .lab-a-pick{padding:7px 8px;gap:4px;}
+  .lab-a-pick-top{flex-wrap:wrap;row-gap:4px;}
+  .lab-a-pick-name{flex:1 0 100%;font-size:.78rem;}
+  .lab-a-pick-stats{display:none;}
+}
+/* Phones: the whole screen. */
+@media (max-width:599px){
+  .lab-a-room{width:100vw;max-width:100vw;height:100svh;max-height:100svh;border-radius:0;border:none;}
+  .lab-a-head{padding:max(8px, env(safe-area-inset-top)) 12px 0;}
+  .lab-a-close{width:44px;height:44px;}
+  .lab-a-tabs{margin:0 -12px;padding:0 8px;}
+  .lab-a-tab{padding:0 12px;}
+  .lab-a-body{padding:12px 12px max(16px, env(safe-area-inset-bottom));}
+  .lab-a-pane{padding:12px;}
+}
+@media (max-width:379px){
+  .lab-a-tab{padding:0 9px;font-size:.8rem;gap:5px;}
+  .lab-a-soon{padding:1px 4px;}
+}
