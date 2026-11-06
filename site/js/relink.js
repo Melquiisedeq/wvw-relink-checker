@@ -129,6 +129,10 @@ let bannerMayDraw = false;
 setTimeout(() => {
   if (!bannerMayDraw) { bannerMayDraw = true; updateRelinkBanner(); }
 }, 3000);
+// A tab shown again does not wait for the next one-minute tick.
+document.addEventListener('visibilitychange', () => {
+  if (bannerMayDraw && document.visibilityState !== 'hidden') updateRelinkBanner();
+});
 
 let relinkNA = null;
 let relinkEU = null;
