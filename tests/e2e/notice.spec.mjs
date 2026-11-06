@@ -138,6 +138,47 @@ test.describe('the notice on the one-minute tick', () => {
       .toHaveAttribute('data-window', String(cell.windowId));
   });
 
+  test('a tab shown again asks and draws at once, and flicking it does not multiply the reads', async ({ page, wvw }) => {
+    const cell = await relinkWindow(page, wvw);
+    await hidden(page, wvw, 0);
+    for (let m = 0; m < 3; m++) { await page.clock.fastForward(MIN); await quiet(); }
+    const before = cell.reads;
+    await visible(page);
+    await expect.poll(() => cell.reads, { message: 'one ask for the return' }).toBe(before + 1);
+    await quiet();
+    for (let i = 0; i < 5; i++) { await hidden(page, wvw, 0); await visible(page); }
+    await quiet();
+    expect(cell.reads, 'flicking the tab inside the TTL reads nothing more').toBe(before + 1);
+
+    cell.published = 5;
+    await hidden(page, wvw, 0);
+    for (let m = 0; m < 2; m++) { await page.clock.fastForward(MIN); await quiet(); }
+    await expect(page.locator('#teamsNotice')).toBeHidden();
+    await visible(page);
+    await expect(page.locator('#teamsNotice'), 'shown, no tick').toHaveAttribute('data-window', String(cell.windowId));
+  });
+
+  test('a tab shown again within the timers\' refresh shows the countdown of the new instant, with no tick', async ({ page, wvw }) => {
+    const cell = await relinkWindow(page, wvw);
+    const times = () => page.locator('#relinkBanner .time').allTextContents();
+    const sleep = async ms => {
+      await hidden(page, wvw, 0);
+      await page.clock.setSystemTime(new Date(await page.evaluate(ms => Date.now() + ms, ms)));
+      await quiet();
+    };
+    // Half an hour before NA's assignment, shown once: the timers are read afresh.
+    await sleep(cell.windowId * 1000 - 30.5 * MIN - await page.evaluate(() => Date.now()));
+    await visible(page);
+    await expect.poll(times).toContain('30m');
+    await quiet();
+    const was = await times();
+    // Four minutes more, inside the timers' and the standings' refresh: only the redraw on show can change them.
+    await sleep(4 * MIN);
+    expect(await times(), 'a hidden tab draws nothing by itself').toEqual(was);
+    await visible(page);
+    expect(await times(), 'shown: the countdown of the new instant, before any read answers').toContain('26m');
+  });
+
   test('a hidden tab in the window asks at most once in ten minutes, and the notice marks its title and icon until it is seen', async ({ page, wvw }) => {
     const cell = await relinkWindow(page, wvw);
     const was = await tab(page);
