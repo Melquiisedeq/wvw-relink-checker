@@ -8,7 +8,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
-import { check, iso, recordedJson, matchReads, serveList } from './support/steps.mjs';
+import { check, firstTier, iso, later, openMap, recordedJson, matchReads, serveList } from './support/steps.mjs';
 import { MIN, FOCUS } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, timezoneId: 'UTC', locale: 'en-US' });
@@ -402,5 +402,43 @@ test.describe('week memory', () => {
       expect((await card(page, '1-2')).waiting.join('|'), `1-2 with a memory of ${what}`).toBe(LAST);
       expect(await page.evaluate(() => Object.prototype.s !== undefined || ({}).t !== undefined), `${what} reached Object.prototype`).toBe(false);
     }
+  });
+});
+
+// ---- a map opened before the week turned -------------------------------------
+// The popover opens on last week's body; its first read after the turn brings the new week. The tab
+// clicked next is drawn from that read: owners, score bar, and this week's team in the marker titles.
+// The home maps' camps, towers and keeps change hands in the new week (Neutral to Red), so the tabs
+// not yet opened have owners to draw.
+const homeObjectives = recordedJson(GAME + 'wvw/matches?id=' + FOCUS).maps
+  .filter(m => m.type.endsWith('Home')).map(m => m.objectives.find(o => ['Camp', 'Tower', 'Keep'].includes(o.type)).id);
+test.describe('a map opened before the week turned', () => {
+  test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().newWeek({ relink: true }).advance(8, { flips: homeObjectives }) });
+  test('the tab clicked after the first read is drawn with the new week', async ({ page, wvw }) => {
+    await opened(page, wvw);
+    const tier = await firstTier(page);
+    await openMap(page, wvw, tier.button);
+    const tabs = await page.$$eval('.info-popover .wvw-tab', t => t.map(b => b.dataset.type));
+    const active = await page.$eval('.info-popover .wvw-tab.is-active', b => b.dataset.type);
+    expect(tabs.length, 'a second tab to switch to').toBeGreaterThan(1);
+    const kept = id => page.evaluate(i => { const m = newestMatches.get(i).match; return { start: m.start_time, red: getTeamName(matchTeamId(m, 'red')) }; }, id);
+    const old = await kept(tier.id);
+    await later(page, wvw, wvw.timeline.end + MIN - await wvw.now() + wvw.recordedAt);
+    await expect.poll(async () => (await kept(tier.id)).start, 'the read brought the new week').not.toBe(old.start);
+    const now = await kept(tier.id);
+    expect(now.red, 'the relink moved the red team').not.toBe(old.red);
+    const owned = [];
+    for (const type of tabs.filter(t => t !== active)) {
+      await page.locator(`.info-popover .wvw-tab[data-type="${type}"]`).click();
+      await expect(page.locator(`.info-popover .wvw-tab.is-active[data-type="${type}"]`)).toBeAttached();
+      await wvw.settle();
+      await expect(page.locator('.info-popover .wvw-waiting:not([hidden])'), `no "just after reset" notice on ${type}`).toHaveCount(0);
+      await expect(page.locator('.info-popover .wvw-scorebar'), `the score bar on ${type}`).toHaveCount(1);
+      const titles = await page.$$eval('.info-popover .wvw-plot g[role="button"] > title', t => t.map(e => e.textContent));
+      owned.push(...titles.filter(t => !t.includes('Neutral')));
+    }
+    expect(owned.length, 'owned markers on the tabs clicked after the read').toBeGreaterThan(0);
+    // Every flipped objective is Red's, so every title names this week's red team, not last week's.
+    expect(owned.every(t => t.endsWith(' \u00b7 ' + now.red)), `titles ${JSON.stringify(owned.slice(0, 3))} name "${now.red}", not "${old.red}"`).toBe(true);
   });
 });

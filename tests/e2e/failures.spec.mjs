@@ -318,3 +318,20 @@ test.describe('a hole in the kill history', () => {
     await wvw.settle();
   });
 });
+
+// The upgrade catalogue failing once does not blank the tier shields for the session: the next opening asks again.
+test('a failed upgrade catalogue is asked for again on the next opening', async ({ page, wvw }) => {
+  const down = await abort(page, wvw, /\/v2\/wvw\/upgrades/);
+  await load(page, wvw);
+  const tier = await firstTier(page);
+  await openMap(page, wvw, tier.button);
+  await expect.poll(() => down.reads, 'the first opening tried the catalogue and its retries').toBe(3);
+  await wvw.settle();
+  expect(await page.evaluate(() => upgradeCatalogue?.size ?? 0), 'the failed opening has no upgrade lines').toBe(0);
+  await page.locator('.info-popover .info-popover-close').click();
+  await expect(page.locator('.info-popover')).toHaveCount(0);
+  down.off();
+  await openMap(page, wvw, tier.button);
+  const tiers = () => page.$$eval('.info-popover .wvw-plot g[role="button"] > title', t => t.filter(e => / \u00b7 T\d/.test(e.textContent)).length);
+  await expect.poll(tiers, 'tier shields (titles naming "T<n>") on the second opening').toBeGreaterThan(0);
+});
