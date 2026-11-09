@@ -78,11 +78,11 @@ const RELINK_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 // Urgent when the countdown is inside two hours, while every tier is still on the
 // week that just ended, or while the new week's maps are not up: the bar must not
 // blink out mid-reset. Asked per region.
-function regionIsUrgent(relinkAt, resetAt, hasLive, now) {
+function regionIsUrgent(relinkAt, resetAt, now) {
   if (relinkAt !== null) {
     const left = relinkAt - now;
     if (left > 0 && left <= RELINK_URGENT_MS) return true;
-    if (!hasLive && left <= 0 && left > -RELINK_STUCK_MS) return true;
+    if (left <= 0 && left > -RELINK_STUCK_MS) return true;
   }
   if (resetAt !== null) {
     const since = now - resetAt;
@@ -138,8 +138,6 @@ let relinkNA = null;
 let relinkEU = null;
 let resetNA = null;
 let resetEU = null;
-let liveNA = false;
-let liveEU = false;
 
 // The relink proper (teams rebuilt), separate from the weekly reset; NA and EU differ.
 let assignNA = null;
@@ -188,12 +186,10 @@ function updateRelinkFromMatches(naMatches, euMatches) {
   if (naMatches) {
     relinkNA = latestOf(naMatches, 'end_time');
     resetNA = latestOf(naMatches, 'start_time');
-    liveNA = naMatches.some(matchIsLive);
   }
   if (euMatches) {
     relinkEU = latestOf(euMatches, 'end_time');
     resetEU = latestOf(euMatches, 'start_time');
-    liveEU = euMatches.some(matchIsLive);
   }
   if (bannerMayDraw) updateRelinkBanner();
 }
@@ -549,8 +545,8 @@ function updateRelinkBanner() {
   const inner = document.createElement('div');
   inner.className = 'relink-inner';
 
-  const naUrgent = regionIsUrgent(relinkNA, resetNA, liveNA, now);
-  const euUrgent = regionIsUrgent(relinkEU, resetEU, liveEU, now);
+  const naUrgent = regionIsUrgent(relinkNA, resetNA, now);
+  const euUrgent = regionIsUrgent(relinkEU, resetEU, now);
 
   if (hasRelink) {
     const naLeft = relinkNA !== null ? relinkNA - now : null;
