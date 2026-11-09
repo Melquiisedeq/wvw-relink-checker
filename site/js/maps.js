@@ -121,7 +121,10 @@ async function getUpgradeCatalogue() {
   try {
     const list = await fetchJsonCached(`${API_BASE}/wvw/upgrades?ids=all`);
     for (const u of Array.isArray(list) ? list : []) byId.set(u.id, u);
-  } catch { /* upgrades are a nicety; the map works without them */ }
+  } catch {
+    // Upgrades are a nicety, so the map draws without them, but a failure is not kept: the next opening asks again.
+    return byId;
+  }
   upgradeCatalogue = byId;
   return byId;
 }
@@ -2472,7 +2475,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     paintMapBoard(board, liveMatch, matchIsLive(liveMatch));
     stage.textContent = '';
     plotWrap = sectors && sectors.length
-      ? buildMapStage(match, byType.get(type), sectors, catalogue, (p, m) => {
+      ? buildMapStage(liveMatch, byType.get(type), sectors, catalogue, (p, m) => {
         selected = p;
         renderObjectiveDetail(detail, p, m);
         detail.scrollTop = 0;
@@ -2483,7 +2486,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     if (plotWrap) {
       // Over the plot, not inside the SVG: the SVG is the camera and
       // everything in it pans and zooms with the terrain.
-      const sb = buildScoreBar(byType.get(type), matchIsLive(match));
+      const sb = buildScoreBar(byType.get(type), matchIsLive(liveMatch));
       if (sb) plotWrap.appendChild(sb);
       corners = buildMapCorners(plotWrap, match.id);
       paintCorners();
