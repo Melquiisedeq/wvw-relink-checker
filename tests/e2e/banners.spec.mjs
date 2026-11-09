@@ -124,6 +124,24 @@ test('the reset under way, every tier still on the old week: still reset night',
   await expect(alertLine(page)).toContainText('NA reset night.');
 });
 
+// The refreshes fail from the start, so nothing but the clock moves between the two sides of the
+// instant the old week ends: the line may not depend on a reading that only a refresh renews.
+test('the instant the week ends, with no refresh answering: the line stays lit until the next reading', async ({ page, wvw }) => {
+  test.setTimeout(90 * 1000);
+  await open(page, wvw, { lockout: 6 * DAY, assign: { na: 10 * DAY, eu: 10 * DAY },
+    na: { start: -7 * DAY + 5 * MIN, end: 10 * MIN + S }, eu: { start: -2 * DAY, end: 3 * DAY } });
+  await expect(alertLine(page)).toContainText('NA reset night.');
+  const matches = await fail(page, wvw, /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches/);
+  const to = async minutes => { for (let i = 0; i < minutes; i++) { await page.clock.fastForward(MIN); await wvw.settle(); } };
+  await to(11);
+  for (const [past, minutes] of [[1, 1], [4, 3]]) {
+    await to(minutes);
+    await expect(banner(page).locator('.relink-stat-value').first()).toContainText('NA any moment now');
+    await expect(alertLine(page), `${past} min past the end`).toContainText('NA reset night.');
+  }
+  expect(matches.reads, 'a refresh did try, and failed').toBeGreaterThan(0);
+});
+
 test('a new week just published: reset night for 5 minutes, then not', async ({ page, wvw }) => {
   await open(page, wvw, { lockout: 6 * DAY, assign: { na: 10 * DAY, eu: 10 * DAY },
     na: { start: -1 * MIN, end: 7 * DAY - 1 * MIN }, eu: { start: -2 * DAY, end: 3 * DAY } });
