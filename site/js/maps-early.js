@@ -46,7 +46,14 @@ function readFightLog() {
   try {
     const raw = localStorage.getItem(FIGHT_KEY);
     const obj = raw ? JSON.parse(raw) : null;
-    return obj && typeof obj === 'object' ? obj : {};
+    const out = {};
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return out;
+    for (const id of Object.keys(obj)) {
+      if (!Array.isArray(obj[id])) continue;
+      out[id] = obj[id].filter((s) => s && typeof s === 'object' && Number.isFinite(s.at)
+        && s.n && typeof s.n === 'object');
+    }
+    return out;
   } catch { return {}; }
 }
 
