@@ -57,7 +57,7 @@ only to the game's own API (ArenaNet's), to be looked up; the visits are
 counted, as the table below shows.** There is one small server of mine, at `wvwrelink.com/api`. It receives game
 data from this project's own two Apps Scripts and two Supabase readers, each signed, and the page reads three things
 back from it — the kills history, whether the new teams are out (both fall
-back to the spreadsheets if it cannot answer) and the newest match bodies. Nothing you type goes near it.
+back to the spreadsheets if it cannot answer) and the newest match bodies. While the tab is visible the page also keeps a connection open to it, to hear when newer match bodies are in; it sends only `ping`. Nothing you type goes near it.
 
 | Host | What for |
 |---|---|

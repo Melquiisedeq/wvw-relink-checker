@@ -31,22 +31,22 @@ SITE = os.path.join(ROOT, 'site')
 # decision about the CSP, and this is where the decision gets noticed, rather
 # than being discovered later by a feature quietly not working.
 FETCHED = {
-    'api.guildwars2.com': 'guild search, matches, objectives, timers',
-    'docs.google.com': 'the three public spreadsheets',
-    'render.guildwars2.com': 'guild emblem images',
-    'static.cloudflareinsights.com': 'the Web Analytics beacon script',
-    'cloudflareinsights.com': 'where the Web Analytics beacon reports',
+    'wvwrelink.com': ('wss', 'the push socket, wss://wvwrelink.com/api/ws'),
+    'api.guildwars2.com': ('https', 'guild search, matches, objectives, timers'),
+    'docs.google.com': ('https', 'the three public spreadsheets'),
+    'render.guildwars2.com': ('https', 'guild emblem images'),
+    'static.cloudflareinsights.com': ('https', 'the Web Analytics beacon script'),
+    'cloudflareinsights.com': ('https', 'where the Web Analytics beacon reports'),
 }
 
 MENTIONED = {
-    'wvwrelink.com': 'canonical link and JSON-LD - the site naming itself',
     'schema.org': 'JSON-LD vocabulary, not a URL anything loads',
     'www.w3.org': 'SVG and XML namespaces',
-    'wiki.guildwars2.com': 'a comment linking the published team names',
-    'www.guildwars2.com': 'a comment link',
-    'gw2mists.com': 'a comment link',
-    'en.wikipedia.org': 'a comment link',
-    'github.com': 'a comment link',
+    'wiki.guildwars2.com': 'footer links to the published team names',
+    'www.guildwars2.com': 'a link in the page and its JSON-LD sameAs',
+    'gw2mists.com': 'a link in the page and its JSON-LD sameAs',
+    'en.wikipedia.org': 'a link in the page and its JSON-LD sameAs',
+    'github.com': 'a link in the page and its JSON-LD sameAs',
     'lucide.dev': 'a comment crediting an icon',
 }
 
@@ -101,7 +101,7 @@ def check_hosts(problems):
         + ['js/' + f for f in files_in('js', '.js')] \
         + ['css/' + f for f in files_in('css', '.css')]
     for rel in tree:
-        for m in re.finditer(r'https?://([A-Za-z0-9.-]+)', read(rel)):
+        for m in re.finditer(r'(?:https?|wss?)://([A-Za-z0-9.-]+)', read(rel)):
             found.setdefault(m.group(1), set()).add(rel)
 
     for host in sorted(found):
@@ -143,11 +143,12 @@ def check_hosts(problems):
     # With the scheme, so cloudflareinsights.com is not found inside
     # static.cloudflareinsights.com.
     for host in sorted(FETCHED):
-        if 'https://' + host not in policy:
+        scheme, what = FETCHED[host]
+        if scheme + '://' + host not in policy:
             problems.append(
                 '%s is fetched (%s) but is not named in the Content Security '
                 'Policy, so the browser blocks it - quietly, with the page '
-                'looking fine.' % (host, FETCHED[host]))
+                'looking fine.' % (host, what))
 
     # The page's own /api is reached by path, with no host for the loop above
     # to find, and connect-src names hosts only: without 'self' there the
@@ -396,7 +397,7 @@ def check_readme(problems):
         problems.append(
             'README.md Privacy host table does not list %s, which the page '
             'fetches (%s). The table is the promise to visitors.'
-            % (host, FETCHED[host]))
+            % (host, what))
 
     named = set(c for cells in readme_table('Key') for c in cells)
     keys = storage_keys(problems)
