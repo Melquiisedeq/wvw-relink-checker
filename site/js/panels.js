@@ -470,7 +470,10 @@ function rankMatchByVictoryPoints(match) {
   return rankByColor;
 }
 
+// Null until the standings have answered for this region: before that the cache
+// holds only the matches a lookup read, and its highest tier is not the last.
 function getMaxTierForRegion(regionCode) {
+  if (!standingsRegions.has(regionCode)) return null;
   let max = null;
   for (const id of matchDataCache.keys()) {
     if (!id.startsWith(`${regionCode}-`)) continue;
@@ -491,9 +494,9 @@ function getRelinkMovement(rank, tierNum, maxTierForRegion) {
     return { dir: 'up', label: 'Moves up next reset' };
   }
   if (rank === 2) return { dir: 'stay', label: 'Stays in this tier next reset' };
-  if (maxTierForRegion != null && tier === maxTierForRegion) {
-    return { dir: 'stay', label: 'Already the bottom tier' };
-  }
+  // Whether there is a tier below is not known: no mark, rather than a guess.
+  if (maxTierForRegion == null) return { dir: 'unknown', label: '' };
+  if (tier === maxTierForRegion) return { dir: 'stay', label: 'Already the bottom tier' };
   return { dir: 'down', label: 'Moves down next reset' };
 }
 
@@ -514,12 +517,12 @@ function buildMovementIndicator(regionCode, tierNum, rank, tied) {
   const { dir, label } = getRelinkMovement(rank, tierNum, maxTier);
   const el = document.createElement('span');
   el.className = `movement-indicator movement-${dir}`;
-  el.title = label;
+  if (label) el.title = label;
   if (dir === 'stay') {
     const bar = document.createElement('span');
     bar.className = 'movement-bar';
     el.appendChild(bar);
-  } else {
+  } else if (dir !== 'unknown') {
     el.textContent = MOVEMENT_SYMBOLS[dir];
   }
   return el;

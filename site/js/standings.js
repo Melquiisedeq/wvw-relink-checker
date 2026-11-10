@@ -389,6 +389,7 @@ async function fetchAllMatches(timeoutMs) {
 // window (STANDINGS_RETRY_WINDOWS_MS), then left to the 5-minute cycle; a
 // button asks now. Never decided by navigator.onLine or navigator.connection:
 // neither is reliable.
+let standingsRegions = new Set();  // region codes ('1', '2') whose standings have answered
 let standingsEverLoaded = false;   // the long deadline is for the first one only
 let standingsInFlight = false;
 let standingsExtraUsed = 0;        // extra tries spent since the last cycle load
@@ -569,6 +570,8 @@ async function loadStandings(origin = 'cycle') {
     updateRelinkFromMatches(naMatches, euMatches);
     const syncedAt = `Synced ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     if (answered.length > 0) standingsEverLoaded = true;
+    if (naMatches) standingsRegions.add('1');
+    if (euMatches) standingsRegions.add('2');
     showRegion(standingsGridNA, standingsStatusNA, naMatches, 'NA', syncedAt, failed);
     showRegion(standingsGridEU, standingsStatusEU, euMatches, 'EU', syncedAt, failed);
     primeMapBadges();

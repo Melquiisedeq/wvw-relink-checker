@@ -4,7 +4,7 @@
 // follows its icon when the page scrolls, and the trebuchet does not aim at
 // a finger; the map zooms and pans by buttons, wheel and drag.
 import { test, expect } from './support/fixtures.mjs';
-import { load, firstTier, openMap } from './support/steps.mjs';
+import { load, firstTier, openMap, search } from './support/steps.mjs';
 
 test.describe.configure({ timeout: 60 * 1000 });
 const POP = '.info-popover';
@@ -283,4 +283,18 @@ test.describe('the map: zoom and drag', () => {
     expect((await view(page))[1]).toBeLessThan(z[1]);
     await wvw.settle();
   });
+});
+
+test('Ctrl+Enter in the guild box closes a result row\'s popover and leaves no active trigger', async ({ page, wvw }) => {
+  await page.setViewportSize({ width: 1280, height: 2000 });
+  await load(page, wvw);
+  await search(page, wvw.guilds.slice(0, 1));
+  await page.locator('#resultBody .server-guilds-btn').first().click();
+  await expect(page.locator(POP)).toHaveCount(1);
+  await page.locator('#guildInput').focus();
+  await page.keyboard.press('Control+Enter');
+  await expect(page.locator(POP)).toHaveCount(0);
+  expect(await page.evaluate(() => activeTrigger), 'activeTrigger').toBeNull();
+  await expect(page.locator('#statusMsg')).toHaveText(/^Done/, { timeout: 15000 });
+  await wvw.settle();
 });

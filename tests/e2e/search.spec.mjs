@@ -4,6 +4,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { fail, answer } from './support/faults.mjs';
 import { search } from './support/steps.mjs';
+import { thirdInTierTwoStandingsOut, EU_STANDINGS_OUT } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 const GAME = /^https:\/\/api\.guildwars2\.com\/v2\/guild\//;
@@ -107,3 +108,26 @@ for (const over of [true, false]) {
     await wvw.settle();
   });
 }
+
+const marks = page => page.locator('#matchPanelsContainer .movement-indicator').evaluateAll(els => els.map(e => e.title));
+
+test('standings out: third in tier 2 is not told it is already at the bottom tier', async ({ page, wvw }) => {
+  await thirdInTierTwoStandingsOut(page, wvw);
+  await page.goto(wvw.url);
+  await search(page, wvw.guilds.slice(0, 1));
+  const titles = await marks(page);
+  expect(titles.length, 'movement marks in the panel').toBe(3);
+  expect(titles.filter(t => /bottom tier/.test(t)), 'no claim about the bottom tier').toEqual([]);
+  expect(titles.filter(t => /Moves down/.test(t)), 'no guess at the move down').toEqual([]);
+});
+
+// NA answered, so the page's one signal said "standings loaded": the EU's tier count is still unknown.
+test('EU standings out, NA up: an EU third in tier 2 is not told it is at the bottom tier', async ({ page, wvw }) => {
+  await thirdInTierTwoStandingsOut(page, wvw, { world: 12009, region: '2', out: EU_STANDINGS_OUT });
+  await page.goto(wvw.url);
+  await expect(page.locator('#standingsGridNA > .standing-match')).toHaveCount(wvw.tiers.NA);
+  await search(page, wvw.guilds.slice(1, 2));
+  const titles = await marks(page);
+  expect(titles.length, 'movement marks in the panel').toBe(3);
+  expect(titles.filter(t => /bottom tier/.test(t)), 'no claim about the bottom tier').toEqual([]);
+});
