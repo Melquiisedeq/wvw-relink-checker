@@ -979,13 +979,15 @@ function tierShields(r, tier) {
 
 // One map, drawn. Returns the wrapper plus a redraw hook, so the caller
 // can swap maps without rebuilding the whole popover.
-function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
+function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
   // Who holds what, and only that. Empty means nobody knows yet, a real state and not an error.
   const ownersOf = (data, isLive) => {
     const byId = new Map();
     if (isLive) for (const ob of (data && data.objectives) || []) byId.set(ob.id, ob);
     return byId;
   };
+  // Reassigned by applyLive: titles and the detail panel name the team of the body last read.
+  let match = matchOpened;
   let owners = ownersOf(mapData, matchIsLive(match));
 
   // The markers come from the catalogue, never from the match: what exists on a map and where it sits do
@@ -1355,7 +1357,8 @@ function buildMapStage(match, mapData, sectors, catalogue, onSelect) {
 
   // Repaint from fresher objective data without rebuilding anything: same nodes, same viewBox, so the zoom
   // and the selected objective survive.
-  wrap.applyLive = (freshMapData, isLive) => {
+  wrap.applyLive = (freshMapData, isLive, freshMatch) => {
+    if (freshMatch) match = freshMatch;
     owners = ownersOf(freshMapData, isLive);
     for (let i = 0; i < pts.length; i++) {
       // Back to Neutral when an owner goes away, rather than keeping the last one seen: a blank list mid-relink
@@ -2686,7 +2689,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     // while the maps are open.
     const live = matchIsLive(fresh);
     paintBoard(fresh, live);
-    if (plotWrap && plotWrap.applyLive && now) plotWrap.applyLive(now, live);
+    if (plotWrap && plotWrap.applyLive && now) plotWrap.applyLive(now, live, fresh);
     // The panel was born from a click and then stood still: the marker beside it can change hands, tier or
     // guild meanwhile. applyLive rewrites the point in place, so repainting is all it takes.
     if (selected) renderObjectiveDetail(detail, selected, fresh);
