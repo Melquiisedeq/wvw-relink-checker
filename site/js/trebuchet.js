@@ -337,9 +337,12 @@ function launchCharge() {
   ball.style.setProperty('--grow', grown.toFixed(3));
 
   fireTrebuchet();
+  // This round's own follower: a Check pressed in the swing has already put a new one in the global.
+  const letGo = stopFollowing;
+  stopFollowing = null;
 
   setTimeout(() => {
-    if (stopFollowing) { stopFollowing(); stopFollowing = null; }
+    letGo();
     const from = slingTip();
     ball.style.left = `${from.x}px`;
     ball.style.top = `${from.y}px`;

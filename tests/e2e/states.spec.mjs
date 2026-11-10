@@ -155,6 +155,30 @@ test.describe('the round on the sling', () => {
     await wvw.settle();
   });
 
+  test('a Check pressed in the swing: the new round keeps riding the sling after the old one is let go', async ({ page, wvw }) => {
+    await opened(page, wvw);
+    await page.locator('#guildInput').fill(wvw.guilds[0]);
+    await pause(page, wvw);
+    await toDone(page);
+    await toSwing(page);
+    await page.locator('#runBtn').click();
+    await page.clock.runFor(300);
+    await expect(page.locator(`${ROUNDS}.flying`), 'the first round, let go').toHaveCount(1);
+    const gap = () => page.evaluate(() => {
+      const b = document.querySelector('.siege-charge.charging');
+      const t = slingTip();
+      return Math.round(Math.hypot(parseFloat(b.style.left) - t.x, parseFloat(b.style.top) - t.y));
+    });
+    const gaps = [];
+    for (let i = 0; i < 6; i++) {
+      await page.clock.runFor(20);
+      if (await page.locator(`${ROUNDS}.charging`).count()) gaps.push(await gap());
+    }
+    expect(gaps.length, 'samples taken while the new round gathers').toBeGreaterThan(2);
+    expect(Math.max(...gaps), "the new round's furthest distance (px) from the sling's tip").toBeLessThan(5);
+    await wvw.settle();
+  });
+
   test('a Check pressed before the last round is let go takes up a new one beside it', async ({ page, wvw }) => {
     await opened(page, wvw);
     await page.locator('#guildInput').fill(wvw.guilds[0]);
@@ -167,7 +191,6 @@ test.describe('the round on the sling', () => {
     await page.clock.runFor(300);
     await expect(page.locator(`${ROUNDS}.flying`), 'the first round, let go').toHaveCount(1);
     await expect(page.locator(`${ROUNDS}.charging`), 'the new round, still gathering').toHaveCount(1);
-    // The new round's own release finds the sling already let go of.
     await toDone(page, { press: false });
     await toSwing(page);
     await page.clock.runFor(300);
