@@ -30,6 +30,8 @@ from datetime import datetime
 import urllib.error
 import urllib.request
 
+from workflow_text import escape
+
 API = 'https://wvwrelink.com/api/'
 GAME_MATCHES = 'https://api.guildwars2.com/v2/wvw/matches?ids=all'
 WORKERS_DEV = 'https://wvwrelink-api.wvwgw2.workers.dev/api/health'
@@ -298,7 +300,7 @@ def main():
     for n in notes:
         print(n)
     for p in problems:
-        print('::error::' + p)
+        print('::error::' + escape(p))
     if problems:
         print('\n%d problem(s).' % len(problems))
         return 1

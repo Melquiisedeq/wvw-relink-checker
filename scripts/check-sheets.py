@@ -38,6 +38,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from workflow_text import escape
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # The spreadsheet ids are read out of js/config.js, never written here: a copy
@@ -258,7 +260,7 @@ def main():
 
     if problems:
         for problem in problems:
-            print('::error::%s' % problem)
+            print('::error::%s' % escape(problem))
         print('')
         print('%d problem(s).' % len(problems))
         return 1

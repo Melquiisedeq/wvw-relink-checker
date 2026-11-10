@@ -9,13 +9,33 @@ const SCRIPT = new URL('../../scripts/check-catalogue.py', import.meta.url).path
 const STATIC = new URL('../../site/js/wvw-static.js', import.meta.url).pathname;
 
 const PROGRAM = `
-import importlib.util, json, sys
+import importlib.util, json, os, sys
+sys.path.insert(0, os.path.dirname(sys.argv[1]))
 spec = importlib.util.spec_from_file_location('check_catalogue', sys.argv[1])
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 static = mod.read_static(sys.argv[2])
 live = json.load(sys.stdin)
 print(json.dumps(mod.compare(static, live['objectives'], {int(k): v for k, v in live['sectors'].items()})))
+`;
+
+// main() with the game's answers made up, as the CI log would show it.
+const MAIN = `
+import importlib.util, io, json, os, sys, contextlib
+sys.path.insert(0, os.path.dirname(sys.argv[1]))
+spec = importlib.util.spec_from_file_location('check_catalogue', sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+live = json.load(sys.stdin)
+def fetch(url):
+    if 'objectives' in url:
+        return live['objectives'], None
+    return live['sectors'][url.split('/maps/')[1].split('/')[0]], None
+mod.fetch = fetch
+out = io.StringIO()
+with contextlib.redirect_stdout(out):
+    mod.main()
+print(json.dumps(out.getvalue()))
 `;
 
 const copy = () => {
@@ -79,4 +99,33 @@ test('a sector renamed, reshaped or added is named', () => {
   assert.ok(problems.some(p => /Map 38: sector .*differs in name/.test(p)));
   assert.ok(problems.some(p => /Map 95: sector .*differs in bounds/.test(p)));
   assert.ok(problems.some(p => /Map 96: sectors the game has and the copy lacks: 99999/.test(p)));
+});
+
+test('a name from the game cannot start a workflow command in the log', () => {
+  const live = agreeing();
+  live.sectors['38'][0].name = 'Bad\n::error::injected::x\r100%';
+  const out = JSON.parse(execFileSync('python3', ['-I', '-c', MAIN, SCRIPT], { input: JSON.stringify(live) }));
+  const lines = out.split('\n');
+  assert.equal(lines.filter(l => l.startsWith('::')).length, 1);
+  assert.ok(lines.some(l => l.startsWith('::error::') && l.includes('Bad%0A::error::injected::x%0D100%25')));
+});
+
+test('a note that carries a guild name cannot start a workflow command either', () => {
+  const program = `
+import importlib.util, io, json, os, sys, contextlib
+sys.path.insert(0, os.path.dirname(sys.argv[1]))
+spec = importlib.util.spec_from_file_location('check_api', sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+mod.check_routes = mod.check_match_detail = lambda problems, notes: None
+mod.check_guild_pipeline = lambda problems, notes: notes.append('guild "Bad\\n::error::injected::x"')
+out = io.StringIO()
+with contextlib.redirect_stdout(out):
+    mod.main()
+print(json.dumps(out.getvalue()))
+`;
+  const script = new URL('../../scripts/check-api.py', import.meta.url).pathname;
+  const out = JSON.parse(execFileSync('python3', ['-I', '-c', program, script]));
+  assert.equal(out.split('\n').filter(l => l.startsWith('::')).length, 0);
+  assert.ok(out.includes('Bad%0A::error::injected::x'));
 });

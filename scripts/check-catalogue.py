@@ -25,6 +25,8 @@ import time
 import urllib.error
 import urllib.request
 
+from workflow_text import escape
+
 BASE = 'https://api.guildwars2.com/v2'
 STATIC_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            '..', 'site', 'js', 'wvw-static.js')
@@ -173,7 +175,7 @@ def main():
         print(note)
     if problems:
         for problem in problems:
-            print('::error::%s' % problem)
+            print('::error::%s' % escape(problem))
         print('')
         print('%d problem(s). The page draws its maps from the copy, so it '
               'draws the old ones. %s' % (len(problems), REBUILD))

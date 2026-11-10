@@ -22,6 +22,8 @@ import time
 import urllib.parse
 import urllib.request
 
+from workflow_text import escape
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = 'https://api.guildwars2.com/v2'
 ATTEMPTS = 3
@@ -207,7 +209,7 @@ def main():
     print('')
     if problems:
         for p in problems:
-            print('error: ' + p)
+            print('::error::' + escape(p))
         print('')
         print('%d problem(s).' % len(problems))
         return 1
