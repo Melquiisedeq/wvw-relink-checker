@@ -63,6 +63,21 @@ export async function hold(page, url) {
   return release;
 }
 
+// The page's first read of /api/latest/summary after this call is held in the page
+// (no timeout, whatever the clock does): window.__summaryHeld is 1 once it is out,
+// and window.__releaseSummary(object) answers it. Later reads go through.
+export async function holdSummary(page) {
+  await page.evaluate(() => {
+    window.__summaryHeld = 0;
+    const read = fetchOwnApi;
+    fetchOwnApi = function (url, ...a) {
+      if (url !== LATEST_SUMMARY_URL || window.__summaryHeld) return read.call(this, url, ...a);
+      window.__summaryHeld++;
+      return new Promise((resolve) => { window.__releaseSummary = resolve; });
+    };
+  });
+}
+
 // Answers `body` (JSON) to one address instead of the recording, counting the reads.
 export async function answer(page, url, body) {
   const state = { reads: 0, on: true, off() { state.on = false; } };

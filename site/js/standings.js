@@ -706,7 +706,7 @@ async function peekLatest() {
   if (copied.size && mapAhead) mapAhead(copied);
   const behind = [...copied].some((id) => now - newestMatches.get(id).at >= PEEK_BEHIND_MS);
   if (!inHand && !behind) return;
-  if (activeTrigger || standingsInFlight || now - peekLoadedAt < PEEK_BEHIND_MS) return;
+  if (activeTrigger || standingsInFlight || standingsFailed.length || now - peekLoadedAt < PEEK_BEHIND_MS) return;
   peekLoadedAt = now;
   peekCopy = behind;
   await loadStandings('peek');
