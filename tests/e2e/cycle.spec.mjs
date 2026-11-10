@@ -113,10 +113,10 @@ test.describe('copy 2 min old', () => {
   });
 });
 
-// The visitor's clock 3 min behind the servers': the copy, 4 min old when the cycle comes
-// (at 10 min: the tick at 5 finds only 2 min on this clock, and waits), reads as 1 min old by that clock alone.
+// The visitor's clock set 3 min back after the load: the tick at 5 min still comes (the timer
+// runs on elapsed time, not the clock), and the copy, 2 min old, reads as fresh by that clock alone.
 test.describe('copy old, the clock behind', () => {
-  test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().advance(6, { every: 0.5 }).latestHeld(true).advance(6, { every: 0.5 }) });
+  test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().advance(3, { every: 0.5 }).latestHeld(true).advance(8, { every: 0.5 }) });
 
   test('the cycle reads the game', async ({ page, wvw }) => {
     await load(page, wvw);
@@ -124,7 +124,7 @@ test.describe('copy old, the clock behind', () => {
     // The answer's Date header tells the page how far behind its clock is.
     await page.evaluate(() => fetchOwnApi(LATEST_SUMMARY_URL, 'no-store'));
     const asked = matchReads(page);
-    await play(page, 10.5 * MIN);
+    await play(page, 5.5 * MIN);
     await wvw.settle();
     expect(asked.filter(u => LIST.test(u)).length, 'reads of ids=all by the cycle').toBeGreaterThanOrEqual(1);
   });

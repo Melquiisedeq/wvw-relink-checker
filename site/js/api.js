@@ -1232,19 +1232,21 @@ function schedulePeriodicRefresh(fn, intervalMs) {
   let inFlight = false;
   // Seeded with "now": callers load right before scheduling, and without it a quick
   // tab away and back would duplicate that refresh.
-  let lastRun = Date.now();
+  // performance.now(), not Date.now(): setInterval runs on elapsed time, and a device clock
+  // set back would make the guard below drop the next tick.
+  let lastRun = performance.now();
 
   const run = async () => {
     if (inFlight || document.visibilityState === 'hidden') return;
     // The slack: a tick that ran a few ms late leaves the next one a few ms short
     // of the interval, and the guard would drop it.
-    if (Date.now() - lastRun < intervalMs - 1000) return;
+    if (performance.now() - lastRun < intervalMs - 1000) return;
     inFlight = true;
     // Stamped before the work, not after: setInterval fires on exact multiples of
     // intervalMs, so stamping at the end puts the next tick just under the guard
     // above and drops every other one.
     const before = lastRun;
-    lastRun = Date.now();
+    lastRun = performance.now();
     try {
       if (await fn() === false) lastRun = before;
     } catch {
