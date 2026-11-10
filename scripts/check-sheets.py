@@ -50,8 +50,8 @@ ATTEMPTS = 3
 PAUSE_SECONDS = 5
 TIMEOUT_SECONDS = 30
 
-# kills.gs writes a match's row only when its score rose, and the GW2 API has
-# served frozen data for about an hour, so the whole sheet can honestly sit
+# kills.gs writes a match's row only when its score rose, and the GW2 API can
+# serve frozen data for about an hour, so the whole sheet can honestly sit
 # still that long. 90 keeps a frozen API from being reported as a stopped
 # trigger; a stopped trigger is still caught.
 KILLS_STALE_MINUTES = 90

@@ -72,7 +72,8 @@ const RELINK_URGENT_MS = 2 * 60 * 60 * 1000;
 const RELINK_OPENING_MS = 5 * 60 * 1000;
 // The fuse for an API that has stopped answering.
 const RELINK_STUCK_MS = 30 * 60 * 1000;
-// teamAssignment minus this is the previous reset, to the minute.
+// One week: the step back to the previous reset in lastResetOf, and the most the assignment
+// countdown may have left for the bar to say Relink.
 const RELINK_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Urgent when the countdown is inside two hours, while every tier is still on the

@@ -39,7 +39,7 @@ TIMEOUT_SECONDS = 30
 # The Worker's own STALE_KILLS_S and STALE_RELINK_S: kills and relink tick
 # every 5 minutes. Past these the reads already answer 503.
 # Kills is the exception for the report: kills.gs pushes only when a match's
-# score rose, and the GW2 API has served frozen data for about an hour, so a
+# score rose, and the GW2 API can serve frozen data for about an hour, so a
 # silent kills source is reported only past 90 minutes.
 # Between 20 and 90 the Worker's 503 is the honest answer and is not a failure.
 STALE = {'kills': 90 * 60, 'relink': 45 * 60}

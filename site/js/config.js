@@ -1,4 +1,4 @@
-// Configuration: team tables, endpoints and every tunable number. Constants only.
+// Configuration: team tables, endpoints and the numbers shared across files. Constants only.
 
 'use strict';
 

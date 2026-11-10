@@ -117,7 +117,7 @@ problems: [SECURITY.md](SECURITY.md), not a public issue.
 ## 📜 Disclaimer & license
 
 This is an unofficial, fan made tool. It is not affiliated with, endorsed,
-or sponsored by **ArenaNet** or **NCsoft**. All game content belongs to
+or sponsored by **ArenaNet** or **NCSOFT**. All game content belongs to
 its respective owners. Data is pulled live from the official Guild Wars 2
 API.
 
