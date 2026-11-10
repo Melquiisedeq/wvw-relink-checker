@@ -441,4 +441,26 @@ test.describe('a map opened before the week turned', () => {
     // Every flipped objective is Red's, so every title names this week's red team, not last week's.
     expect(owned.every(t => t.endsWith(' \u00b7 ' + now.red)), `titles ${JSON.stringify(owned.slice(0, 3))} name "${now.red}", not "${old.red}"`).toBe(true);
   });
+  test('the open tab, with no switch, names this week\'s team on its titles and in the clicked panel', async ({ page, wvw }) => {
+    await opened(page, wvw);
+    const tier = await firstTier(page);
+    await openMap(page, wvw, tier.button);
+    const home = page.locator('.info-popover .wvw-tab[data-type$="Home"]').first();
+    await home.click();
+    await wvw.settle();
+    const kept = id => page.evaluate(i => { const m = newestMatches.get(i).match; return { start: m.start_time, red: getTeamName(matchTeamId(m, 'red')) }; }, id);
+    const old = await kept(tier.id);
+    await later(page, wvw, wvw.timeline.end + MIN - await wvw.now() + wvw.recordedAt);
+    await expect.poll(async () => (await kept(tier.id)).start, 'the read brought the new week').not.toBe(old.start);
+    const now = await kept(tier.id);
+    expect(now.red, 'the relink moved the red team').not.toBe(old.red);
+    const marker = page.locator('.info-popover .wvw-plot g[role="button"].own-red').first();
+    await expect(marker, 'a red marker on the open tab').toHaveCount(1);
+    await expect.poll(() => marker.locator('title').textContent(), 'the title of the open tab').toMatch(new RegExp(' \u00b7 ' + now.red.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?: \u00b7 |$)'));
+    await marker.click();
+    const detail = page.locator('.info-popover .wvw-detail');
+    await expect(detail, 'the click opened the objective panel').toBeVisible();
+    await expect(detail, 'the panel names this week').toContainText(now.red);
+    await expect(detail, 'and not last week\'s').not.toContainText(old.red);
+  });
 });
