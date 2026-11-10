@@ -42,7 +42,7 @@ FETCHED = {
 MENTIONED = {
     'schema.org': 'JSON-LD vocabulary, not a URL anything loads',
     'www.w3.org': 'SVG and XML namespaces',
-    'wiki.guildwars2.com': 'footer links to the published team names',
+    'wiki.guildwars2.com': 'the footer links to the wiki',
     'www.guildwars2.com': 'a link in the page and its JSON-LD sameAs',
     'gw2mists.com': 'a link in the page and its JSON-LD sameAs',
     'en.wikipedia.org': 'a link in the page and its JSON-LD sameAs',
