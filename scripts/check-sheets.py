@@ -24,7 +24,7 @@ Neither check asserts how many rows or columns there are. Both sheets grow and
 shrink as people maintain them, and a check that pinned those numbers would
 fail on somebody doing their job.
 
-Run it by hand any time:  python scripts/check-sheets.py
+Run it by hand any time:  python3 scripts/check-sheets.py
 """
 
 import csv

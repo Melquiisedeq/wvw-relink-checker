@@ -1,4 +1,4 @@
-// Configuration: team tables, endpoints and the numbers shared across files. Constants only.
+// Configuration: team tables, endpoints, and the main timeouts, refresh intervals and limits. Constants only.
 
 'use strict';
 

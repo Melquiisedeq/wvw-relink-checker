@@ -6,8 +6,9 @@
 // TOLERANCE points, in lines or branches, fails the job. There is no absolute
 // target on purpose: a number to reach is met with a test that asserts nothing.
 // Two runs of one commit differ a little in a few files: page timers that do
-// or do not fire before a test ends. So the committed number is the minimum per
-// file over several runs (`sweep --write`), a fall is only reported past
+// or do not fire before a test ends; a new timer brings it back unless
+// states.spec.mjs takes it to each state. So the committed number is the
+// minimum per file over several runs (`sweep --write`), a fall is only reported past
 // TOLERANCE and a rise only past it too.
 // CI is the referee: its Google Chrome measures some files lower than a local
 // Chromium, so CI's runs are among them.

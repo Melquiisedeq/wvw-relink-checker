@@ -46,7 +46,7 @@ It is the counterpart of check-sheets.py, which asks whether the kills history
 is still being written. Same failure mode, same reason it needs asking: a
 stopped trigger makes no noise at all.
 
-Run it by hand any time:  python scripts/check-notice.py
+Run it by hand any time:  python3 scripts/check-notice.py
 """
 
 import calendar

@@ -13,7 +13,7 @@ let mapCatchUp = null;
 // Set while a tier's maps are open: reads the map's match at once if /api/latest
 // (js/standings.js, peekLatest) or a late copy (js/api.js, offerLate) shows its id further along.
 let mapAhead = null;
-// Separate from the poll: repaints only what ages by the second (RI clocks, badge, corners, note).
+// Separate from the poll: repaints only what ages by the second (the tick in js/maps.js).
 let mapTickTimer = null;
 
 function closePopover() {
