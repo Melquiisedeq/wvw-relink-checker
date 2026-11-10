@@ -23,6 +23,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from workflow_text import escape
+
 BASE = 'https://api.guildwars2.com/v2'
 ATTEMPTS = 3
 PAUSE_SECONDS = 5
@@ -237,7 +239,7 @@ def main():
 
     if problems:
         for problem in problems:
-            print('::error::%s' % problem)
+            print('::error::%s' % escape(problem))
         print('')
         print('%d problem(s).' % len(problems))
         return 1

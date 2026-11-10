@@ -58,6 +58,8 @@ import time
 import urllib.error
 import urllib.request
 
+from workflow_text import escape
+
 API = 'https://api.guildwars2.com/v2'
 ATTEMPTS = 3
 PAUSE_SECONDS = 5
@@ -200,14 +202,14 @@ def check_heartbeat(page_url, now):
     if error:
         print('::error::The heartbeat cell did not answer (%s). The state cell '
               'beside it answered a moment ago, so this is something about that '
-              'one cell rather than the sheet being down.' % error)
+              'one cell rather than the sheet being down.' % escape(error))
         return True
 
     found = HEARTBEAT_CELL.match((body or '').strip())
     if not found:
         shown = (body or '').strip()[:80] or '(empty)'
         print('::error::The heartbeat cell holds no timestamp. It holds: %s.'
-              % shown)
+              % escape(shown))
         print('::error::If it is empty, the script in the Apps Script project '
               'is older than the heartbeat: paste the current '
               'apps-script/relink-notice/relink-notice.gs in and run '
@@ -282,7 +284,7 @@ def main():
         shown = (body or '').strip()[:80] or '(empty)'
         print('::error::The relink cell does not hold two integers separated by '
               'a colon. It holds: %s. The page refuses anything else, so while '
-              'this is true the notice cannot appear.' % shown)
+              'this is true the notice cannot appear.' % escape(shown))
         # The gviz export does not 404 a tab that is not there - it serves the
         # first sheet instead. The likeliest cause looks like data, not like an
         # error, so it is named before anybody hunts through the Apps Script.
