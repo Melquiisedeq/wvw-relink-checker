@@ -30,6 +30,8 @@ async function run() {
   sparkFromButton();
   startCharge();
   statusMsg.innerHTML = '<span class="spinner"></span>Talking to the GW2 API…';
+  // A popover opened from a row holds the old run's data; its trigger goes with the rows.
+  closePopover();
   resultBody.textContent = '';
   matchPanelsContainer.textContent = '';
   // Goes with them: left up, they would still hold the previous run's
