@@ -213,6 +213,31 @@ test('a socket that fails five times in a row rests 10 min, and the first try af
   await expect.poll(() => push.opened, 'the try after a message').toBe(again + 1);
 });
 
+// A socket that never tells a version and only answers 'pong': the pong alone is what zeroes the count.
+test('a socket that only answers pings keeps its tries short: five drops, each after a pong, are tried again in seconds', async ({ page, wvw }) => {
+  await page.addInitScript(HALF);
+  const sockets = new Set();
+  let opened = 0, pongs = 0;
+  await page.routeWebSocket('wss://wvwrelink.com/api/ws', ws => {
+    opened++;
+    sockets.add(ws);
+    ws.onClose(() => sockets.delete(ws));
+    ws.onMessage(m => { if (m === 'ping') { pongs++; ws.send('pong'); } });
+  });
+  await load(page, wvw);
+  await expect.poll(() => opened, 'the socket is open').toBe(1);
+  for (let drop = 1; drop <= 6; drop++) {
+    const before = pongs;
+    // The ping 45 s after the opening (HALF).
+    for (let i = 0; i < 25 && pongs === before; i++) await play(page, 3000);
+    expect(pongs, `a pong before drop ${drop}`).toBe(before + 1);
+    for (const ws of [...sockets]) { sockets.delete(ws); ws.close({ code: 1011, reason: 'internal error' }); }
+    // Half of PUSH_RETRY_MS: the pong zeroed the count of failures.
+    await play(page, 1000);
+    expect(opened, `sockets opened 1 s after drop ${drop}`).toBe(drop + 1);
+  }
+});
+
 // The Worker's ceilings: all its sockets (4013), or those of one address (1013).
 for (const code of [4013, 1013]) {
   test(`a socket refused with ${code}: two connections at most in 10 min, the peek at its 30 s, and showing the tab tries again, not at each show`, async ({ page, wvw }) => {
