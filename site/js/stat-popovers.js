@@ -144,9 +144,9 @@ function buildMapKdButton(serverName, match, color) {
 const LIVE_PROJECT_AFTER = 0.375;  // 45 of the 120 minutes
 
 // Which skirmish block the match is in, and how far through it (blocks are two hours
-// from the match start). The running block can sit beside finished ones, so the last
-// entry is not always a whole.
-function skirmishProgress(match, at = Date.now()) {
+// from the match start; the server's clock, as the match's times are). The running
+// block can sit beside finished ones, so the last entry is not always a whole.
+function skirmishProgress(match, at = Date.now() - ownClockLead) {
   const start = Date.parse(match.start_time);
   if (!Number.isFinite(start)) return null;
   const end = Date.parse(match.end_time);

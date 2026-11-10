@@ -827,6 +827,14 @@ test('skirmishProgress: block and fraction follow the clock, and stop at end_tim
   // A week over: the clock stops at end_time.
   const last = at(end);
   assert.deepEqual({ ...at(end + 5 * 24 * 3600000) }, { ...last });
+  // The server's clock, not the device's: 5 minutes slow, a block's first minutes are not its end.
+  const begin = Date.parse(base.start_time) + 4 * 3600000 + 2 * 60000;
+  p.clock.now = begin - 5 * 60000;
+  p.run('ownClockLead = -5 * 60000');
+  const slow = p.call('skirmishProgress', base);
+  assert.equal(slow.index, 3, 'a slow clock');
+  assert.ok(Math.abs(slow.fraction - 1 / 60) < 1e-9, 'a slow clock');
+  p.run('ownClockLead = 0');
   // An end that is not a date is ignored; a start that is not a date is no answer.
   const noEnd = clone(base);
   noEnd.end_time = 'garbage';

@@ -3,10 +3,10 @@
 // and /api down so that the page falls back to the sheets. Then the game's API
 // and ours failing in each way a player can meet: what is on screen in each.
 import { test, expect } from './support/fixtures.mjs';
-import { abort, answer, fail, hold } from './support/faults.mjs';
+import { abort, answer, fail, hold, holdSummary } from './support/faults.mjs';
 import { firstTier, later, load, openMap } from './support/steps.mjs';
 import { recording } from './support/recordings.mjs';
-import { MIN, killRows, killsGap } from './support/scenarios.mjs';
+import { MIN, killRows, killsGap, playing } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 const TIERS = '#standingsGridNA > .standing-match';
@@ -195,6 +195,44 @@ test.describe('the page\'s own waits, on its clock', () => {
       { message: 'the tables once the wait is over', intervals: [100] }).toBe(wvw.tiers.NA);
     await expect(page.locator(EU)).toHaveCount(wvw.tiers.EU);
     expect(asked, 'reads of the list in all').toBe(2);
+  });
+});
+
+// A peek reads the summary, then asks for a load. A load that fails while that read is
+// out leaves a new try marked and counting down; the peek must not cancel it and leave
+// the indicator spinning with nothing left to try.
+test.describe('a load fails while a peek waits for the summary', () => {
+  test.use({ timeline: playing(), clock: 'playwright' });
+
+  test('the new try stays marked and the indicator does not spin', async ({ page, wvw }) => {
+    test.setTimeout(60 * 1000);
+    await page.addInitScript(() => { Math.random = () => 0; });
+    await fail(page, wvw, /\/api\/latest$/, 503);
+    await page.goto(wvw.url);
+    await expect(page.locator(TIERS)).toHaveCount(wvw.tiers.NA);
+    await wvw.settle();
+    await holdSummary(page);
+    await page.evaluate(() => {
+      window.__peekLoads = 0;
+      const load = loadStandings;
+      loadStandings = function (...a) { if (a[0] === 'peek') window.__peekLoads++; return load.apply(this, a); };
+    });
+    await expect.poll(async () => { await page.clock.fastForward(31 * 1000); return page.evaluate(() => window.__summaryHeld); },
+      'the peek is out and held').toBe(1);
+    await fail(page, wvw, GAME);
+    await page.evaluate(() => { loadStandings('manual'); });
+    await expect.poll(async () => { await page.clock.runFor(2000); return alertOf(page, 'NA').textContent(); },
+      { message: 'the failed load marks a new try', timeout: 40000, intervals: [100] }).toMatch(/Trying again in \d+ s/);
+    await page.evaluate(() => {
+      const m = [...matchDataCache.values()].find(x => matchIsLive(x));
+      window.__releaseSummary({ [m.id]: { start: Date.parse(m.start_time), score: colorSum(m.scores) + 1000, at: 0, by: 'a' } });
+    });
+    await page.clock.runFor(1000);
+    await wvw.settle();
+    expect(await page.evaluate(() => window.__peekLoads), 'loads the peek asked for').toBe(0);
+    expect(await page.evaluate(() => !!standingsRetry), 'the new try is still marked').toBe(true);
+    await expect(alertOf(page, 'NA')).toContainText(/Trying again in \d+ s/);
+    expect(await alertOf(page, 'NA').locator('.spinner').evaluate(e => getComputedStyle(e).display), 'the indicator').toBe('none');
   });
 });
 
