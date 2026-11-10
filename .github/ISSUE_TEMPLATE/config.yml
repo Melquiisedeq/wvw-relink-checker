@@ -5,5 +5,5 @@ blank_issues_enabled: false
 
 contact_links:
   - name: A guild was not found
-    url: https://github.com/Melquiisedeq/wvw-relink-checker#-limitations
+    url: https://github.com/Melquiisedeq/wvw-relink-checker#%EF%B8%8F-limitations
     about: The search is exact - the full guild name, not the tag. That, and the other known limits, are listed here.
