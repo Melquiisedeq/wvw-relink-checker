@@ -5,7 +5,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { fail } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
-import { FOCUS, MIN, copyAheadOld, playingHalfMinutes } from './support/scenarios.mjs';
+import { FOCUS, MIN, copyAheadOld, livePush, playingHalfMinutes } from './support/scenarios.mjs';
 import { load, matchReads, play } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, clock: 'playwright', reducedMotion: 'reduce' });
@@ -96,5 +96,74 @@ test.describe('old copy', () => {
     await play(page, 6 * MIN);
     await wvw.settle();
     expect(asked.filter(u => LIST.test(u)).length, 'reads of ids=all in 6 minutes').toBeGreaterThanOrEqual(1);
+  });
+});
+
+// The copy 2 min old at the five-minute mark (our readers stopped 3 min after the page
+// opened; the game goes on): past LATEST_SUMMARY_FRESH_MS, so the cycle reads the game.
+test.describe('copy 2 min old', () => {
+  test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().advance(3, { every: 0.5 }).latestHeld(true).advance(8, { every: 0.5 }) });
+
+  test('the cycle reads the game', async ({ page, wvw }) => {
+    await load(page, wvw);
+    const asked = matchReads(page);
+    await play(page, 5.5 * MIN);
+    await wvw.settle();
+    expect(asked.filter(u => LIST.test(u)).length, 'reads of ids=all at the five-minute mark').toBeGreaterThanOrEqual(1);
+  });
+});
+
+// The visitor's clock 3 min behind the servers': the copy, 4 min old when the cycle comes
+// (at 10 min: the tick at 5 finds only 2 min on this clock, and waits), reads as 1 min old by that clock alone.
+test.describe('copy old, the clock behind', () => {
+  test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().advance(6, { every: 0.5 }).latestHeld(true).advance(6, { every: 0.5 }) });
+
+  test('the cycle reads the game', async ({ page, wvw }) => {
+    await load(page, wvw);
+    await wvw.ahead(-3 * MIN);
+    // The answer's Date header tells the page how far behind its clock is.
+    await page.evaluate(() => fetchOwnApi(LATEST_SUMMARY_URL, 'no-store'));
+    const asked = matchReads(page);
+    await play(page, 10.5 * MIN);
+    await wvw.settle();
+    expect(asked.filter(u => LIST.test(u)).length, 'reads of ids=all by the cycle').toBeGreaterThanOrEqual(1);
+  });
+});
+
+// A tier that failed to load: the cycle reads the game, whatever the copy says.
+test.describe('a tier that failed', () => {
+  test.use({ timeline: playingHalfMinutes(14) });
+
+  test('the cycle reads the game though the copy is fresh', async ({ page, wvw }) => {
+    await load(page, wvw);
+    const asked = matchReads(page);
+    await page.evaluate(() => loadStandings());
+    await wvw.settle();
+    expect(asked.filter(u => LIST.test(u)), 'reads of ids=all with every tier loaded').toEqual([]);
+    await page.evaluate(() => { standingsFailed = [{ el: standingsStatusNA, label: 'live standings', region: 'NA' }]; });
+    await page.evaluate(() => loadStandings());
+    await wvw.settle();
+    expect(asked.filter(u => LIST.test(u)).length, 'reads of ids=all with a tier failed').toBeGreaterThanOrEqual(1);
+  });
+});
+
+// With the push live, each message names only the matches that moved: the summary
+// the page holds joins them, so the weeks on show stay known and the cycle needs no read.
+test.describe('the push live, the summary not answering', () => {
+  test.use({ timeline: playingHalfMinutes(14), origin: 'https://wvwrelink.com' });
+
+  test('10 minutes of an idle tab, each push naming one match, never read the game\'s list', async ({ page, wvw }) => {
+    const push = await livePush(page, wvw);
+    await load(page, wvw);
+    await expect.poll(() => push.open, 'the socket is open').toBe(1);
+    await fail(page, wvw, SUMMARY);
+    const asked = matchReads(page);
+    for (let i = 0; i < 20; i++) {
+      await play(page, 30 * 1000);
+      const told = await wvw.told();
+      await push.tell({ ...told, matches: told.matches.filter(m => m.id === FOCUS) });
+    }
+    await wvw.settle();
+    expect(asked.filter(u => LIST.test(u)), 'reads of ids=all after the first load').toEqual([]);
   });
 });
