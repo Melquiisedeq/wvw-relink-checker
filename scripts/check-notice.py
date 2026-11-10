@@ -259,7 +259,7 @@ def main():
     if error:
         print('::error::The teamAssignment timer did not answer (%s), so there '
               'is nothing to measure the notice against. This is about the API, '
-              'not about the notice.' % error)
+              'not about the notice.' % escape(error))
         return 1
     print('next relink    %s' % iso(assign_na))
 
@@ -267,7 +267,7 @@ def main():
     if error:
         print('::error::The relink tab of the sheet did not answer (%s). The '
               'page reads that same cell, so while this is true the notice '
-              'cannot appear at all.' % error)
+              'cannot appear at all.' % escape(error))
         # 401 and 403 mean the sheet is not published, not that it is broken.
         # The Apps Script that writes the cell runs as the owner and works
         # either way, so only the reader ever sees this failure.

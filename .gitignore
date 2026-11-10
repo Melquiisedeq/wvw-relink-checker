@@ -7,9 +7,8 @@ Thumbs.db
 .idea/
 *.swp
 
-# The checks under scripts/ are run, not imported - but testing one
-# means importing it from outside the repository, and Python leaves this behind
-# next to the file it imported.
+# The checks under scripts/ import workflow_text.py, and the tests import the
+# checks; Python leaves this behind next to every file it imported.
 __pycache__/
 
 # Notes to self, and nothing the site needs to run: the research behind each

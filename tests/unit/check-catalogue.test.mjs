@@ -109,3 +109,23 @@ test('a name from the game cannot start a workflow command in the log', () => {
   assert.equal(lines.filter(l => l.startsWith('::')).length, 1);
   assert.ok(lines.some(l => l.startsWith('::error::') && l.includes('Bad%0A::error::injected::x%0D100%25')));
 });
+
+test('a note that carries a guild name cannot start a workflow command either', () => {
+  const program = `
+import importlib.util, io, json, os, sys, contextlib
+sys.path.insert(0, os.path.dirname(sys.argv[1]))
+spec = importlib.util.spec_from_file_location('check_api', sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+mod.check_routes = mod.check_match_detail = lambda problems, notes: None
+mod.check_guild_pipeline = lambda problems, notes: notes.append('guild "Bad\\n::error::injected::x"')
+out = io.StringIO()
+with contextlib.redirect_stdout(out):
+    mod.main()
+print(json.dumps(out.getvalue()))
+`;
+  const script = new URL('../../scripts/check-api.py', import.meta.url).pathname;
+  const out = JSON.parse(execFileSync('python3', ['-I', '-c', program, script]));
+  assert.equal(out.split('\n').filter(l => l.startsWith('::')).length, 0);
+  assert.ok(out.includes('Bad%0A::error::injected::x'));
+});

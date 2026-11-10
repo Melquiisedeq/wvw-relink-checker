@@ -44,7 +44,7 @@ supabase/      the reader, one function run from two Supabase regions, one per
 tests/         unit/: the Worker's and the Supabase reader's rules, and the page's
                rules with its scripts in a node:vm, run by node --test;
                e2e/: the browser tests (Playwright Test, monocart-coverage-reports)
-scripts/       the checks (check-*.py) and the contract they compare against
+scripts/       the checks (check-*.py), the helper they import (workflow_text.py) and the contract they compare against
 .github/       the workflows that run them, and the branch pruning
 wrangler.jsonc the root Worker: serves site/ as static assets, no code
 CONTRIBUTING.md  SECURITY.md  LICENSE

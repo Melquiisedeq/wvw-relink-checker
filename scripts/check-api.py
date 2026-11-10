@@ -234,7 +234,7 @@ def main():
     check_guild_pipeline(problems, notes)
 
     for note in notes:
-        print(note)
+        print(escape(note))
     print('')
 
     if problems:

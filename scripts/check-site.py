@@ -33,6 +33,8 @@ import time
 import urllib.error
 import urllib.request
 
+from workflow_text import escape
+
 SITE = 'https://wvwrelink.com/'
 HEADERS_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -132,7 +134,7 @@ def main():
     status, html, error, headers = fetch(SITE)
     if error:
         print('::error::%s did not answer (%s). The site is down, or DNS or '
-              'the certificate is broken.' % (SITE, error))
+              'the certificate is broken.' % (SITE, escape(error)))
         return 1
 
     notes.append('%-46s HTTP %s, %d KB' % (SITE, status, len(html) // 1024))
@@ -202,7 +204,7 @@ def main():
 
     if problems:
         for problem in problems:
-            print('::error::%s' % problem)
+            print('::error::%s' % escape(problem))
         print('')
         print('%d problem(s).' % len(problems))
         return 1
