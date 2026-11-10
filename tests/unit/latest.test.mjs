@@ -397,7 +397,7 @@ function fakeCaches() {
   return {
     store, puts,
     default: {
-      // As measured on the live Worker: a hit comes back with max-age=14400.
+      // A hit comes back with another max-age than the one stored.
       match: async (k) => {
         if (!store.has(k)) return undefined;
         const hit = store.get(k).clone();

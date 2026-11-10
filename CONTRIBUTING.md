@@ -38,9 +38,10 @@ worker/        wvwrelink.com/api: takes each script's signed results into a
 apps-script/   the two Google Apps Script projects behind the spreadsheets:
                the teams notice and the kills history; the copies they are
                pasted from
-supabase/      the two readers, one per API server pool, that push the newest
-               match bodies to the Worker every 20 seconds
-tests/         unit/: the Worker's and the Supabase readers' rules, and the page's
+supabase/      the reader, one function run from two Supabase regions, one per
+               API server pool, that pushes the newest match
+               bodies to the Worker every 20 seconds
+tests/         unit/: the Worker's and the Supabase reader's rules, and the page's
                rules with its scripts in a node:vm, run by node --test;
                e2e/: the browser tests (Playwright Test, monocart-coverage-reports)
 scripts/       the checks (check-*.py) and the contract they compare against
@@ -89,7 +90,7 @@ that turns this tool into a way to attack the person using it.
 Serve it over http rather than double-clicking the file — the Content Security
 Policy does not behave the same on a `file://` URL:
 
-    python -m http.server 8000 --directory site
+    python3 -m http.server 8000 --directory site
 
 Then open `http://localhost:8000`. No API key, no account, nothing to set up.
 
@@ -134,6 +135,9 @@ A pull request needs four checks to pass: `structure`, `syntax`, `rules` and
 commands above; `structure` runs without a network or an install:
 
     python3 scripts/check-structure.py
+
+`structure` also checks the README's Privacy tables against the code: every host
+the page fetches and every key it stores must be listed there.
 
 `page` also fails if the page goes over its budget (`tests/e2e/data/budget.json`)
 or a file's test coverage falls (`tests/e2e/data/coverage.json`); the message says

@@ -7,7 +7,7 @@ index.html, a host missing from the Content Security Policy - fail *silently*
 in production: the page looks completely fine and the feature simply does not
 happen. No error, no test, nothing to notice until somebody reports it.
 
-Run it by hand any time:  python scripts/check-structure.py
+Run it by hand any time:  python3 scripts/check-structure.py
 """
 
 import datetime

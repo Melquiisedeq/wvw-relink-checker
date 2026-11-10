@@ -16,12 +16,11 @@ line in site/_headers: a deploy that dropped or mangled that file serves the
 page with no policy at all, and it looks exactly the same.
 
 Two more facts about the domain, each a date or a status and no judgement:
-the old GitHub Pages address stays gone (removing the custom domain did not
-unpublish it, and it kept serving a copy of the repository for a day), and
-the domain is not about to expire - it is renewed by hand, on purpose, so
-this is what remembers.
+the old GitHub Pages address stays gone (removing the custom domain does not
+unpublish it), and the domain is not about to expire - it is renewed by hand, on
+purpose, so this is what remembers.
 
-Run it by hand any time:  python scripts/check-site.py
+Run it by hand any time:  python3 scripts/check-site.py
 """
 
 import datetime

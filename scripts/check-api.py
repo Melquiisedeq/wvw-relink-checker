@@ -13,7 +13,7 @@ Asserting more would mean breaking on changes that do not affect anything.
 Every request gets three attempts, spaced out. The API genuinely flaps around
 reset, and an alarm that fires on a blip is an alarm that gets ignored.
 
-Run it by hand any time:  python scripts/check-api.py
+Run it by hand any time:  python3 scripts/check-api.py
 """
 
 import json
@@ -112,10 +112,8 @@ def check_match_detail(problems, notes):
     still empty out a panel.
 
     Every match, not a sample. There is no representative one: ArenaNet
-    republishes the tiers one at a time and not always forwards - at a relink
-    tier 4 was already on the new week while 1, 2 and 3 were on the
-    old, and tier 2 published the new week and then went back. js/config.js
-    carries matchIsLive for exactly that.
+    republishes the tiers one at a time and not always forwards, so tiers can
+    sit on different weeks. js/config.js carries matchIsLive for that.
 
     And nothing here asks whether a match is fresh. Freshness is the page's
     problem and the page already handles it. A check that wanted every tier on

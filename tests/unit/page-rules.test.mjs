@@ -1288,7 +1288,7 @@ test('matchesToReread: a body from an earlier week is read again; one behind in 
   assert.deepEqual(JSON.parse(JSON.stringify(sameWeek.behind)), [OPEN_ID]);
 });
 
-test('fetchMatches: a list with a body behind asks our copy, and the copy\'s newer body is what is shownOf (js/api.js)', async () => {
+test('fetchMatches: a list with a body behind asks our copy, and the copy\'s newer body is the one shown (js/api.js)', async () => {
   const p = fresh();
   p.call('keepNewestMatch', stepOf(1));
   const asked = serveFrom(p, { game: [stepOf(0)], copy: [stepOf(2)] });

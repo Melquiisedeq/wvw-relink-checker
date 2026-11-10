@@ -15,7 +15,7 @@ that header says.
 
 Every request gets three attempts, spaced out, as in check-api.py.
 
-Run it by hand any time:  python scripts/check-catalogue.py
+Run it by hand any time:  python3 scripts/check-catalogue.py
 """
 
 import json
