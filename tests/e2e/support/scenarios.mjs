@@ -47,6 +47,13 @@ export const copyBehindAll = (lag = 10, min = 30, id) =>
 export const weekTurnBehind = (lag = 10, min = 6, id) =>
   opened(id).latestStatus(503).newWeek().olderPool(lag).advance(min);
 
+// The week turns with the push live: /api/latest up with the new week's bodies
+// (the readers are on the group that has it) while the visitor's own group, `lag`
+// minutes behind in every second minute, still serves the week that ended. For
+// a page opened on the site's own address with `livePush`.
+export const pushWeekTurn = (lag = 10, min = 6, id) =>
+  opened(id).newWeek().olderPool(lag).advance(min);
+
 // Our copy ahead of the visitor's group, and old: 40 min of play, then our
 // readers stop (/api/latest keeps that moment's bodies, /api/kills its lines)
 // while every read of the visitor's lands on a group `lag` minutes behind; the
