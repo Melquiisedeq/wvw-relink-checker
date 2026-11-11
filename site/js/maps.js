@@ -14,9 +14,8 @@ const MAP_SKIP_TYPES = new Set(['Spawn']);
 // Drawn biggest first, so the smaller shape stays on top.
 const OBJ_DRAW_ORDER = ['Castle', 'Keep', 'Tower', 'Mercenary', 'Camp', 'Ruins'];
 // Marker radius in map units, also their on-screen size at the default view.
-// The radii of two markers sum to less than their distance, bar the EBG camp at Darkrait Inlet, which
-// touches the Quentin Lake tower; the closest other pair, two Seared ruins, are 210 apart.
-// tests/unit/map-positions.test.mjs holds it.
+// The radii of two markers on a map sum to less than their distance; tests/unit/map-positions.test.mjs
+// holds it, with its one listed exception.
 const OBJ_SIZE = Object.freeze({
   Castle: 118, Keep: 110, Tower: 100, Camp: 92, Mercenary: 92, Ruins: 80,
 });
@@ -53,7 +52,7 @@ const MERC_COORD = Object.freeze({
 });
 
 // The API gives the Seared Borderlands objectives (1652 and its copies 1651 and 1654) the positions of
-// another map; these were read off the map in the game. Keyed by the number after the map id, in 1652's
+// another map; these are where the game draws them. Keyed by the number after the map id, in 1652's
 // space; the other two maps are 1652 moved by SEARED_SHIFT.
 const SEARED_COORD = Object.freeze({
   39: [10503.0, 9623.4],

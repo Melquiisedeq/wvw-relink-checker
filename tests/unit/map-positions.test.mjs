@@ -9,7 +9,8 @@ const { objectives, sectors } = page.run('WVW_STATIC');
 const skip = page.run('MAP_SKIP_TYPES');
 const size = page.run('OBJ_SIZE');
 page.ctx.__objectiveAt = (o) => page.run(`objectiveAt(${JSON.stringify(o)})`);
-// Known: the EBG camp at Darkrait Inlet is drawn 12 units into Quentin Lake's tower marker.
+// Darkrait Inlet's camp (38-126) overlaps Quentin Lake's tower (38-16) as drawn today; moving it changes
+// what is seen, a change of its own.
 const TOUCHING = new Set(['38-126|38-16']);
 const drawn = objectives.filter((o) => !skip.has(o.type)).map((o) => ({ o, at: page.ctx.__objectiveAt(o) }));
 
