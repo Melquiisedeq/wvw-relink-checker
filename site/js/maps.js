@@ -1,8 +1,8 @@
 'use strict';
 // Tier maps: sector polygons, objective markers, tiers, claim emblems, tactics, pan and zoom.
 // Ownership rides on the match object the standings fetch; positions come from the objective catalogue,
-// and the polygons share the objectives' coordinate space. The terrain is a self-hosted wiki render
-// (MAP_IMAGE, and the top of css/maps.css).
+// and the polygons share the objectives' coordinate space. The terrain is a self-hosted wiki render, except
+// the Seared Borderlands', a capture of the map in the game (MAP_IMAGE, and the top of css/maps.css).
 const MAP_PANEL_NAME = Object.freeze({
   Center: 'Eternal Battlegrounds',
   RedHome: 'Red Borderlands',
@@ -14,7 +14,9 @@ const MAP_SKIP_TYPES = new Set(['Spawn']);
 // Drawn biggest first, so the smaller shape stays on top.
 const OBJ_DRAW_ORDER = ['Castle', 'Keep', 'Tower', 'Mercenary', 'Camp', 'Ruins'];
 // Marker radius in map units, also their on-screen size at the default view.
-// Under half the closest pair of objectives (261 units), so no two overlap.
+// The radii of two markers sum to less than their distance, bar the EBG camp at Darkrait Inlet, which
+// touches the Quentin Lake tower; the closest other pair, two Seared ruins, are 210 apart.
+// tests/unit/map-positions.test.mjs holds it.
 const OBJ_SIZE = Object.freeze({
   Castle: 118, Keep: 110, Tower: 100, Camp: 92, Mercenary: 92, Ruins: 80,
 });
@@ -30,12 +32,16 @@ const MAX_ZOOM = 4.5;
 // `lite` is the same picture LITE_WIDTH pixels wide; a map opens on it and takes `src` once the zoom
 // needs more pixels than it holds (upgradeTerrain).
 const LITE_WIDTH = 1280;
+const SEARED_IMAGE = 'assets/map-seared-1280.webp';
 const MAP_IMAGE = Object.freeze({
   38: { src: 'assets/map-ebg.webp', lite: 'assets/map-ebg-1280.webp', x: 8846.4, y: 12710.9, w: 3308.0, h: 3293.5, edge: 14 },
   1099: { src: 'assets/map-rbl.webp', lite: 'assets/map-rbl-1280.webp', x: 9133.8, y: 8866.1, w: 3228.6, h: 3245.6, edge: 14 },
   96: { src: 'assets/map-bbl.webp', lite: 'assets/map-bbl-1280.webp', x: 12718.3, y: 10865.3, w: 2660.6, h: 3623.1, edge: 14 },
   95: { src: 'assets/map-gbl.webp', lite: 'assets/map-gbl-1280.webp', x: 5534.1, y: 11493.7, w: 2693.0, h: 3638.3, edge: 14 },
-  // No terrain image for 1652, 1654, 1651: their sectors draw on the plain ground.
+  // One picture for the three Seared Borderlands maps; there is no bigger one, so src is lite.
+  1652: { src: SEARED_IMAGE, lite: SEARED_IMAGE, x: 9268.0, y: 9045.1, w: 2430.2, h: 3412.8, edge: 14 },
+  1651: { src: SEARED_IMAGE, lite: SEARED_IMAGE, x: 5684.0, y: 11605.1, w: 2430.2, h: 3412.8, edge: 14 },
+  1654: { src: SEARED_IMAGE, lite: SEARED_IMAGE, x: 12852.0, y: 10965.1, w: 2430.2, h: 3412.8, edge: 14 },
 });
 
 // The three EBG mercenary camps have no usable coord (label_coord sits off the camp), so these are read
@@ -45,6 +51,43 @@ const MERC_COORD = Object.freeze({
   '38-125': [11284.6, 14096.6],   // Orgath Uplands
   '38-126': [10692.6, 15310.5],   // Darkrait Inlet
 });
+
+// The API gives the Seared Borderlands objectives (1652 and its copies 1651 and 1654) the positions of
+// another map; these were read off the map in the game. Keyed by the number after the map id, in 1652's
+// space; the other two maps are 1652 moved by SEARED_SHIFT.
+const SEARED_COORD = Object.freeze({
+  39: [10503.0, 9623.4],
+  38: [9895.3, 9893.4],
+  40: [11185.8, 9738.5],
+  52: [9541.8, 10147.3],
+  51: [11362.6, 10274.4],
+  37: [10494.8, 10119.5],
+  33: [9538.0, 10760.9],
+  32: [11298.0, 10824.3],
+  64: [10303.1, 10766.3],
+  65: [10608.4, 10765.4],
+  63: [10306.8, 10976.4],
+  66: [10662.2, 10975.6],
+  62: [10487.7, 11168.5],
+  35: [10115.4, 11313.5],
+  53: [9660.3, 11390.9],
+  36: [10850.2, 11518.9],
+  50: [11328.7, 11404.9],
+  34: [10509.2, 12158.2],
+});
+const SEARED_SHIFT = Object.freeze({ 1652: [0, 0], 1651: [-3584, 2560], 1654: [3584, 1920] });
+
+// Where the page draws an objective. coord, not label_coord: label_coord is where the game writes the
+// objective's *name*, clear of the building. The EBG mercenary camps have an empty coord; MERC_COORD stands
+// in for them.
+function objectiveAt(meta) {
+  const [map, number] = String(meta.id).split('-');
+  const seared = SEARED_COORD[number], shift = SEARED_SHIFT[map];
+  if (seared && shift) return [seared[0] + shift[0], seared[1] + shift[1]];
+  const at = (meta.coord && meta.coord.length) ? meta.coord
+    : (MERC_COORD[meta.id] || meta.label_coord);
+  return at || null;
+}
 
 // The game's own icons off the wiki, in assets/icons. Only Keep and Tower are published in all four
 // colours; the rest are rebuilt by replaying on them the grey -> team change learned from those two.
@@ -1008,10 +1051,7 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
   for (const meta of catalogue.values()) {
     if (meta.map_id !== mapData.id) continue;
     if (MAP_SKIP_TYPES.has(meta.type)) continue;
-    // coord, not label_coord: label_coord is where the game writes the objective's *name*, clear of the
-    // building. The EBG mercenary camps have an empty coord; MERC_COORD stands in for them.
-    const at = (meta.coord && meta.coord.length) ? meta.coord
-      : (MERC_COORD[meta.id] || meta.label_coord);
+    const at = objectiveAt(meta);
     if (!at) continue;
     pts.push({ ob: owners.get(meta.id) || blank(meta), meta, x: at[0], y: at[1] });
   }
@@ -1029,12 +1069,6 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
   if (!Number.isFinite(minX)) return null;
   const pad = (maxX - minX) * 0.02;
   minX -= pad; maxX += pad; minY -= pad; maxY += pad;
-  // Seared Borderlands puts a keep at the edge of its sectors: without this its marker is cut in half on a phone.
-  for (const p of pts) {
-    const r = OBJ_SIZE[p.meta.type] || 14;
-    minX = Math.min(minX, p.x - r); maxX = Math.max(maxX, p.x + r);
-    minY = Math.min(minY, p.y - r); maxY = Math.max(maxY, p.y + r);
-  }
   const fullW = maxX - minX, fullH = maxY - minY;
 
   const wrap = document.createElement('div');
@@ -1238,7 +1272,7 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
   const upgradeTerrain = () => {
     if (!terrain || upgrading) return;
     const onScreen = shownWidth * (window.devicePixelRatio || 1) * (picture.w / view.w);
-    if (onScreen <= LITE_WIDTH) return;
+    if (onScreen <= LITE_WIDTH || picture.src === picture.lite) return;
     upgrading = true;
     const full = new Image();
     full.src = picture.src;

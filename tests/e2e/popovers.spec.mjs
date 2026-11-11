@@ -61,7 +61,7 @@ for (const [kind, scope] of SETS) {
 // The game's Seared Borderlands, ids no recording holds: each borderland draws
 // its objectives (18, the spawns left out), its garrison, held by its home
 // team, carries the waypoint whose chat link can be copied, and the frame holds
-// the whole disc of the east keep, which sits past the sectors' edge.
+// the whole disc of every marker.
 test.describe('the Seared Borderlands', () => {
   test.use({ timeline: seared(10) });
   test('every borderland tab draws its objectives and its garrison waypoint', async ({ page, wvw }) => {
@@ -77,12 +77,16 @@ test.describe('the Seared Borderlands', () => {
         .toEqual(Array(18).fill(String(map)));
       await expect(page.locator(`.info-popover .wvw-marker[data-obj="${map}-37"] .wvw-wp.is-copyable`),
         `${type}: the garrison's waypoint`).toHaveCount(1);
-      const east = await page.evaluate(id => {
-        const [x, , w] = document.querySelector('.info-popover .wvw-plot').getAttribute('viewBox').split(' ').map(Number);
-        const keep = WVW_STATIC.objectives.find(o => o.id === id);
-        return { right: x + w, disc: keep.coord[0] + 110 };
-      }, `${map}-32`);
-      expect(east.right, `${type}: the east keep's disc inside the frame`).toBeGreaterThanOrEqual(east.disc);
+      const outside = await page.evaluate(() => {
+        const [x, y, w, h] = document.querySelector('.info-popover .wvw-plot').getAttribute('viewBox').split(' ').map(Number);
+        return [...document.querySelectorAll('.info-popover .wvw-plot .wvw-marker')].filter((g) => {
+          const [, px, py] = g.getAttribute('transform').match(/translate\(([-\d.]+) ([-\d.]+)\)/).map(Number);
+          const meta = WVW_STATIC.objectives.find(o => o.id === g.dataset.obj);
+          const r = OBJ_SIZE[meta.type];
+          return px - r < x || px + r > x + w || py - r < y || py + r > y + h;
+        }).map(g => g.dataset.obj);
+      });
+      expect(outside, `${type}: every marker's disc inside the frame`).toEqual([]);
       await wvw.settle();
     }
   });
