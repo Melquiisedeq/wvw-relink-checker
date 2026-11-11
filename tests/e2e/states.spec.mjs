@@ -155,6 +155,57 @@ test.describe('the round on the sling', () => {
     await wvw.settle();
   });
 
+  test('a Check pressed in the swing: the new round keeps riding the sling after the old one is let go', async ({ page, wvw }) => {
+    await opened(page, wvw);
+    await page.locator('#guildInput').fill(wvw.guilds[0]);
+    await pause(page, wvw);
+    await toDone(page);
+    await toSwing(page);
+    await page.locator('#runBtn').click();
+    await page.clock.runFor(300);
+    await expect(page.locator(`${ROUNDS}.flying`), 'the first round, let go').toHaveCount(1);
+    // Knocked off the sling on purpose: only the round's own follower, run on a frame, puts it back.
+    const knockedBack = () => page.evaluate(() => {
+      const b = document.querySelector('.siege-charge.charging');
+      if (!b) return null;
+      b.style.left = '-999px';
+      return true;
+    });
+    const gaps = [];
+    for (let i = 0; i < 6; i++) {
+      if (!(await knockedBack())) break;
+      await page.clock.runFor(20);
+      gaps.push(await page.evaluate(() => {
+        const b = document.querySelector('.siege-charge.charging');
+        return b ? Math.round(Math.abs(parseFloat(b.style.left) - slingTip().x)) : null;
+      }));
+    }
+    const seen = gaps.filter(g => g !== null);
+    expect(seen.length, 'samples taken while the new round gathers').toBeGreaterThan(2);
+    expect(Math.max(...seen), "the new round's distance (px) from the sling's tip after being knocked off it").toBeLessThan(5);
+    await wvw.settle();
+  });
+
+  test('a Check pressed before the deferred launch: the old round is let go and lands, the new one keeps gathering', async ({ page, wvw }) => {
+    await opened(page, wvw);
+    await page.locator('#guildInput').fill(wvw.guilds[0]);
+    await pause(page, wvw);
+    await toDone(page);
+    await expect(page.locator('#trebuchet.firing'), 'the answer beat the wind-up: no swing yet').toHaveCount(0);
+    await page.locator('#runBtn').click();
+    // Stepped to the first round let go: the new search must not be over yet, or its own round would fly too.
+    for (let i = 0; i < 100 && !(await page.locator(`${ROUNDS}.flying`).count()); i++) await page.clock.runFor(10);
+    await expect(page.locator(`${ROUNDS}.flying`), 'the old round, let go').toHaveCount(1);
+    await expect(page.locator(`${ROUNDS}.charging`), 'the new round, still gathering').toHaveCount(1);
+    await page.clock.runFor(30);
+    await expect(page.locator(`${ROUNDS}.flying`), 'only the old round has flown').toHaveCount(1);
+    await expect(page.locator(`${ROUNDS}.charging`), 'the new round is still on the sling').toHaveCount(1);
+    await page.evaluate(() => { window.__oldRound = document.querySelector('.siege-charge.flying'); });
+    await page.clock.runFor(700);
+    expect(await page.evaluate(() => window.__oldRound.isConnected), 'the old round, landed and gone').toBe(false);
+    await wvw.settle();
+  });
+
   test('a Check pressed before the last round is let go takes up a new one beside it', async ({ page, wvw }) => {
     await opened(page, wvw);
     await page.locator('#guildInput').fill(wvw.guilds[0]);
@@ -167,7 +218,6 @@ test.describe('the round on the sling', () => {
     await page.clock.runFor(300);
     await expect(page.locator(`${ROUNDS}.flying`), 'the first round, let go').toHaveCount(1);
     await expect(page.locator(`${ROUNDS}.charging`), 'the new round, still gathering').toHaveCount(1);
-    // The new round's own release finds the sling already let go of.
     await toDone(page, { press: false });
     await toSwing(page);
     await page.clock.runFor(300);

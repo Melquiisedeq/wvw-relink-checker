@@ -157,6 +157,27 @@ test('a run-once effect cancelled on the clock just before the tab hides is not 
   await allFinish(page, 'the other run-once effects');
 });
 
+test("the head's fire on a round's trail, with the tab hidden and shown mid-flight, burns out", async ({ page, wvw }) => {
+  // Hidden the moment the trail's head is added, inside the flight, whatever the machine's speed.
+  await page.addInitScript(() => {
+    new MutationObserver(ms => {
+      if (!ms.some(m => [...m.addedNodes].some(n => n.classList && n.classList.contains('flame-head')))) return;
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+      document.dispatchEvent(new Event('visibilitychange'));
+      window.__hiddenWithHead = true;
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await load(page, wvw);
+  await search(page, wvw.guilds);
+  await expect.poll(() => page.evaluate(() => window.__hiddenWithHead), { message: 'the tab hidden with the head lit' }).toBe(true);
+  await page.waitForTimeout(100);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(page.locator('.flame-head'), 'the head of the trail, burnt out').toHaveCount(0);
+});
+
 for (const reduced of [false, true]) {
   test(`the trebuchet's shots${reduced ? ' under reduced motion' : ''} fly and leave nothing behind`, async ({ page, wvw }) => {
     if (reduced) await page.emulateMedia({ reducedMotion: 'reduce' });
