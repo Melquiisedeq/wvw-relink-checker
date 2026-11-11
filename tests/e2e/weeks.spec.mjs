@@ -251,6 +251,7 @@ function placeGuilds(guilds, tables) {
     return { gid, r };
   });
 }
+const colorOf = (m, t) => TEAMS.find(c => m.all_worlds[c].map(String).includes(String(t)));
 const dots = page => page.evaluate(() => [...document.querySelectorAll('#resultBody tr')].map(tr => {
   const d = tr.querySelector('.dot'); return d ? { cls: d.className, title: d.title } : null; }));
 
@@ -260,7 +261,6 @@ test('relink day Check: this week\'s match wins; a team the API lacks gets a gre
   const where = placeGuilds(wvw.guilds, tables);
   const T = String(tables[where[0].r].body[where[0].gid]);
   const holds = (m, t) => Object.values(m.all_worlds).some(l => l.map(String).includes(String(t)));
-  const colorOf = (m, t) => TEAMS.find(c => m.all_worlds[c].map(String).includes(String(t)));
   const fresh = all.find(m => holds(m, T));
   const other = all.find(m => m.id !== fresh?.id && m.id.startsWith('1-') === where[1].r.startsWith('n'));
   expect(fresh && other, `a match holding team ${T} and a second one to borrow`).toBeTruthy();
@@ -296,6 +296,35 @@ test('relink day Check: this week\'s match wins; a team the API lacks gets a gre
   await check(page, wvw, wvw.guilds.slice(0, 2));
   expect((await dots(page))[1]?.cls, 'the second Check once ?world= answered right').toBe('dot dot-red');
   await expect(page.locator('#matchPanelsContainer .panel-note')).toHaveCount(0);
+});
+
+// A team the API holds no match for, in a list with one it does: the run goes on
+// to its end, the missing one first in the list. The grey dot and the panel's note say it, the status says Done for
+// both guilds, and the copy gives the missing team's guild no tier or opponents.
+test('a team whose match is not on the API: the run ends, grey dot, note, and the copy with no tier', async ({ page, wvw }) => {
+  const all = recordedJson(ALL);
+  const live = all.find(m => m.id.startsWith('1-'));
+  const T = Number(live.all_worlds.red.find(n => n >= 10000)), MISSING = 99999;
+  const [G1, G2] = ['aaaaaaaa-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000002'];
+  await opened(page, wvw);
+  await answer(page, GAME + 'wvw/guilds/na', { [G1]: T, [G2]: MISSING });
+  await answer(page, `${GAME}guild/${G1}`, { id: G1, name: 'Placed Guild', tag: 'PLC' });
+  await answer(page, `${GAME}guild/${G2}`, { id: G2, name: 'Early Guild', tag: 'ERL' });
+  await answer(page, `${GAME}wvw/matches?world=${MISSING}`, live);
+  await check(page, wvw, [G2, G1]);
+  await expect(page.locator('#statusMsg')).toHaveText('Done, checked 2 guild(s).');
+  const got = await dots(page);
+  expect(got[1]?.cls, 'the dot of the team with a match').toBe(`dot dot-${colorOf(live, T)}`);
+  expect(got[0], 'the dot of the team without').toEqual({ cls: 'dot dot-pending', title: 'Match not on the API yet' });
+  expect(await page.locator('#matchPanelsContainer .panel-note').allTextContents())
+    .toEqual([`Unknown team (ID ${MISSING}): this week's match isn't on the API yet.`]);
+  const [chat, discord] = await page.evaluate(() => [copyChatBtn.dataset.summary, copyDiscordBtn.dataset.summary]);
+  for (const text of [chat, discord]) {
+    expect(text).toContain(`Early Guild landed on Unknown team (ID ${MISSING})`);
+    expect(text, 'a tier for the team with no match').not.toMatch(/Early Guild landed on [^\n]*Tier/);
+    expect(text, 'a tier for the team with a match').toMatch(/Placed Guild landed on [^\n]*\(NA Tier \d+\)/);
+  }
+  await expect(page.locator('#copyRow')).toBeVisible();
 });
 
 // ---- the week memory -----------------------------------------------------------
