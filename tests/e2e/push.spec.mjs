@@ -155,7 +155,8 @@ test('with the socket live the peek reads one summary in two minutes; without, i
   await expect.poll(() => page.evaluate(() => pushLive()), 'the drop reached the page').toBe(false);
   // No input meanwhile: only the drop itself can bring the peek forward.
   await play(page, 31 * 1000);
-  expect(n.summary - peeked, 'summary reads in the 31 s after the drop').toBeGreaterThanOrEqual(1);
+  // The clock holds here: a read the 31 s brought is only waiting for its request to reach the counter.
+  await expect.poll(() => n.summary - peeked, 'summary reads in the 31 s after the drop').toBeGreaterThanOrEqual(1);
   await play(page, 10 * MIN - 31 * 1000, { using: true });
   const without = n.summary - peeked;
   expect(without, 'summary reads in 10 min, the socket refused').toBeGreaterThanOrEqual(18);
