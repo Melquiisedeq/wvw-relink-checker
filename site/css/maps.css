@@ -1,8 +1,8 @@
 /* Scoped here: the alliance grid is bin-packed in JS against the default 880. */
 .info-popover--maps.info-popover--expanded{width:min(1028px,94vw);max-width:94vw;}
 
-/* Self-hosted terrain with the API drawn over it; the polygons are fitted to the sector
-   borders printed in the renders (MAP_IMAGE in js/maps.js). */
+/* Self-hosted terrain with the API drawn over it; each picture is placed in the API's
+   coordinates (MAP_IMAGE in js/maps.js). */
 
 .wvw-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
 .wvw-tab{

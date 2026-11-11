@@ -1,7 +1,9 @@
 // Every icon button of the standings, in page order: it opens a popover, the
 // popover holds its content once loaded, it closes. A tier's map also shows
-// every one of its tabs with the objectives drawn.
+// every one of its tabs with the objectives drawn, the Seared Borderlands too.
 import { test, expect } from './support/fixtures.mjs';
+import { seared } from './support/scenarios.mjs';
+import { load, firstTier, openMap } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 test.describe.configure({ timeout: 2 * 60 * 1000 });
@@ -55,3 +57,37 @@ for (const [kind, scope] of SETS) {
     expect(pressed, `visible ${kind} to press`).toBeGreaterThan(0);
   });
 }
+
+// The game's Seared Borderlands, ids no recording holds: each borderland draws
+// its objectives (18, the spawns left out), its garrison, held by its home
+// team, carries the waypoint whose chat link can be copied, and the frame holds
+// the whole disc of every marker.
+test.describe('the Seared Borderlands', () => {
+  test.use({ timeline: seared(10) });
+  test('every borderland tab draws its objectives and its garrison waypoint', async ({ page, wvw }) => {
+    await load(page, wvw);
+    const tier = await firstTier(page, page.locator('#standingsGridNA .tier-map-btn').first());
+    expect(tier.id).toBe('1-1');
+    await openMap(page, wvw, tier.button);
+    for (const [type, map] of [['RedHome', 1652], ['BlueHome', 1654], ['GreenHome', 1651]]) {
+      await page.locator(`.info-popover .wvw-tab[data-type="${type}"]`).click();
+      const marks = page.locator('.info-popover .wvw-plot .wvw-marker');
+      await expect(marks, `${type}: its objectives drawn`).toHaveCount(18);
+      expect(await marks.evaluateAll(gs => gs.map(g => g.dataset.obj.split('-')[0])), `${type}: all of map ${map}`)
+        .toEqual(Array(18).fill(String(map)));
+      await expect(page.locator(`.info-popover .wvw-marker[data-obj="${map}-37"] .wvw-wp.is-copyable`),
+        `${type}: the garrison's waypoint`).toHaveCount(1);
+      const outside = await page.evaluate(() => {
+        const [x, y, w, h] = document.querySelector('.info-popover .wvw-plot').getAttribute('viewBox').split(' ').map(Number);
+        return [...document.querySelectorAll('.info-popover .wvw-plot .wvw-marker')].filter((g) => {
+          const [, px, py] = g.getAttribute('transform').match(/translate\(([-\d.]+) ([-\d.]+)\)/).map(Number);
+          const meta = WVW_STATIC.objectives.find(o => o.id === g.dataset.obj);
+          const r = OBJ_SIZE[meta.type];
+          return px - r < x || px + r > x + w || py - r < y || py + r > y + h;
+        }).map(g => g.dataset.obj);
+      });
+      expect(outside, `${type}: every marker's disc inside the frame`).toEqual([]);
+      await wvw.settle();
+    }
+  });
+});
