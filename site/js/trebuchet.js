@@ -294,7 +294,6 @@ let stopFollowing = null;
 
 // Called on the click: the round gathers for as long as the API takes.
 function startCharge() {
-  cancelCharge();
   const ball = document.createElement('div');
   ball.className = 'siege-charge charging';
   ball.innerHTML = '<i><b></b></i>';
@@ -305,33 +304,22 @@ function startCharge() {
   stopFollowing = followSling(ball);
 }
 
-function cancelCharge() {
-  if (stopFollowing) { stopFollowing(); stopFollowing = null; }
-  if (chargeBall) chargeBall.remove();
-  chargeBall = null;
-}
-
-// Held back only if the answer beat the wind-up.
+// Held back only if the answer beat the wind-up. The round is taken off the globals
+// now: a Check pressed while the launch waits starts a new one that must not be launched in its place.
 function playFinale() {
   const waited = performance.now() - chargeStartedAt;
-  setTimeout(launchCharge, Math.max(0, CHARGE_FORM_MS - waited));
+  const ball = chargeBall;
+  const startedAt = chargeStartedAt;
+  const follower = stopFollowing;
+  chargeBall = null;
+  stopFollowing = null;
+  setTimeout(() => launchCharge(ball, startedAt, follower), Math.max(0, CHARGE_FORM_MS - waited));
 }
 
-function launchCharge() {
-  const ball = chargeBall;
-  chargeBall = null;
-
-  if (!ball) {
-    impactOverlay.classList.remove('play', 'broken');
-    void impactOverlay.offsetWidth;
-    impactOverlay.classList.add('play');
-    breakCrest();
-    return;
-  }
-
+function launchCharge(ball, startedAt, letGo) {
   // Computed on the CSS swell's linear ramp, not read off the element: a running
   // animation's matrix is a frame behind.
-  const swelled = performance.now() - chargeStartedAt - CHARGE_FORM_MS;
+  const swelled = performance.now() - startedAt - CHARGE_FORM_MS;
   const t = Math.min(1, Math.max(0, swelled / CHARGE_SWELL_MS));
   const grown = 1 + t * 1.4;
   ball.style.setProperty('--grow', grown.toFixed(3));
@@ -339,7 +327,7 @@ function launchCharge() {
   fireTrebuchet();
 
   setTimeout(() => {
-    if (stopFollowing) { stopFollowing(); stopFollowing = null; }
+    letGo();
     const from = slingTip();
     ball.style.left = `${from.x}px`;
     ball.style.top = `${from.y}px`;
