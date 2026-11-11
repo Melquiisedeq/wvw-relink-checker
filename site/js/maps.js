@@ -35,6 +35,7 @@ const MAP_IMAGE = Object.freeze({
   1099: { src: 'assets/map-rbl.webp', lite: 'assets/map-rbl-1280.webp', x: 9133.8, y: 8866.1, w: 3228.6, h: 3245.6, edge: 14 },
   96: { src: 'assets/map-bbl.webp', lite: 'assets/map-bbl-1280.webp', x: 12718.3, y: 10865.3, w: 2660.6, h: 3623.1, edge: 14 },
   95: { src: 'assets/map-gbl.webp', lite: 'assets/map-gbl-1280.webp', x: 5534.1, y: 11493.7, w: 2693.0, h: 3638.3, edge: 14 },
+  // No terrain image for 1652, 1654, 1651: their sectors draw on the plain ground.
 });
 
 // The three EBG mercenary camps have no usable coord (label_coord sits off the camp), so these are read
@@ -477,6 +478,13 @@ const WAYPOINT_AT = Object.freeze({
   '96-37': [14013.8, 12465.6, 1237],
   '95-32': [8005.9, 13509.5, 1245], '95-33': [5915.0, 13561.3, 1241],
   '95-37': [6845.8, 13105.6, 1243],
+  // Seared Borderlands, red, blue and green
+  '1652-32': [11251.2, 10896.6, 4174], '1652-33': [9490.5, 10752.5, 4236],
+  '1652-37': [10421.6, 10108.7, 4182],
+  '1654-32': [14835.2, 12816.6, 4204], '1654-33': [13074.5, 12672.5, 4221],
+  '1654-37': [14005.6, 12028.7, 4161],
+  '1651-32': [7667.2, 13456.6, 1245], '1651-33': [5906.4, 13312.5, 1241],
+  '1651-37': [6837.6, 12668.7, 1243],
 });
 
 // The game's chat link for a point of interest: the byte 4, then the id as four little-endian bytes,
@@ -521,6 +529,9 @@ const KEEP_SPAWN_TEAM = Object.freeze({
   '1099-113': 'red', '1099-106': 'green', '1099-114': 'blue',
   '96-37': 'blue', '96-33': 'red', '96-32': 'green',
   '95-37': 'green', '95-33': 'blue', '95-32': 'red',
+  '1652-37': 'red', '1652-33': 'green', '1652-32': 'blue',
+  '1654-37': 'blue', '1654-33': 'red', '1654-32': 'green',
+  '1651-37': 'green', '1651-33': 'blue', '1651-32': 'red',
 });
 
 // Does this objective have a waypoint? No API field says, and the upgrade catalogue is not the whole
@@ -1018,6 +1029,12 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
   if (!Number.isFinite(minX)) return null;
   const pad = (maxX - minX) * 0.02;
   minX -= pad; maxX += pad; minY -= pad; maxY += pad;
+  // Seared Borderlands puts a keep at the edge of its sectors: without this its marker is cut in half on a phone.
+  for (const p of pts) {
+    const r = OBJ_SIZE[p.meta.type] || 14;
+    minX = Math.min(minX, p.x - r); maxX = Math.max(maxX, p.x + r);
+    minY = Math.min(minY, p.y - r); maxY = Math.max(maxY, p.y + r);
+  }
   const fullW = maxX - minX, fullH = maxY - minY;
 
   const wrap = document.createElement('div');

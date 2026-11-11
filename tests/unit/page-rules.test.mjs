@@ -1006,6 +1006,18 @@ test('hasWaypoint: a keep held by its spawn team has one at tier 0; any other ne
   assert.equal(has(keep('96-33', 'Blue'), built), true);
   assert.equal(has(keep('96-33', 'Blue'), bare), false);
   assert.equal(has(keep('38-9', 'Red'), bare), false);
+  // Seared Borderlands: each map's garrison to its home team, the side keeps to the invaders.
+  assert.equal(has(keep('1652-37', 'Red'), bare), true);
+  assert.equal(has(keep('1652-33', 'Green'), bare), true);
+  assert.equal(has(keep('1652-32', 'Blue'), bare), true);
+  assert.equal(has(keep('1652-32', 'Green'), bare), false);
+  assert.equal(has(keep('1654-37', 'Blue'), bare), true);
+  assert.equal(has(keep('1654-33', 'Red'), bare), true);
+  assert.equal(has(keep('1654-32', 'Green'), bare), true);
+  assert.equal(has(keep('1651-37', 'Green'), bare), true);
+  assert.equal(has(keep('1651-33', 'Blue'), bare), true);
+  assert.equal(has(keep('1651-32', 'Red'), bare), true);
+  assert.equal(has(keep('1651-32', 'Blue'), bare), false);
 });
 
 test('KEEP_SPAWN_TEAM: every borderland and EBG keep of the recording has an entry (js/maps.js)', () => {

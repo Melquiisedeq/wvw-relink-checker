@@ -17,6 +17,7 @@
 //     .status(503).advance(8).status(null)      // the game moves, the API is down
 //     .status(429, { visitor: true })     // only the visitor's reads refused
 //     .latestStatus(503)                  // /api/latest down (or 'hang': never answers)
+//     .seared()                           // the borderlands as the Seared Borderlands' ids
 //
 // Immutable: every method returns a new timeline. Time is in minutes after the
 // recording's instant (recordedAt). Only the focus match plays; the others keep
@@ -92,6 +93,40 @@ function baseBodies() {
     if (url.startsWith(TACTICS)) for (const u of read(url) || []) based.tactics.set(String(u.id), u);
   }
   return based;
+}
+
+// The Seared Borderlands: the map ids the game gives each borderland. 1654 and
+// 1651 number their objectives as the Alpine 96 and 95 do; 1652 too, so the
+// Desert's objectives take the Alpine numbers type by type, in id order.
+const SEARED = Object.freeze({ RedHome: 1652, BlueHome: 1654, GreenHome: 1651 });
+const objectiveNumber = id => Number(id.split('-')[1]);
+let seared = null;
+function searedBodies() {
+  if (seared) return seared;
+  const base = baseBodies();
+  seared = new Map();
+  for (const [id, recorded] of base) {
+    const b = structuredClone(recorded);
+    const alpine = b.maps.find(m => m.type === 'BlueHome').objectives;
+    for (const m of b.maps) {
+      const to = SEARED[m.type];
+      if (!to) continue;
+      const numbers = new Map();
+      for (const type of new Set(m.objectives.map(o => o.type))) {
+        const mine = m.objectives.filter(o => o.type === type).sort((x, y) => objectiveNumber(x.id) - objectiveNumber(y.id));
+        const theirs = alpine.filter(o => o.type === type)
+          .map(o => objectiveNumber(o.id)).sort((x, y) => x - y);
+        if (mine.length !== theirs.length) throw new Error(`gw2: ${id} ${m.type} has ${mine.length} ${type}, the Alpine ${theirs.length}`);
+        mine.forEach((o, i) => numbers.set(o, theirs[i]));
+      }
+      m.id = to;
+      for (const o of m.objectives) o.id = `${to}-${numbers.get(o)}`;
+    }
+    seared.set(id, b);
+  }
+  seared.rows = base.rows;
+  seared.tactics = base.tactics;
+  return seared;
 }
 
 // A week of one match: its start, end and teams. `zero`: a week this timeline
@@ -198,6 +233,13 @@ class Timeline {
     return this.#with([{ kind: 'held', at: this.#cursor, held: !!held }]);
   }
 
+  // Every match plays its three borderlands as the Seared Borderlands (1652,
+  // 1654, 1651) instead of the recorded Desert and Alpine ones, for the whole
+  // timeline. Ownership and every counter stay the recorded ones.
+  seared() {
+    return this.#with([{ kind: 'seared', at: this.#cursor }]);
+  }
+
   // The page's clock starts here.
   pageOpens() {
     return this.#with([], this.#cursor, this.#cursor);
@@ -223,7 +265,7 @@ class Timeline {
   #compiled = null;
   #compile() {
     if (this.#compiled) return this.#compiled;
-    const base = baseBodies();
+    const base = this.#ops.some(o => o.kind === 'seared') ? searedBodies() : baseBodies();
     const anchor = recording().recordedAt;
     const ids = [...base.keys()].sort(byId);
     const frames = new Map();   // id -> [{ at, state }], at in ms after the recording

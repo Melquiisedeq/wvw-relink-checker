@@ -28,6 +28,8 @@ mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 live = json.load(sys.stdin)
 def fetch(url):
+    if 'matches' in url:
+        return live.get('matches') or [{'maps': [{'id': int(k)} for k in live['sectors']]}], None
     if 'objectives' in url:
         return live['objectives'], None
     return live['sectors'][url.split('/maps/')[1].split('/')[0]], None
@@ -99,6 +101,28 @@ test('a sector renamed, reshaped or added is named', () => {
   assert.ok(problems.some(p => /Map 38: sector .*differs in name/.test(p)));
   assert.ok(problems.some(p => /Map 95: sector .*differs in bounds/.test(p)));
   assert.ok(problems.some(p => /Map 96: sectors the game has and the copy lacks: 99999/.test(p)));
+});
+
+const main = live => JSON.parse(execFileSync('python3', ['-I', '-c', MAIN, SCRIPT], { input: JSON.stringify(live) }));
+
+test('only the maps in play are compared; the copy of one out of play is named and left alone', () => {
+  const live = agreeing();
+  const out = live.sectors['96'][0];
+  out.name = 'Renamed';
+  live.objectives = live.objectives.filter(o => o.map_id !== 95);
+  delete live.sectors['95'];
+  live.matches = [{ maps: Object.keys(live.sectors).filter(k => k !== '96').map(k => ({ id: Number(k) })) }];
+  const lines = main(live).split('\n');
+  assert.ok(lines.includes('Not in play, not compared: 95, 96'));
+  assert.equal(lines.filter(l => l.startsWith('::error::')).length, 0);
+  assert.ok(lines.includes('The copy in js/wvw-static.js is what the game says.'));
+});
+
+test('a map in play the copy lacks fails', () => {
+  const live = agreeing();
+  live.sectors['4242'] = [{ id: 1, name: 'New', bounds: [[0, 0]] }];
+  const lines = main(live).split('\n');
+  assert.ok(lines.includes('::error::Maps in play the copy lacks: 4242.'));
 });
 
 test('a name from the game cannot start a workflow command in the log', () => {

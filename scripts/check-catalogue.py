@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Is the written-out copy of the objectives and sectors still what the game says?
 
-js/wvw-static.js carries the objectives of the four WvW maps and the polygons of
+js/wvw-static.js carries the objectives of the WvW maps and the polygons of
 their sectors, and the page draws a map from that copy without asking the game
 for either list. So nothing on the page notices when ArenaNet moves an
 objective, renames a sector or adds one: the map would keep drawing the old one.
@@ -10,7 +10,10 @@ This is what notices instead.
 Only the fields the drawing code reads are compared (the ones the header of
 js/wvw-static.js lists), coordinates within a rounding of one decimal, plus
 objectives or sectors the copy has and the game does not, or the other way round.
-A mismatch is an equality, not a judgement. To refresh the copy, rebuild it as
+Only the maps in play now are compared (the ids in /wvw/matches): a map in play
+the copy lacks fails, a map in the copy out of play is listed and left alone (the
+game swaps borderlands out and back, and asking for one out of play is an HTTP
+400). A mismatch is an equality, not a judgement. To refresh the copy, rebuild it as
 that header says.
 
 Every request gets three attempts, spaced out, as in check-api.py.
@@ -30,7 +33,6 @@ from workflow_text import escape
 BASE = 'https://api.guildwars2.com/v2'
 STATIC_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            '..', 'site', 'js', 'wvw-static.js')
-MAP_IDS = (38, 1099, 96, 95)
 OBJECTIVE_FIELDS = ('name', 'type', 'map_id', 'sector_id', 'upgrade_id')
 POINT_FIELDS = ('coord', 'label_coord')
 # The copy is rounded to one decimal: it can sit 0.05 from the game's value.
@@ -92,11 +94,11 @@ def listed(items):
                    if len(items) > MAX_LISTED else '')
 
 
-def compare_objectives(copy, live):
-    """Problems between the copy's objectives and the game's, on the four maps."""
+def compare_objectives(copy, live, map_ids):
+    """Problems between the copy's objectives and the game's, on those maps."""
     problems = []
-    live = [o for o in live if o.get('map_id') in MAP_IDS]
-    mine = {o['id']: o for o in copy}
+    live = [o for o in live if o.get('map_id') in map_ids]
+    mine = {o['id']: o for o in copy if o.get('map_id') in map_ids}
     theirs = {o['id']: o for o in live}
     if set(theirs) - set(mine):
         problems.append('Objectives the game has and the copy lacks: %s.'
@@ -140,24 +142,53 @@ def compare_sectors(map_id, copy, live):
 
 
 def compare(static, objectives, sectors):
-    """sectors: {map id: the game's list}. Returns the problems, empty when equal."""
-    problems = compare_objectives(static.get('objectives') or [], objectives)
-    for map_id in MAP_IDS:
+    """sectors: {map id: the game's list}, one per map compared. Returns the
+    problems, empty when equal."""
+    map_ids = set(sectors)
+    problems = compare_objectives(static.get('objectives') or [], objectives,
+                                  map_ids)
+    for map_id in sorted(map_ids):
         problems += compare_sectors(
             map_id, (static.get('sectors') or {}).get(str(map_id)) or [],
             sectors.get(map_id) or [])
     return problems
 
 
+def in_play(matches):
+    """The map ids of every match, sorted; empty when the answer has none."""
+    ids = set()
+    for match in matches if isinstance(matches, list) else []:
+        for m in (match.get('maps') or []) if isinstance(match, dict) else []:
+            if isinstance(m, dict) and isinstance(m.get('id'), int):
+                ids.add(m['id'])
+    return sorted(ids)
+
+
 def main():
     static = read_static()
     problems, notes = [], []
-    objectives, error = fetch(BASE + '/wvw/objectives?ids=all')
-    sectors = {}
+    copied = sorted(int(k) for k in (static.get('sectors') or {}))
+    matches, error = fetch(BASE + '/wvw/matches?ids=all')
+    map_ids = in_play(matches)
     if error:
-        problems.append('/wvw/objectives did not answer (%s).' % error)
-    for map_id in MAP_IDS:
+        problems.append('/wvw/matches did not answer (%s).' % error)
+    elif not map_ids:
+        problems.append('/wvw/matches named no map.')
+    lacking = [m for m in map_ids if m not in copied]
+    if lacking:
+        problems.append('Maps in play the copy lacks: %s.' % listed(lacking))
+    left_out = [m for m in copied if m not in map_ids]
+    if map_ids and left_out:
+        notes.append('Not in play, not compared: %s'
+                     % ', '.join(str(m) for m in left_out))
+    objectives = None
+    if not problems:
+        objectives, error = fetch(BASE + '/wvw/objectives?ids=all')
         if error:
+            problems.append('/wvw/objectives did not answer (%s).' % error)
+    sectors = {}
+    for map_id in map_ids:
+        if problems:
             break
         url = ('%s/continents/2/floors/3/regions/7/maps/%d/sectors?ids=all'
                % (BASE, map_id))
@@ -167,9 +198,12 @@ def main():
                             % (map_id, error))
     if not problems:
         problems = compare(static, objectives, sectors)
-        notes.append('%d objectives and %d sectors compared'
-                     % (len(static['objectives']),
-                        sum(len(v) for v in static['sectors'].values())))
+        notes.append('%d objectives and %d sectors compared, maps %s'
+                     % (sum(1 for o in static['objectives']
+                            if o.get('map_id') in sectors),
+                        sum(len(static['sectors'].get(str(m)) or [])
+                            for m in sectors),
+                        ', '.join(str(m) for m in map_ids)))
 
     for note in notes:
         print(note)
