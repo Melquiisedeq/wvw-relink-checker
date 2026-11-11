@@ -167,3 +167,29 @@ test.describe('the push live, the summary not answering', () => {
     expect(asked.filter(u => LIST.test(u)), 'reads of ids=all after the first load').toEqual([]);
   });
 });
+
+// The visitor's clock says the NA reset was 30 s ago, while the copy, held since a minute before the
+// game's week turned, still has the old week as its freshest word by the servers' clock: the cycle
+// must read the game, which has the new week, instead of taking the copy's board unread. The page
+// opens after the EU reset (110 min in), so only NA's week is in question; the game's week ends 2 min
+// before the reset the page keeps, hence a clock 2 min ahead.
+test.describe('the week turned, the copy held', () => {
+  test.use({ timeline: gw2.match(FOCUS).advance(110).pageOpens().advance(472).latestHeld(true).newWeek().advance(2, { every: 0.5 }) });
+
+  test('the cycle reads the game and the list shows the new week', async ({ page, wvw }) => {
+    await load(page, wvw);
+    const was = await page.evaluate(id => matchDataCache.get(id).start_time, FOCUS);
+    const turn = wvw.recordedAt + wvw.timeline.end - 2 * MIN;
+    const now = turn + 30 * 1000;
+    expect(wvw.timeline.body(FOCUS, now - wvw.recordedAt).start_time, 'the game has the new week').not.toBe(was);
+    await wvw.skew(now - await wvw.now());
+    await wvw.ahead(2 * MIN);
+    // The answer's Date header tells the page how far ahead its clock is.
+    await page.evaluate(() => fetchOwnApi(LATEST_SUMMARY_URL, 'no-store'));
+    const asked = matchReads(page);
+    await page.evaluate(() => loadStandings());
+    await wvw.settle();
+    expect(asked.filter(u => LIST.test(u)).length, 'reads of ids=all').toBeGreaterThanOrEqual(1);
+    expect(await page.evaluate(id => matchDataCache.get(id).start_time, FOCUS), 'the week on show').not.toBe(was);
+  });
+});
