@@ -117,6 +117,16 @@ export const missedStopped = (min = 67, flips = 6, stopped = 23, id) => missed(m
 export const missedLong = (min = 480, flips = 40, pace = 3, id) =>
   opened(id).advance(min, { kills: { Center: pace }, flips });
 
+// A fight on EBG (`pace` kills a minute, `flips` objectives) for `old` minutes
+// ending 1 to 2 minutes before the week's end, which the page opens `old` + 1 to
+// 2 minutes before, after 12 minutes of play; the week turns and the new one is played `fresh` minutes: a
+// tab hidden before the turn comes back to the new week's few kills and flips.
+export const missedWeekTurn = (old = 20, fresh = 40, pace = 3, flips = 6, id) => {
+  const turn = gw2.match(id ?? FOCUS).newWeek().end;
+  return gw2.match(id ?? FOCUS).freeze(Math.floor(turn / MIN) - 13 - old).advance(12).pageOpens()
+    .advance(old, { kills: { Center: pace }, flips }).newWeek().advance(fresh, { kills: { Center: 2 }, flips: 2 });
+};
+
 // A slow fight (`pace` kills a minute on EBG) for `min` minutes from the
 // opening, the visitor's whole group `lag` minutes behind and /api/latest
 // down: every body the page keeps is a few kills behind the shared kill
