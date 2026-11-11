@@ -6,7 +6,7 @@
 // no socket, a page anywhere else opens none, and a message that is not the
 // Worker's changes nothing.
 import { test, expect } from './support/fixtures.mjs';
-import { FOCUS, MIN, connectionDrops, hidden, livePush, playing, playingHalfMinutes, visible } from './support/scenarios.mjs';
+import { FOCUS, MIN, connectionDrops, hidden, livePush, playing, playingHalfMinutes, pushWeekTurn, visible } from './support/scenarios.mjs';
 import { versionName } from './support/gw2.mjs';
 import { firstTier, load, openMap, play } from './support/steps.mjs';
 
@@ -471,5 +471,58 @@ test.describe('anywhere but wvwrelink.com', () => {
     await wvw.settle();
     expect(push.opened, 'sockets opened').toBe(0);
     expect(n.summary, 'summary reads in 2 min').toBeGreaterThanOrEqual(3);
+  });
+});
+
+// The week turns with the push live, the older group serving the week that ended in every
+// second minute.
+test.describe('the week turns with the push live', () => {
+  test.use({ timeline: pushWeekTurn(10, 8) });
+
+  test('the list and the map stay on the new week through each push and peek', async ({ page, wvw }) => {
+    const push = await live(page, wvw);
+    await wvw.settle();
+    const oldStart = await page.evaluate(id => matchDataCache.get(id).start_time, FOCUS);
+    let turn = Math.ceil((wvw.recordedAt + wvw.timeline.end - 6 * MIN) / MIN) * MIN;
+    if (Math.floor((turn - wvw.recordedAt) / MIN) % 2) turn += MIN;   // an even minute: the newest body
+    const start = wvw.timeline.body(FOCUS, turn - wvw.recordedAt + 5000).start_time;
+    expect(start, 'the week turned').not.toBe(oldStart);
+    await page.clock.setSystemTime(turn + 5000);
+    await wvw.settle();
+    const weeks = () => page.evaluate(id => ({
+      list: matchDataCache.get(id)?.start_time, map: newestMatches.get(id)?.match.start_time,
+      grid: [...document.querySelectorAll('#standingsGridNA .standing-match')].length,
+    }), FOCUS);
+    let drawn = false;
+    for (let i = 0; i < 12; i++) {
+      await play(page, 30 * 1000, { using: true, push });
+      await wvw.settle();
+      const seen = await weeks();
+      expect(seen.map, `what the map pull kept, ${i * 30} s on`).toBe(start);
+      // The list may still hold the week that ended until its five-minute read; once it holds the new one it keeps it.
+      if (drawn) expect(seen.list, `the list's week, ${i * 30} s on`).toBe(start);
+      drawn ||= seen.list === start;
+      expect(seen.grid, 'the tiers drawn').toBe(wvw.tiers.NA);
+    }
+    expect(drawn, 'the new week reached the list').toBe(true);
+    // In an odd minute the older group answers with the week that ended: a game read of the list and
+    // a map pull are both served that body, and the page refuses it.
+    const old = [];
+    page.on('response', async r => {
+      if (!r.url().startsWith('https://api.guildwars2.com/v2/wvw/matches?')) return;
+      const body = await r.json().catch(() => null);
+      for (const m of [].concat(body ?? [])) if (m?.id === FOCUS && m.start_time === oldStart) old.push(r.url());
+    });
+    let odd = await wvw.now() + 5000;
+    while (Math.floor((odd - wvw.recordedAt) / MIN) % 2 === 0) odd += MIN;
+    await page.clock.setSystemTime(Math.floor((odd - wvw.recordedAt) / MIN) * MIN + wvw.recordedAt + 5000);
+    await page.evaluate('loadStandings()');
+    await wvw.settle();
+    const { button } = await firstTier(page);
+    await openMap(page, wvw, button);
+    expect(old.length, 'bodies of the week that ended served').toBeGreaterThanOrEqual(2);
+    const seen = await weeks();
+    expect(seen.list, 'the list after the older body').toBe(start);
+    expect(seen.map, 'what the map pull kept').toBe(start);
   });
 });
