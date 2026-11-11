@@ -6,9 +6,11 @@ the sheets carry on, the page falls back to them, and the history in D1 just
 thins out. /api/health says when each source last reported, which is the one
 thing to ask from outside.
 
-Then the two reads the page tries first, in the shape it reads them - a read
+Then the reads the page tries first, in the shape it reads them - a read
 that fails costs the page nothing, since it falls back to the sheets, which is
-exactly why nobody would notice it failing.
+exactly why nobody would notice it failing. With the summary fresh, /api/latest
+must answer 200 and each region's /api/history must hold matches: status and
+shape only.
 
 The Supabase readers (supabase/reader.mjs) deliver to /api every 20 s from
 both sides: both must have delivered lately, the summary of the matches must be
@@ -26,7 +28,7 @@ import json
 import re
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 import urllib.error
 import urllib.request
 
@@ -57,6 +59,11 @@ CLEANUP_STALE = 26 * 3600
 # minute for the 70 minutes the API can lag; past it, a score the game never
 # had, which only a stolen signing secret could send.
 SCORE_LEAD_MAX = 600 * 70
+# The Worker's STALE_LATEST_S: past it /api/latest answers 503.
+LATEST_WORKER_STALE = 10 * 60
+# When a region's week starts, UTC (day 0 = Sunday): RESET in worker/index.mjs.
+RESET = {1: (6, 2), 2: (5, 18)}
+SKIRMISH_SECONDS = 2 * 3600
 
 
 def request(url, method='GET', body=None):
@@ -169,7 +176,8 @@ def check_latest_feeds(data, now, problems, notes):
 def check_cleanup(data, now, problems, notes):
     at = data.get('cleanup')
     if not is_int(at) or at == 0:
-        notes.append('%-34s not yet' % 'cleanup last ran')
+        problems.append('/api/health has never heard from the daily cleanup. '
+                        'Check its cron on the Worker wvwrelink-api.')
     elif now - at > CLEANUP_STALE:
         problems.append(
             'The daily cleanup last ran %d hours ago (limit %d). Check its cron '
@@ -192,6 +200,45 @@ def game_scores():
     except (KeyError, TypeError, ValueError, AttributeError):
         return None
     return out
+
+
+def week_start(region, now):
+    """The start of the region's week that holds `now`, epoch seconds."""
+    day, hour = RESET[region]
+    d = datetime.fromtimestamp(now, timezone.utc)
+    start = int(d.replace(hour=hour, minute=0, second=0, microsecond=0).timestamp())
+    start -= ((d.weekday() + 1 - day) % 7) * 86400
+    return start - 7 * 86400 if start > now else start
+
+
+def check_copy(age, now, problems, notes):
+    """/api/latest and /api/history, asked only while the summary is fresh."""
+    if age > LATEST_WORKER_STALE:
+        return
+    _, why = get_json(API + 'latest')
+    if why:
+        problems.append('/api/latest: %s while the summary is fresh. The page is '
+                        'reading the game alone.' % why)
+    else:
+        notes.append('%-34s HTTP 200' % '/api/latest')
+    for region in sorted(RESET):
+        n = (now - week_start(region, now)) // SKIRMISH_SECONDS
+        if n < 2:
+            notes.append('%-34s skipped, week just begun' % ('/api/history/%d' % region))
+            continue
+        why = None
+        for v in (n, n - 1):
+            data, why = get_json('%shistory/%d?v=%d' % (API, region, v))
+            if why is None and isinstance(data, dict) and data.get('matches'):
+                notes.append('%-34s v=%d, %d matches' % (
+                    '/api/history/%d' % region, v, len(data['matches'])))
+                break
+            if why is None:
+                why = 'no matches'
+        else:
+            problems.append('/api/history/%d: %s for v=%d and v=%d while the summary '
+                            'is fresh. The readers are not sending the histories.'
+                            % (region, why, n, n - 1))
 
 
 def check_latest(problems, notes):
@@ -224,6 +271,7 @@ def check_latest(problems, notes):
             '/api/latest/summary: newest match is %d minutes old (limit %d).'
             % (age // 60, LATEST_STALE // 60),
             'Check the Supabase readers.'))
+    check_copy(age, now, problems, notes)
     game = game_scores()
     if game is None:
         notes.append('game API unreadable: the secret-theft alarm did not run')
