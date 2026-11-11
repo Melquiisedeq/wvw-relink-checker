@@ -15,8 +15,8 @@
 // on another) and a known number of kills more.
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
-import { phone, load, firstTier, openMap, later, keptMatch, iso } from './support/steps.mjs';
-import { FOCUS, MIN, hidden, missed, missedBehind, missedStopped, visible } from './support/scenarios.mjs';
+import { phone, load, firstTier, openMap, later, keptMatch, iso, play } from './support/steps.mjs';
+import { FOCUS, MIN, hidden, missed, missedBehind, missedStopped, missedWeekTurn, visible } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
 
@@ -695,5 +695,59 @@ test.describe('what you missed, by how long the tab was away', () => {
     await block.locator('.wvw-missed-head').click();
     await expect(block).toHaveClass(/is-open/);
     await expect(block.locator('.wvw-chip[data-obj]').first()).toBeAttached();
+  });
+});
+
+// ---- The week turns while the tab is away -----------------------------------
+// 20 min of a fight (60 kills, six objectives flipped) end the week; the tab,
+// hidden with the map open, is shown 2 min into the new one: the map is on the
+// new week and nothing is said of the old. Hidden again for 20 min of the new
+// week, the summary counts those 20 min alone, and the list is on the new week.
+test.describe('what you missed, the week turned while the tab was away', () => {
+  test.use({ timeline: missedWeekTurn(20, 40), clock: 'playwright' });
+  const TIER_BUTTON = page => page.locator(`.tier-map-btn[aria-label*="NA Tier ${FOCUS.split('-')[1]}"]`);
+
+  test('the week on show is the new one, and the summary counts from the turn', async ({ page, wvw }) => {
+    test.slow();
+    await load(page, wvw);
+    await openMap(page, wvw, TIER_BUTTON(page));
+    const week = () => page.evaluate(id => ({ list: matchDataCache.get(id)?.start_time, map: newestMatches.get(id)?.match.start_time }), FOCUS);
+    const noted = () => page.evaluate(([sel, id]) => !!document.querySelector(sel) || missedNotes.has(id), [BLOCK, FOCUS]);
+    const old = (await week()).map;
+    const end = wvw.timeline.end;
+    await hidden(page, wvw, wvw.recordedAt + end - 38 * MIN - await wvw.now());
+    await visible(page);
+    await later(page, wvw, 0);
+    await page.waitForTimeout(1500);
+    const start = wvw.timeline.body(FOCUS, end).start_time;
+    expect(start, 'the state: the week turned').not.toBe(old);
+    expect((await week()).map, 'the map\'s week after the return').toBe(start);
+    expect(await noted(), 'a summary after the week turned').toBe(false);
+
+    // The map's next reads, inside the 2 min the return waits for a body, still say nothing.
+    await play(page, 75 * 1000, { using: true });
+    expect(await noted(), 'a summary on the reads after the return').toBe(false);
+    const from = await wvw.now() - wvw.recordedAt;
+    await hidden(page, wvw, 20 * MIN);
+    await visible(page);
+    await later(page, wvw, 0);
+    await expect(page.locator(BLOCK)).toBeAttached();
+    const to = await wvw.now() - wvw.recordedAt;
+    const kills = wvw.timeline.killsByMap(FOCUS, to).Center - wvw.timeline.killsByMap(FOCUS, from).Center;
+    const flips = wvw.timeline.flipsBetween(FOCUS, from, to).map(f => f.id);
+    expect(kills, 'the state: kills of the new week while away').toBe(40);
+    expect(flips.length, 'the state: objectives flipped while away').toBeGreaterThan(0);
+    const seen = await page.evaluate(sel => ({
+      chips: [...document.querySelectorAll(`${sel} .wvw-chip[data-obj]`)].map(c => c.dataset.obj),
+      kills: document.querySelector(`${sel} .wvw-missed-count.is-kills`)?.getAttribute('aria-label') }), BLOCK);
+    expect(seen.kills, 'kills in the summary').toBe(`${kills} kills`);
+    expect(seen.chips, 'objectives in the summary').toEqual(flips);
+    // The list waits behind the open map by design; closed, it reads what it owes.
+    await page.keyboard.press('Escape');
+    for (let i = 0; i < 6 && (await week()).list !== start; i++) {
+      await play(page, 30 * 1000, { using: true });
+      await wvw.settle();
+    }
+    expect((await week()).list, 'the list\'s week within 3 min of the map closing').toBe(start);
   });
 });
