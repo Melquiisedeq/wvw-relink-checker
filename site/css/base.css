@@ -94,7 +94,7 @@ body{
 /* Only the infinite ones, bar the loading indicators (.spinner, .btn-pips); embers.spec.mjs asserts they pause and the run-once ones play. */
 @media (prefers-reduced-motion: reduce){
   .header-rule::before,.rank-1::after,.skel::after,
-  .relink-banner.is-urgent,.relink-banner.is-lockout,
+  .relink-banner.is-urgent::before,.relink-banner.is-lockout::before,
   .relink-banner.is-rebuild::before,.relink-banner.is-rebuild::after,
   .relink-banner.is-rebuild .relink-inner::before,
   .relink-banner.is-rebuild .time.is-now::before,.relink-banner.is-rebuild .time.is-now::after,
