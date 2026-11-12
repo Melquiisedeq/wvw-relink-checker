@@ -1,5 +1,12 @@
 /* Scoped here: the alliance grid is bin-packed in JS against the default 880. */
 .info-popover--maps.info-popover--expanded{width:min(1028px,94vw);max-width:94vw;}
+/* The outer shadow as a filter: with an outer box-shadow, an animation inside the popover (the map
+   rings) can repaint all of it each frame (rings.spec.mjs). The inset lines and the shadow it is
+   fitted to: .info-popover in css/standings.css. */
+.info-popover--maps{
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12), inset 0 -1px 0 rgba(0,0,0,.5);
+  filter:drop-shadow(0 14px 18px rgba(0,0,0,.55));
+}
 
 /* Self-hosted terrain with the API drawn over it; each picture is placed in the API's
    coordinates (MAP_IMAGE in js/maps.js). */
