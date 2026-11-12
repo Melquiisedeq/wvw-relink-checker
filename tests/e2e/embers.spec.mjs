@@ -387,7 +387,10 @@ const riseAlpha = p => (p < .10 ? p / .10 * .9 : p < .82 ? .9 - (p - .10) / .72 
 
 test('a rising ember holds its glow up the page and goes out only near the top', async ({ page, wvw }) => {
   // Each halo is drawn at the alpha just set, and its core arc follows at the ember's own y.
+  // The seed fixes the 46 phases: with it, every band always has embers in a one-second sample.
   await page.addInitScript(() => {
+    let seed = 13;
+    Math.random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     window.__rise = [];
     const proto = CanvasRenderingContext2D.prototype;
     const draw = proto.drawImage, arc = proto.arc;
