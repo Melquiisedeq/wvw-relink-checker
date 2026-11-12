@@ -292,8 +292,22 @@ let chargeBall = null;
 let chargeStartedAt = 0;
 let stopFollowing = null;
 
+// html.finale: the cards' backdrop blur is off from the round's wind-up to FINALE_TAIL_MS after the break
+// (css/controls.css). Off is always reached: finish() in run.js plays the finale on every outcome.
+const FINALE_TAIL_MS = 1700;
+let finaleTimer = 0;
+function finaleOn() {
+  clearTimeout(finaleTimer);
+  document.documentElement.classList.add('finale');
+}
+function finaleOff() {
+  clearTimeout(finaleTimer);
+  finaleTimer = setTimeout(() => document.documentElement.classList.remove('finale'), FINALE_TAIL_MS);
+}
+
 // Called on the click: the round gathers for as long as the API takes.
 function startCharge() {
+  finaleOn();
   const ball = document.createElement('div');
   ball.className = 'siege-charge charging';
   ball.innerHTML = '<i><b></b></i>';
@@ -317,6 +331,7 @@ function playFinale() {
 }
 
 function launchCharge(ball, startedAt, letGo) {
+  finaleOn();
   // Computed on the CSS swell's linear ramp, not read off the element: a running
   // animation's matrix is a frame behind.
   const swelled = performance.now() - startedAt - CHARGE_FORM_MS;
@@ -367,6 +382,7 @@ function breakCrest() {
   setTimeout(() => pageEl.classList.remove('struck'), 600);
 
   setTimeout(() => impactOverlay.classList.remove('play', 'broken'), 1200);
+  finaleOff();
 }
 
 function spawnEmberBlast() {

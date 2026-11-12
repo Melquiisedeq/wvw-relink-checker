@@ -1,5 +1,7 @@
 .page{
   position:relative;z-index:1;
+  /* The shake (.page.struck) only moves a layer already made. A position:fixed inside .page would be pinned to it. */
+  will-change:transform;
   display:flex;
   flex-direction:column;
   align-items:center;
