@@ -83,12 +83,13 @@ body{
   contain:layout paint style;
 }
 
-/* A finished check reaches the background: the field lifts, flares and settles. */
+/* A finished check reaches the background: the field lifts, flares and settles. The flare is painted
+   by js/boot.js on this curve; a filter here would be redrawn over the whole viewport every frame. */
 .fx-embers.surge{animation:ember-surge 2.8s cubic-bezier(.15,.8,.35,1);}
 @keyframes ember-surge{
-  0%{filter:brightness(1);transform:translateY(0);}
-  7%{filter:brightness(2.5) saturate(1.3);transform:translateY(-12px);}
-  100%{filter:brightness(1);transform:translateY(0);}
+  0%{transform:translateY(0);}
+  7%{transform:translateY(-12px);}
+  100%{transform:translateY(0);}
 }
 /* Only the infinite ones, bar the loading indicators (.spinner, .btn-pips); embers.spec.mjs asserts they pause and the run-once ones play. */
 @media (prefers-reduced-motion: reduce){
