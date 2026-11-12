@@ -230,3 +230,56 @@ test("the page's layer is made before the shake, and the cards' glass is off fro
   expect(seen.glassAtBrokenEnd, 'the glass when the break effect ends, before the tail is over').toBe('none');
   await expect.poll(glass, { message: 'the glass back after the finale', timeout: 5000 }).not.toBe('none');
 });
+
+// A drop-shadow over pieces that move is blurred again on every frame: the crest's glow
+// is painted once into canvases before the round flies, and nothing over the break filters.
+for (const idle of [true, false]) test(`the crest breaks under a glow painted beforehand${idle ? '' : ', by the click when the page never idles'}: no filter over the shield or the blast`, async ({ page, wvw }) => {
+  if (!idle) await page.addInitScript(() => { window.requestIdleCallback = () => 0; });
+  await page.addInitScript(() => {
+    const seen = window.__crest = { beforeBreak: null, midBreak: null };
+    const glows = () => [...document.querySelectorAll('.impact-overlay .crest-glow')].map(c => {
+      let lit = 0;
+      if (c.width && c.height) {
+        const px = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        for (let i = 3; i < px.length; i += 4) if (px[i]) lit++;
+        lit /= c.width * c.height;
+      }
+      return { lit, visibility: getComputedStyle(c).visibility };
+    });
+    const filters = () => {
+      const out = [];
+      for (const piece of document.querySelectorAll('.impact-overlay .crest-blast, .impact-overlay .crest-crack, .impact-overlay .crest-half')) {
+        for (let el = piece; el && !el.classList.contains('impact-overlay'); el = el.parentElement) out.push(getComputedStyle(el).filter);
+      }
+      return [...new Set(out)];
+    };
+    const names = sel => [...document.querySelectorAll(sel)].flatMap(el => el.getAnimations().map(a => a.animationName));
+    new MutationObserver(() => {
+      const o = document.querySelector('.impact-overlay');
+      if (!o) return;
+      if (o.classList.contains('play') && !o.classList.contains('broken') && seen.beforeBreak === null) seen.beforeBreak = glows();
+      if (o.classList.contains('broken') && seen.midBreak === null) {
+        seen.midBreak = false;
+        setTimeout(() => {
+          seen.midBreak = { filters: filters(), glows: glows(), sides: names('.crest-side'), fracture: names('.crest-fracture') };
+        }, 120);
+      }
+    }).observe(document, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    window.__crestGlows = glows;
+  });
+  await load(page, wvw);
+  if (idle) await expect.poll(() => page.evaluate(() => window.__crestGlows().filter(g => g.lit > 0).length), { message: 'every glow painted while the page idles, before any click' }).toBe(4);
+  await search(page, wvw.guilds);
+  await expect.poll(() => page.evaluate(() => window.__crest.midBreak), { message: 'the crest broke', timeout: 10000 }).toBeTruthy();
+  const { beforeBreak, midBreak } = await page.evaluate(() => window.__crest);
+  expect.soft(beforeBreak, 'four glows: the whole crest, two halves, the crack').toHaveLength(4);
+  // Share of each canvas lit: above what the same shape lights unblurred (or, for the
+  // crack, with its inner blur alone), so a glow painted without its blur fails.
+  const spread = [['the whole crest', 0.3], ['the left half', 0.2], ['the right half', 0.2], ['the crack', 0.15]];
+  spread.forEach(([what, min], i) => expect.soft(beforeBreak[i]?.lit, `${what}'s glow painted, blurred out, before the round lands`).toBeGreaterThan(min));
+  expect.soft(beforeBreak.map(g => g.visibility), 'before the break only the whole crest glows').toEqual(['visible', 'hidden', 'hidden', 'visible']);
+  expect.soft(midBreak.filters, 'no filter on the shield, the crack, the blast or anything holding them').toEqual(['none']);
+  expect.soft(midBreak.glows.map(g => g.visibility), 'in the break each half carries its own glow').toEqual(['hidden', 'visible', 'visible', 'visible']);
+  expect.soft(midBreak.sides, 'the halves move with their glows').toEqual(['half-l', 'half-r']);
+  expect.soft(midBreak.fracture, 'the crack flashes with its glow').toEqual(['crack-flash']);
+});

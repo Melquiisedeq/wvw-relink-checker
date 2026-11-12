@@ -305,8 +305,117 @@ function finaleOff() {
   finaleTimer = setTimeout(() => document.documentElement.classList.remove('finale'), FINALE_TAIL_MS);
 }
 
+// The crest's glow, painted once into the overlay's canvases (index.html, css/impact.css):
+// the glow a CSS drop-shadow gives, same blur and colour, as a picture the compositor only
+// moves. The shield's outline and the crack's lines are read off the overlay's own SVG.
+const CREST_GLOW_PAD = 64;
+const CREST_GLOW_BOX = 200 + 2 * CREST_GLOW_PAD;
+// Mirrors the halves' clip-path polygons in css/impact.css, in % of the 200px stack.
+const CREST_CUTS = {
+  l: [[50, 0], [46, 18], [54, 33], [45, 48], [52, 64], [46, 80], [50, 100], [0, 100], [0, 0]],
+  r: [[50, 0], [100, 0], [100, 100], [50, 100], [46, 80], [52, 64], [45, 48], [54, 33], [46, 18]],
+};
+// The 160x190 artwork at 150px wide, centred in the 200px stack.
+const CREST_K = 150 / 160;
+const CREST_TOP = 100 - (190 * CREST_K) / 2;
+
+function glowCanvas(cv, r) {
+  cv.width = cv.height = Math.round(CREST_GLOW_BOX * r);
+  const ctx = cv.getContext('2d');
+  ctx.scale(r, r);
+  return ctx;
+}
+// Only the shadow of src: the picture is drawn far off the canvas and its shadow offset
+// back, so what lands is the blur alone, like a drop-shadow behind its element.
+function shadowOnly(ctx, src, color, blur, r) {
+  const far = 4000;
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = blur * r;
+  ctx.shadowOffsetX = far * r;
+  ctx.drawImage(src, -far, 0, CREST_GLOW_BOX, CREST_GLOW_BOX);
+  ctx.restore();
+}
+function toArtwork(ctx) {
+  ctx.translate(CREST_GLOW_PAD + 25, CREST_GLOW_PAD + CREST_TOP);
+  ctx.scale(CREST_K, CREST_K);
+}
+function drawShield(ctx, cut) {
+  const outline = impactOverlay.querySelector('.impact-crest > path');
+  ctx.save();
+  if (cut) {
+    ctx.beginPath();
+    for (const [x, y] of cut) ctx.lineTo(CREST_GLOW_PAD + x * 2, CREST_GLOW_PAD + y * 2);
+    ctx.closePath();
+    ctx.clip();
+  }
+  toArtwork(ctx);
+  const path = new Path2D(outline.getAttribute('d'));
+  ctx.fillStyle = ctx.strokeStyle = '#000';
+  ctx.lineWidth = Number(outline.getAttribute('stroke-width'));
+  ctx.fill(path);
+  ctx.stroke(path);
+  ctx.restore();
+}
+function shieldGlow(sel, cut) {
+  return (r) => {
+    const scratch = document.createElement('canvas');
+    drawShield(glowCanvas(scratch, r), cut);
+    shadowOnly(glowCanvas(impactOverlay.querySelector(sel), r), scratch, 'rgba(140,224,255,.9)', 26, r);
+  };
+}
+// Two shadows in a chain: the second one shadows the first and the lines. One step each.
+let crackFirst = null;
+function crackInner(r) {
+  const scratch = document.createElement('canvas');
+  const lines = glowCanvas(scratch, r);
+  toArtwork(lines);
+  lines.strokeStyle = '#fff';
+  lines.lineCap = lines.lineJoin = 'round';
+  for (const p of impactOverlay.querySelectorAll('.crest-crack path')) {
+    lines.lineWidth = Number(p.getAttribute('stroke-width'));
+    lines.stroke(new Path2D(p.getAttribute('d')));
+  }
+  crackFirst = document.createElement('canvas');
+  const first = glowCanvas(crackFirst, r);
+  shadowOnly(first, scratch, 'rgba(214,248,255,.95)', 10, r);
+  first.setTransform(1, 0, 0, 1, 0, 0);
+  first.drawImage(scratch, 0, 0);
+}
+function crackOuter(r) {
+  const out = glowCanvas(impactOverlay.querySelector('.crest-fracture .crest-glow'), r);
+  shadowOnly(out, crackFirst, 'rgba(127,214,242,.8)', 24, r);
+  out.setTransform(1, 0, 0, 1, 0, 0);
+  out.drawImage(crackFirst, 0, 0);
+  crackFirst = null;
+}
+// Painted one step per idle callback after the page has loaded, so neither the load nor
+// a click pays for it; startCharge() paints whatever is still missing. Shadows are drawn
+// in device pixels, so the canvases carry the screen's scale (up to 2).
+const crestGlowSteps = [
+  shieldGlow('.crest-glow--whole', null),
+  shieldGlow('.crest-side--l .crest-glow', CREST_CUTS.l),
+  shieldGlow('.crest-side--r .crest-glow', CREST_CUTS.r),
+  crackInner,
+  crackOuter,
+];
+let crestGlowScale = 0;
+function paintCrestGlow() {
+  const step = crestGlowSteps.shift();
+  if (!step) return false;
+  crestGlowScale = crestGlowScale || Math.min(2, window.devicePixelRatio || 1);
+  step(crestGlowScale);
+  return true;
+}
+const whenIdle = (cb) => (window.requestIdleCallback ? requestIdleCallback(cb, { timeout: 300 }) : setTimeout(cb, 50));
+function paintCrestGlowIdle() {
+  if (paintCrestGlow()) whenIdle(paintCrestGlowIdle);
+}
+window.addEventListener('load', () => whenIdle(paintCrestGlowIdle), { once: true });
+
 // Called on the click: the round gathers for as long as the API takes.
 function startCharge() {
+  while (paintCrestGlow());
   finaleOn();
   const ball = document.createElement('div');
   ball.className = 'siege-charge charging';
