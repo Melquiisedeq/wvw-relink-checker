@@ -4,7 +4,7 @@
 //   POST /api/ingest/relink   the teams notice script, after every tick
 //   POST /api/ingest/latest-supa-us, latest-supa-eu
 //                              the outside readers of the game API, the newest match bodies,
-//                              each match's finished skirmishes into history (format 2),
+//                              each match's finished skirmishes into history,
 //                              and its last two into board (kept for good)
 //   GET  /api/health            when each last reported; nothing else
 //   GET  /api/kills            the last 30 minutes of kills, each match's newest older row (up to 3 h back) and its kills' last move, for the map corner and swords
@@ -23,20 +23,15 @@
 //   x-wvw-sig   hex HMAC-SHA256 of  time + "\n" + path + "\n" + body
 // The path is signed so a message cannot be replayed against another source.
 //
-// The latest entrance never unpacks a gzipped body (CPU time per request is limited), and parses
-// format 2's plain JSON only to check it: it decides by the signed summary and the match's score,
-// never by a reader's clock.
+// The latest entrance parses the plain JSON only to check it: it decides by the signed summary
+// and the match's score, never by a reader's clock.
 
 const MAX_BYTES = 64 * 1024;
-// The HMAC, each part's hash and format 2's parse all run over the whole message, inside
+// The HMAC, each part's hash and the parse all run over the whole message, inside
 // the CPU limit: a reader sends more than this in several messages.
 const MAX_BYTES_LATEST = 256 * 1024;
 const MAX_SKEW_S = 300;
-// The Worker never opens a slice, so these bound what a page may be handed to
-// unpack. (MAX_RAW matches LATEST_BODY_MAX in js/api.js). One over either refuses the reader's whole push.
-const MAX_SLICE = 16 * 1024;
-const MAX_RAW = 256 * 1024;
-// Format 2, plain JSON: a match's body without its finished skirmishes, and those apart.
+// Plain JSON: a match's body without its finished skirmishes, and those apart.
 const MAX_LIVE = 64 * 1024;
 const MAX_HIST = 64 * 1024;
 const SOURCES = {
@@ -240,8 +235,7 @@ async function claimTime(db, source, t, now) {
 }
 
 // The latest entrance: <summary JSON, one line> "\n" <the parts, in the summary's order>.
-// Format 1 (v 1): one gzipped body per match, never opened; only its hash is checked.
-// Format 2 (v 2): per match the live part (the body with only its running skirmish) when the
+// Per match the live part (the body with only its running skirmish) when the
 // entry has `live`, then its finished skirmishes when it has `hist`; both plain JSON. Each part
 // is checked alone, and one that fails is left out with the reason logged, the others kept.
 async function acceptLatest(env, ctx, source, body, t, now) {
@@ -257,28 +251,20 @@ async function acceptLatest(env, ctx, source, body, t, now) {
   if (typeof ms === 'string') return refuse(422, source, ms);
   let at = nl + 1;
   const cut = (n) => body.subarray(at, at += n);
-  if (summary.v === 1) {
-    for (const m of ms) {
-      const slice = cut(m.bytes);
-      if (await sha256(slice) !== m.sha256) return refuse(422, source, 'sha256 ' + m.id);
-      m.stored = { text: toBase64(slice), sha256: m.sha256, raw: m.raw };
+  const left = [];
+  for (const m of ms) {
+    if (m.live) {
+      const live = await partOf(cut(m.live.bytes), m.live.sha256, (x, text) => liveShape(x, text, m));
+      if (live.why) left.push(m.id + ' live ' + live.why);
+      else m.stored = { text: live.text, sha256: m.live.sha256, raw: m.live.bytes };
     }
-  } else {
-    const off = [];
-    for (const m of ms) {
-      if (m.live) {
-        const live = await partOf(cut(m.live.bytes), m.live.sha256, (x, text) => liveShape(x, text, m));
-        if (live.why) off.push(m.id + ' live ' + live.why);
-        else m.stored = { text: live.text, sha256: m.live.sha256, raw: m.live.bytes };
-      }
-      if (!m.hist) continue;
-      const hist = await partOf(cut(m.hist.bytes), m.hist.sha256, (x) => histShape(x, m.hist.n));
-      if (hist.why) off.push(m.id + ' history ' + hist.why);
-      else m.hist.text = hist.text;
-    }
-    if (off.length) console.log(JSON.stringify({ source, parts: 'left out', why: off }));
-    if (ms.every((m) => !m.stored && !(m.hist && m.hist.text))) return refuse(422, source, 'no part');
+    if (!m.hist) continue;
+    const hist = await partOf(cut(m.hist.bytes), m.hist.sha256, (x) => histShape(x, m.hist.n));
+    if (hist.why) left.push(m.id + ' history ' + hist.why);
+    else m.hist.text = hist.text;
   }
+  if (left.length) console.log(JSON.stringify({ source, parts: 'left out', why: left }));
+  if (ms.every((m) => !m.stored && !(m.hist && m.hist.text))) return refuse(422, source, 'no part');
 
   if (!await claimTime(env.DB, source, t, now)) return refuse(409, source, 'replay or out of order');
 
@@ -286,8 +272,7 @@ async function acceptLatest(env, ctx, source, body, t, now) {
   // match go back. A first write enters (it passed the checks above); after
   // that a newer week wins, and in the same week a higher score, but not past
   // what a score can rise since the stored one. Compared to the Worker's clock.
-  // `gz` holds format 1's gzip as base64, or format 2's live part as JSON text,
-  // which begins with "{" as base64 never does: /api/latest tells them apart by it.
+  // `gz` holds the live part as JSON text.
   const rows = ms.filter((m) => m.stored).map((m) => [m.id, m.start, m.score, m.stored.text, m.stored.sha256, m.stored.raw]);
   const applied = [];
   const lost = [];
@@ -361,7 +346,7 @@ async function sha256(bytes) {
   return toHex(await crypto.subtle.digest('SHA-256', bytes));
 }
 
-// A format 2 part: {text}, or {why} it is left out. The text is kept as it came,
+// A part: {text}, or {why} it is left out. The text is kept as it came,
 // so it must parse whole and pass `shape`.
 async function partOf(bytes, sha, shape) {
   if (await sha256(bytes) !== sha) return { why: 'sha256' };
@@ -426,7 +411,7 @@ async function logJumps(db, source, lost, now) {
 
 // Whole summary or nothing. Returns the checked matches, or the reason.
 function checkSummary(s, nowMs, rest) {
-  if (!s || typeof s !== 'object' || (s.v !== 1 && s.v !== 2)) return 'version';
+  if (!s || typeof s !== 'object' || s.v !== 2) return 'version';
   const list = s.matches;
   if (!Array.isArray(list) || !list.length || list.length > 18) return 'matches';
   const seen = new Set();
@@ -443,8 +428,8 @@ function checkSummary(s, nowMs, rest) {
       return 'start not a reset';
     }
     const e = { id: m.id, start: m.start, board: null };
-    // Format 2's history-only entry carries no counts: it changes neither latest, nor kills, nor board.
-    if (s.v === 1 || m.live !== undefined) {
+    // A history-only entry carries no counts: it changes neither latest, nor kills, nor board.
+    if (m.live !== undefined) {
       if (!isIntList(m.scores, 3) || !isIntList(m.kills, 4)) return 'counts';
       e.score = m.scores[0] + m.scores[1] + m.scores[2];
       // Independent of what is stored: a week that has just begun cannot hold a big score.
@@ -453,30 +438,22 @@ function checkSummary(s, nowMs, rest) {
       // A board field out of shape leaves only the board out (the reason, a string, is logged).
       e.board = checkBoard(m, nowMs);
     }
-    if (s.v === 1) {
-      if (!isInt(m.bytes) || m.bytes < 18 || m.bytes > MAX_SLICE) return 'bytes';
-      if (!isInt(m.raw) || m.raw < 1 || m.raw > MAX_RAW) return 'raw';
-      if (!isSha(m.sha256)) return 'sha256 form';
-      Object.assign(e, { bytes: m.bytes, raw: m.raw, sha256: m.sha256 });
-      total += m.bytes;
-    } else {
-      const live = m.live;
-      if (live !== undefined) {
-        if (!live || !isInt(live.bytes) || live.bytes < 2 || live.bytes > MAX_LIVE || !isSha(live.sha256)) return 'live';
-        e.live = { bytes: live.bytes, sha256: live.sha256 };
-        total += live.bytes;
-      } else if (m.hist === undefined) {
-        return 'no part';
-      }
-      if (m.hist !== undefined) {
-        const h = m.hist;
-        // Finished ones only: the running skirmish is n + 1, begun by the Worker's clock with the signature's room.
-        if (!h || !isInt(h.n) || h.n < 1 || h.n >= SKIRMISHES + 1
-          || h.n > Math.floor((nowMs - m.start + MAX_SKEW_S * 1000) / SKIRMISH_MS)) return 'hist';
-        if (!isInt(h.bytes) || h.bytes < 2 || h.bytes > MAX_HIST || !isSha(h.sha256)) return 'hist';
-        e.hist = { n: h.n, bytes: h.bytes, sha256: h.sha256 };
-        total += h.bytes;
-      }
+    const live = m.live;
+    if (live !== undefined) {
+      if (!live || !isInt(live.bytes) || live.bytes < 2 || live.bytes > MAX_LIVE || !isSha(live.sha256)) return 'live';
+      e.live = { bytes: live.bytes, sha256: live.sha256 };
+      total += live.bytes;
+    } else if (m.hist === undefined) {
+      return 'no part';
+    }
+    if (m.hist !== undefined) {
+      const h = m.hist;
+      // Finished ones only: the running skirmish is n + 1, begun by the Worker's clock with the signature's room.
+      if (!h || !isInt(h.n) || h.n < 1 || h.n >= SKIRMISHES + 1
+        || h.n > Math.floor((nowMs - m.start + MAX_SKEW_S * 1000) / SKIRMISH_MS)) return 'hist';
+      if (!isInt(h.bytes) || h.bytes < 2 || h.bytes > MAX_HIST || !isSha(h.sha256)) return 'hist';
+      e.hist = { n: h.n, bytes: h.bytes, sha256: h.sha256 };
+      total += h.bytes;
     }
     out.push(e);
   }
@@ -534,13 +511,6 @@ function isIntList(a, n) {
 
 function toHex(buf) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-// Text, not a BLOB: D1 and node:sqlite hand BLOBs back differently.
-function toBase64(bytes) {
-  let s = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(s);
 }
 
 const KILLS_LINE_MS = 55e3;
@@ -879,8 +849,7 @@ const READS = {
   // One query, and the answer kept by Cloudflare's cache under a fixed
   // key, so a query string cannot make a request of its own: a visitor costs D1
   // nothing while the copy lives.
-  // Each entry in the format it came in: format 1 {id, start, score, at, by, gz}, the gzip
-  // as base64; format 2 {id, start, score, at, by, v: 2, body}, the live part as JSON.
+  // Each entry {id, start, score, at, by, v: 2, body}, the live part as JSON.
   '/api/latest': (env, ctx) => cached(ctx, LATEST_KEY, async () => {
     const copy = await latestCopy(env);
     return copy ? json(copy.body, LATEST_MAX_AGE) : text(503, 'stale');
@@ -914,10 +883,10 @@ async function latestCopy(env) {
   const live = results.filter((r) => nowS() - r.at <= LATEST_KEEP_S);
   const newest = Math.max(0, ...live.map((r) => r.at));
   if (!live.length || nowS() - newest > STALE_LATEST_S) return null;
-  // Format 2's text was parsed whole by the entrance, so it goes in as it is.
+  // The text was parsed whole by the entrance, so it goes in as it is.
   const entry = (r) => {
     const head = JSON.stringify({ id: r.id, start: r.start, score: r.score, at: r.at, by: r.reader }).slice(0, -1);
-    return r.gz.startsWith('{') ? head + ',"v":2,"body":' + r.gz + '}' : head + ',"gz":' + JSON.stringify(r.gz) + '}';
+    return head + ',"v":2,"body":' + r.gz + '}';
   };
   return { newest, body: '{"at":' + newest + ',"matches":[' + live.map(entry).join(',') + ']}' };
 }

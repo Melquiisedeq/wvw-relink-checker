@@ -509,8 +509,6 @@ test('the readers\' rebuild from the last body gives the body a rebuild from scr
   const EU_START = Date.parse('2026-10-09T18:00:00Z');
   const keys = { kills: KILLS_KEY, 'latest-supa-us': 'a'.repeat(128), 'latest-supa-eu': 'b'.repeat(128) };
   const envKeys = { INGEST_KILLS: keys.kills, INGEST_LATEST_SUPA_US: keys['latest-supa-us'], INGEST_LATEST_SUPA_EU: keys['latest-supa-eu'] };
-  const gz = gzipSync(Buffer.from('{"x":1}'));
-  const sha = createHash('sha256').update(gz).digest('hex');
   const side = (stat) => {
     const { sql } = fakeD1();
     const cache = new Map();
@@ -540,10 +538,7 @@ test('the readers\' rebuild from the last body gives the body a rebuild from scr
     return worker.fetch(new Request('https://wvwrelink.com/api/ingest/' + source,
       { method: 'POST', body: buf, headers: signHeaders(keys[source], t, '/api/ingest/' + source, buf) }), env);
   };
-  const reader = (rows) => {
-    const entries = rows.map((r) => ({ id: r.id, start: r.start, scores: [r.score, 0, 0], kills: r.k, bytes: gz.length, raw: 10, sha256: sha }));
-    return Buffer.concat([Buffer.from(JSON.stringify({ v: 1, matches: entries }) + '\n'), ...entries.map(() => gz)]);
-  };
+  const reader = (rows) => v2Body(rows.map((r) => ({ id: r.id, start: r.start, scores: [r.score, 0, 0], kills: r.k })));
 
   const plans = [];
   const seen = { readerSends: 0, gsSends: 0, resets: 0, stops: 0, gaps: 0, freezes: 0 };
@@ -632,11 +627,7 @@ test('a reader\'s rebuild that another rebuild overtook is made again from the t
   const key = 'a'.repeat(128);
   const w = setup({ env: { INGEST_LATEST_SUPA_US: key } });
   const start = Date.parse('2026-09-26T02:00:00Z');
-  const gz = gzipSync(Buffer.from('{"x":1}'));
-  const reader = (score) => {
-    const entry = { id: '1-1', start, scores: [score, 0, 0], kills: [1, 2, 3, 4], bytes: gz.length, raw: 10, sha256: createHash('sha256').update(gz).digest('hex') };
-    return Buffer.concat([Buffer.from(JSON.stringify({ v: 1, matches: [entry] }) + '\n'), gz]);
-  };
+  const reader = (score) => v2Body([{ id: '1-1', start, scores: [score, 0, 0] }]);
   const log = console.log;
   console.log = () => {};
   try {
@@ -663,9 +654,7 @@ test('a reader\'s rebuild sees a match the body does not hold, its rows put in b
   const key = 'a'.repeat(128);
   const w = setup({ env: { INGEST_LATEST_SUPA_US: key } });
   const start = Date.parse('2026-09-26T02:00:00Z');
-  const gz = gzipSync(Buffer.from('{"x":1}'));
-  const entry = { id: '1-1', start, scores: [200, 0, 0], kills: [1, 2, 3, 4], bytes: gz.length, raw: 10, sha256: createHash('sha256').update(gz).digest('hex') };
-  const msg = Buffer.concat([Buffer.from(JSON.stringify({ v: 1, matches: [entry] }) + '\n'), gz]);
+  const msg = v2Body([{ id: '1-1', start, scores: [200, 0, 0] }]);
   const at0 = w.now;
   const log = console.log;
   console.log = () => {};
@@ -685,11 +674,7 @@ test('a reader\'s rebuild sees a match the body does not hold, its rows put in b
 test('a reader\'s rebuild that cannot go on from the last body is the full read, and says why', async () => {
   const key = 'a'.repeat(128);
   const start = Date.parse('2026-09-26T02:00:00Z');
-  const gz = gzipSync(Buffer.from('{"x":1}'));
-  const msg = (kills) => {
-    const entry = { id: '1-1', start, scores: [200, 0, 0], kills, bytes: gz.length, raw: 10, sha256: createHash('sha256').update(gz).digest('hex') };
-    return Buffer.concat([Buffer.from(JSON.stringify({ v: 1, matches: [entry] }) + '\n'), gz]);
-  };
+  const msg = (kills) => v2Body([{ id: '1-1', start, scores: [200, 0, 0], kills }]);
   const cases = {
     'no body': { prep: async () => {}, gap: 0, kills: [1, 2, 3, 4] },
     'body does not join up': { prep: async (w) => { await w.post('kills', { rows: [[w.now, '1-1', 1, 2, 3, 4, start, 100]] }); }, gap: 40 * 60e3, kills: [1, 2, 3, 4] },
@@ -958,17 +943,6 @@ const SUPA_ENV = { INGEST_LATEST_SUPA_US: SUPA['latest-supa-us'], INGEST_LATEST_
 // The NA week of setup()'s clock (Wednesday 12:00Z): 106 hours in, skirmish 54 running.
 const NA_WEEK = Date.parse('2026-09-26T02:00:00Z');
 
-// A reader's message: the summary line, then the gzip of each body. An entry
-// without vp and skirmishes is what a reader older than board sends.
-function latestBody(entries) {
-  const slices = entries.map((e) => gzipSync(Buffer.from(JSON.stringify({ id: e.id }))));
-  const matches = entries.map((e, i) => ({
-    id: e.id, start: e.start ?? NA_WEEK, scores: e.scores || [1000, 2000, 3000], kills: [1, 2, 3, 4],
-    bytes: slices[i].length, raw: 20, sha256: createHash('sha256').update(slices[i]).digest('hex'), ...e.board
-  }));
-  return Buffer.concat([Buffer.from(JSON.stringify({ v: 1, matches }) + '\n'), ...slices]);
-}
-const pushLatest = (w, source, entries) => w.post(source, latestBody(entries), { key: SUPA[source] });
 const latestScore = (w) => w.sql.prepare("SELECT score FROM latest WHERE id = '1-1'").get();
 const boardRows = (w) => w.sql.prepare('SELECT match, skirmish, red, blue, green, vp_red, vp_blue, vp_green, at FROM board ORDER BY match, skirmish').all()
   .map((r) => ({ ...r }));
@@ -976,24 +950,24 @@ const boardRows = (w) => w.sql.prepare('SELECT match, skirmish, red, blue, green
 test('board: a skirmish is written once it has finished, once, whichever reader and however often', async () => {
   const w = setup({ env: SUPA_ENV });
   const board = (running, vp) => ({ vp, skirmishes: [[running - 1, 100, 200, 300], [running, 1, 2, 3]] });
-  assert.equal(await pushLatest(w, 'latest-supa-us', [{ id: '1-1', scores: [1000, 2000, 3000], board: board(54, [500, 400, 300]) }]), 200);
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', scores: [1000, 2000, 3000], board: board(54, [500, 400, 300]) }]), 200);
   const first = boardRows(w);
   assert.deepEqual(first.map((r) => [r.match, r.skirmish, r.red, r.blue, r.green, r.vp_red]), [['1-1', 53, 100, 200, 300, 500]]);
   // The other reader, the same score, a minute later; then a higher score: no new row, nothing rewritten.
   w.advance(60e3);
-  assert.equal(await pushLatest(w, 'latest-supa-eu', [{ id: '1-1', scores: [1000, 2000, 3000], board: board(54, [500, 400, 300]) }]), 200);
+  assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '1-1', scores: [1000, 2000, 3000], board: board(54, [500, 400, 300]) }]), 200);
   w.advance(60e3);
-  assert.equal(await pushLatest(w, 'latest-supa-us', [{ id: '1-1', scores: [1001, 2000, 3000], board: board(54, [500, 400, 300]) }]), 200);
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', scores: [1001, 2000, 3000], board: board(54, [500, 400, 300]) }]), 200);
   assert.deepEqual(boardRows(w), first);
   // The turn: 54 has finished, 55 runs.
   w.advance(2 * 3600e3);
-  assert.equal(await pushLatest(w, 'latest-supa-eu', [{ id: '1-1', scores: [9000, 9000, 9000], board: board(55, [543, 432, 321]) }]), 200);
+  assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '1-1', scores: [9000, 9000, 9000], board: board(55, [543, 432, 321]) }]), 200);
   assert.deepEqual(boardRows(w).map((r) => [r.skirmish, r.vp_red]), [[53, 500], [54, 543]]);
 });
 
 test('board: a VP that rises a read after the skirmish list is kept, a lower one never', async () => {
   const w = setup({ env: SUPA_ENV });
-  const send = (score, vp) => pushLatest(w, 'latest-supa-us', [{ id: '1-2', scores: [score, 0, 0], board: { vp, skirmishes: [[53, 7, 8, 9], [54, 1, 1, 1]] } }]);
+  const send = (score, vp) => pushV2(w, 'latest-supa-us', [{ id: '1-2', scores: [score, 0, 0], board: { vp, skirmishes: [[53, 7, 8, 9], [54, 1, 1, 1]] } }]);
   assert.equal(await send(1000, [400, 300, 200]), 200);
   w.advance(60e3);
   assert.equal(await send(1100, [443, 332, 221]), 200);
@@ -1004,7 +978,7 @@ test('board: a VP that rises a read after the skirmish list is kept, a lower one
   assert.deepEqual(boardRows(w)[0], risen);
   // The other reader at the same score, which the latest table does not take, with the VP risen.
   w.advance(60e3);
-  assert.equal(await pushLatest(w, 'latest-supa-eu', [{ id: '1-2', scores: [1100, 0, 0], board: { vp: [444, 332, 221], skirmishes: [[53, 7, 8, 9], [54, 1, 1, 1]] } }]), 200);
+  assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '1-2', scores: [1100, 0, 0], board: { vp: [444, 332, 221], skirmishes: [[53, 7, 8, 9], [54, 1, 1, 1]] } }]), 200);
   assert.equal(boardRows(w)[0].vp_red, 444);
 });
 
@@ -1012,7 +986,7 @@ test('board: the week\'s last skirmish is kept while it runs, its score only ris
   const w = setup({ env: SUPA_ENV });
   // Saturday 01:00Z: skirmish 84 of the NA week runs until the reset at 02:00.
   w.advance(Date.parse('2026-10-03T01:00:00Z') - w.now);
-  const send = (score, last, vp = [900, 800, 700]) => pushLatest(w, 'latest-supa-us', [{
+  const send = (score, last, vp = [900, 800, 700]) => pushV2(w, 'latest-supa-us', [{
     id: '1-3', scores: [score, 0, 0], board: { vp, skirmishes: [[83, 5, 5, 5], [84, ...last]] }
   }]);
   assert.equal(await send(500000, [10, 20, 30]), 200);
@@ -1031,16 +1005,16 @@ test('board: the week\'s last skirmish is kept while it runs, its score only ris
 test('board: readers with and without the fields are taken at once; without, only board is left out', async () => {
   const w = setup({ env: SUPA_ENV });
   const vp = [3, 2, 1];
-  assert.equal(await pushLatest(w, 'latest-supa-us', [
+  assert.equal(await pushV2(w, 'latest-supa-us', [
     { id: '1-1' }, { id: '1-2', board: { vp, skirmishes: [[53, 1, 2, 3], [54, 0, 0, 0]] } }
   ]), 200);
-  assert.equal(await pushLatest(w, 'latest-supa-eu', [{ id: '1-3' }]), 200);
+  assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '1-3' }]), 200);
   assert.deepEqual(w.sql.prepare('SELECT id FROM latest ORDER BY id').all().map((r) => r.id), ['1-1', '1-2', '1-3']);
   assert.deepEqual(boardRows(w).map((r) => [r.match, r.skirmish]), [['1-2', 53]]);
   // Skirmish 1 running: nothing has finished yet.
   w.advance(Date.parse('2026-10-03T03:00:00Z') - w.now);
   const start = Date.parse('2026-10-03T02:00:00Z');
-  assert.equal(await pushLatest(w, 'latest-supa-us', [{ id: '1-4', start, board: { vp: [0, 0, 0], skirmishes: [[1, 9, 9, 9]] } }]), 200);
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-4', start, board: { vp: [0, 0, 0], skirmishes: [[1, 9, 9, 9]] } }]), 200);
   assert.equal(boardRows(w).length, 1);
 });
 
@@ -1069,7 +1043,7 @@ test('board: fields out of shape leave the board out, the rest goes in', async (
     const lines = [];
     console.log = (x) => lines.push(String(x));
     try {
-      const status = await pushLatest(w, 'latest-supa-us', [{ id: '1-1', scores: [++score, 2000, 3000], board }]);
+      const status = await pushV2(w, 'latest-supa-us', [{ id: '1-1', scores: [++score, 2000, 3000], board }]);
       return { status, lines: lines.map((l) => JSON.parse(l)) };
     } finally {
       console.log = log;
@@ -1103,7 +1077,7 @@ test('board: 18 matches are one statement, and without the table the message sti
   // The EU week began Friday 18:00Z, 114 hours before: skirmish 58 runs.
   const eu = Date.parse('2026-09-25T18:00:00Z');
   for (let i = 1; i <= 9; i++) all.push({ id: '2-' + i, start: eu, board: { vp: [1, 1, 1], skirmishes: [[57, 1, 1, 1], [58, 1, 1, 1]] } });
-  assert.equal(await pushLatest(w, 'latest-supa-us', all), 200);
+  assert.equal(await pushV2(w, 'latest-supa-us', all), 200);
   assert.equal(w.ran.filter((x) => /^INSERT INTO board/.test(x.q)).length, 1);
   assert.equal(boardRows(w).length, 18);
 
@@ -1112,7 +1086,7 @@ test('board: 18 matches are one statement, and without the table the message sti
   const lines = [];
   console.log = (x) => lines.push(String(x));
   try {
-    assert.equal(await pushLatest(bare, 'latest-supa-us', [all[0]]), 200);
+    assert.equal(await pushV2(bare, 'latest-supa-us', [all[0]]), 200);
   } finally {
     console.log = log;
   }
@@ -1131,7 +1105,7 @@ const liveOf = (id, start = NA_WEEK, scores = [1000, 2000, 3000]) => ({
   scores: { red: scores[0], blue: scores[1], green: scores[2] }, maps: [], skirmishes: [{ id: 54 }]
 });
 
-// Each entry: {id, start?, scores?, live? (object, or a string/Buffer sent as it is), hist? {n, body}, sha? (wrong on purpose)}.
+// Each entry: {id, start?, scores?, kills?, board?, live? (object, or a string/Buffer sent as it is), hist? {n, body}, sha? (wrong on purpose)}.
 function v2Body(entries) {
   const bytes = (x) => (Buffer.isBuffer(x) ? x : Buffer.from(typeof x === 'string' ? x : JSON.stringify(x)));
   const parts = [];
@@ -1139,7 +1113,7 @@ function v2Body(entries) {
     const start = e.start ?? NA_WEEK;
     const scores = e.scores || [1000, 2000, 3000];
     const live = bytes(e.live ?? liveOf(e.id, start, scores));
-    const out = { id: e.id, start, scores, kills: [1, 2, 3, 4], live: { bytes: live.length, sha256: e.sha || sha(live) }, ...e.board };
+    const out = { id: e.id, start, scores, kills: e.kills || [1, 2, 3, 4], live: { bytes: live.length, sha256: e.sha || sha(live) }, ...e.board };
     parts.push(live);
     if (e.hist) {
       const h = bytes(e.hist.body ?? skirmishList(e.hist.n));
@@ -1184,7 +1158,7 @@ test('format 2: the live part goes where the copy lives, the history in its own 
   assert.equal(r.status, 200);
   assert.deepEqual(JSON.parse(r.body), { v: NA_DONE, start: NA_WEEK, matches: { '1-1': hist } });
   assert.equal(r.headers.get('content-type'), 'application/json');
-  // The kills line and the board go on as for format 1.
+  // The kills line and the board go on as they always did.
   assert.equal(w.sql.prepare('SELECT count(*) n FROM kills').get().n, 2);
 });
 
@@ -1239,7 +1213,6 @@ test('format 2: a summary out of shape refuses the whole message, before any wri
   const cases = {
     'neither live nor hist': (m) => { delete m.live; delete m.hist; },
     'a live part without counts': (m) => { delete m.scores; },
-    'a live part past 64 KiB': (m) => { m.live.bytes = 64 * 1024 + 1; },
     'a sha256 that is no hash': (m) => { m.live.sha256 = 'x'; },
     'a history of 0': (m) => { m.hist.n = 0; },
     'a history of a skirmish still running': (m) => { m.hist.n = NA_DONE + 1; },
@@ -1254,6 +1227,9 @@ test('format 2: a summary out of shape refuses the whole message, before any wri
     });
   }
   assert.equal(w.sql.prepare("SELECT t FROM source WHERE name = 'latest-supa-us'").get().t, 0);
+  // A well-formed live part over 64 KiB, its hash right: only the cap refuses it.
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', live: { ...liveOf('1-1'), pad: 'x'.repeat(64 * 1024) } }]), 422);
+  assert.equal(w.sql.prepare('SELECT count(*) n FROM latest').get().n, 0);
   // The edge the other way: a history of the skirmish that ends within the signature's 5 minutes.
   w.advance(2 * 3600e3 - 5 * 60e3);
   const short = await quiet(() => w.post('latest-supa-us', body((m) => { m.hist.n = NA_DONE + 1; }), { key: SUPA['latest-supa-us'] }));
@@ -1264,17 +1240,18 @@ test('format 2: a summary out of shape refuses the whole message, before any wri
   assert.equal(w.sql.prepare("SELECT n FROM history WHERE match = '1-1'").get().n, NA_DONE + 1);
 });
 
-test('the two formats are taken side by side, and /api/latest serves each as it came', async () => {
+test('the old format (v 1) is refused, with nothing written, and the claim is left free', async () => {
   const w = setup({ env: SUPA_ENV });
-  assert.equal(await pushLatest(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
-  assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '1-2' }]), 200);
+  // A complete message of the old shape: one gzip per match, its size, raw size and hash.
+  const gz = gzipSync(Buffer.from(JSON.stringify(liveOf('1-1'))));
+  const entry = { id: '1-1', start: NA_WEEK, scores: [1000, 2000, 3000], kills: [1, 2, 3, 4], bytes: gz.length, raw: 220, sha256: sha(gz) };
+  const old = Buffer.concat([Buffer.from(JSON.stringify({ v: 1, matches: [entry] }) + '\n'), gz]);
+  assert.equal(await w.post('latest-supa-us', old, { key: SUPA['latest-supa-us'] }), 422);
+  assert.equal(w.sql.prepare('SELECT count(*) n FROM latest').get().n, 0);
+  assert.equal(w.sql.prepare("SELECT t FROM source WHERE name = 'latest-supa-us'").get().t, 0);
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1' }]), 200);
   const { matches } = JSON.parse((await w.get('/api/latest')).body);
-  assert.deepEqual(matches.map((m) => [m.id, m.v ?? 1, typeof (m.gz ?? m.body)]), [['1-1', 1, 'string'], ['1-2', 2, 'object']]);
-  // A reader on the old format overtakes a format 2 body, and the other way round: only the score decides.
-  assert.equal(await pushLatest(w, 'latest-supa-us', [{ id: '1-2', scores: [1000, 2000, 3001] }]), 200);
-  assert.equal(await pushV2(w, 'latest-supa-eu', [{ id: '1-1', scores: [1000, 2000, 3001] }]), 200);
-  const again = JSON.parse((await w.get('/api/latest')).body).matches;
-  assert.deepEqual(again.map((m) => [m.id, m.v ?? 1]), [['1-1', 2], ['1-2', 1]]);
+  assert.deepEqual(matches.map((m) => [m.id, m.v, typeof m.body]), [['1-1', 2, 'object']]);
 });
 
 test('format 2 without the history table: the live parts go in, the summary has no hist, the route says 503', async () => {

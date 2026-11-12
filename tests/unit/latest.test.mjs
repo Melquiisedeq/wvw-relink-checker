@@ -22,20 +22,24 @@ const NA_START = Date.parse('2026-10-03T02:00:00Z');
 const NA_PREV = Date.parse('2026-09-26T02:00:00Z');
 const EU_START = Date.parse('2026-10-02T18:00:00Z');
 
-// A summary entry and the gzip it describes.
+// A summary entry and the live part it describes.
 function match(id = '1-1', o = {}) {
-  const gz = o.gz || gzipSync(Buffer.from(JSON.stringify({ id, pad: o.pad ?? 'x'.repeat(200) })));
   const [a, b, c] = o.scores || [1000, 2000, 3000];
+  const start = o.entry && o.entry.start || (id[0] === '2' ? EU_START : NA_START);
+  const gz = o.gz || Buffer.from(JSON.stringify({
+    id, start_time: new Date(start).toISOString().replace('.000Z', 'Z'),
+    scores: { red: a, blue: b, green: c }, maps: [], pad: o.pad ?? 'x'.repeat(200)
+  }));
   return {
     entry: {
-      id, start: id[0] === '2' ? EU_START : NA_START, scores: [a, b, c], kills: [1, 2, 3, 4],
-      bytes: gz.length, raw: 220, sha256: createHash('sha256').update(gz).digest('hex'), ...o.entry
+      id, start, scores: [a, b, c], kills: [1, 2, 3, 4],
+      live: { bytes: gz.length, sha256: createHash('sha256').update(gz).digest('hex') }, ...o.entry
     },
     gz
   };
 }
 function body(ms, summaryOver = {}) {
-  const sum = Buffer.from(JSON.stringify({ v: 1, matches: ms.map((m) => m.entry), ...summaryOver }) + '\n');
+  const sum = Buffer.from(JSON.stringify({ v: 2, matches: ms.map((m) => m.entry), ...summaryOver }) + '\n');
   return Buffer.concat([sum, ...ms.map((m) => m.gz)]);
 }
 
@@ -152,8 +156,14 @@ test('a bad summary refuses the whole message, and not even the claim is written
   const good = m('1-2');
   const cases = [
     ['not JSON', () => Buffer.concat([Buffer.from('{nope\n'), good.gz]), 400],
-    ['no newline', () => Buffer.from('{"v":1}'), 400],
-    ['wrong version', () => body([good], { v: 2 }), 422],
+    ['no newline', () => Buffer.from('{"v":2}'), 400],
+    ['the old format (v 1: a gzip per match) is refused', () => {
+      const gz = gzipSync(good.gz);
+      const entry = { id: '1-2', start: NA_START, scores: [1000, 2000, 3000], kills: [1, 2, 3, 4], bytes: gz.length, raw: good.gz.length, sha256: createHash('sha256').update(gz).digest('hex') };
+      return Buffer.concat([Buffer.from(JSON.stringify({ v: 1, matches: [entry] }) + '\n'), gz]);
+    }, 422],
+    ['the version as a string', () => body([good], { v: '2' }), 422],
+    ['no version', () => body([good], { v: undefined }), 422],
     ['no matches', () => body([], {}), 422],
     ['id 9-9', () => bad({ id: '9-9' }), 422],
     ['markup as an id', () => bad({ id: '<b>' }), 422],
@@ -166,21 +176,19 @@ test('a bad summary refuses the whole message, and not even the claim is written
     ['a new week with too high a score', () => body([m('1-1', { scores: [5e6, 0, 0] })]), 422],
     ['negative scores', () => bad({ scores: [-1, 2, 3] }), 422],
     ['fractional scores', () => bad({ scores: [1.5, 2, 3] }), 422],
-    ['raw over 256 KB', () => bad({ raw: 256 * 1024 + 1 }), 422],
-    ['a slice over 16 KB (a gzip bomb has to be small)', () => body([m('1-1', { gz: Buffer.alloc(16 * 1024 + 1) })]), 422],
+    ['a live part over 64 KB, its hash right', () => body([m('1-1', { pad: 'x'.repeat(64 * 1024) })]), 422],
     ['a null match', () => body([good], { matches: [null] }), 422],
     ['a start with a millisecond', () => bad({ start: NA_START + 1 }), 422],
     ['scores of two', () => bad({ scores: [1, 2] }), 422],
     ['a negative kill count', () => bad({ kills: [-1, 0, 0, 0] }), 422],
-    ['raw of zero', () => bad({ raw: 0 }), 422],
-    ['a sha256 in capitals', () => bad({ sha256: good.entry.sha256.toUpperCase() }), 422],
-    ['a sha256 one character short', () => bad({ sha256: good.entry.sha256.slice(1) }), 422],
-    ['bytes below a gzip header', () => bad({ bytes: 17 }), 422],
-    ['bytes that do not add up', () => bad({ bytes: good.entry.bytes + 1 }), 422],
+    ['a sha256 in capitals', () => bad({ live: { ...good.entry.live, sha256: good.entry.live.sha256.toUpperCase() } }), 422],
+    ['a sha256 one character short', () => bad({ live: { ...good.entry.live, sha256: good.entry.live.sha256.slice(1) } }), 422],
+    ['a live part below a JSON object, its hash right', () => body([m('1-1', { gz: Buffer.from('{') })]), 422],
+    ['bytes that do not add up', () => bad({ live: { ...good.entry.live, bytes: good.entry.live.bytes + 1 } }), 422],
     ['a sha256 that does not match: body swapped, summary kept', () => {
       const old = m('1-1');
-      const other = gzipSync(Buffer.from('another body entirely, same size? no matter'));
-      return Buffer.concat([Buffer.from(JSON.stringify({ v: 1, matches: [{ ...old.entry, bytes: other.length }] }) + '\n'), other]);
+      const other = Buffer.from('{"another":"body entirely"}');
+      return Buffer.concat([Buffer.from(JSON.stringify({ v: 2, matches: [{ ...old.entry, live: { ...old.entry.live, bytes: other.length } }] }) + '\n'), other]);
     }, 422]
   ];
   for (const [name, make, want = 422] of cases) {
@@ -191,16 +199,16 @@ test('a bad summary refuses the whole message, and not even the claim is written
   assert.equal(w.sql.prepare('SELECT t FROM source WHERE name = ?').get(US).t, 0);
 });
 
-test('what is kept is the gzip as sent, as base64, with its reader', async () => {
+test('what is kept is the live part as sent, with its reader', async () => {
   const w = setup();
   const m = match('1-1');
   assert.equal(await w.post(US, body([m])), 200);
   const r = w.row('1-1');
-  assert.equal(r.gz, m.gz.toString('base64'));
+  assert.equal(r.gz, m.gz.toString());
   assert.equal(r.reader, US);
   assert.equal(r.score, 6000);
   assert.equal(r.at, Math.floor(w.now / 1000));
-  assert.equal(r.sha, m.entry.sha256);
+  assert.equal(r.sha, m.entry.live.sha256);
 });
 
 test('an older week after a newer one changes nothing', async () => {
@@ -418,7 +426,7 @@ test('GET /api/latest: 503 with no rows, 503 past 10 minutes, 200 at 9, nothing 
   assert.equal(r.status, 200);
   const j = JSON.parse(r.body);
   assert.equal(j.at, Math.floor((w.now - 9 * MIN) / 1000));
-  assert.deepEqual(Object.keys(j.matches[0]), ['id', 'start', 'score', 'at', 'by', 'gz']);
+  assert.deepEqual(Object.keys(j.matches[0]), ['id', 'start', 'score', 'at', 'by', 'v', 'body']);
   assert.equal(j.matches[0].by, US);
   assert.equal(r.headers.get('cache-control'), 'public, max-age=5');
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
@@ -436,12 +444,13 @@ test('GET /api/latest: 503 with no rows, 503 past 10 minutes, 200 at 9, nothing 
   assert.deepEqual(ids, ['1-2']);
 });
 
-test('GET /api/latest gives back the gzip that was sent', async () => {
+test('GET /api/latest gives back the live part that was sent', async () => {
   const w = setup();
   const m = match('2-3');
   await w.post(EU, body([m]));
   const j = JSON.parse((await w.get('/api/latest')).body);
-  assert.equal(j.matches[0].gz, m.gz.toString('base64'));
+  assert.deepEqual(j.matches[0].body, JSON.parse(m.gz));
+  assert.equal(j.matches[0].v, 2);
   assert.equal(j.matches[0].id, '2-3');
 });
 

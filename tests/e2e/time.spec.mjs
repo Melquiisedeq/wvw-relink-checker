@@ -446,13 +446,11 @@ test.describe("our copy ahead of the visitor's server group, and old", () => {
   }
 });
 
-// Without DecompressionStream a format 1 copy cannot be opened (here the copy is
-// not read: a 503), but its summary is plain JSON: a body of the game with the
+// With the copy not read (a 503) the summary still holds: a body of the game with the
 // summary's score is dated by the summary's `at`, not by the moment the page read it.
-test.describe('no DecompressionStream, the game\'s body as far along as the summary', () => {
+test.describe('no copy, the game\'s body as far along as the summary', () => {
   test.use({ timeline: gw2.match(FOCUS).advance(12).freeze(3).pageOpens() });
   test('the corner gives the summary\'s time', async ({ page, wvw }) => {
-    await page.addInitScript(() => { delete window.DecompressionStream; });
     await fail(page, wvw, /\/api\/latest$/, 503);
     const r = rower(page, wvw);
     await r.load();
