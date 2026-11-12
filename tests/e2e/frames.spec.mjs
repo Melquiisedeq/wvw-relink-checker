@@ -201,3 +201,32 @@ for (const reduced of [false, true]) {
     await allFinish(page, 'run-once effects after the shots');
   });
 }
+
+test("the page's layer is made before the shake, and the cards' glass is off from the wind-up to 1.7 s after the break", async ({ page, wvw }) => {
+  await page.addInitScript(() => {
+    const seen = window.__finale = { willChange: null, glassAtBreak: null, glassAtBrokenEnd: null, glassAtWindUp: null };
+    const glass = () => getComputedStyle(document.querySelector('.card')).backdropFilter;
+    new MutationObserver(() => {
+      const pg = document.getElementById('page');
+      if (pg && pg.classList.contains('struck') && seen.willChange === null) seen.willChange = getComputedStyle(pg).willChange;
+      const o = document.querySelector('.impact-overlay.broken');
+      if (o && seen.glassAtBreak === null) seen.glassAtBreak = glass();
+      if (o) seen.sawBroken = true;
+      const ov = document.querySelector('.impact-overlay');
+      if (seen.sawBroken && ov && !ov.classList.contains('broken') && seen.glassAtBrokenEnd === null) seen.glassAtBrokenEnd = glass();
+      if (document.querySelector('.siege-charge.charging') && seen.glassAtWindUp === null) seen.glassAtWindUp = glass();
+    }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+  });
+  await load(page, wvw);
+  const glass = () => page.evaluate(() => getComputedStyle(document.querySelector('.card')).backdropFilter);
+  expect(await page.evaluate(() => getComputedStyle(document.getElementById('page')).willChange), 'the page layer before any shake').toContain('transform');
+  expect(await glass(), 'the cards\' glass at rest').not.toBe('none');
+  await search(page, wvw.guilds);
+  await expect.poll(() => page.evaluate(() => window.__finale.glassAtBrokenEnd), { message: 'the break effect ended', timeout: 10000 }).not.toBeNull();
+  const seen = await page.evaluate(() => window.__finale);
+  expect(seen.willChange, 'the page layer when the shake starts').toContain('transform');
+  expect(seen.glassAtWindUp, 'the glass as the round gathers').toBe('none');
+  expect(seen.glassAtBreak, 'the glass at the break').toBe('none');
+  expect(seen.glassAtBrokenEnd, 'the glass when the break effect ends, before the tail is over').toBe('none');
+  await expect.poll(glass, { message: 'the glass back after the finale', timeout: 5000 }).not.toBe('none');
+});

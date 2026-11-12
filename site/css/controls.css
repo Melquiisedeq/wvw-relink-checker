@@ -15,6 +15,8 @@
     /* Cast shadow - says how far above. */
     0 20px 40px -16px rgba(0,0,0,.9);
 }
+/* The compositor re-blurs every card each frame of the finale (js/trebuchet.js). */
+html.finale .card{-webkit-backdrop-filter:none;backdrop-filter:none;}
 label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:8px;}
 textarea{
   width:100%;min-height:130px;resize:vertical;
