@@ -698,8 +698,7 @@ async function latestInstead(one, early, err) {
 // ---- /api/latest: a second read of the matches ------------------------
 // The game's own answer can lag the match. /api/latest holds match bodies as the
 // game gave them, taken by our own scripts: format 2 `body`, the match with only its
-// running skirmish, its finished ones at /api/history (latestJoin); format 1 `gz`, the
-// whole body gzipped and base64. Asked on the visit's first read, on the
+// running skirmish, its finished ones at /api/history (latestJoin). Asked on the visit's first read, on the
 // first after the tab was hidden, and then, at most once per LATEST_GAP_MS,
 // when a live match read is behind what our copy holds: by the summary the
 // peek read (js/standings.js), while it is LATEST_SUMMARY_FRESH_MS old or
@@ -709,7 +708,7 @@ async function latestInstead(one, early, err) {
 // /api/latest?v=<at>.<tag>, outside that gap. Each body goes through
 // keepNewestMatch like any other, so it wins only by being further
 // along. Only ids the game already gave this visit are taken, id and start must
-// match the body's own, and each part's size is capped (an inflated one while it streams).
+// match the body's own, and each part's size is capped.
 // Any failure is silence: the page is as it was without this read.
 const LATEST_URL = '/api/latest';
 const LATEST_SUMMARY_URL = '/api/latest/summary';
@@ -719,8 +718,7 @@ const LATEST_GAP_MS = 30 * 1000;
 // above judges instead, and the five-minute refresh reads the game (copyHolds).
 const LATEST_SUMMARY_FRESH_MS = 90 * 1000;
 const LATEST_WAIT_MS = 1200;           // how long a read holds the paint; a late answer waits for the next one
-const LATEST_BODY_MAX = 256 * 1024;    // per part: inflated bytes (format 1), characters (format 2, a history)
-const LATEST_GZ_MAX = 96 * 1024;       // base64 characters per match
+const LATEST_BODY_MAX = 256 * 1024;    // per part: characters
 const LATEST_MATCHES_MAX = 20;
 const WEEK_SKIRMISHES = 84;
 const LATEST_HISTORY_URL = { 1: '/api/history/1?v=', 2: '/api/history/2?v=' };
@@ -746,26 +744,6 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') latestMissed = true;
 });
 
-async function latestInflate(b64) {
-  if (typeof DecompressionStream !== 'function' || typeof b64 !== 'string' || b64.length > LATEST_GZ_MAX) return null;
-  const bin = atob(b64);
-  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-  const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')).getReader();
-  const chunks = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.length;
-    if (total > LATEST_BODY_MAX) { await reader.cancel(); return null; }
-    chunks.push(value);
-  }
-  const joined = new Uint8Array(total);
-  let at = 0;
-  for (const c of chunks) { joined.set(c, at); at += c.length; }
-  return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(joined));
-}
-
 // A whole answer within LATEST_BODY_MAX holds no part over it; past it, each is measured.
 const latestOver = (text, part) => text.length > LATEST_BODY_MAX && JSON.stringify(part).length > LATEST_BODY_MAX;
 
@@ -780,7 +758,7 @@ async function latestRead(url = LATEST_URL) {
     for (const e of list) {
       try {
         if (!e || typeof e.id !== 'string' || !WEEK_ID_RE.test(e.id)) continue;
-        const body = e.v === 2 ? (latestOver(text, e.body) ? null : e.body) : await latestInflate(e.gz);
+        const body = e.v === 2 && !latestOver(text, e.body) ? e.body : null;
         if (!body || body.id !== e.id || typeof body.all_worlds !== 'object' || !body.all_worlds
           || typeof body.scores !== 'object' || !body.scores || !Array.isArray(body.maps)) continue;
         if (!Number.isFinite(e.start) || Date.parse(body.start_time) !== e.start) continue;

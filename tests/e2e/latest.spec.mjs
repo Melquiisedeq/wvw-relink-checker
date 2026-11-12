@@ -1,10 +1,8 @@
-// /api/latest, the second read of the matches, in both formats: format 2 bodies
-// of the live matches as JSON with only the running skirmish, the finished ones
-// at /api/history, read once per version; format 1, gzip + base64 bodies whole.
+// /api/latest, the second read of the matches: bodies of the live matches as JSON with
+// only the running skirmish, the finished ones at /api/history, read once per version.
 // A newer one wins; one offered under another match's id, one under an id the
 // game never gave, one over the size cap, and garbage in any field the page
 // checks change nothing and say nothing; a 503 or a hung answer costs nothing.
-import { gzipSync } from 'node:zlib';
 import { test, expect } from './support/fixtures.mjs';
 import { fail } from './support/faults.mjs';
 import { gw2, historyOf, liveOf } from './support/gw2.mjs';
@@ -75,61 +73,49 @@ async function serveHistory(page, wvw, answer) {
 const all = recordedJson('https://api.guildwars2.com/v2/wvw/matches?ids=all');
 const [a, b] = all.filter(m => Date.parse(m.end_time) > recording().recordedAt).slice(0, 2);
 const bump = (m, n) => ({ ...m, scores: { ...m.scores, red: m.scores.red + n } });
-const gz = m => gzipSync(Buffer.from(typeof m === 'string' ? m : JSON.stringify(m))).toString('base64');
-// An entry of /api/latest: format 2 with the whole body (every skirmish in it, so no
-// history is asked), or format 1.
-const FORMATS = {
-  2: (id, m, start = Date.parse(m.start_time)) => ({ id, start, score: sum(m), at: 0, by: 'check-page', v: 2, body: m }),
-  1: (id, m, start = Date.parse(m.start_time)) => ({ id, start, score: sum(m), at: 0, by: 'check-page', gz: gz(m) }),
-};
+// An entry of /api/latest, with the whole body (every skirmish in it, so no history is asked).
+const entry = (id, m, start = Date.parse(m.start_time)) => ({ id, start, score: sum(m), at: 0, by: 'check-page', v: 2, body: m });
 // A body padded with whitespace past LATEST_BODY_MAX (256 KiB, js/api.js), still valid JSON.
 const PAD = 300 * 1024;
 
 // The recording as the world: one match is made newer (score up), one is
 // offered under another match's id, one under an id the game never gave.
-for (const format of [2, 1]) {
-  const entry = FORMATS[format];
-  test.describe(`bodies offered by /api/latest, format ${format}`, () => {
-    test('only the newer body of a known id reaches the page', async ({ page, wvw }) => {
-      const latest = await serve(page, { at: 0, matches: [
-        entry(a.id, bump(a, 5000)),        // newer: must show
-        entry(b.id, bump(a, 99999)),       // the body says another id: must not
-        entry('1-9', bump(a, 99999)),      // an id the game never gave: must not
-      ] });
-      await opened(page, wvw);
-      expect(latest.reads, 'reads of /api/latest').toBeGreaterThan(0);
-      expect(await settledScore(page, a.id, sum(a) + 5000), `${a.id}, the newer body`).toBe(sum(a) + 5000);
-      expect(await scoreOf(page, b.id), `${b.id}, offered another match's body`).toBe(sum(b));
-      expect(await page.evaluate(() => matchDataCache.has('1-9')), 'an id the game never gave').toBe(false);
-    });
-
-    test('garbage in every field the page checks changes nothing', async ({ page, wvw }) => {
-      const at = Date.parse(a.start_time);
-      const garbage = format === 2
-        ? [{ id: a.id, start: at, v: 2, body: 'not a body' }, { id: a.id, start: at, v: 2, body: { ...bump(a, 5000), maps: null } },
-          { id: a.id, start: at, v: 2 }]
-        : [{ id: a.id, start: at, gz: 'not base64 !' }, { id: a.id, start: at, gz: gz('{not json') },
-          { id: a.id, start: at, gz: gz(Buffer.alloc(PAD, 32).toString()) }];
-      await serve(page, { at: 0, matches: [...garbage, entry(a.id, bump(a, 5000), at + 1)] });
-      await opened(page, wvw);
-      expect(await scoreOf(page, a.id), `${a.id} after bad entries`).toBe(sum(a));
-    });
-
-    // The cap alone stands between a newer body and the page.
-    test('a newer body over the size cap does not reach the page', async ({ page, wvw }) => {
-      const big = format === 2 ? entry(a.id, { ...bump(a, 5000), pad: ' '.repeat(PAD) })
-        : { ...entry(a.id, bump(a, 5000)), gz: gz(JSON.stringify(bump(a, 5000)) + ' '.repeat(PAD)) };
-      const latest = await serve(page, { at: 0, matches: [big] });
-      await opened(page, wvw);
-      expect(latest.reads, 'reads of /api/latest').toBeGreaterThan(0);
-      expect(await settledScore(page, a.id, sum(a) + 5000), `${a.id}, a body over 256 KiB`).toBe(sum(a));
-    });
+test.describe('bodies offered by /api/latest', () => {
+  test('only the newer body of a known id reaches the page', async ({ page, wvw }) => {
+    const latest = await serve(page, { at: 0, matches: [
+      entry(a.id, bump(a, 5000)),        // newer: must show
+      entry(b.id, bump(a, 99999)),       // the body says another id: must not
+      entry('1-9', bump(a, 99999)),      // an id the game never gave: must not
+    ] });
+    await opened(page, wvw);
+    expect(latest.reads, 'reads of /api/latest').toBeGreaterThan(0);
+    expect(await settledScore(page, a.id, sum(a) + 5000), `${a.id}, the newer body`).toBe(sum(a) + 5000);
+    expect(await scoreOf(page, b.id), `${b.id}, offered another match's body`).toBe(sum(b));
+    expect(await page.evaluate(() => matchDataCache.has('1-9')), 'an id the game never gave').toBe(false);
   });
-}
+
+  test('garbage in every field the page checks changes nothing', async ({ page, wvw }) => {
+    const at = Date.parse(a.start_time);
+    const garbage = [{ id: a.id, start: at, v: 2, body: 'not a body' }, { id: a.id, start: at, v: 2, body: { ...bump(a, 5000), maps: null } },
+      { id: a.id, start: at, v: 2 }];
+    await serve(page, { at: 0, matches: [...garbage, entry(a.id, bump(a, 5000), at + 1)] });
+    await opened(page, wvw);
+    expect(await scoreOf(page, a.id), `${a.id} after bad entries`).toBe(sum(a));
+  });
+
+  // The cap alone stands between a newer body and the page.
+  test('a newer body over the size cap does not reach the page', async ({ page, wvw }) => {
+    const big = entry(a.id, { ...bump(a, 5000), pad: ' '.repeat(PAD) });
+    const latest = await serve(page, { at: 0, matches: [big] });
+    await opened(page, wvw);
+    expect(latest.reads, 'reads of /api/latest').toBeGreaterThan(0);
+    expect(await settledScore(page, a.id, sum(a) + 5000), `${a.id}, a body over 256 KiB`).toBe(sum(a));
+  });
+});
 
 // Format 2 as the readers send it: the live part, its finished skirmishes apart.
 test.describe('the history of format 2', () => {
-  const live = (m, n = 5000) => FORMATS[2](m.id, liveOf(bump(m, n)));
+  const live = (m, n = 5000) => entry(m.id, liveOf(bump(m, n)));
   // What the Worker answers for the region at version v: the matches whose history is that long.
   const version = (region, v, ms = [a, b]) => {
     const held = ms.filter(x => x.id[0] === region && historyOf(x).length === v);
@@ -160,7 +146,7 @@ test.describe('the history of format 2', () => {
     const last = a.skirmishes.at(-1);
     const turned = { ...bump(a, 9000), skirmishes: [...a.skirmishes, { ...last, id: last.id + 1 }] };
     world = [turned];
-    matches = [FORMATS[2](a.id, liveOf(turned))];
+    matches = [entry(a.id, liveOf(turned))];
     await read(page);
     await read(page);
     expect((await kept(page, a.id)).skirmishes, `${a.id}, the next version`).toEqual(turned.skirmishes);
@@ -207,19 +193,6 @@ test.describe('the history of format 2', () => {
     }
     expect(sum(await kept(page, a.id)), `${a.id} after ${wrong.length} wrong histories`).toBe(sum(a));
   });
-});
-
-// Without DecompressionStream format 2 opens all the same; format 1 is left out.
-test.describe('no DecompressionStream', () => {
-  for (const format of [2, 1]) {
-    test(`format ${format} ${format === 2 ? 'reaches' : 'does not reach'} the page`, async ({ page, wvw }) => {
-      await page.addInitScript(() => { delete window.DecompressionStream; });
-      await serve(page, { at: 0, matches: [FORMATS[format](a.id, bump(a, 5000))] });
-      await opened(page, wvw);
-      const want = format === 2 ? sum(a) + 5000 : sum(a);
-      expect(await settledScore(page, a.id, want), `${a.id}, format ${format}`).toBe(want);
-    });
-  }
 });
 
 // The page opened with /api/latest down, so its first ask got nothing. Five
