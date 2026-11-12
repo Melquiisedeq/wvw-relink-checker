@@ -99,7 +99,7 @@ const emberField = (function () {
   }
   // Three quarters of the dot's own radius: matches the CSS .ember core's half-brightness points.
   function look(colour, size) {
-    return { halo: sprite(colour, size), core: colour.core,
+    return { halo: sprite(colour, size), core: colour.core, colour,
              r: size / 2 * .75 };
   }
   const LOOK = { rise: {}, blast: {} };
@@ -109,7 +109,7 @@ const emberField = (function () {
     LOOK.blast.warm = look(WARM, 4);
     LOOK.blast.cold = look(COLD, 4);
   }
-  // cubic-bezier as CSS solves it; only the blast uses one.
+  // cubic-bezier as CSS solves it.
   function bezier(x1, y1, x2, y2) {
     const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx;
     const cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by;
@@ -125,6 +125,48 @@ const emberField = (function () {
     };
   }
   const BLAST_EASE = bezier(.08, .72, .3, 1);
+
+  // The surge after a blast: brightness(1 + 1.5a) saturate(1 + .3a) painted into the embers, while
+  // css/base.css lifts the canvas. Each halo is one colour under an alpha mask, so recolouring it
+  // (source-in) is the filter exactly; the core is a flat fill. The timing is .fx-embers.surge's.
+  const SURGE_S = 2.8;
+  const SURGE_EASE = bezier(.15, .8, .35, 1);
+  // The Filter Effects matrices, brightness then saturate, each step clamped.
+  function surgeRgb(rgb, a) {
+    const k = 1 + 1.5 * a, s = 1 + .3 * a;
+    const c = (v) => Math.min(255, Math.max(0, v));
+    const [r, g, b] = rgb.map((v) => c(v * k));
+    return [
+      c((.213 + .787 * s) * r + (.715 - .715 * s) * g + (.072 - .072 * s) * b),
+      c((.213 - .213 * s) * r + (.715 + .285 * s) * g + (.072 - .072 * s) * b),
+      c((.213 - .213 * s) * r + (.715 - .715 * s) * g + (.072 + .928 * s) * b),
+    ].map(Math.round).join(',');
+  }
+  const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  // surgeAt is the clock when the surge began, -1 with none; surgeKey its strength this frame, in 256ths.
+  let surgeAt = -1, surgeKey = 0;
+  const surgedCopy = new WeakMap();   // look -> its copy at the strength last asked for
+  function surged(l) {
+    if (!surgeKey) return l;
+    let s = surgedCopy.get(l);
+    if (!s) {
+      const halo = document.createElement('canvas');
+      halo.width = l.halo.width; halo.height = l.halo.height;
+      s = { halo, core: l.core, r: l.r, key: 0 };
+      surgedCopy.set(l, s);
+    }
+    if (s.key !== surgeKey) {
+      s.key = surgeKey;
+      const a = surgeKey / 256, c = s.halo.getContext('2d');
+      c.globalCompositeOperation = 'copy';
+      c.drawImage(l.halo, 0, 0);
+      c.globalCompositeOperation = 'source-in';
+      c.fillStyle = 'rgb(' + surgeRgb(l.colour.glow.split(',').map(Number), a) + ')';
+      c.fillRect(0, 0, s.halo.width, s.halo.height);
+      s.core = 'rgb(' + surgeRgb(hexRgb(l.core), a) + ')';
+    }
+    return s;
+  }
 
   const rising = [];
   for (let i = 0; i < 46; i++) {
@@ -162,6 +204,7 @@ const emberField = (function () {
 
   // Only what was painted last frame gets cleared, never the viewport.
   function put(l, cx, cy, k, alpha) {
+    l = surged(l);
     const d = (l.halo.width / SS) * k;
     const x = cx - d / 2, y = cy - d / 2;
     ctx.globalAlpha = alpha;
@@ -179,6 +222,14 @@ const emberField = (function () {
       ctx.clearRect(dirty[i][0], dirty[i][1], dirty[i][2], dirty[i][3]);
     }
     dirty.length = 0;
+
+    surgeKey = 0;
+    if (surgeAt >= 0) {
+      const p = (clock - surgeAt) / SURGE_S;
+      // Eased per interval, as CSS does: the flare up to 7%, the settle after it.
+      if (p >= 1) surgeAt = -1;
+      else surgeKey = Math.round(256 * (p < .07 ? SURGE_EASE(p / .07) : 1 - SURGE_EASE((p - .07) / .93)));
+    }
 
     for (const e of rising) {
       const p = ((clock + e.phase) % e.dur) / e.dur;
@@ -281,7 +332,7 @@ const emberField = (function () {
   }
 
   let clock = 0, last = 0, running = false, frameId = 0;
-  // Stopped for reduced motion only: a blast may run the field until its sparks end.
+  // Stopped for reduced motion only: a blast may run the field until its sparks and its surge end.
   let blastMayRun = false, settling = false;
   function frame(now) {
     frameId = requestAnimationFrame(frame);
@@ -293,7 +344,7 @@ const emberField = (function () {
     draw(dt);
     // A blast under reduced motion runs the embers only.
     if (!settling) moveAnimations(dt);
-    if (settling && !blasting.length) stop(true);
+    if (settling && !blasting.length && surgeAt < 0) stop(true);
   }
 
   resize();
@@ -310,6 +361,8 @@ const emberField = (function () {
   function stop(blastOk) {
     running = false; settling = false; blastMayRun = !!blastOk;
     cancelAnimationFrame(frameId);
+    // A surge cut short is dropped, so a field left standing still is not left brightened.
+    if (surgeAt >= 0) { surgeAt = -1; draw(); }
     handBack();
     for (const cb of waiting.splice(0)) requestAnimationFrame(cb);
   }
@@ -331,6 +384,7 @@ const emberField = (function () {
         last = performance.now();
         frameId = requestAnimationFrame(frame);
       }
+      surgeAt = clock;
       for (let i = 0; i < 12; i++) {
         blasting.push({
           x: Math.random(),

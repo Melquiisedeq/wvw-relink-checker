@@ -221,8 +221,22 @@ for (const when of ['before the search', 'during the search']) {
   });
 }
 
-test('reduced motion: a blast plays and leaves the looping animations still, then the field stops again', async ({ page, wvw }) => {
+// Each core the embers canvas fills, with when: the surge brightens it there, the canvas itself unfiltered.
+function recordEmberFills(page) {
+  return page.addInitScript(() => {
+    window.__emberFills = [];
+    const fill = CanvasRenderingContext2D.prototype.fill;
+    CanvasRenderingContext2D.prototype.fill = function (...a) {
+      if (this.canvas && this.canvas.id === 'fxEmbers') window.__emberFills.push([performance.now(), this.fillStyle]);
+      return fill.apply(this, a);
+    };
+  });
+}
+const BASE_CORES = ['#ffb765', '#9fe6ff'];
+
+test('reduced motion: a blast plays and leaves the looping animations still, then the field stops once its surge ends', async ({ page, wvw }) => {
   await countEmberDraws(page);
+  await recordEmberFills(page);
   await load(page, wvw);
   // Set after the load, so the clock already holds the looping ones.
   await expectAllMoving(page, 'looping animations moving before reduced motion');
@@ -232,13 +246,60 @@ test('reduced motion: a blast plays and leaves the looping animations still, the
   await expect.poll(async () => { const n = await draws(); await page.waitForTimeout(200); return (await draws()) - n; },
     { message: 'the field stopping for reduced motion' }).toBe(0);
   const before = await draws();
-  await page.evaluate(() => emberField.blast());
+  const t0 = await page.evaluate(() => { const t = performance.now(); emberField.blast(); return t; });
   expect((await looping(page, { ms: 500 })).moved, 'looping animations moving during the blast').toBe(0);
   expect((await draws()) - before, 'drawing during the blast').toBeGreaterThan(5);
-  await page.waitForTimeout(2500);
+  await page.waitForFunction(t => performance.now() - t > 3200, t0);
   const after = await draws();
   await page.waitForTimeout(400);
-  expect((await draws()) - after, 'drawing once the sparks are gone').toBe(0);
+  expect((await draws()) - after, 'drawing once the sparks and the surge are gone').toBe(0);
+  // The sparks are gone by 2.25 s; the surge, painted into the embers, by 2.8 s.
+  const fills = (await page.evaluate(() => window.__emberFills)).filter(([t]) => t > t0);
+  expect(fills[fills.length - 1][0] - t0, 'the field drawing until the surge ends').toBeGreaterThan(2750);
+});
+
+test('reduced motion: a tab hidden during the surge comes back to embers in their own colours, standing still', async ({ page, wvw }) => {
+  await countEmberDraws(page);
+  await recordEmberFills(page);
+  await load(page, wvw);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const draws = () => page.evaluate(() => window.__emberDraws);
+  await expect.poll(async () => { const n = await draws(); await page.waitForTimeout(200); return (await draws()) - n; },
+    { message: 'the field stopping for reduced motion' }).toBe(0);
+  await page.evaluate(() => emberField.blast());
+  await page.waitForTimeout(400);
+  await watch(page, { hidden: true });
+  await watch(page);
+  const after = await draws();
+  await page.waitForTimeout(400);
+  expect((await draws()) - after, 'drawing once shown again').toBe(0);
+  const fills = await page.evaluate(() => window.__emberFills);
+  expect(BASE_CORES, 'the embers left standing painted without the surge').toContain(fills[fills.length - 1][1]);
+});
+
+test('the surge brightens the embers as they are painted and only lifts the canvas', async ({ page, wvw }) => {
+  await recordEmberFills(page);
+  await load(page, wvw);
+  const { t0, samples } = await page.evaluate(() => new Promise((done) => {
+    const host = document.getElementById('fxEmbers');
+    const t0 = performance.now();
+    spawnEmberBlast();
+    const samples = [];
+    const loop = (t) => {
+      const cs = getComputedStyle(host);
+      samples.push([t - t0, cs.filter, cs.transform === 'none' ? 0 : new DOMMatrix(cs.transform).m42]);
+      if (t - t0 < 3100) requestAnimationFrame(loop); else done({ t0, samples });
+    };
+    requestAnimationFrame(loop);
+  }));
+  expect(samples.filter(([, f]) => f !== 'none'), 'a filter on the canvas during the surge').toEqual([]);
+  expect(Math.min(...samples.map(([, , y]) => y)), 'the canvas lifting').toBeLessThan(-6);
+  const fills = await page.evaluate(() => window.__emberFills);
+  const surged = fills.filter(([t, c]) => t > t0 && t - t0 < 600 && !BASE_CORES.includes(c));
+  expect(surged.length, 'embers painted brighter in the flare').toBeGreaterThan(20);
+  const late = fills.filter(([t]) => t - t0 > 2900).map(([, c]) => c);
+  expect(late.length, 'embers drawn after the surge').toBeGreaterThan(0);
+  expect(late.filter(c => !BASE_CORES.includes(c)), 'embers painted brighter after the surge').toEqual([]);
 });
 
 // The relink bar's timers, in milliseconds from the page's opening (as in banners.spec.mjs).
