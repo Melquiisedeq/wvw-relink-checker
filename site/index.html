@@ -321,6 +321,9 @@ One More Guild Name"></textarea>
   <div class="impact-ring"></div>
   <div class="impact-ring impact-ring--slow"></div>
   <div class="impact-stack">
+    <!-- The glow, drawn once by js/trebuchet.js: the whole crest's until the break, then each half's. -->
+    <canvas class="crest-glow crest-glow--whole"></canvas>
+    <div class="crest-side crest-side--l"><canvas class="crest-glow"></canvas>
     <div class="crest-half crest-half--l">
     <svg class="impact-crest" viewBox="0 0 160 190" xmlns="http://www.w3.org/2000/svg">
       <path d="M10,10 H150 V95 C150,145 112,172 80,188 C48,172 10,145 10,95 Z" fill="url(#crestwell)" stroke="url(#crestrim)" stroke-width="10.0"/>
@@ -334,7 +337,8 @@ One More Guild Name"></textarea>
         <g fill="#00657e" opacity=".75"><rect x="12" y="65.6" width="60" height="2.4"/></g>
       </g>
     </svg>
-    </div>
+    </div></div>
+    <div class="crest-side crest-side--r"><canvas class="crest-glow"></canvas>
     <div class="crest-half crest-half--r">
     <svg class="impact-crest" viewBox="0 0 160 190" xmlns="http://www.w3.org/2000/svg">
       <path d="M10,10 H150 V95 C150,145 112,172 80,188 C48,172 10,145 10,95 Z" fill="url(#crestwell)" stroke="url(#crestrim)" stroke-width="10.0"/>
@@ -348,7 +352,8 @@ One More Guild Name"></textarea>
         <g fill="#00657e" opacity=".75"><rect x="12" y="65.6" width="60" height="2.4"/></g>
       </g>
     </svg>
-    </div>
+    </div></div>
+    <div class="crest-fracture"><canvas class="crest-glow"></canvas>
     <svg class="crest-crack" viewBox="0 0 160 190" xmlns="http://www.w3.org/2000/svg">
       <g stroke="#ffffff" fill="none" stroke-linecap="round" stroke-linejoin="round">
         <!-- Same line the two halves are clipped on. -->
@@ -360,7 +365,7 @@ One More Guild Name"></textarea>
         <path d="M74 152 L48 161" stroke-width="1.3"/>
         <path d="M74 34 L52 24" stroke-width="1.3"/>
       </g>
-    </svg>
+    </svg></div>
     <div class="crest-blast"></div>
   </div>
 </div>

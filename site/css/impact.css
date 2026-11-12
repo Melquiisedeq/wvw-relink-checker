@@ -24,24 +24,34 @@
 }
 .impact-stack{
   position:relative;width:200px;height:200px;
-  filter:drop-shadow(0 0 26px rgba(140,224,255,.9));
   transform:scale(.3) rotate(-20deg);
 }
 .impact-crest{position:absolute;left:50%;top:50%;width:150px;transform:translate(-50%,-50%);}
+/* The glow is a picture painted once (js/trebuchet.js), never a filter: a drop-shadow over
+   pieces that move is blurred again on every frame of the break. 64px of room for the blur
+   on each side of the 200px stack, the same in CREST_GLOW_PAD. The blast has no glow. */
+.crest-glow{position:absolute;left:-64px;top:-64px;width:328px;height:328px;}
+.impact-overlay.broken .crest-glow--whole{visibility:hidden;}
+.crest-side .crest-glow{visibility:hidden;}
+.impact-overlay.broken .crest-side .crest-glow{visibility:visible;}
+.impact-overlay.play .impact-stack{will-change:transform;}
+.impact-overlay.play .crest-side{will-change:transform,opacity;}
+.impact-overlay.play .crest-fracture{will-change:opacity;}
 
 /* The crest, twice, each clipped to one half. Identical markup on both sides, so the
-   break falls down the middle whatever the artwork. */
-.crest-half{position:absolute;inset:0;}
+   break falls down the middle whatever the artwork. A half moves inside its .crest-side,
+   beside its glow, which the clip-path would cut. */
+.crest-side,.crest-half,.crest-fracture{position:absolute;inset:0;}
 /* The break is jagged. The two polygons are exact complements, so the halves account
-   for every pixel between them. */
+   for every pixel between them; CREST_CUTS in js/trebuchet.js cuts the glow on them. */
 .crest-half--l{
   clip-path:polygon(50% 0, 46% 18%, 54% 33%, 45% 48%, 52% 64%, 46% 80%, 50% 100%, 0 100%, 0 0);
 }
 .crest-half--r{
   clip-path:polygon(50% 0, 100% 0, 100% 100%, 50% 100%, 46% 80%, 52% 64%, 45% 48%, 54% 33%, 46% 18%);
 }
-.impact-overlay.broken .crest-half--l{animation:half-l .95s cubic-bezier(.2,.7,.3,1) forwards;}
-.impact-overlay.broken .crest-half--r{animation:half-r .95s cubic-bezier(.2,.7,.3,1) forwards;}
+.impact-overlay.broken .crest-side--l{animation:half-l .95s cubic-bezier(.2,.7,.3,1) forwards;}
+.impact-overlay.broken .crest-side--r{animation:half-r .95s cubic-bezier(.2,.7,.3,1) forwards;}
 @keyframes half-l{
   0%{transform:none;opacity:1;}
   100%{transform:translate(-130px,30px) rotate(-24deg);opacity:0;}
@@ -56,10 +66,9 @@
   /* Height stated: an inline SVG with only a width can be laid out at zero height. */
   position:absolute;left:50%;top:50%;width:150px;height:178px;
   transform:translate(-50%,-50%);
-  opacity:0;
-  filter:drop-shadow(0 0 10px rgba(214,248,255,.95)) drop-shadow(0 0 24px rgba(127,214,242,.8));
 }
-.impact-overlay.broken .crest-crack{animation:crack-flash .55s ease-out forwards;}
+.crest-fracture{opacity:0;}
+.impact-overlay.broken .crest-fracture{animation:crack-flash .55s ease-out forwards;}
 @keyframes crack-flash{
   0%{opacity:0;}
   10%{opacity:1;}
