@@ -17,12 +17,15 @@ test('call_reader timeout is longer than the reader\'s serial deadlines', () => 
   assert.ok(timeouts[0] > sum, `timeout ${timeouts[0]} ms must exceed the reader's ${sum} ms`);
 });
 
+const RUN_DETAILS_CLEANUP = "select cron.schedule('delete-job-run-details', '0 12 * * *', 'DELETE FROM cron.job_run_details WHERE end_time < now() - interval ''7 days'';');";
+
 test('one job turns the two readers every 10 seconds and the peek follows', () => {
   const sql = read('scheduler.sql');
   const jobs = [...sql.matchAll(/cron\.schedule\('(readers)',\s*'([^']+)',\s*\$\$select public\.(\w+)\(\)\$\$/g)].map((m) => [m[1], m[2], m[3]]);
   assert.deepEqual(jobs, [['readers', '10 seconds', 'call_next_reader']]);
   const names = [...sql.matchAll(/cron\.schedule\('([^']+)'/g)].map((m) => m[1]);
-  assert.deepEqual(names, ['readers', 'heartbeat-cleanup']);
+  assert.deepEqual(names, ['readers', 'heartbeat-cleanup', 'delete-job-run-details']);
+  assert.ok(sql.split(/\r?\n/).includes(RUN_DETAILS_CLEANUP), 'the run log is pruned by the same line as the Studio\'s Enable cleanup button');
   const turn = sql.slice(sql.indexOf('function public.call_next_reader'));
   assert.match(turn, /from public\.heartbeat order by id desc limit 1/, 'the turn reads the last beat');
   assert.match(turn, /case when last_region = 'us-east-1' then 'eu-central-1' else 'us-east-1' end/, 'the two regions swap');
