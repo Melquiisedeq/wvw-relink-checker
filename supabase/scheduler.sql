@@ -79,6 +79,10 @@ select cron.schedule('readers', '10 seconds', $$select public.call_next_reader()
 select cron.schedule('heartbeat-cleanup', '17 3 * * *',
   $$delete from public.heartbeat where at < now() - interval '7 days'$$);
 
+-- pg_cron never prunes its own log, one row per run. The exact line of the Studio's
+-- "Enable cleanup" button, same name, so either leaves one job (tests/unit/scheduler.test.mjs).
+select cron.schedule('delete-job-run-details', '0 12 * * *', 'DELETE FROM cron.job_run_details WHERE end_time < now() - interval ''7 days'';');
+
 -- To stop:  select cron.unschedule('readers');
 -- To change the pace of a schedule that exists: run its cron.schedule again with the
 -- same name; pg_cron updates the job in place. Check with: select jobname, schedule from cron.job;
