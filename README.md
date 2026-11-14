@@ -45,8 +45,8 @@ line) and read which team each landed on.
 How it works: names are resolved to IDs through the API's guild search, then
 matched against live match data for each one's team, tier and side. Standings
 load once and keep refreshing in the background. The page reads
-this project's own `/api` for the kills history, the new-teams notice and the
-newest match bodies; the first two fall back to public Google Sheets when it
+this project's own `/api` for the kills history, the new-teams notice, the
+newest match bodies and the history of finished skirmishes; the first two fall back to public Google Sheets when it
 cannot answer. The NA alliance list is a public sheet kept by the NA WvW
 Discord, read only when you click a shield icon.
 
@@ -55,15 +55,16 @@ Discord, read only when you click a shield icon.
 **Everything the page does runs in your browser. The guild names you type go
 only to the game's own API (ArenaNet's), to be looked up; the visits are
 counted, as the table below shows.** There is one small server of mine, at `wvwrelink.com/api`. It receives game
-data from this project's own two Apps Scripts and two Supabase readers, each signed, and the page reads three things
+data from this project's own two Apps Scripts and two Supabase readers, each signed, and the page reads four things
 back from it — the kills history, whether the new teams are out (both fall
-back to the spreadsheets if it cannot answer) and the newest match bodies. While the tab is visible the page also keeps a connection open to it, to hear when newer match bodies are in; it sends only `ping`. Nothing you type goes near it.
+back to the spreadsheets if it cannot answer), the newest match bodies and the
+history of each region's finished skirmishes. While the tab is visible the page also keeps a connection open to it, to hear when newer match bodies are in; it sends only `ping`. Nothing you type goes near it.
 
 | Host | What for |
 |---|---|
 | `api.guildwars2.com` | The guild names you paste go here to be resolved — that request *is* the lookup. Also all match, objective and upgrade data. |
 | `render.guildwars2.com` | Guild emblem images, for objectives claimed by a guild. Images only. |
-| `wvwrelink.com/api` | This site's own server: the kills history when you open a tier's maps, whether the new teams are out (read only in the days before a relink), and the newest match bodies, kept only when further along than the game's own answer. |
+| `wvwrelink.com/api` | This site's own server: the kills history when you open a tier's maps, whether the new teams are out (read only in the days before a relink), the newest match bodies, kept only when further along than the game's own answer, and the history of finished skirmishes. |
 | `docs.google.com` | Three public spreadsheets, read-only: the community guild list when you click a shield icon, and the kills history and the new-teams notice when `/api` does not answer. |
 | `static.cloudflareinsights.com`, `cloudflareinsights.com` | Cloudflare Web Analytics: its script, and a report of each visit and how fast the page loaded. |
 

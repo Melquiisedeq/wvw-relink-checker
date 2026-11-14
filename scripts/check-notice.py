@@ -210,13 +210,9 @@ def check_heartbeat(page_url, now):
     found = HEARTBEAT_CELL.match((body or '').strip())
     if not found:
         shown = (body or '').strip()[:80] or '(empty)'
-        print('::error::The heartbeat cell holds no timestamp. It holds: %s.'
+        print('::error::The heartbeat cell holds no timestamp. It holds: %s. '
+              'Something other than relinkTick wrote over it.'
               % escape(shown))
-        print('::error::If it is empty, the script in the Apps Script project '
-              'is older than the heartbeat: paste the current '
-              'apps-script/relink-notice/relink-notice.gs in and run '
-              'relinkTick once by hand. If '
-              'it holds something else, it was written over.')
         return True
 
     beat = int(found.group(1))
@@ -245,10 +241,8 @@ def main():
 
     url = sheet_url()
     if url and 'PASTE' in url:
-        print('::error::RELINK_SHEET_ID in js/config.js is still the '
-              'placeholder, so the page has no cell to read and the notice can '
-              'never appear. Paste the spreadsheet id there and into SHEET_ID '
-              'in the Apps Script.')
+        print('::error::RELINK_SHEET_ID in js/config.js still holds PASTE, not a spreadsheet '
+              'id, so the page has no cell to read.')
         return 1
     if url is None:
         print('::error::RELINK_SHEET_URL or RELINK_SHEET_ID could not be read '
@@ -350,7 +344,7 @@ def main():
 
     gap = assign_na - window
     print('')
-    print('%d days between the notice last firing and the next relink.'
+    print('%d days between the relink the notice last fired for and the next one.'
           % (gap // 86400))
 
     if gap > MAX_GAP_SECONDS:

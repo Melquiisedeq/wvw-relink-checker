@@ -17,8 +17,7 @@ missing header is a failure here.
 The kills sheet is filled by an Apps Script trigger every five minutes, and it
 is the project's own. Here freshness *is* the signal: if the newest row is old,
 the trigger stopped and the crossed swords quietly stop marking the busiest
-map. Free Apps Script accounts have a daily trigger ceiling, so this is a real
-way for it to die.
+map.
 
 Neither check asserts how many rows or columns there are. Both sheets grow and
 shrink as people maintain them, and a check that pinned those numbers would

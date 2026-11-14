@@ -17,8 +17,8 @@ both sides: both must have delivered lately, the summary of the matches must be
 fresh and made of known sources, and it must not run ahead of the game's own
 API - which only a stolen signing secret can do.
 
-And the doors that must stay shut, each a status and no judgement: the
-entrance takes no GET and no unsigned POST, and the Worker has no workers.dev
+And the push routes (/api/ingest/*) that must stay shut, each a status and no
+judgement: they take no GET and no unsigned POST, and the Worker has no workers.dev
 address (`workers_dev: false` in worker/wrangler.jsonc).
 
 Run it by hand any time:  python3 scripts/check-worker.py
@@ -77,7 +77,7 @@ def worker_reset(body):
 
 
 def worker_sources(body):
-    """The names the Worker's entrance accepts, from its SOURCES table."""
+    """The names the Worker's push routes accept, from its SOURCES table."""
     m = re.search(r'const SOURCES\s*=\s*\{(.*?)\};', body, re.S)
     names = re.findall(r"'?([\w-]+)'?\s*:\s*'INGEST_", m.group(1)) if m else []
     if not names:
@@ -94,12 +94,12 @@ WORKERS_DEV = 'https://wvwrelink-api.wvwgw2.workers.dev/api/health'
 ATTEMPTS = 3
 PAUSE_SECONDS = 5
 TIMEOUT_SECONDS = 30
-# Kills and relink tick every 5 minutes; past the Worker's STALE_KILLS_S and
-# STALE_RELINK_S the reads already answer 503.
-# Kills is the exception for the report: kills.gs pushes only when a match's
-# score rose, and the GW2 API can serve frozen data for about an hour, so a
-# silent kills source is reported only past 90 minutes.
-# Between 20 and 90 the Worker's 503 is the honest answer and is not a failure.
+# Kills and relink tick every 5 minutes. Relink is reported past the Worker's
+# STALE_RELINK_S, where its reads already answer 503. Kills is the exception:
+# kills.gs pushes only when a match's score rose, and the GW2 API can serve
+# frozen data for about an hour, so a silent kills source is reported only past
+# 90 minutes. Between the Worker's STALE_KILLS_S (20) and 90 its 503 is the
+# honest answer and is not a failure.
 STALE = {'kills': 90 * 60,
          'relink': worker_seconds(WORKER, 'STALE_RELINK_S')}
 KILLS_WORKER_STALE = worker_seconds(WORKER, 'STALE_KILLS_S')
@@ -384,7 +384,7 @@ def check_reads(problems, notes):
 
 
 def check_doors(problems, notes):
-    doors = [('GET on the entrance', API + 'ingest/kills', 'GET', None, 405)]
+    doors = [('GET on /api/ingest/kills', API + 'ingest/kills', 'GET', None, 405)]
     doors += [('unsigned POST %s' % name, API + 'ingest/' + name, 'POST', b'{}', 401)
               for name in worker_sources(WORKER)]
     for label, url, method, body, want in doors + [

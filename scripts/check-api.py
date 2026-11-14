@@ -9,7 +9,7 @@ This check owns what check-contract.py does not: that each route answers at
 all, the match lookups the page makes, and the guild search end to end. The
 keys each item must carry are not listed here: they are the required keys of
 gw2-contract.json (one list, what site/js/ reads), and every item is judged. The objectives and sectors are a fallback on the page (it draws
-from the copy in js/wvw-static.js and asks the game only if the copy is
+from the catalogue in js/wvw-static.js and asks the game only if it is
 missing); check-catalogue.py compares them in depth.
 
 Every request gets three attempts, spaced out. The API genuinely flaps around
