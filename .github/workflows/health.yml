@@ -4,7 +4,7 @@
 # renamed column reads the wrong column, a stopped Apps Script trigger just
 # stops.
 #
-# So this asks, four times a day, whether the world outside is still the shape
+# So this asks, every six hours at most, whether the world outside is still the shape
 # the code assumes: the counterpart to checks.yml. A job per kind of thing, so
 # the failure email already names which of them moved.
 name: Health
@@ -13,6 +13,7 @@ on:
   schedule:
     # Every six hours, at :43. Not on the hour: scheduled runs bunch up there
     # and get delayed, and nothing here is urgent to the minute.
+    # GitHub may delay or drop a scheduled run: nothing may count on four a day.
     - cron: '43 */6 * * *'
   workflow_dispatch:
 
