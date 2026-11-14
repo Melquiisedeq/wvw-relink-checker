@@ -397,7 +397,7 @@ def check_readme(problems):
         problems.append(
             'README.md Privacy host table does not list %s, which the page '
             'fetches (%s). The table is the promise to visitors.'
-            % (host, what))
+            % (host, FETCHED[host][1]))
 
     named = set(c for cells in readme_table('Key') for c in cells)
     keys = storage_keys(problems)
