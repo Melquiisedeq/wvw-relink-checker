@@ -12,6 +12,7 @@ Run it by hand any time:  python3 scripts/check-structure.py
 
 import datetime
 import io
+import json
 import os
 import re
 import sys
@@ -465,11 +466,40 @@ def check_sweep_timeout(problems):
             'the same timeout.' % (b, a))
 
 
+def check_apps_script_scopes(problems):
+    """Both Apps Script projects pin the same two scopes.
+
+    The annotation on the first line and a manifest with oauthScopes: without
+    them Apps Script scans the source and may ask for every spreadsheet.
+    """
+    want = ['https://www.googleapis.com/auth/spreadsheets.currentonly',
+            'https://www.googleapis.com/auth/script.external_request']
+    for name in ('relink-notice', 'kills'):
+        base = os.path.join(ROOT, 'apps-script', name)
+        with io.open(os.path.join(base, name + '.gs'), encoding='utf-8') as fh:
+            lines = fh.read().split('\n')
+        if lines[0] != '/**' or lines[1] != ' * @OnlyCurrentDoc':
+            problems.append('apps-script/%s/%s.gs: "@OnlyCurrentDoc" must be '
+                            'the first line of the comment on line 1.'
+                            % (name, name))
+        try:
+            with io.open(os.path.join(base, 'appsscript.json'),
+                         encoding='utf-8') as fh:
+                got = json.load(fh).get('oauthScopes')
+        except (OSError, ValueError):
+            problems.append('apps-script/%s/appsscript.json: missing or not '
+                            'JSON.' % name)
+            continue
+        if got != want:
+            problems.append('apps-script/%s/appsscript.json: oauthScopes must '
+                            'be exactly %s.' % (name, want))
+
+
 def main():
     problems = []
     for check in (check_hosts, check_scripts, check_styles, check_demo_hatch,
                   check_notice_position, check_sitemap, check_readme,
-                  check_sweep_timeout):
+                  check_sweep_timeout, check_apps_script_scopes):
         check(problems)
 
     if problems:
@@ -488,6 +518,7 @@ def main():
     print('No demo hatch in js/.')
     print('The teams notice is the first element in the body.')
     print('The sweep and the e2e job share one timeout.')
+    print('Both Apps Script projects pin the same two scopes.')
     print(sitemap_note())
     return 0
 

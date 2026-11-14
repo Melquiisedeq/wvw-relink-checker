@@ -1,4 +1,6 @@
 /**
+ * @OnlyCurrentDoc
+ *
  * Per-map WvW kills snapshot, for wvwrelink.com.
  *
  * Columns, no header row:
