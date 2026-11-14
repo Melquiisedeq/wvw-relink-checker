@@ -32,7 +32,7 @@ jobs:
 
   # check-api.py asks whether each route answers; this asks whether every key
   # and type the page reads is still there (gw2-contract.json) and whether the
-  # live answer still has the shape of the recording the page check runs on.
+  # live answer still has the shape of the recording the browser tests run on.
   # Its own job, so the email says "contract" and the fix is to re-record.
   contract:
     runs-on: ubuntu-latest
@@ -99,15 +99,17 @@ jobs:
       - name: wvwrelink.com serves the scripts, stylesheets and images its HTML names; old Pages gone; domain not expiring
         run: python3 scripts/check-site.py
 
-  # wvwrelink.com/api: both Apps Scripts still pushing, the two reads the page
-  # tries first still answering, the entrance still shut. Its own job, so the
-  # email says "worker": the page carries on from the sheets when this fails.
+  # wvwrelink.com/api: the four sources (two Apps Scripts, two Supabase readers)
+  # and the daily cleanup still reporting, the reads the page tries first still
+  # answering, the push routes (/api/ingest/*) still refusing GET and unsigned
+  # POST. Its own job, so the email says "worker": the page carries on from the
+  # sheets when this fails.
   worker:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Both sources pushing, the reads answering, the entrance shut
+      - name: Sources reporting, the reads answering, the push routes shut
         run: python3 scripts/check-worker.py
 
   # The teams notice is meant to appear every month, and the Apps Script
@@ -122,9 +124,10 @@ jobs:
       - name: Every relink produced a notice
         run: python3 scripts/check-notice.py
 
-  # The page draws the objectives and the sectors from the copy in
-  # js/wvw-static.js, asking the game only when it is missing; this asks instead. Its
-  # own job, so the email says "catalogue" and the fix is to rebuild the copy.
+  # The page draws the objectives and the sectors from the
+  # catalogue in js/wvw-static.js, asking the game only when it is missing; this
+  # asks instead. Its own job, so the email says "catalogue" and the fix is to
+  # rebuild js/wvw-static.js.
   catalogue:
     runs-on: ubuntu-latest
     timeout-minutes: 5
