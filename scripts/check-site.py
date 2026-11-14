@@ -8,7 +8,8 @@ missing with nothing in the logs anywhere.
 
 So the list of files is taken from the *served* HTML, not from the repository,
 with the scripts those files load later by a quoted path, and every one of them
-is fetched. A 404 on js/maps.js is the whole maps panel gone, and the only
+is fetched; the images the HTML names get a HEAD (the maps and icons the code
+and the stylesheets ask for are not looked for). A 404 on js/maps.js is the whole maps panel gone, and the only
 place it shows is the console of whoever happened to open the site.
 
 The Content Security Policy is a response header, so it is compared with the
@@ -47,15 +48,16 @@ RDAP = 'https://rdap.verisign.com/com/v1/domain/wvwrelink.com'
 RENEW_WARN_DAYS = 60
 
 
-def fetch(url):
-    """GET and return (status, body, error, headers). Retries first."""
+def fetch(url, method='GET'):
+    """GET (or HEAD) and return (status, body, error, headers). Retries first."""
     last = None
     for attempt in range(ATTEMPTS):
         if attempt:
             time.sleep(PAUSE_SECONDS)
         try:
             req = urllib.request.Request(
-                url, headers={'User-Agent': 'wvwrelink-health-check'})
+                url, method=method,
+                headers={'User-Agent': 'wvwrelink-health-check'})
             with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as res:
                 return (res.status, res.read().decode('utf-8', 'replace'),
                         None, res.headers)
@@ -77,6 +79,14 @@ def status_of(url):
         return exc.code
     except Exception:
         return None
+
+
+def image_paths(html):
+    """Same-origin images the HTML names: <img src>, and <link href> to an image."""
+    found = re.findall(r'<img\b[^>]*\bsrc="([^":]+)"', html, re.I) \
+        + re.findall(r'<link\b[^>]*href="([^":]+\.(?:png|ico|webp|jpe?g|svg))"',
+                     html, re.I)
+    return sorted(set(found))
 
 
 def csp_written():
@@ -165,6 +175,7 @@ def main():
     # file the deploy left behind.
     assets = re.findall(r'<script\b[^>]*\bsrc="([^":]+)"', html, re.I) \
         + re.findall(r'<link\b[^>]*href="([^":]+\.css)"', html, re.I)
+    images = image_paths(html)
 
     if not assets:
         problems.append('No scripts or stylesheets found in the served HTML at '
@@ -187,6 +198,11 @@ def main():
                     seen.add(late)
                     assets.append(late)
 
+    for path in images:
+        status, _, error, _ = fetch(SITE + path.lstrip('/'), 'HEAD')
+        if error:
+            missing.append('%s (%s)' % (path, error))
+
     if missing:
         problems.append('The page asks for %d file(s) the site does not serve: '
                         '%s. The page still loads and whatever was in them '
@@ -195,6 +211,7 @@ def main():
     else:
         notes.append('%-46s all %d served' % ('scripts and stylesheets',
                                               len(assets)))
+        notes.append('%-46s all %d served' % ('images in the HTML', len(images)))
 
     domain_checks(problems, notes)
 
@@ -209,7 +226,7 @@ def main():
         print('%d problem(s).' % len(problems))
         return 1
 
-    print('The site answers, and serves every file its own HTML asks for.')
+    print('The site answers, and serves every script, stylesheet and image its own HTML names.')
     return 0
 
 
