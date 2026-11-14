@@ -25,6 +25,7 @@ Run it by hand any time:  python3 scripts/check-worker.py
 """
 
 import json
+import os
 import re
 import sys
 import time
@@ -34,20 +35,74 @@ import urllib.request
 
 from workflow_text import escape
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def worker_source():
+    with open(os.path.join(ROOT, 'worker', 'index.mjs'), encoding='utf-8') as fh:
+        return fh.read()
+
+
+def worker_seconds(body, name):
+    """A duration const of worker/index.mjs, in seconds.
+
+    A product of numbers (`20 * 60`, `2 * 3600e3`); a name ending in _MS is
+    milliseconds, any other seconds. Anything else stops the check, since a
+    guess at the unit would read a deadline as 0 or as a thousand times too much.
+
+    Read, not copied, so a deadline changed there cannot leave this check
+    asking /api/latest of a Worker that already answers 503 on purpose.
+    """
+    m = re.search(r'const %s\s*=\s*([\d.e]+(?:\s*\*\s*[\d.e]+)*)\s*;'
+                  % re.escape(name), body)
+    try:
+        product = 1.0
+        for factor in m.group(1).split('*'):
+            product *= float(factor)
+    except (AttributeError, ValueError):
+        raise SystemExit('worker/index.mjs no longer has `const %s = a * b;`: '
+                         'update worker_seconds in this file.' % name)
+    return int(product / 1000 if name.endswith('_MS') else product)
+
+
+def worker_reset(body):
+    """RESET of worker/index.mjs as {region: (day, hour)}."""
+    m = re.search(r'const RESET\s*=\s*\{(.*?)\};', body)
+    found = re.findall(r'(\d+):\s*\{\s*day:\s*(\d+),\s*hour:\s*(\d+)\s*\}',
+                       m.group(1)) if m else []
+    if not found:
+        raise SystemExit('worker/index.mjs no longer has RESET as '
+                         '{ n: { day, hour } }: update worker_reset in this file.')
+    return {int(r): (int(d), int(h)) for r, d, h in found}
+
+
+def worker_sources(body):
+    """The names the Worker's entrance accepts, from its SOURCES table."""
+    m = re.search(r'const SOURCES\s*=\s*\{(.*?)\};', body, re.S)
+    names = re.findall(r"'?([\w-]+)'?\s*:\s*'INGEST_", m.group(1)) if m else []
+    if not names:
+        raise SystemExit('worker/index.mjs no longer has SOURCES as '
+                         '{ name: \'INGEST_...\' }: update worker_sources.')
+    return names
+
+
+WORKER = worker_source()
+
 API = 'https://wvwrelink.com/api/'
 GAME_MATCHES = 'https://api.guildwars2.com/v2/wvw/matches?ids=all'
 WORKERS_DEV = 'https://wvwrelink-api.wvwgw2.workers.dev/api/health'
 ATTEMPTS = 3
 PAUSE_SECONDS = 5
 TIMEOUT_SECONDS = 30
-# The Worker's own STALE_KILLS_S and STALE_RELINK_S: kills and relink tick
-# every 5 minutes. Past these the reads already answer 503.
+# Kills and relink tick every 5 minutes; past the Worker's STALE_KILLS_S and
+# STALE_RELINK_S the reads already answer 503.
 # Kills is the exception for the report: kills.gs pushes only when a match's
 # score rose, and the GW2 API can serve frozen data for about an hour, so a
 # silent kills source is reported only past 90 minutes.
 # Between 20 and 90 the Worker's 503 is the honest answer and is not a failure.
-STALE = {'kills': 90 * 60, 'relink': 45 * 60}
-KILLS_WORKER_STALE = 20 * 60
+STALE = {'kills': 90 * 60,
+         'relink': worker_seconds(WORKER, 'STALE_RELINK_S')}
+KILLS_WORKER_STALE = worker_seconds(WORKER, 'STALE_KILLS_S')
 MATCH_RE = re.compile(r'^[12]-[1-9]$')
 # The readers deliver only when something is newer, so a frozen game API
 # silences them with no fault of ours: same 90 minutes as kills.
@@ -59,11 +114,11 @@ CLEANUP_STALE = 26 * 3600
 # minute for the 70 minutes the API can lag; past it, a score the game never
 # had, which only a stolen signing secret could send.
 SCORE_LEAD_MAX = 600 * 70
-# The Worker's STALE_LATEST_S: past it /api/latest answers 503.
-LATEST_WORKER_STALE = 10 * 60
-# When a region's week starts, UTC (day 0 = Sunday): RESET in worker/index.mjs.
-RESET = {1: (6, 2), 2: (5, 18)}
-SKIRMISH_SECONDS = 2 * 3600
+# Past it /api/latest answers 503.
+LATEST_WORKER_STALE = worker_seconds(WORKER, 'STALE_LATEST_S')
+# When a region's week starts, UTC (day 0 = Sunday).
+RESET = worker_reset(WORKER)
+SKIRMISH_SECONDS = worker_seconds(WORKER, 'SKIRMISH_MS')
 
 
 def request(url, method='GET', body=None):
@@ -265,13 +320,17 @@ def check_latest(problems, notes):
         counts[v['by']] = counts.get(v['by'], 0) + 1
     notes.append('summary: %d matches, %s' % (len(data), ', '.join(
         '%s %d' % kv for kv in sorted(counts.items()))))
-    age = now - max(v['at'] for v in data.values())
-    if age > LATEST_STALE:
+    # A tier that left at a relink stays in the summary for up to 2 hours
+    # (LATEST_KEEP_S), so only this week's matches are judged.
+    current = [v['at'] for k, v in data.items()
+               if v['start'] // 1000 >= week_start(int(k[0]), now)]
+    oldest = now - min(current) if current else 0
+    if oldest > LATEST_STALE:
         problems.append(supabase_late(
-            '/api/latest/summary: newest match is %d minutes old (limit %d).'
-            % (age // 60, LATEST_STALE // 60),
+            '/api/latest/summary: the oldest match is %d minutes old (limit %d).'
+            % (oldest // 60, LATEST_STALE // 60),
             'Check the Supabase readers.'))
-    check_copy(age, now, problems, notes)
+    check_copy(now - max(v['at'] for v in data.values()), now, problems, notes)
     game = game_scores()
     if game is None:
         notes.append('game API unreadable: the secret-theft alarm did not run')
@@ -325,12 +384,11 @@ def check_reads(problems, notes):
 
 
 def check_doors(problems, notes):
-    for label, url, method, body, want in (
-            ('GET on the entrance', API + 'ingest/kills', 'GET', None, 405),
-            ('unsigned POST', API + 'ingest/kills', 'POST', b'{}', 401),
-            ('unsigned POST latest-supa-us', API + 'ingest/latest-supa-us', 'POST', b'{}', 401),
-            ('unsigned POST latest-supa-eu', API + 'ingest/latest-supa-eu', 'POST', b'{}', 401),
-            ('workers.dev address', WORKERS_DEV, 'GET', None, 404)):
+    doors = [('GET on the entrance', API + 'ingest/kills', 'GET', None, 405)]
+    doors += [('unsigned POST %s' % name, API + 'ingest/' + name, 'POST', b'{}', 401)
+              for name in worker_sources(WORKER)]
+    for label, url, method, body, want in doors + [
+            ('workers.dev address', WORKERS_DEV, 'GET', None, 404)]:
         status, _ = request(url, method, body)
         if status != want:
             problems.append('%s answered %s, expected %s: %s %s'

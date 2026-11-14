@@ -14,7 +14,7 @@ exactly one cycle apart: the notice fired for the last relink, and the next one
 is about thirty days out. Two cycles apart means a relink went by with no
 notice.
 
-A missed window fails this check for twelve hours after the relink it lost and
+A missed window fails this check for thirty-six hours after the relink it lost and
 then goes quiet - see MISSED_ALARM_SECONDS. Nothing about a month that already
 ended is actionable, and an alarm repeating for four weeks is an alarm that
 teaches you to filter the sender.
@@ -84,8 +84,9 @@ MAX_GAP_SECONDS = 45 * 24 * 60 * 60
 # world-readable.
 HEARTBEAT_CELL = re.compile(r'^"?(\d{1,12})"?$')
 
-# Thirty-six missed ticks. Not tighter: this check runs every six hours, so that
-# schedule, not this number, decides how fast a dead trigger is caught; a
+# Thirty-six missed ticks. Not tighter: this check runs on a six-hour schedule
+# that GitHub need not keep, so the real cadence, not this number, decides
+# how fast a dead trigger is caught; a
 # tighter threshold only fails on Apps Script jitter and ticks Google skips
 # under quota.
 MAX_SILENCE_SECONDS = 3 * 60 * 60
@@ -94,13 +95,14 @@ MAX_SILENCE_SECONDS = 3 * 60 * 60
 #
 # The fault is only visible once the relink has gone by, and by then that
 # month's notice is gone: only telling somebody is left, and repeating does not
-# help. Unbounded it would fail every six hours for about 27 days. Twelve hours
-# is two runs of this workflow, two so that a single run failing for an
-# unrelated reason does not swallow the only notification.
+# help. Unbounded it would fail on every run for about 27 days. Thirty-six hours
+# holds at least two runs of this workflow at its slowest cadence, two so that a
+# single run failing for an unrelated reason does not swallow the only
+# notification.
 #
 # A trigger that is actually dead keeps failing this check through the
 # heartbeat above, which is the part somebody can fix.
-MISSED_ALARM_SECONDS = 12 * 60 * 60
+MISSED_ALARM_SECONDS = 36 * 60 * 60
 
 
 def fetch(url):
