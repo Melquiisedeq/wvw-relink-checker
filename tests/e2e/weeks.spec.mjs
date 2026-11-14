@@ -9,7 +9,7 @@ import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { check, firstTier, iso, later, openMap, recordedJson, matchReads, serveList } from './support/steps.mjs';
-import { MIN, FOCUS } from './support/scenarios.mjs';
+import { MIN, FOCUS, searedWeekTurn } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, timezoneId: 'UTC', locale: 'en-US' });
 
@@ -491,5 +491,75 @@ test.describe('a map opened before the week turned', () => {
     await expect(detail, 'the click opened the objective panel').toBeVisible();
     await expect(detail, 'the panel names this week').toContainText(now.red);
     await expect(detail, 'and not last week\'s').not.toContainText(old.red);
+  });
+});
+
+// The week that turns the borderlands back from the Seared ones (1652, 1654, 1651) to the Desert and Alpine
+// (1099, 96, 95): the read across the turn brings other map ids for the same tabs, so the open tab is drawn
+// again on its new map, and so is every tab clicked after it.
+test.describe('a map open when the week turns its borderlands', () => {
+  test.use({ timeline: searedWeekTurn() });
+  test('the open tab and the next one are drawn on the new maps, with their owners', async ({ page, wvw }) => {
+    await opened(page, wvw);
+    const tier = await firstTier(page);
+    expect(tier.id).toBe(FOCUS);
+    await openMap(page, wvw, tier.button);
+    await page.locator('.info-popover .wvw-tab[data-type="RedHome"]').click();
+    await expect(page.locator('.info-popover .wvw-tab[data-type="RedHome"]'), 'the tab clicked holds the focus').toBeFocused();
+    const marks = page.locator('.info-popover .wvw-plot .wvw-marker');
+    const maps = () => marks.evaluateAll(gs => [...new Set(gs.map(g => g.dataset.obj.split('-')[0]))]);
+    await expect.poll(maps, 'the Seared red borderland before the turn').toEqual(['1652']);
+    await later(page, wvw, wvw.timeline.end + MIN - await wvw.now() + wvw.recordedAt);
+    await expect.poll(maps, 'the open tab redrawn on the Desert borderland').toEqual(['1099']);
+    await expect(page.locator('.info-popover .wvw-tab.is-active'), 'the same tab still open').toHaveAttribute('data-type', 'RedHome');
+    await expect(page.locator('.info-popover .wvw-tab[data-type="RedHome"]'), 'and the focus on it').toBeFocused();
+    await expect(page.locator('.info-popover .wvw-plot .wvw-marker.own-red'), 'the objective Red took').not.toHaveCount(0);
+    await expect(page.locator('.info-popover .wvw-plot [data-obj^="1652-"]'), 'nothing left of the Seared map').toHaveCount(0);
+    await page.locator('.info-popover .wvw-tab[data-type="BlueHome"]').click();
+    await wvw.settle();
+    await expect.poll(maps, 'the next tab on the Alpine borderland').toEqual(['96']);
+    await expect(page.locator('.info-popover .wvw-plot .wvw-marker.own-red'), 'with its new owner').not.toHaveCount(0);
+    // Closed and opened again before the standings refresh: opened on the new maps at once, not opened on the
+    // old ones and then done again.
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.info-popover')).toHaveCount(0);
+    await page.evaluate(() => {
+      window.__openings = 0;
+      new MutationObserver(records => {
+        for (const r of records) for (const n of r.addedNodes) if (n.nodeType === 1 && n.matches('.wvw-tabs')) window.__openings++;
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+    await openMap(page, wvw, (await firstTier(page)).button);
+    await page.locator('.info-popover .wvw-tab[data-type="RedHome"]').click();
+    await expect.poll(maps, 'the reopened map on the Desert borderland').toEqual(['1099']);
+    expect(await page.evaluate(() => window.__openings), 'one opening, not a second on a read').toBe(1);
+  });
+  test('a map closed and opened again by the same button keeps polling when the closed one\'s read lands late', async ({ page, wvw }) => {
+    await opened(page, wvw);
+    const tier = await firstTier(page);
+    await openMap(page, wvw, tier.button);
+    let go;
+    const gate = new Promise(ok => { go = ok; });
+    let held = 0;
+    await page.route(u => u.href === GAME + 'wvw/matches?id=' + FOCUS, async route => {
+      if (++held === 1) await gate;
+      await route.fallback();
+    });
+    await wvw.skew(wvw.timeline.end + MIN - await wvw.now() + wvw.recordedAt);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect.poll(() => held, 'the open map\'s read across the turn, held').toBe(1);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.info-popover')).toHaveCount(0);
+    await (await firstTier(page)).button.click();
+    const marks = page.locator('.info-popover .wvw-plot .wvw-marker');
+    await expect.poll(() => marks.evaluateAll(gs => [...new Set(gs.map(g => g.dataset.obj.split('-')[0]))]), 'the reopened map on the new week')
+      .toEqual(['38']);
+    await expect.poll(() => held, 'the reopened map read for itself').toBeGreaterThan(1);
+    await page.locator('.info-popover .wvw-tab[data-type="RedHome"]').click();
+    await expect.poll(() => marks.evaluateAll(gs => [...new Set(gs.map(g => g.dataset.obj.split('-')[0]))])).toEqual(['1099']);
+    go();
+    await wvw.settle();
+    expect(await page.evaluate(() => [typeof mapCatchUp, typeof mapAhead]), 'the open map still answers the focus and the push')
+      .toEqual(['function', 'function']);
   });
 });
