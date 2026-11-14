@@ -48,6 +48,8 @@ function renderStandingsRegion(gridEl, matches) {
     const label = document.createElement('div');
     label.className = 'standing-match-title';
     const tierText = document.createElement('span');
+    tierText.setAttribute('role', 'heading');
+    tierText.setAttribute('aria-level', '3');
     tierText.textContent = `Tier ${tierNum || '?'}`;
     label.appendChild(tierText);
     label.appendChild(buildTierMapButton(match, regionName, tierNum || '?'));
@@ -296,6 +298,8 @@ function buildWaitingTier(matchId) {
   const label = document.createElement('div');
   label.className = 'standing-match-title';
   const tierText = document.createElement('span');
+  tierText.setAttribute('role', 'heading');
+  tierText.setAttribute('aria-level', '3');
   tierText.textContent = `Tier ${matchId.split('-')[1]}`;
   label.appendChild(tierText);
   box.appendChild(label);
@@ -316,6 +320,8 @@ function buildLineupTier(line) {
   const label = document.createElement('div');
   label.className = 'standing-match-title';
   const tierText = document.createElement('span');
+  tierText.setAttribute('role', 'heading');
+  tierText.setAttribute('aria-level', '3');
   tierText.textContent = `Tier ${line.id.split('-')[1]}`;
   label.appendChild(tierText);
   box.appendChild(label);
@@ -326,28 +332,34 @@ function buildLineupTier(line) {
 // textContent only: guild names are never parsed as markup.
 function renderRow({ originalName, tag, region, server, error }) {
   const tr = document.createElement('tr');
+  tr.setAttribute('role', 'row');
 
   const nameCell = document.createElement('td');
+  nameCell.setAttribute('role', 'cell');
   nameCell.textContent = originalName;
   tr.appendChild(nameCell);
 
   if (error) {
     const tagCell = document.createElement('td');
+    tagCell.setAttribute('role', 'cell');
     tagCell.className = 'muted';
     tagCell.textContent = '—';
     tr.appendChild(tagCell);
 
     const regionCell = document.createElement('td');
+    regionCell.setAttribute('role', 'cell');
     regionCell.className = 'muted';
     regionCell.textContent = '—';
     tr.appendChild(regionCell);
 
     const errorCell = document.createElement('td');
+    errorCell.setAttribute('role', 'cell');
     errorCell.className = 'status-err';
     errorCell.textContent = error;
     tr.appendChild(errorCell);
   } else {
     const tagCell = document.createElement('td');
+    tagCell.setAttribute('role', 'cell');
     const tagSpan = document.createElement('span');
     tagSpan.className = 'tag';
     tagSpan.textContent = `[${tag}]`;
@@ -355,10 +367,12 @@ function renderRow({ originalName, tag, region, server, error }) {
     tr.appendChild(tagCell);
 
     const regionCell = document.createElement('td');
+    regionCell.setAttribute('role', 'cell');
     regionCell.textContent = region;
     tr.appendChild(regionCell);
 
     const serverCell = document.createElement('td');
+    serverCell.setAttribute('role', 'cell');
     // The flex lives on a span inside the cell, never on the cell
     // itself - see .server-cell in css/panels.css for why.
     const serverInner = document.createElement('span');
@@ -505,12 +519,20 @@ function isTiedOnVp(match, color) {
   return COLORS.some((c) => c !== color && Number(match.victory_points?.[c] ?? 0) === vp);
 }
 
+function srOnly(text) {
+  const el = document.createElement('span');
+  el.className = 'sr-only';
+  el.textContent = text;
+  return el;
+}
+
 function buildMovementIndicator(regionCode, tierNum, rank, tied) {
   if (tied) {
-    // Kept empty so the VP column does not shift.
+    // No visible mark, so the VP column does not shift.
     const el = document.createElement('span');
     el.className = 'movement-indicator movement-tied';
     el.title = 'Tied on VP';
+    el.appendChild(srOnly('Tied on VP'));
     return el;
   }
   const maxTier = getMaxTierForRegion(regionCode);
@@ -525,6 +547,7 @@ function buildMovementIndicator(regionCode, tierNum, rank, tied) {
   } else if (dir !== 'unknown') {
     el.textContent = MOVEMENT_SYMBOLS[dir];
   }
+  if (label) el.appendChild(srOnly(label));
   return el;
 }
 

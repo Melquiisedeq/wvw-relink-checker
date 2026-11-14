@@ -98,7 +98,6 @@ html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:1;}
   --teams-notice-letter:.02em;
   --teams-notice-size:.82rem;
 
-  display:none; /* until updateTeamsNotice sets it to block */
   position:sticky;top:0;z-index:40;
   width:100%;
   /* Symmetric on purpose: 46px clears the close button, and asymmetric padding shifts the centred sentence off the middle. */
@@ -111,6 +110,7 @@ html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:1;}
     inset 0 1px 0 rgba(255,255,255,.05),
     0 8px 24px -12px rgba(0,0,0,.9);
 }
+.teams-notice:empty{border-bottom:0;box-shadow:none;}
 .teams-notice-inner{
   display:flex;align-items:center;justify-content:center;gap:13px;
   width:100%;max-width:var(--teams-notice-width);margin:0 auto;

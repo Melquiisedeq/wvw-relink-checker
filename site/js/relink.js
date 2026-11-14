@@ -413,7 +413,6 @@ function buildTeamsNotice(windowId) {
     catch { /* no storage: it comes back on the next load, and that is fine */ }
     unmarkTab();
     teamsNotice.textContent = '';
-    teamsNotice.style.display = 'none';
   });
 
   const inner = document.createElement('div');
@@ -422,7 +421,6 @@ function buildTeamsNotice(windowId) {
 
   teamsNotice.append(inner, close);
   teamsNotice.dataset.window = String(windowId);
-  teamsNotice.style.display = 'block';
 }
 
 // A notice that goes up in a hidden tab marks the tab, until the tab is seen or the notice goes.
@@ -476,7 +474,6 @@ function hideTeamsNotice() {
   unmarkTab();
   if (teamsNotice.dataset.window) delete teamsNotice.dataset.window;
   teamsNotice.textContent = '';
-  teamsNotice.style.display = 'none';
 }
 
 // Drawn only while the banner is rebuilding and the sheet says the table moved
