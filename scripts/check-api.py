@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Does the Guild Wars 2 API still answer in the shape this site reads?
+"""Does the Guild Wars 2 API still answer, in the shape this site reads?
 
-The page has no backend. Every number on it comes from somebody else's API,
-which can change shape without telling anyone - and when it does, the failure
-is not an error message, it is a panel that renders empty or a countdown that
-never appears. Nobody notices until somebody reports it.
+Every number on the site comes from somebody else's API, which can change
+shape without telling anyone - and when it does, the failure is not an error
+message, it is a panel that renders empty or a countdown that never appears.
 
-The routes below were grepped out of js/, not guessed: these are the ones the
-page actually calls. For each, only the fields the page relies on are checked.
-Asserting more would mean breaking on changes that do not affect anything.
+This check owns what check-contract.py does not: that each route answers at
+all, the match lookups the page makes, and the guild search end to end. The
+keys each item must carry are not listed here: they are the required keys of
+gw2-contract.json (one list, what site/js/ reads), and every item is judged. The objectives and sectors are a fallback on the page (it draws
+from the copy in js/wvw-static.js and asks the game only if the copy is
+missing); check-catalogue.py compares them in depth.
 
 Every request gets three attempts, spaced out. The API genuinely flaps around
 reset, and an alarm that fires on a blip is an alarm that gets ignored.
@@ -17,6 +19,7 @@ Run it by hand any time:  python3 scripts/check-api.py
 """
 
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -30,31 +33,53 @@ ATTEMPTS = 3
 PAUSE_SECONDS = 5
 TIMEOUT_SECONDS = 30
 
-# path, what breaks on the page if it goes, and the keys each item must carry.
+CONTRACT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             'gw2-contract.json')
+
+# path, and what breaks on the page if it goes. The path is also the route's
+# name in gw2-contract.json, which says the keys each item must carry.
 # 'regions' means an object keyed by region rather than a list.
 ROUTES = [
     ('/wvw/timers/lockout',
      'the lockout countdown in the banner', 'regions'),
     ('/wvw/timers/teamAssignment',
      'the relink countdown in the banner', 'regions'),
+    ('/wvw/matches', 'the list of match ids the standings start from', None),
     ('/wvw/matches?ids=all',
-     'standings, scores and every tier',
-     ['all_worlds', 'end_time', 'id', 'maps', 'scores', 'skirmishes',
-      'start_time', 'worlds']),
+     'standings, scores and every tier', 'contract'),
     ('/wvw/objectives?ids=all',
-     'the objectives drawn on the maps',
-     ['coord', 'id', 'map_id', 'map_type', 'name', 'type']),
+     'the fallback for the objectives drawn on the maps', 'contract'),
     ('/wvw/upgrades?ids=all',
-     'objective upgrade tiers', ['id', 'tiers']),
+     'objective upgrade tiers', 'contract'),
     ('/emblem/backgrounds?ids=all',
-     'guild emblems on claimed objectives', ['id', 'layers']),
+     'guild emblems on claimed objectives', 'contract'),
     ('/emblem/foregrounds?ids=all',
-     'guild emblems on claimed objectives', ['id', 'layers']),
-    ('/guild/upgrades?ids=38',
-     'the name of a claimed objective upgrade', ['id', 'name', 'type']),
+     'guild emblems on claimed objectives', 'contract'),
+    ('/guild/upgrades?ids=222',
+     'the name of a claimed objective upgrade', 'contract'),
     ('/continents/2/floors/3/regions/7/maps/38/sectors?ids=all',
-     'sector names on the maps', ['bounds', 'coord', 'id', 'name']),
+     'the fallback for the sector names on the maps', 'contract'),
 ]
+
+# Objectives that carry a label_coord but no coord: where a team starts, and
+# the mercenary camps.
+POINTLESS_TYPES = ('Spawn', 'Mercenary')
+
+
+def contract_keys(path):
+    """The keys every item of this route must carry, from the contract."""
+    with open(CONTRACT_FILE) as f:
+        contract = json.load(f)
+    for route in contract['routes']:
+        if route['route'] == path:
+            shape = route['shape']
+            while isinstance(shape, str) and shape.startswith('$'):
+                shape = contract['defs'][shape[1:]]
+            item = shape[0] if isinstance(shape, list) else shape
+            while isinstance(item, str) and item.startswith('$'):
+                item = contract['defs'][item[1:]]
+            return [k for k in item if not k.endswith('?')]
+    raise KeyError(path)
 
 
 def fetch(path):
@@ -84,7 +109,7 @@ def check_routes(problems, notes):
             continue
 
         if expected == 'regions':
-            missing = [r for r in ('na', 'eu') if r not in data]
+            missing = [r for r in contract_keys(path) if r not in data]
             if missing:
                 problems.append('%s no longer carries %s. On the page this is '
                                 '%s.' % (path, ' and '.join(missing), purpose))
@@ -99,12 +124,49 @@ def check_routes(problems, notes):
                                else type(data).__name__, purpose))
             continue
 
-        missing = [k for k in expected if k not in data[0]]
-        if missing:
+        keys = contract_keys(path) if expected == 'contract' else []
+        bare = [i for i in data if not isinstance(i, dict)] if keys else []
+        short = {}
+        for item in data:
+            for k in keys:
+                if isinstance(item, dict) and k not in item:
+                    short[k] = short.get(k, 0) + 1
+        if bare or short:
             problems.append('%s items no longer carry %s. On the page this is '
-                            '%s.' % (path, ', '.join(missing), purpose))
+                            '%s.' % (path, ', '.join(
+                                '%s (%d of %d)' % (k, n, len(data))
+                                for k, n in sorted(short.items()))
+                                or 'objects', purpose))
         else:
             notes.append('%-58s %d items' % (path, len(data)))
+
+
+def positionless(objectives, matches):
+    """Ids of objectives on the maps in play that carry no coord or label_coord."""
+    in_play = {m['id'] for match in matches if isinstance(match, dict)
+               for m in (match.get('maps') or [])
+               if isinstance(m, dict) and isinstance(m.get('id'), int)}
+    return sorted(str(o.get('id')) for o in objectives
+                  if isinstance(o, dict) and o.get('map_id') in in_play
+                  and o.get('type') not in POINTLESS_TYPES
+                  and not (o.get('coord') or o.get('label_coord')))
+
+
+def check_objective_positions(problems, notes):
+    """Every objective on the maps in play can be placed."""
+    matches, error = fetch('/wvw/matches?ids=all')
+    objectives, error2 = fetch('/wvw/objectives?ids=all')
+    if error or error2 or not isinstance(matches, list) \
+            or not isinstance(objectives, list):
+        return  # the routes above already say which one did not answer
+    lost = positionless(objectives, matches)
+    if lost:
+        problems.append('/wvw/objectives?ids=all: %d objective(s) on the maps '
+                        'in play carry no coord (%s). On the page this is the '
+                        'fallback for placing them.'
+                        % (len(lost), ', '.join(lost[:5])))
+    else:
+        notes.append('%-58s all have a coord or label_coord' % 'objectives in play')
 
 
 def check_match_detail(problems, notes):
@@ -158,6 +220,19 @@ def check_match_detail(problems, notes):
 
     notes.append('%-58s %d matches, %d team ids'
                  % ('/wvw/matches detail', len(data), total_team_ids))
+
+    teams = [w for match in data for side in
+             (match.get('all_worlds') or {}).values() for w in side
+             if str(w).isdigit() and int(w) >= 10000]
+    if teams:
+        one, error = fetch('/wvw/matches?world=%s' % teams[0])
+        if error:
+            problems.append('/wvw/matches?world=%s did not answer (%s). This '
+                            'is how a team finds its own match.'
+                            % (teams[0], error))
+        elif not isinstance(one, dict) or 'id' not in one:
+            problems.append('/wvw/matches?world=%s no longer returns a match '
+                            'with an id.' % teams[0])
 
 
 def check_guild_pipeline(problems, notes):
@@ -230,6 +305,7 @@ def check_guild_pipeline(problems, notes):
 def main():
     problems, notes = [], []
     check_routes(problems, notes)
+    check_objective_positions(problems, notes)
     check_match_detail(problems, notes)
     check_guild_pipeline(problems, notes)
 
