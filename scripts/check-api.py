@@ -194,16 +194,20 @@ def check_match_detail(problems, notes):
         where = 'match %s' % match.get('id', '?')
         maps = match.get('maps') or [{}]
         skirmishes = match.get('skirmishes') or [{}]
-        for part, value, expected in (
-                ('maps[0]', maps[0],
-                 ['id', 'kills', 'deaths', 'objectives', 'scores', 'type']),
-                ('skirmishes[0]', skirmishes[0],
-                 ['id', 'map_scores', 'scores']),
-                ('scores', match.get('scores') or {},
-                 ['blue', 'green', 'red']),
-                ('all_worlds', match.get('all_worlds') or {},
-                 ['blue', 'green', 'red'])):
-            missing = [k for k in expected if k not in value]
+        lists = (('maps', maps, ['id', 'kills', 'deaths', 'objectives',
+                                 'scores', 'type']),
+                 ('skirmishes', skirmishes, ['id', 'map_scores', 'scores']))
+        for kind, items, expected in lists:
+            for key in expected:
+                gone = [i for i, v in enumerate(items) if key not in v]
+                if gone:
+                    problems.append(
+                        '/wvw/matches %s %s no longer carry %s (%d of %d, '
+                        'from %s[%d]).' % (where, kind, key, len(gone),
+                                           len(items), kind, gone[0]))
+        for part, value in (('scores', match.get('scores') or {}),
+                            ('all_worlds', match.get('all_worlds') or {})):
+            missing = [k for k in ('blue', 'green', 'red') if k not in value]
             if missing:
                 problems.append('/wvw/matches %s %s no longer carries %s.'
                                 % (where, part, ', '.join(missing)))

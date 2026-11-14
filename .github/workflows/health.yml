@@ -4,14 +4,14 @@
 # renamed column reads the wrong column, a stopped Apps Script trigger just
 # stops.
 #
-# So this asks, every six hours at most, whether the world outside is still the shape
+# So this asks, on a six-hour schedule, whether the world outside is still the shape
 # the code assumes: the counterpart to checks.yml. A job per kind of thing, so
 # the failure email already names which of them moved.
 name: Health
 
 on:
   schedule:
-    # Every six hours, at :43. Not on the hour: scheduled runs bunch up there
+    # Scheduled every six hours, at :43. Not on the hour: scheduled runs bunch up there
     # and get delayed, and nothing here is urgent to the minute.
     # GitHub may delay or drop a scheduled run: nothing may count on four a day.
     - cron: '43 */6 * * *'
@@ -96,7 +96,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: wvwrelink.com serves every file it asks for; old Pages gone; domain not expiring
+      - name: wvwrelink.com serves the scripts, stylesheets and images its HTML names; old Pages gone; domain not expiring
         run: python3 scripts/check-site.py
 
   # wvwrelink.com/api: both Apps Scripts still pushing, the two reads the page

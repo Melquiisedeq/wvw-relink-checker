@@ -21,6 +21,7 @@ MATCH = {'id': '1-1', 'scores': COLORS, 'start_time': 'x', 'end_time': 'x', 'wor
                    'scores': COLORS, 'type': 'Center'}],
          'all_worlds': {'red': [11001], 'blue': [11002], 'green': [11003]},
          'skirmishes': [{'id': 1, 'map_scores': [], 'scores': COLORS}]}
+MATCH.update(live.get('match') or {})
 ITEM = {k: 1 for k in ('id', 'name', 'description', 'icon', 'tiers', 'layers', 'bounds', 'coord', 'type')}
 def answer(path):
     if path.startswith('/wvw/timers'):
@@ -52,9 +53,9 @@ print(json.dumps({'code': code, 'log': out.getvalue()}))
 const obj = (id, extra) => ({ id, name: id, type: 'Camp', map_type: 'Center', map_id: 7, ...extra });
 const spawn = { ...obj('7-1'), type: 'Spawn' };
 
-function run(objectives) {
+function run(objectives, match) {
   return JSON.parse(execFileSync('python3', ['-I', '-c', PROGRAM, SCRIPT], {
-    input: JSON.stringify({ objectives }), encoding: 'utf8',
+    input: JSON.stringify({ objectives, match }), encoding: 'utf8',
   }));
 }
 
@@ -78,6 +79,37 @@ test('a later objective missing a key the contract requires: red', () => {
   const r = run([obj('7-2', { coord: [1, 2, 3] }), { ...obj('7-3', { coord: [1, 2, 3] }), map_type: undefined }]);
   assert.equal(r.code, 1, r.log);
   assert.match(r.log, /map_type \(1 of 2\)/);
+});
+
+const COLORS = { red: 1, blue: 1, green: 1 };
+const goodMap = { id: 7, kills: COLORS, deaths: COLORS, objectives: [], scores: COLORS, type: 'Center' };
+const goodRound = { id: 1, map_scores: [], scores: COLORS };
+
+test('the second map of a match lacking a key: red', () => {
+  const { deaths, ...bad } = goodMap;
+  const r = run([obj('7-2', { coord: [1, 2, 3] })], { maps: [goodMap, bad] });
+  assert.equal(r.code, 1, r.log);
+  assert.match(r.log, /maps no longer carry deaths \(1 of 2, from maps\[1\]\)/);
+});
+
+test('the second skirmish of a match lacking a key: red', () => {
+  const { scores, ...bad } = goodRound;
+  const r = run([obj('7-2', { coord: [1, 2, 3] })], { skirmishes: [goodRound, bad] });
+  assert.equal(r.code, 1, r.log);
+  assert.match(r.log, /skirmishes no longer carry scores \(1 of 2, from skirmishes\[1\]\)/);
+});
+
+test('a key missing from every skirmish is one line, not one per skirmish', () => {
+  const { scores, ...bad } = goodRound;
+  const r = run([obj('7-2', { coord: [1, 2, 3] })], { skirmishes: Array(50).fill(bad) });
+  assert.equal(r.code, 1, r.log);
+  assert.match(r.log, /\(50 of 50, from skirmishes\[0\]\)/);
+  assert.equal(r.log.split('\n').filter((l) => l.startsWith('::error::')).length, 1, r.log);
+});
+
+test('a match with several whole maps and skirmishes: green', () => {
+  const r = run([obj('7-2', { coord: [1, 2, 3] })], { maps: [goodMap, goodMap], skirmishes: [goodRound, goodRound] });
+  assert.equal(r.code, 0, r.log);
 });
 
 test('the contract gives the required keys: no optional ones, and no coord for objectives', () => {
