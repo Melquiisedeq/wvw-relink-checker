@@ -393,7 +393,7 @@ function renderGuildsPopoverContent(popover, teamName, data, triggerEl) {
     const empty = document.createElement('p');
     empty.className = 'hint';
     empty.style.margin = '0';
-    empty.textContent = 'No guilds listed for this server in the community sheet yet.';
+    empty.textContent = 'No guilds listed for this team in the community sheet yet.';
     body.appendChild(empty);
   } else {
     if (hasAlliances) {
