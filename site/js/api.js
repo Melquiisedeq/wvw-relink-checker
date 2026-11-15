@@ -106,7 +106,7 @@ async function getWvwMaps() {
 
 async function resolveGuildId(rawName) {
   const name = rawName.trim();
-  if (GUID_RE.test(name)) return name; // user already pasted a GUID
+  if (GUID_RE.test(name)) return name.toUpperCase(); // a pasted GUID; the keys of wvw/guilds are capitals
 
   const url = `${API_BASE}/guild/search?name=${encodeURIComponent(name)}`;
   const ids = await fetchJson(url); // array of GUIDs (usually 0 or 1)

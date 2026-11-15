@@ -25,6 +25,16 @@ export const playing = (min = 40, id) => opened(id).advance(min);
 // The same, the three borderlands as the Seared Borderlands (1652, 1654, 1651).
 export const seared = (min = 40, id) => gw2.match(id ?? FOCUS).seared().advance(12).pageOpens().advance(min);
 
+// The Seared Borderlands' last week turning over to the Desert and Alpine ones:
+// the page opens on 1652, 1654 and 1651, the week turns, and in the `min`
+// minutes after it Red takes a camp, tower or keep on each home map (1099, 96,
+// 95), so the new borderlands have owners to draw.
+export const searedWeekTurn = (min = 8, id = FOCUS) => {
+  const homes = recordedJson('https://api.guildwars2.com/v2/wvw/matches?id=' + id).maps.filter(m => m.type.endsWith('Home'))
+    .map(m => m.objectives.find(o => ['Camp', 'Tower', 'Keep'].includes(o.type)).id);
+  return gw2.match(id).seared({ untilWeek: true }).advance(12).pageOpens().newWeek().advance(min, { flips: homes });
+};
+
 // The same, the game moving each 30 s: each version of our copy is under 30 s
 // old whenever it is read.
 export const playingHalfMinutes = (min = 40, id) => opened(id).advance(min, { every: 0.5 });
@@ -249,7 +259,8 @@ export async function livePush(page, wvw) {
       open.delete(ws);
       ws.close({ code: 1008, reason: 'policy violation' });
     });
-    const known = await wvw.told();
+    // No round trip to the page first: a read of the page's own could hold the version before the greeting.
+    const known = wvw.toldNow();
     if (known) { ws.send(JSON.stringify(known)); synced = Math.max(synced, newestOf(known)); }
     if (push.hangUp) { open.delete(ws); ws.close({ code: 1011, reason: 'internal error' }); }
   });

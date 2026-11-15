@@ -1463,3 +1463,12 @@ test('sideFigures: a figure of another week or another skirmish never floats a r
   assert.deepEqual(deltas(body(wk, 9, 1, 55)), [15], 'inside one skirmish the rise shows');
   assert.deepEqual(deltas(body(wk, 12, 2, 3)), [3], 'a new skirmish zeroes: the week total rises, the skirmish figure does not');
 });
+
+test('resolveGuildId: a pasted GUID comes back in capitals, the case of the keys of wvw/guilds (js/api.js)', async () => {
+  const p = loadPage(recordedAt);
+  const id = '4BBB52AA-D768-4FC6-8EDE-C299F2822F0F';
+  assert.equal(await p.run(`resolveGuildId('  ${id.toLowerCase()} ')`), id);
+  assert.equal(await p.run(`resolveGuildId('${id}')`), id);
+  const link = await p.run(`resolveGuildId('${id.toLowerCase()}').then((g) => findLink(g, { na: { '${id}': 1001 }, eu: {} }))`);
+  assert.equal(link.teamId, 1001);
+});
