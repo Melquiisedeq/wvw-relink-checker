@@ -1442,3 +1442,12 @@ test('getStatLeaders: a side with no deaths has no K/D and cannot lead it (js/pa
   p.ctx.__m.deaths = { red: 0, blue: 0, green: 0 };
   assert.equal(p.run('getStatLeaders(__m)').kd, null, 'nobody has a ratio, nobody leads');
 });
+
+test('resolveGuildId: a pasted GUID comes back in capitals, the case of the keys of wvw/guilds (js/api.js)', async () => {
+  const p = loadPage(recordedAt);
+  const id = '4BBB52AA-D768-4FC6-8EDE-C299F2822F0F';
+  assert.equal(await p.run(`resolveGuildId('  ${id.toLowerCase()} ')`), id);
+  assert.equal(await p.run(`resolveGuildId('${id}')`), id);
+  const link = await p.run(`resolveGuildId('${id.toLowerCase()}').then((g) => findLink(g, { na: { '${id}': 1001 }, eu: {} }))`);
+  assert.equal(link.teamId, 1001);
+});
