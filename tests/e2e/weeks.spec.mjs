@@ -110,6 +110,7 @@ test.describe('partial lists', () => {
     const w = r.cards[0];
     expect({ sides: w.sides, map: w.map, title: w.title, waiting: w.waiting.join('|') })
       .toEqual({ sides: 0, map: false, title: 'Tier 1', waiting: 'Waiting on the API' });
+    await expect(page.locator('#standingsGridNA > [data-match-id="1-1"]').getByRole('heading', { level: 3 }), 'the waiting tier is a heading').toHaveText('Tier 1');
   });
 
   // A tier on last week (the list from both weeks) is read again by id,
@@ -130,6 +131,7 @@ test.describe('partial lists', () => {
     expect({ stale: c2.stale, sides: c2.sides, map: c2.map, waiting: c2.waiting.join('|'), moved: c2.moved.length })
       .toEqual({ stale: 3, sides: 0, map: false, waiting: "This week's line-up · scores not in yet", moved: 0 });
     expect([...line].sort()).toEqual([...newLine].sort());
+    await expect(page.locator('#standingsGridNA > [data-match-id="1-2"]').getByRole('heading', { level: 3 }), 'the line-up tier is a heading').toHaveText('Tier 2');
   });
 
   test('two tiers on last week stay old, each marked with the tier its shared team plays now', async ({ page, wvw }) => {

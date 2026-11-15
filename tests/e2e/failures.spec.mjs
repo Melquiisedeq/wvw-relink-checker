@@ -313,7 +313,7 @@ test.describe('one region of the fallback', () => {
     await expect(page.locator('#standingsStatusEU')).toHaveText("Couldn't load EU standings.");
     await wvw.settle();
     await expect(page.locator('.retry-btn'), 'nothing to retry: the answer was empty').toHaveCount(0);
-    await expect(alertOf(page, 'EU')).toBeEmpty();
+    await expect(alertOf(page, 'EU'), 'spoken in the alert, with no button').toHaveText("Couldn't load EU standings.");
     await expect(page.locator(EU)).toHaveCount(0);
     await expect(page.locator('#standingsStatusNA')).toContainText('Synced');
   });

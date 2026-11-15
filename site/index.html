@@ -117,7 +117,7 @@
      painted. Moved down under the scenery it would pin only once you had scrolled
      past where it lives; inside anything with overflow set it would not pin at
      all. Both failures are silent, so check-structure.py asserts the position.
-     Empty and display:none except between the new teams being published and the
+     Empty and zero-height except between the new teams being published and the
      relink landing.
 
      role="status" makes a screen reader read the bar out when it appears, whole
@@ -202,16 +202,16 @@ One More Guild Name"></textarea>
     <p class="muted">Paste some guild names above and hit Check. Results show up here.</p>
   </div>
   <div class="card" id="resultCard">
-    <table>
-      <thead>
-        <tr>
-          <th>Guild</th>
-          <th>Tag</th>
-          <th>Region</th>
-          <th>Team</th>
+    <table role="table">
+      <thead role="rowgroup">
+        <tr role="row">
+          <th role="columnheader">Guild</th>
+          <th role="columnheader">Tag</th>
+          <th role="columnheader">Region</th>
+          <th role="columnheader">Team</th>
         </tr>
       </thead>
-      <tbody id="resultBody"></tbody>
+      <tbody id="resultBody" role="rowgroup"></tbody>
     </table>
     <div class="row" id="copyRow">
       <button id="copyChatBtn" type="button">Copy for chat</button>
@@ -245,7 +245,7 @@ One More Guild Name"></textarea>
           </svg>
         </a>
       </span>
-      <span id="standingsStatusNA" class="hint standings-status" role="status" aria-live="polite"><span class="spinner"></span>Loading…</span>
+      <span id="standingsStatusNA" class="hint standings-status"><span class="spinner"></span>Loading…</span>
     </div>
     <div class="standings-grid" id="standingsGridNA"></div>
   </div>
@@ -273,7 +273,7 @@ One More Guild Name"></textarea>
           </svg>
         </a>
       </span>
-      <span id="standingsStatusEU" class="hint standings-status" role="status" aria-live="polite"><span class="spinner"></span>Loading…</span>
+      <span id="standingsStatusEU" class="hint standings-status"><span class="spinner"></span>Loading…</span>
     </div>
     <div class="standings-grid" id="standingsGridEU"></div>
   </div>

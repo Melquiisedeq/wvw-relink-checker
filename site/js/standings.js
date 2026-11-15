@@ -236,7 +236,17 @@ function setStandingsStatus(el, synced, text) {
     return;
   }
   el.textContent = '';
-  if (!synced) { el.textContent = text; return; }
+  if (!synced) {
+    // The status line is silent; the failure is spoken by the alert beside it.
+    const seen = document.createElement('span');
+    seen.setAttribute('aria-hidden', 'true');
+    seen.textContent = text;
+    el.appendChild(seen);
+    const alert = retryAlertOf(el);
+    alert.classList.add('standings-alert-quiet');
+    alert.textContent = text;
+    return;
+  }
   const dot = document.createElement('span');
   dot.className = 'live-dot';
   dot.title = 'Checks for new standings every half minute or so while you use the page';
@@ -422,7 +432,9 @@ function retryAlertOf(statusEl) {
   return statusEl.closest('.standings-card').querySelector('.standings-alert');
 }
 function clearRetryAlert(statusEl) {
-  retryAlertOf(statusEl).textContent = '';
+  const el = retryAlertOf(statusEl);
+  el.classList.remove('standings-alert-quiet');
+  el.textContent = '';
 }
 
 function paintRetryStatus(statusEl, spoken, visible, busy, calm) {
@@ -430,6 +442,8 @@ function paintRetryStatus(statusEl, spoken, visible, busy, calm) {
   statusEl.textContent = '';
   let btn = el.querySelector('.retry-btn');
   if (!btn) {
+    el.classList.remove('standings-alert-quiet');
+    el.textContent = '';
     const msg = document.createElement('span');
     const spin = document.createElement('span');
     spin.className = 'spinner';
@@ -910,6 +924,10 @@ function renderStandingSide(match, color, rankByColor, leaders, leaderScore) {
 
   const dot = document.createElement('span');
   dot.className = `dot dot-${color}`;
+  const side = document.createElement('span');
+  side.className = 'sr-only';
+  side.textContent = `${color[0].toUpperCase()}${color.slice(1)} side`;
+  dot.appendChild(side);
 
   const name = document.createElement('span');
   name.className = 'standing-side-name';
