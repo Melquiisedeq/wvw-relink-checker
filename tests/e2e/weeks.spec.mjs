@@ -305,7 +305,7 @@ test('a team whose match is not on the API: the run ends, grey dot, note, and th
   const all = recordedJson(ALL);
   const live = all.find(m => m.id.startsWith('1-'));
   const T = Number(live.all_worlds.red.find(n => n >= 10000)), MISSING = 99999;
-  const [G1, G2] = ['aaaaaaaa-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000002'];
+  const [G1, G2] = ['AAAAAAAA-0000-4000-8000-000000000001', 'AAAAAAAA-0000-4000-8000-000000000002'];
   await opened(page, wvw);
   await answer(page, GAME + 'wvw/guilds/na', { [G1]: T, [G2]: MISSING });
   await answer(page, `${GAME}guild/${G1}`, { id: G1, name: 'Placed Guild', tag: 'PLC' });
