@@ -25,10 +25,15 @@ async function run() {
     return;
   }
 
+  // A script that did not download: said before anything is started, so that nothing is left running.
+  if (missingParts().length) {
+    statusMsg.classList.add('status-err');
+    statusMsg.textContent = RELOAD_TEXT;
+    return;
+  }
+
   runBtn.disabled = true;
   runBtn.innerHTML = '<span class="btn-pips"><span></span><span></span><span></span></span>';
-  sparkFromButton();
-  startCharge();
   statusMsg.innerHTML = '<span class="spinner"></span>Talking to the GW2 API…';
   // A popover opened from a row holds the old run's data; its trigger goes with the rows.
   closePopover();
@@ -58,6 +63,8 @@ async function run() {
   // finish() runs: otherwise the button stays disabled, the trebuchet
   // hauled back and followSling's frame loop alive.
   try {
+    sparkFromButton();
+    startCharge();
     let maps;
     try {
       maps = await getWvwMaps();

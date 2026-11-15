@@ -1,6 +1,14 @@
 'use strict';
 // Boot (loads last): the first load, the background refreshes, the ember field, and idling when nobody is looking.
 
+// The names of trebuchet.js and maps-early.js the page calls: a file that did not download leaves its names missing.
+const RELOAD_TEXT = "Part of the page didn't load. Reload to fix it.";
+const MAPS_EARLY_NAMES = [typeof recordFightSamples, typeof primeMapBadges];
+function missingParts() {
+  return [typeof sparkFromButton, typeof startCharge, typeof playFinale, typeof onPointerDown, ...MAPS_EARLY_NAMES]
+    .filter((t) => t !== 'function');
+}
+
 // Initial load, then keep both data sets fresh in the background for as
 // long as the tab stays open (see STANDINGS_REFRESH_MS / TIMERS_REFRESH_MS).
 placeRails();
@@ -9,11 +17,21 @@ document.querySelectorAll('.rail-swap').forEach((btn) => {
 });
 showStandingsSkeleton(standingsGridNA);
 showStandingsSkeleton(standingsGridEU);
-refreshStandings();
+const standingsParts = MAPS_EARLY_NAMES.every((t) => t === 'function');
+if (!standingsParts) {
+  setStandingsStatus(standingsStatusNA, false, RELOAD_TEXT);
+  setStandingsStatus(standingsStatusEU, false, RELOAD_TEXT);
+  clearSkeleton(standingsGridNA);
+  clearSkeleton(standingsGridEU);
+} else {
+  refreshStandings();
+}
 fetchTimers();
 setInterval(updateRelinkBanner, 60000); // countdown display, and the pace of the teams notice's reads
-startPeeking(); // /api ahead of the board: load it now (js/standings.js)
-standingsTick = schedulePeriodicRefresh(refreshStandings, STANDINGS_REFRESH_MS);
+if (standingsParts) {
+  startPeeking(); // /api ahead of the board: load it now (js/standings.js)
+  standingsTick = schedulePeriodicRefresh(refreshStandings, STANDINGS_REFRESH_MS);
+}
 schedulePeriodicRefresh(fetchTimers, TIMERS_REFRESH_MS);
 
 // Embers on one canvas. The timing curves below are the CSS keyframes written out by hand,
@@ -417,4 +435,4 @@ runBtn.addEventListener('click', run);
 guildInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.ctrlKey && !runBtn.disabled) run();
 });
-document.addEventListener('pointerdown', onPointerDown, { passive: true });
+if (typeof onPointerDown === 'function') document.addEventListener('pointerdown', onPointerDown, { passive: true });
