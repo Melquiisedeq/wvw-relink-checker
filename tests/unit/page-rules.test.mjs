@@ -1443,6 +1443,27 @@ test('getStatLeaders: a side with no deaths has no K/D and cannot lead it (js/pa
   assert.equal(p.run('getStatLeaders(__m)').kd, null, 'nobody has a ratio, nobody leads');
 });
 
+test('sideFigures: a figure of another week or another skirmish never floats a rise (js/standings.js)', () => {
+  const p = fresh();
+  const body = (start, vp, skirmishId, sk) => ({
+    id: '1-1', start_time: start, end_time: '2026-11-21T02:00:00Z',
+    victory_points: { red: vp, blue: 1, green: 1 }, kills: {}, deaths: {},
+    skirmishes: Array.from({ length: skirmishId }, (_, i) => ({
+      id: i + 1, scores: { red: i + 1 === skirmishId ? sk : 7, blue: 1, green: 1 } })),
+    all_worlds: { red: [11001], blue: [11002], green: [11003] },
+  });
+  const deltas = (m) => {
+    p.ctx.__m = m;
+    return JSON.parse(p.run(`JSON.stringify((() => { const f = sideFigures(__m, 'red', 1); const el = {}; const n = pendingFlashes.length;
+      queueSideFlashes(f, el, el); return pendingFlashes.slice(n).map((x) => x[1]); })())`));
+  };
+  const wk = '2026-11-14T02:00:00Z';
+  deltas(body('2026-11-07T02:00:00Z', 152, 5, 310));
+  assert.deepEqual(deltas(body(wk, 9, 1, 40)), [], 'last week\'s closing figures are not compared');
+  assert.deepEqual(deltas(body(wk, 9, 1, 55)), [15], 'inside one skirmish the rise shows');
+  assert.deepEqual(deltas(body(wk, 12, 2, 3)), [3], 'a new skirmish zeroes: the week total rises, the skirmish figure does not');
+});
+
 test('resolveGuildId: a pasted GUID comes back in capitals, the case of the keys of wvw/guilds (js/api.js)', async () => {
   const p = loadPage(recordedAt);
   const id = '4BBB52AA-D768-4FC6-8EDE-C299F2822F0F';
