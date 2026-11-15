@@ -12,6 +12,10 @@ import { signHeaders } from './signed.mjs';
 const KILLS_KEY = 'k'.repeat(128);
 const RELINK_KEY = 'r'.repeat(128);
 const MATCHES = ['1-1', '1-2', '1-3', '1-4', '1-5', '2-1', '2-2', '2-3', '2-4'];
+// The weeks running at setup()'s clock (Wednesday 12:00Z): NA 106 hours in, skirmish 54 running; EU 114.
+const NA_WEEK = Date.parse('2026-09-26T02:00:00Z');
+const EU_WEEK = Date.parse('2026-09-25T18:00:00Z');
+const weekOf = (match) => (match[0] === '1' ? NA_WEEK : EU_WEEK);
 
 // A Worker with its database, a clock the test moves, and the Apps Scripts'
 // way of signing. Every message is signed at a later second than the one
@@ -55,7 +59,8 @@ function setup(opts = {}) {
       const r = await call(new Request('https://wvwrelink.com' + path, { method }));
       return { status: r.status, body: await r.text(), headers: r.headers };
     },
-    rows(at) { return MATCHES.map((m, i) => [at, m, 1000 + i, 2000, 3000, 4000, at - 86400e3]); },
+    // As kills.gs sends them: the match's week, and a score that rises with the row's time, under the week's ceiling.
+    rows(at) { return MATCHES.map((m, i) => [at, m, 1000 + i, 2000, 3000, 4000, weekOf(m), Math.floor((at - weekOf(m)) / 100)]); },
     relink(extra = {}) {
       return { beat: Math.floor(clock / 1000), window: 1790992800, published: 0, fails: 0, ...extra };
     }
@@ -85,9 +90,9 @@ test('the entrance refuses what is not a signed, fresh, well-formed message', as
     ['six minutes old', () => w.post('kills', good, { t: Math.floor(w.now / 1000) - 360 }), 401],
     ['over 64 KB', () => w.post('kills', JSON.stringify({ rows: [], pad: 'x'.repeat(65 * 1024) })), 413],
     ['not JSON', () => w.post('kills', '{rows:'), 400],
-    ['a match id that cannot exist', () => w.post('kills', { rows: [[w.now, '9-9', 1, 2, 3, 4, w.now - 1e6]] }), 422],
-    ['markup as a match id', () => w.post('kills', { rows: [[w.now, '<b>', 1, 2, 3, 4, w.now - 1e6]] }), 422],
-    ['negative kills', () => w.post('kills', { rows: [[w.now, '1-1', -5, 2, 3, 4, w.now - 1e6]] }), 422],
+    ['a match id that cannot exist', () => w.post('kills', { rows: [[w.now, '9-9', 1, 2, 3, 4, NA_WEEK, 100]] }), 422],
+    ['markup as a match id', () => w.post('kills', { rows: [[w.now, '<b>', 1, 2, 3, 4, NA_WEEK, 100]] }), 422],
+    ['negative kills', () => w.post('kills', { rows: [[w.now, '1-1', -5, 2, 3, 4, NA_WEEK, 100]] }), 422],
     ['a row from two hours ago', () => w.post('kills', { rows: w.rows(w.now - 2 * 3600e3) }), 422],
     ['301 rows', () => w.post('kills', { rows: Array(301).fill(w.rows(w.now)[0]) }), 422],
     ['a relink beat from yesterday', () => w.post('relink', w.relink({ beat: Math.floor(w.now / 1000) - 86400 })), 422],
@@ -106,6 +111,44 @@ test('a message signed at or before the last accepted one is a replay', async ()
   assert.equal(await w.post('kills', body, { t }), 200);
   assert.equal(await w.post('kills', body, { t }), 409);
   assert.equal(await w.post('kills', body, { t: t - 1 }), 409);
+});
+
+// killsInsert lets the row furthest along win, so a row ahead of the truth would keep every honest
+// row of its match out: none gets in on a week that never began, a score its week cannot hold, or no score.
+test('kills: a row no real week can hold is refused and says why, and the match goes on taking rows', async () => {
+  const w = setup();
+  const held = () => w.sql.prepare("SELECT count(*) n FROM kills WHERE match = '1-1'").get().n;
+  const lines = [];
+  const log = console.log;
+  console.log = (x) => lines.push(JSON.parse(x));
+  try {
+    assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 100, 200, 300, 400, NA_WEEK, 100000]] }), 200);
+    w.advance(60e3);
+    const cap = 1000 * (w.now - NA_WEEK) / 60e3 + 2000;
+    const ahead = [
+      ['start', [w.now, '1-1', 1e7, 1e7, 1e7, 1e7, NA_WEEK + 7 * 86400e3, 0]],
+      ['start not a reset', [w.now, '1-1', 1e7, 1e7, 1e7, 1e7, w.now, 0]],
+      ['start not a reset', [w.now, '1-1', 1e7, 1e7, 1e7, 1e7, NA_WEEK + 3600e3, 0]],
+      // Past the ceiling by the Worker's clock; the row's own time, 60 s ahead, would allow it.
+      ['score for the week', [w.now + 60e3, '1-1', 1e7, 1e7, 1e7, 1e7, NA_WEEK, cap + 1]],
+      ['row shape', [w.now, '1-1', 1e7, 1e7, 1e7, 1e7, NA_WEEK]]
+    ];
+    for (const [why, row] of ahead) {
+      lines.length = 0;
+      assert.equal(await w.post('kills', { rows: [row] }), 422, why);
+      assert.deepEqual(lines, [{ source: 'kills', refused: 422, why }]);
+    }
+    assert.equal(held(), 1, 'nothing refused was written');
+    for (let i = 1; i <= 3; i++) {
+      w.advance(300e3);
+      assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 100 + i, 200, 300, 400, NA_WEEK, 100000 + 500 * i]] }), 200);
+      assert.equal(held(), 1 + i, `honest row ${i} after them`);
+    }
+  } finally {
+    console.log = log;
+  }
+  const served = JSON.parse((await w.get('/api/kills')).body).rows.filter((r) => r[1] === '1-1');
+  assert.deepEqual(served.map((r) => r[2]), [100, 101, 102, 103]);
 });
 
 test('a chunked body with no length is cut off, not held', async () => {
@@ -163,12 +206,11 @@ test('/api/kills gives the last 30 minutes, one row of D1, as the page reads it'
   assert.equal((await w.get('/api/kills')).status, 503, 'nothing pushed yet');
   // Fourteen days in the table, a tick every five minutes, the kills rising on each.
   const ins = w.sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,?,?,?,?,?)');
-  // One start for all of them, as in one week of a match.
-  const start = w.now - 86400e3;
+  // One start for all of a match's rows, as in one week of it.
   for (let i = 1; i < 14 * 288; i++) {
-    for (const r of w.rows(w.now - i * 300e3)) ins.run(r[1], r[0], r[2] + 14 * 288 - i, r[3], r[4], r[5], start);
+    for (const r of w.rows(w.now - i * 300e3)) ins.run(r[1], r[0], r[2] + 14 * 288 - i, r[3], r[4], r[5], r[6]);
   }
-  assert.equal(await w.post('kills', { rows: w.rows(w.now).map((r) => [r[0], r[1], r[2] + 14 * 288, ...r.slice(3, 6), start]) }), 200);
+  assert.equal(await w.post('kills', { rows: w.rows(w.now).map((r) => [r[0], r[1], r[2] + 14 * 288, ...r.slice(3)]) }), 200);
   const r = await w.get('/api/kills?at=0&match=1-1');
   assert.equal(r.status, 200);
   assert.equal(r.headers.get('cache-control'), 'public, max-age=60');
@@ -186,7 +228,7 @@ test('/api/kills keeps a base for a frozen match, and only a recent one of its w
   const w = setup();
   const ins = w.sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,?,?,?,?,?)');
   const min = 60e3;
-  const week = w.now - 86400e3;
+  const week = NA_WEEK;
   const old = week - 7 * 86400e3;
   // 1-1 frozen: its last row 50 minutes back, nothing in the window.
   ins.run('1-1', w.now - 50 * min, 2, 2, 2, 2, week);
@@ -202,7 +244,7 @@ test('/api/kills keeps a base for a frozen match, and only a recent one of its w
   // and the move, and the reading before the move.
   ins.run('1-4', w.now - 45 * min, 7, 7, 7, 7, week);
   ins.run('1-4', w.now - 40 * min, 8, 8, 8, 8, week);
-  assert.equal(await w.post('kills', { rows: [[w.now, '2-1', 9, 9, 9, 9, week]] }), 200);
+  assert.equal(await w.post('kills', { rows: [[w.now, '2-1', 9, 9, 9, 9, EU_WEEK, 1]] }), 200);
   const got = JSON.parse((await w.get('/api/kills')).body).rows;
   const by = (m) => got.filter((r) => r[1] === m).map((r) => r[2]);
   assert.deepEqual(by('1-1'), [1, 2], 'the stop, and the newest row 10 minutes older (the 70-minute one)');
@@ -217,7 +259,7 @@ test('/api/kills adds a reading 10 minutes behind the newest of a match stopped 
   const w = setup();
   const ins = w.sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,?,?,?,?,?)');
   const min = 60e3;
-  const week = w.now - 86400e3;
+  const week = NA_WEEK;
   // 1-1 stopped: rows 50 and 40 minutes back, nothing after.
   ins.run('1-1', w.now - 50 * min, 1, 1, 1, 1, week);
   ins.run('1-1', w.now - 40 * min, 2, 2, 2, 2, week);
@@ -230,7 +272,7 @@ test('/api/kills adds a reading 10 minutes behind the newest of a match stopped 
   ins.run('1-3', w.now - 40 * min, 7, 7, 7, 7, week);
   // 1-4 live: the window has rows, the base is the one before; no extra.
   for (const m of [5, 15, 25, 35, 45]) ins.run('1-4', w.now - m * min, 100 - m, 8, 8, 8, week);
-  assert.equal(await w.post('kills', { rows: [[w.now, '2-1', 9, 9, 9, 9, week]] }), 200);
+  assert.equal(await w.post('kills', { rows: [[w.now, '2-1', 9, 9, 9, 9, EU_WEEK, 1]] }), 200);
   const got = JSON.parse((await w.get('/api/kills')).body).rows;
   const by = (m) => got.filter((r) => r[1] === m).map((r) => w.now - r[0]);
   assert.deepEqual(by('1-1'), [50 * min, 40 * min], 'the stop and a reading 10 minutes older');
@@ -265,13 +307,16 @@ test('/api/kills carries the last move of kills that stood still, and a reading 
   const log = counting(w);
   const ins = w.sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,?,?,?,?,?)');
   const min = 60e3;
-  const week = w.now - 86400e3;
+  const week = NA_WEEK;
   const t0 = w.now;
   // 1-1: 3 kills a minute up to 40 minutes back, then none, a row every minute.
   for (let m = 1; m <= 70; m++) ins.run('1-1', w.now - m * min, 500 - 3 * Math.max(0, m - 40), 10, 10, 10, week);
   // 1-2: still for four hours, a row every five minutes.
   for (let m = 5; m <= 240; m += 5) ins.run('1-2', w.now - m * min, 700, 10, 10, 10, week);
-  const tick = () => w.post('kills', { rows: [[w.now, '1-1', 500, 10, 10, 10, week], [w.now, '1-2', 700, 10, 10, 10, week]] });
+  const tick = () => {
+    const score = Math.floor((w.now - week) / 100);
+    return w.post('kills', { rows: [[w.now, '1-1', 500, 10, 10, 10, week, score], [w.now, '1-2', 700, 10, 10, 10, week, score]] });
+  };
   const read = async () => {
     const got = JSON.parse((await w.get('/api/kills')).body).rows;
     assert.deepEqual(got.map((r) => r[0]), got.map((r) => r[0]).sort((a, b) => a - b));
@@ -311,14 +356,14 @@ test('/api/kills finds the move inside a late batch older than the last window',
   const w = setup();
   const ins = w.sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,?,?,?,?,?)');
   const min = 60e3;
-  const week = w.now - 86400e3;
+  const week = NA_WEEK;
   // 1-1 frozen since an hour back; 2-1 ticking, so the body stays fresh.
   ins.run('1-1', w.now - 59 * min, 100, 0, 0, 0, week);
-  assert.equal(await w.post('kills', { rows: [[w.now, '2-1', 1, 0, 0, 0, week]] }), 200);
+  assert.equal(await w.post('kills', { rows: [[w.now, '2-1', 1, 0, 0, 0, EU_WEEK, 1]] }), 200);
   w.advance(min);
   const t0 = w.now;
-  const late = [[44, 110], [40, 120], [35, 120], [31, 120]].map(([m, k]) => [t0 - m * min, '1-1', k, 0, 0, 0, week]);
-  assert.equal(await w.post('kills', { rows: [...late, [t0, '2-1', 2, 0, 0, 0, week]] }), 200);
+  const late = [[44, 110], [40, 120], [35, 120], [31, 120]].map(([m, k]) => [t0 - m * min, '1-1', k, 0, 0, 0, week, k]);
+  assert.equal(await w.post('kills', { rows: [...late, [t0, '2-1', 2, 0, 0, 0, EU_WEEK, 2]] }), 200);
   const got = JSON.parse((await w.get('/api/kills')).body).rows;
   assert.deepEqual(got.filter((r) => r[1] === '1-1').map((r) => (t0 - r[0]) / min), [60, 44, 40, 31],
     'the base, the row before the move, the move (40, not 31), the newest');
@@ -357,13 +402,13 @@ test('/api/kills walks to the move once, from a body that held none', async () =
   const w = setup();
   const ins = w.sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,?,?,?,?,?)');
   const min = 60e3;
-  const week = w.now - 86400e3;
+  const week = NA_WEEK;
   const t = (m) => w.now - m * min;
   for (const [m, k] of [[60, 100], [50, 110], [40, 110], [20, 110], [10, 110]]) ins.run('1-1', t(m), k, 0, 0, 0, week);
   // As the deploy before built it: the window and its base, no move.
   const old = [40, 20, 10].map((m) => [t(m), '1-1', 110, 0, 0, 0]);
   w.sql.prepare('INSERT INTO recent (id, at, rows) VALUES (1, ?, ?)').run(t(1), JSON.stringify(old));
-  assert.equal(await w.post('kills', { rows: [[w.now, '2-1', 1, 0, 0, 0, week]] }), 200);
+  assert.equal(await w.post('kills', { rows: [[w.now, '2-1', 1, 0, 0, 0, EU_WEEK, 1]] }), 200);
   const got = JSON.parse((await w.get('/api/kills')).body).rows;
   assert.deepEqual(got.filter((r) => r[1] === '1-1').map((r) => (w.now - r[0]) / min), [60, 50, 40, 20, 10],
     'the row before the move (and its base), the move, the window\'s base and rows');
@@ -376,13 +421,15 @@ test('/api/kills sends a late move with no base when nothing lies 10 minutes bef
   const w = setup();
   const ins = w.sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,?,?,?,?,?)');
   const min = 60e3;
-  const week = w.now - 36 * min;
+  // The NA week began 36 minutes ago.
+  const week = NA_WEEK + 7 * 86400e3;
+  w.advance(week + 36 * min - w.now);
   ins.run('1-1', w.now - 35 * min, 100, 0, 0, 0, week);
-  assert.equal(await w.post('kills', { rows: [[w.now, '2-1', 1, 0, 0, 0, week]] }), 200);
+  assert.equal(await w.post('kills', { rows: [[w.now, '2-1', 1, 0, 0, 0, EU_WEEK + 7 * 86400e3, 1]] }), 200);
   w.advance(min);
   const t0 = w.now;
-  const late = [[29, 110], [21, 110]].map(([m, k]) => [t0 - m * min, '1-1', k, 0, 0, 0, week]);
-  assert.equal(await w.post('kills', { rows: [...late, [t0, '2-1', 2, 0, 0, 0, week]] }), 200);
+  const late = [[29, 110], [21, 110]].map(([m, k]) => [t0 - m * min, '1-1', k, 0, 0, 0, week, k]);
+  assert.equal(await w.post('kills', { rows: [...late, [t0, '2-1', 2, 0, 0, 0, EU_WEEK + 7 * 86400e3, 2]] }), 200);
   const got = JSON.parse((await w.get('/api/kills')).body).rows;
   assert.deepEqual(got.filter((r) => r[1] === '1-1').map((r) => (t0 - r[0]) / min), [36, 29, 21],
     'the row before the move, the move, the newest: nothing of the week lies 10 minutes before the move');
@@ -396,11 +443,15 @@ test('/api/kills sends a late move with no base when nothing lies 10 minutes bef
 test('carrying the move gives the body a rebuild from scratch gives', async () => {
   const seqs = Number(process.env.EQUIV_SEQUENCES) || 100;
   const seen = { resets: 0, longStops: 0, gaps: 0, lateRows: 0 };
-  const steadyWalks = { n: 0 };
+  const steadyWalks = { n: 0, looked: 0 };
   const min = 60e3;
-  const t0 = Date.parse('2026-09-30T12:00:00Z');
-  // A database whose statements are prepared once: the same SQL, faster.
-  const quick = (walks) => {
+  // A Friday night: the EU week is 5 hours old, and the NA reset falls 3 hours into every sequence.
+  const t0 = Date.parse('2026-10-02T23:00:00Z');
+  const NA_NEW = Date.parse('2026-10-03T02:00:00Z');
+  // A database whose statements are prepared once: the same SQL, faster. `stat` counts the walks and,
+  // as `looked`, the lookups of a late move's base: the one read of a row at or before a time that a
+  // rebuild makes ahead of its walk.
+  const quick = (stat) => {
     const { sql } = fakeD1();
     const cache = new Map();
     const prep = (q) => cache.get(q) || cache.set(q, sql.prepare(q)).get(q);
@@ -408,9 +459,15 @@ test('carrying the move gives the body a rebuild from scratch gives', async () =
       constructor(q) { this.q = q; this.args = []; }
       bind(...args) { this.args = args; return this; }
       async run() { return { meta: { changes: Number(prep(this.q).run(...this.args).changes) } }; }
-      async all() { if (walks && WALK.test(this.q)) walks.n++; return { results: prep(this.q).all(...this.args) }; }
-      async first() { return prep(this.q).get(...this.args) ?? null; }
+      async all() {
+        if (stat && WALK.test(this.q)) { stat.n++; walked = true; }
+        else if (stat && !walked && /^WITH a\(m, t, op\)/.test(this.q) && this.args[0].includes('"le"')) stat.looked++;
+        return { results: prep(this.q).all(...this.args) };
+      }
+      // A rebuild begins by reading the last body.
+      async first() { walked = false; return prep(this.q).get(...this.args) ?? null; }
     }
+    let walked = false;
     const body = sql.prepare('SELECT at, rows FROM recent');
     return { sql, body: () => { const r = body.get(); return r ? r.at + ' ' + r.rows : ''; },
       env: { DB: { prepare: (q) => new Statement(q) }, INGEST_KILLS: KILLS_KEY, INGEST_RELINK: RELINK_KEY } };
@@ -426,15 +483,12 @@ test('carrying the move gives the body a rebuild from scratch gives', async () =
   const plans = [];
   const from = Number(process.env.EQUIV_SEED) || 1;
   const seeds = Array.from({ length: seqs }, (_, i) => from + i);
-  // Seed 1021 has a late move whose base must be looked up (lookBase in
-  // rebuildRecent); no seed of 1-100 does, so the default run keeps it.
-  if (!process.env.EQUIV_SEED) seeds.push(1021);
   for (const seed of seeds) {
     const rnd = mulberry32(seed);
     const pick = (a, b) => a + Math.floor(rnd() * (b - a + 1));
     const ids = rnd() < 0.5 ? ['1-1'] : ['1-1', '2-1'];
-    const m = ids.map((id) => ({ id, start: t0 - pick(1, 6) * 86400e3, k: [pick(0, 5000), pick(0, 3000), pick(0, 3000), pick(0, 3000)],
-      score: pick(1000, 90000), still: 0, fight: 0, rose: false }));
+    const m = ids.map((id) => ({ id, start: id[0] === '1' ? NA_NEW - 7 * 86400e3 : EU_WEEK + 7 * 86400e3,
+      k: [pick(0, 5000), pick(0, 3000), pick(0, 3000), pick(0, 3000)], score: pick(1000, 90000), still: 0, fight: 0, rose: false, reset: false }));
     // Rows kills.gs has not sent yet: it goes down for a while and sends them late.
     let backlog = [], gsDown = 0, gap = 0, now = t0, readers = {};
     const sends = new Map();
@@ -442,7 +496,7 @@ test('carrying the move gives the body a rebuild from scratch gives', async () =
     while (now < end) {
       now += pick(1, 6) * min;
       for (const s of m) {
-        if (rnd() < 0.004) { s.start = now; s.k = [0, 0, 0, 0]; s.score = 0; seen.resets++; }  // a reset or a relink
+        if (s.id[0] === '1' && !s.reset && now >= NA_NEW) { s.reset = true; s.start = NA_NEW; s.k = [0, 0, 0, 0]; s.score = 0; seen.resets++; }
         if (!s.still && !s.fight) {
           if (rnd() < 0.5) s.fight = now + pick(3, 60) * min;
           else s.still = now + [pick(5, 40), pick(40, 150), pick(150, 270)][pick(0, 2)] * min;
@@ -495,8 +549,10 @@ test('carrying the move gives the body a rebuild from scratch gives', async () =
     Date.now = realNow;
     console.log = realLog;
   }
-  console.log(JSON.stringify({ equivalence: { sequences: seeds.length, ticks, steadyWalks: steadyWalks.n, ...seen } }));
+  console.log(JSON.stringify({ equivalence: { sequences: seeds.length, ticks, steadyWalks: steadyWalks.n, lookedUp: steadyWalks.looked, ...seen } }));
   if (seqs >= 50) for (const [what, n] of Object.entries(seen)) assert.ok(n > 0, `no sequence had ${what}`);
+  // Rare (about one sequence in a hundred), so asked of the default seeds only.
+  if (!process.env.EQUIV_SEED) assert.ok(steadyWalks.looked > 0, 'no sequence had a late move whose base is looked up');
   // The steady side carries: it walks after a gap, a new week or a late batch, not on most ticks.
   assert.ok(steadyWalks.n < ticks / 4, `the steady side walked on ${steadyWalks.n} of ${ticks} ticks`);
 });
@@ -725,10 +781,10 @@ function mulberry32(a) {
 test('the rebuild reads kills by its key, never the whole table', async () => {
   const w = setup();
   const ins = w.sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,?,?,?,?,?)');
-  const week = w.now - 86400e3;
+  const week = NA_WEEK;
   // Still for 40 minutes, so the first rebuild walks, the base and the move are looked up.
   for (let m = 1; m <= 70; m++) ins.run('1-1', w.now - m * 60e3, 500 - Math.max(0, m - 40), 1, 1, 1, week);
-  await w.post('kills', { rows: w.rows(w.now).map((r) => (r[1] === '1-1' ? [r[0], '1-1', 500, 1, 1, 1, week] : r)) });
+  await w.post('kills', { rows: w.rows(w.now).map((r) => (r[1] === '1-1' ? [r[0], '1-1', 500, 1, 1, 1, week, r[7]] : r)) });
   const reads = w.ran.filter((s) => /\bkills\b/.test(s.q) && !/^INSERT|^DELETE/.test(s.q));
   assert.ok(reads.some((s) => WALK.test(s.q)) && reads.length >= 4, reads.map((s) => s.q).join('\n'));
   for (const s of reads) {
@@ -747,10 +803,10 @@ test('the rebuild reads kills by its key, never the whole table', async () => {
 test('the base is right with 14 days of one match in the table', async () => {
   const w = setup();
   const ins = w.sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,?,?,?,?,?)');
-  const start = w.now - 86400e3;
+  const start = NA_WEEK;
   for (let i = 1; i <= 14 * 288; i++) ins.run('1-1', w.now - i * 300e3, i, 0, 0, 0, start);
   ins.run('1-2', w.now - 2 * 3600e3, 99, 0, 0, 0, start);
-  assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 1, 0, 0, 0, start]] }), 200);
+  assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 1, 0, 0, 0, start, 1]] }), 200);
   const got = JSON.parse((await w.get('/api/kills')).body).rows;
   const one = got.filter((r) => r[1] === '1-1');
   assert.equal(one.length, 1 + 5 + 1, 'now, five in the window, one base');
@@ -859,8 +915,9 @@ test('a signed message with a wrong shape is 422 and writes nothing, whatever th
   const w = setup();
   const now = w.now;
   const t0 = { t: Math.floor(now / 1000) };
+  // Valid as it stands: each case breaks one thing.
   const row = (over = {}) => {
-    const r = [now, '1-1', 1, 2, 3, 4, now - 1e6];
+    const r = [now, '1-1', 1, 2, 3, 4, NA_WEEK, 100];
     for (const [i, v] of Object.entries(over)) r[i] = v;
     return r;
   };
@@ -871,13 +928,20 @@ test('a signed message with a wrong shape is 422 and writes nothing, whatever th
     ['kills: an empty list of rows', () => w.post('kills', { rows: [] }, t0), 422],
     ['kills: a null row', () => w.post('kills', { rows: [null] }, t0), 422],
     ['kills: a row of six', () => w.post('kills', { rows: [row().slice(0, 6)] }, t0), 422],
-    ['kills: a row of nine', () => w.post('kills', { rows: [[...row(), 1, 2]] }, t0), 422],
-    ['kills: start after the row\'s own time', () => w.post('kills', { rows: [row({ 6: now + 1 })] }, t0), 422],
-    ['kills: start more than 8 days before', () => w.post('kills', { rows: [row({ 6: now - 8 * 86400e3 - 1 })] }, t0), 422],
+    ['kills: a row of seven, with no score', () => w.post('kills', { rows: [row().slice(0, 7)] }, t0), 422],
+    ['kills: a row of nine', () => w.post('kills', { rows: [[...row(), 1]] }, t0), 422],
+    ['kills: next week\'s start, after the row\'s own time', () => w.post('kills', { rows: [row({ 6: NA_WEEK + 7 * 86400e3 })] }, t0), 422],
+    ['kills: the start of the week before, more than 8 days back', () => w.post('kills', { rows: [row({ 6: NA_WEEK - 7 * 86400e3 })] }, t0), 422],
+    ['kills: start a minute off the reset hour', () => w.post('kills', { rows: [row({ 6: NA_WEEK + 60e3 })] }, t0), 422],
+    ['kills: start at the reset hour of another day', () => w.post('kills', { rows: [row({ 6: NA_WEEK + 86400e3 })] }, t0), 422],
+    ['kills: start a second off the reset hour', () => w.post('kills', { rows: [row({ 6: NA_WEEK + 1000 })] }, t0), 422],
+    ['kills: start a millisecond off the reset hour', () => w.post('kills', { rows: [row({ 6: NA_WEEK + 1 })] }, t0), 422],
+    ['kills: start on the other region\'s reset', () => w.post('kills', { rows: [row({ 6: EU_WEEK })] }, t0), 422],
     ['kills: a fractional count', () => w.post('kills', { rows: [row({ 3: 1.5 })] }, t0), 422],
     ['kills: a count past 1e7', () => w.post('kills', { rows: [row({ 4: 1e7 + 1 })] }, t0), 422],
-    ['kills: a score past 3e7', () => w.post('kills', { rows: [[...row(), 3e7 + 1]] }, t0), 422],
-    ['kills: a negative score', () => w.post('kills', { rows: [[...row(), -1]] }, t0), 422],
+    ['kills: a score past what its week can hold', () => w.post('kills', { rows: [row({ 7: 1000 * 106 * 60 + 2000 + 1 })] }, t0), 422],
+    ['kills: a negative score', () => w.post('kills', { rows: [row({ 7: -1 })] }, t0), 422],
+    ['kills: a fractional score', () => w.post('kills', { rows: [row({ 7: 1.5 })] }, t0), 422],
     ['kills: a row from the future', () => w.post('kills', { rows: [row({ 0: now + 61e3 })] }, t0), 422],
     ['relink: JSON null', () => w.post('relink', 'null', t0), 422],
     ['relink: a list', () => w.post('relink', '[]', t0), 422],
@@ -913,12 +977,15 @@ test('the limits of a signed message are inclusive on the side they say, and a r
   assert.equal(await w.post('relink', w.relink({ window: null, published: null }), at()), 200);
   assert.deepEqual({ ...w.sql.prepare('SELECT window_at, published FROM relink').get() }, { window_at: null, published: null });
   assert.equal((await w.get('/api/relink')).status, 503, 'a sheet that did not parse is no answer');
-  const t2 = at();
-  const tms = t2.t * 1000;
-  assert.equal(await w.post('kills', { rows: [[tms + 60e3, '1-1', 0, 0, 0, 0, tms - 8 * 86400e3 + 60e3]] }, t2), 200, 'the farthest ahead row, the oldest start');
-  const t3 = at();
+  // The clock that puts the NA week's start exactly 8 days before a row dated 60 s ahead.
+  w.advance(NA_WEEK + 8 * 86400e3 - 60e3 - w.now);
+  const t2 = { t: w.now / 1000 };
+  const cap = 1000 * (w.now - NA_WEEK) / 60e3 + 2000;
+  assert.equal(await w.post('kills', { rows: [[w.now + 60e3, '1-1', 0, 0, 0, 0, NA_WEEK, cap]] }, t2), 200,
+    'the farthest ahead row, the oldest start, the highest score its week can hold');
+  const t3 = { t: t2.t + 1 };
   const old = t3.t * 1000 - 45 * 60e3;
-  assert.equal(await w.post('kills', { rows: [[old, '1-2', 1e7, 0, 0, 0, old, 3e7]] }, t3), 200, 'the oldest row, the biggest count and score');
+  assert.equal(await w.post('kills', { rows: [[old, '1-2', 1e7, 0, 0, 0, NA_WEEK + 7 * 86400e3, 0]] }, t3), 200, 'the oldest row, the biggest count, the lowest score');
 });
 
 test('a signed POST with no body at all is refused: 401 unsigned, 400 when the empty body is what was signed', async () => {
@@ -940,8 +1007,6 @@ test('a signed POST with no body at all is refused: 401 unsigned, 400 when the e
 // ---- board: each match's skirmishes, from the readers' summaries.
 const SUPA = { 'latest-supa-us': 'a'.repeat(128), 'latest-supa-eu': 'b'.repeat(128) };
 const SUPA_ENV = { INGEST_LATEST_SUPA_US: SUPA['latest-supa-us'], INGEST_LATEST_SUPA_EU: SUPA['latest-supa-eu'] };
-// The NA week of setup()'s clock (Wednesday 12:00Z): 106 hours in, skirmish 54 running.
-const NA_WEEK = Date.parse('2026-09-26T02:00:00Z');
 
 const latestScore = (w) => w.sql.prepare("SELECT score FROM latest WHERE id = '1-1'").get();
 const boardRows = (w) => w.sql.prepare('SELECT match, skirmish, red, blue, green, vp_red, vp_blue, vp_green, at FROM board ORDER BY match, skirmish').all()
@@ -1098,7 +1163,6 @@ test('board: 18 matches are one statement, and without the table the message sti
 const sha = (b) => createHash('sha256').update(b).digest('hex');
 // setup()'s clock, Wednesday 12:00Z: 53 skirmishes of the NA week have finished, 57 of the EU's.
 const NA_DONE = 53;
-const EU_WEEK = Date.parse('2026-09-25T18:00:00Z');
 const skirmishList = (n) => Array.from({ length: n }, (_, i) => ({ id: i + 1, scores: { red: i, blue: 1, green: 2 } }));
 const liveOf = (id, start = NA_WEEK, scores = [1000, 2000, 3000]) => ({
   id, start_time: new Date(start).toISOString().replace('.000Z', 'Z'),
