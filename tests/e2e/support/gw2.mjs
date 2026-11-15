@@ -18,6 +18,7 @@
 //     .status(429, { visitor: true })     // only the visitor's reads refused
 //     .latestStatus(503)                  // /api/latest down (or 'hang': never answers)
 //     .seared()                           // the borderlands as the Seared Borderlands' ids
+//     .seared({ untilWeek: true })        // the same until the week turns, the recorded ids after
 //
 // Immutable: every method returns a new timeline. Time is in minutes after the
 // recording's instant (recordedAt). Only the focus match plays; the others keep
@@ -236,8 +237,11 @@ class Timeline {
   // Every match plays its three borderlands as the Seared Borderlands (1652,
   // 1654, 1651) instead of the recorded Desert and Alpine ones, for the whole
   // timeline. Ownership and every counter stay the recorded ones.
-  seared() {
-    return this.#with([{ kind: 'seared', at: this.#cursor }]);
+  // `untilWeek`: only the weeks under way when the timeline starts; every week
+  // that begins within it plays the recorded borderlands (1099, 96, 95), so a
+  // read across the turn brings other map ids for the same map types.
+  seared({ untilWeek = false } = {}) {
+    return this.#with([{ kind: 'seared', at: this.#cursor, untilWeek }]);
   }
 
   // The page's clock starts here.
@@ -265,7 +269,10 @@ class Timeline {
   #compiled = null;
   #compile() {
     if (this.#compiled) return this.#compiled;
-    const base = this.#ops.some(o => o.kind === 'seared') ? searedBodies() : baseBodies();
+    const searedOp = this.#ops.find(o => o.kind === 'seared');
+    const base = searedOp ? searedBodies() : baseBodies();
+    // The recorded body a state of the match is built on: its week's borderlands.
+    const bodyOf = (id, week) => (searedOp && searedOp.untilWeek && week.zero ? baseBodies() : base).get(id);
     const anchor = recording().recordedAt;
     const ids = [...base.keys()].sort(byId);
     const frames = new Map();   // id -> [{ at, state }], at in ms after the recording
@@ -288,7 +295,7 @@ class Timeline {
       if (op.kind === 'minute') {
         roll(this.#focus, op.at);
         const s = cur.get(this.#focus);
-        const body = base.get(this.#focus);
+        const body = bodyOf(this.#focus, s.week);
         const sk = skirmishCount(body, s.week, anchor + op.at, anchor);
         s.skirmishes = sk.added;
         for (const [type, n] of Object.entries(op.kills)) {
@@ -325,7 +332,7 @@ class Timeline {
     for (const id of ids) roll(id, horizon);
     for (const list of frames.values()) list.sort((a, b) => a.at - b.at);
     const windows = kind => this.#ops.filter(o => o.kind === kind).sort((a, b) => a.at - b.at);
-    this.#compiled = { anchor, base, ids, frames, pools: windows('pool'), statuses: windows('status'), latest: windows('latest'), history: windows('history'), held: windows('held') };
+    this.#compiled = { anchor, base, bodyOf, ids, frames, pools: windows('pool'), statuses: windows('status'), latest: windows('latest'), history: windows('history'), held: windows('held') };
     return this.#compiled;
   }
 
@@ -405,7 +412,8 @@ class Timeline {
 
   // The newest body of a match at t (ms after the recording), as a new object.
   body(id, t) {
-    return materialise(this.#compile().base.get(id), this.#frame(id, t).state);
+    const { state } = this.#frame(id, t);
+    return materialise(this.#compile().bodyOf(id, state.week), state);
   }
 
   // When the newest body of a match at t last changed, in page time (ms).
