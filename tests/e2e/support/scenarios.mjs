@@ -249,7 +249,8 @@ export async function livePush(page, wvw) {
       open.delete(ws);
       ws.close({ code: 1008, reason: 'policy violation' });
     });
-    const known = await wvw.told();
+    // No round trip to the page first: a read of the page's own could hold the version before the greeting.
+    const known = wvw.toldNow();
     if (known) { ws.send(JSON.stringify(known)); synced = Math.max(synced, newestOf(known)); }
     if (push.hangUp) { open.delete(ws); ws.close({ code: 1011, reason: 'internal error' }); }
   });

@@ -144,7 +144,9 @@ export const test = base.extend({
 
     // What the Live object would send now (worker/index.mjs): the timeline's summary.
     const told = async () => (server ? server.told(await now() - lead) : null);
-    await use({ url: (origin || site.url) + '/', told, recordedAt, opensAt, guilds, tiers: expectedTiers(), problems, problem, allowLog: re => allowed.push(re), settle, now, skew, ahead, timeline });
+    // `told` without asking the page: from the last offset it gave, so a socket's greeting leaves at once.
+    const toldNow = () => (server ? server.told(Date.now() + offset - lead) : null);
+    await use({ url: (origin || site.url) + '/', told, recordedAt, opensAt, guilds, tiers: expectedTiers(), toldNow, problems, problem, allowLog: re => allowed.push(re), settle, now, skew, ahead, timeline });
 
     // A failure here must not hide the test's own: it joins the problems below.
     await addCoverage(covering).catch(e => problem('coverage: ' + (e?.message || e)));
