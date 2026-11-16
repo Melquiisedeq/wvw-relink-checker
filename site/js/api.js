@@ -65,15 +65,23 @@ async function fetchJson(url, attempt = 0, cacheMode = 'no-store', timeoutMs = R
 // answer sets ownClockLead: this clock minus the answer's Date header (up to 1 s over), 0 with no Date.
 // `raw`: the answer's text, unparsed.
 let ownClockLead = 0;
+// What the countdowns, the ages and matchIsLive subtract: ownClockLead moves by up to a second with every answer and
+// would make them skip. It follows a reading only past CLOCK_BAND_MS from the kept value; a right clock keeps it 0.
+let steadyClockLead = 0;
 async function fetchOwnApi(url, cache = 'default', raw = false) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), OWN_API_TIMEOUT_MS);
   try {
+    const sentAt = Date.now();
     const res = await fetch(url, { signal: controller.signal, cache });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     if (cache === 'no-store') {
       const lead = Date.now() - Date.parse(res.headers.get('Date'));
       ownClockLead = Number.isFinite(lead) ? lead : 0;
+      // No Date header gives NaN, which fails the band test: the reading is dropped.
+      if (Date.now() - sentAt <= CLOCK_TRIP_MAX_MS && Math.abs(lead - steadyClockLead) > CLOCK_BAND_MS) {
+        steadyClockLead = Math.abs(lead) > CLOCK_BAND_MS ? lead : 0;
+      }
     }
     return await (raw ? res.text() : res.json());
   } finally {
