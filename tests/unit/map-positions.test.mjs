@@ -9,9 +9,6 @@ const { objectives, sectors } = page.run('WVW_STATIC');
 const skip = page.run('MAP_SKIP_TYPES');
 const size = page.run('OBJ_SIZE');
 page.ctx.__objectiveAt = (o) => page.run(`objectiveAt(${JSON.stringify(o)})`);
-// Darkrait Inlet's camp (38-126) overlaps Quentin Lake's tower (38-16) as drawn today; moving it changes
-// what is seen, a change of its own.
-const TOUCHING = new Set(['38-126|38-16']);
 const drawn = objectives.filter((o) => !skip.has(o.type)).map((o) => ({ o, at: page.ctx.__objectiveAt(o) }));
 
 function inside([x, y], poly) {
@@ -41,7 +38,6 @@ test('no two markers of a map overlap: the radii sum to less than the distance (
       if (a.o.map_id !== b.o.map_id) continue;
       const d = Math.hypot(a.at[0] - b.at[0], a.at[1] - b.at[1]);
       const r = (size[a.o.type] || 14) + (size[b.o.type] || 14);
-      if (TOUCHING.has(`${a.o.id}|${b.o.id}`) || TOUCHING.has(`${b.o.id}|${a.o.id}`)) continue;
       if (r >= d) bad.push(`${a.o.id} ${a.o.name} / ${b.o.id} ${b.o.name}: radii ${r}, distance ${d.toFixed(1)}`);
     }
   }

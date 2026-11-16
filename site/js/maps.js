@@ -15,9 +15,9 @@ const MAP_SKIP_TYPES = new Set(['Spawn']);
 const OBJ_DRAW_ORDER = ['Castle', 'Keep', 'Tower', 'Mercenary', 'Camp', 'Ruins'];
 // Marker radius in map units, also their on-screen size at the default view.
 // The radii of two markers on a map sum to less than their distance; tests/unit/map-positions.test.mjs
-// holds it, with its one listed exception.
+// holds it.
 const OBJ_SIZE = Object.freeze({
-  Castle: 118, Keep: 110, Tower: 100, Camp: 92, Mercenary: 92, Ruins: 80,
+  Castle: 118, Keep: 110, Tower: 100, Camp: 92, Mercenary: 76, Ruins: 80,
 });
 // How hard markers follow the zoom: 1 holds them fixed on screen, 0 pins them to the ground.
 const MARKER_FOLLOW = 0.2;
