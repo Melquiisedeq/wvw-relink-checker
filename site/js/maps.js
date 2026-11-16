@@ -2561,7 +2561,11 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   const show = (type) => {
     if (current === type) return;
     current = type;
-    for (const b of tabs.children) b.classList.toggle('is-active', b.dataset.type === type);
+    for (const b of tabs.children) {
+      const on = b.dataset.type === type;
+      b.classList.toggle('is-active', on);
+      if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
+    }
     const ready = sectorsByType.get(type);
     if (ready) { draw(type, ready); return; }
     // Not here yet: only the tab that opens is waited on, so clicking another early can land ahead of its outline.

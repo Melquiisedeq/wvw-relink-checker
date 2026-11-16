@@ -4,6 +4,8 @@
 let activePopover = null;
 let activeTrigger = null;
 let activeBackdrop = null;
+// The page's other top-level nodes, made inert while the backdrop stands (the popover and the backdrop live in <body> beside them).
+let inertBehind = [];
 // Used by maps.js, declared here because closePopover runs on Escape and on
 // a resize before maps.js has loaded.
 let mapPollTimer = null;
@@ -21,6 +23,8 @@ function closePopover() {
   // Checked before the node is removed: removal moves focus to <body>.
   const hadFocusInside = !!activePopover && activePopover.contains(document.activeElement);
 
+  // Before focus goes back: an inert trigger cannot take it.
+  releasePage();
   if (activePopover) activePopover.remove();
   if (activeBackdrop) activeBackdrop.remove();
   if (trigger) {
@@ -40,6 +44,18 @@ function closePopover() {
   mapAhead = null;
   // Deferred: opening another popover right after must not find a load under it.
   if (trigger) setTimeout(() => { if (!activeTrigger && !readOwed()) peekSoon(); }, 0);
+}
+
+function holdPage(popover) {
+  popover.setAttribute('aria-modal', 'true');
+  inertBehind = [...document.body.children].filter(el => el !== popover && el !== activeBackdrop && !el.inert);
+  for (const el of inertBehind) el.inert = true;
+}
+
+function releasePage() {
+  for (const el of inertBehind) el.inert = false;
+  inertBehind = [];
+  if (activePopover) activePopover.removeAttribute('aria-modal');
 }
 
 // Gives every popover a role, a reachable focus target and a way back to the trigger.
@@ -87,9 +103,10 @@ function setPopoverExpanded(popover, triggerEl, expand) {
       backdrop.className = 'info-popover-backdrop';
       document.body.insertBefore(backdrop, popover);
       activeBackdrop = backdrop;
+      holdPage(popover);
     }
   } else {
-    if (activeBackdrop) { activeBackdrop.remove(); activeBackdrop = null; }
+    if (activeBackdrop) { releasePage(); activeBackdrop.remove(); activeBackdrop = null; }
     positionPopover(popover, triggerEl);
   }
 
