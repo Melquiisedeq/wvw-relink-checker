@@ -1325,7 +1325,9 @@ test('format 2 without the history table: the live parts go in, the summary has 
   assert.ok(lines.some((l) => l.history === 'failed'), JSON.stringify(lines));
   assert.equal(w.sql.prepare('SELECT count(*) n FROM latest').get().n, 1);
   assert.equal(w.sql.prepare('SELECT count(*) n FROM kills').get().n, 1);
-  const summary = await w.get('/api/latest/summary');
+  const read = await quiet(() => w.get('/api/latest/summary'));
+  assert.ok(read.lines.some((l) => l.read === '/api/latest/summary' && l.history === 'failed'), JSON.stringify(read.lines));
+  const summary = read.r;
   assert.equal(summary.status, 200);
   assert.deepEqual(Object.keys(JSON.parse(summary.body)['1-1']), ['start', 'score', 'at', 'by']);
   assert.equal((await quiet(() => w.get('/api/history/1?v=' + NA_DONE))).r.status, 503);
