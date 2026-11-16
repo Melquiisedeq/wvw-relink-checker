@@ -10,6 +10,7 @@ import { test, expect } from './support/fixtures.mjs';
 import { fail } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { FOCUS, MIN, copyBehindAll, playing, visitorDown } from './support/scenarios.mjs';
+import { scoreOf } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, clock: 'playwright' });
 const PLOT = ".info-popover .wvw-plot g[role='button']";
@@ -188,7 +189,6 @@ test.describe('the list drawn from the copy, by the servers\' clock', () => {
   const refusal = page => page.evaluate(async () => {
     try { await copyBoard(new Error('refused')); return 'drawn'; } catch (e) { return e.message; }
   });
-  const scoreOf = page => page.evaluate(id => colorSum(matchDataCache.get(id).scores), FOCUS);
 
   test.describe('the device 7 min ahead, our copy current', () => {
     test.use({ timeline: visitorDown(20) });
@@ -203,11 +203,11 @@ test.describe('the list drawn from the copy, by the servers\' clock', () => {
       for (let i = 0; i < 7; i++) {
         await wvw.settle();
         await page.clock.fastForward(2 * MIN);
-        if (i === 3) first = await scoreOf(page);
+        if (i === 3) first = await scoreOf(page, FOCUS);
       }
       await wvw.settle();
       expect(await page.evaluate(() => peekAnchor), 'the summary was read').toBeGreaterThan(0);
-      expect(await scoreOf(page), 'the list drew a body newer than the 8 min mark').toBeGreaterThan(first);
+      expect(await scoreOf(page, FOCUS), 'the list drew a body newer than the 8 min mark').toBeGreaterThan(first);
       await expect(page.locator(RETRY), 'no "Trying again"').toHaveCount(0);
     });
   });
