@@ -8,7 +8,7 @@ import { check, load, recordedJson } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
 const GAME = 'https://api.guildwars2.com/v2/';
-const guildId = n => `aaaaaaaa-0000-4000-8000-00000000000${n}`;
+const guildId = n => `AAAAAAAA-0000-4000-8000-00000000000${n}`;
 const CORS = { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' };
 const reply = (route, body, status = 200) => route.fulfill({ status, body: JSON.stringify(body), headers: CORS });
 
@@ -28,7 +28,7 @@ async function guildApi(page, guilds, team) {
     const g = guilds.find(x => x.search === want);
     return reply(route, g ? [g.id] : []);
   });
-  await page.route(/^https:\/\/api\.guildwars2\.com\/v2\/guild\/[0-9a-f-]{36}$/, route => {
+  await page.route(/^https:\/\/api\.guildwars2\.com\/v2\/guild\/[0-9a-f-]{36}$/i, route => {
     const g = guilds.find(x => route.request().url().endsWith(x.id));
     return g ? reply(route, { id: g.id, name: g.name, tag: g.tag, emblem: null }) : reply(route, { text: 'no such guild' }, 404);
   });

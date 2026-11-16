@@ -704,7 +704,8 @@ test.describe('what you missed, by how long the tab was away', () => {
 // new week and nothing is said of the old. Hidden again for 20 min of the new
 // week, the summary counts those 20 min alone, and the list is on the new week.
 test.describe('what you missed, the week turned while the tab was away', () => {
-  test.use({ timeline: missedWeekTurn(20, 40), clock: 'playwright' });
+  // The embers stand still: drawn on every step of play(), they push this test into its slow() ceiling.
+  test.use({ timeline: missedWeekTurn(20, 40), clock: 'playwright', reducedMotion: 'reduce' });
   const TIER_BUTTON = page => page.locator(`.tier-map-btn[aria-label*="NA Tier ${FOCUS.split('-')[1]}"]`);
 
   test('the week on show is the new one, and the summary counts from the turn', async ({ page, wvw }) => {

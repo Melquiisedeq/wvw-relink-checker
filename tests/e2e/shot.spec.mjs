@@ -180,7 +180,7 @@ test.describe('the screenshot button', () => {
       const pop = document.querySelector('.info-popover--guilds');
       renderGuildsPopoverContent(pop, 'Nowhere', undefined, document.querySelector('.server-guilds-btn.active'));
     });
-    await expect(page.locator('.info-popover-body .hint')).toHaveText(/No guilds listed/);
+    await expect(page.locator('.info-popover-body .hint')).toHaveText(/No guilds listed for this team in the community sheet yet\./);
     await expect(page.locator(SHOT)).toBeDisabled();
     await expect(trigger).toHaveClass(/active/);
   });

@@ -6,7 +6,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { fail } from './support/faults.mjs';
 import { gw2, historyOf, liveOf } from './support/gw2.mjs';
-import { recordedJson } from './support/steps.mjs';
+import { load, recordedJson, scoreOf } from './support/steps.mjs';
 import { recording } from './support/recordings.mjs';
 import { FOCUS, MIN, hidden, playing, visible } from './support/scenarios.mjs';
 
@@ -16,7 +16,6 @@ const LATEST = /\/api\/latest(\/summary)?$/;
 const HISTORY = /\/api\/history\/([12])\?v=(\d+)$/;
 const JSON_HEADERS = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' };
 const sum = m => ['red', 'blue', 'green'].reduce((n, c) => n + m.scores[c], 0);
-const scoreOf = (page, id) => page.evaluate(i => { const m = matchDataCache.get(i); return m ? colorSum(m.scores) : -1; }, id);
 // The score of `id` once the page has painted what /api/latest gave. The page
 // holds its paint LATEST_WAIT_MS (1.2 s, js/api.js) for the read; an answer that
 // comes later is kept for the next paint (a machine under load got there: 1 run
@@ -31,13 +30,6 @@ async function settledScore(page, id, want) {
     await page.waitForTimeout(1500);
   }
   return score;
-}
-
-async function opened(page, wvw) {
-  await page.goto(wvw.url);
-  await expect(page.locator(NA)).toHaveCount(wvw.tiers.NA);
-  await expect(page.locator('#standingsGridEU > .standing-match')).toHaveCount(wvw.tiers.EU);
-  await wvw.settle();
 }
 
 // Answers /api/latest (and its summary, which is the same list without the bodies) with `body`.
@@ -87,7 +79,7 @@ test.describe('bodies offered by /api/latest', () => {
       entry(b.id, bump(a, 99999)),       // the body says another id: must not
       entry('1-9', bump(a, 99999)),      // an id the game never gave: must not
     ] });
-    await opened(page, wvw);
+    await load(page, wvw);
     expect(latest.reads, 'reads of /api/latest').toBeGreaterThan(0);
     expect(await settledScore(page, a.id, sum(a) + 5000), `${a.id}, the newer body`).toBe(sum(a) + 5000);
     expect(await scoreOf(page, b.id), `${b.id}, offered another match's body`).toBe(sum(b));
@@ -99,7 +91,7 @@ test.describe('bodies offered by /api/latest', () => {
     const garbage = [{ id: a.id, start: at, v: 2, body: 'not a body' }, { id: a.id, start: at, v: 2, body: { ...bump(a, 5000), maps: null } },
       { id: a.id, start: at, v: 2 }];
     await serve(page, { at: 0, matches: [...garbage, entry(a.id, bump(a, 5000), at + 1)] });
-    await opened(page, wvw);
+    await load(page, wvw);
     expect(await scoreOf(page, a.id), `${a.id} after bad entries`).toBe(sum(a));
   });
 
@@ -107,7 +99,7 @@ test.describe('bodies offered by /api/latest', () => {
   test('a newer body over the size cap does not reach the page', async ({ page, wvw }) => {
     const big = entry(a.id, { ...bump(a, 5000), pad: ' '.repeat(PAD) });
     const latest = await serve(page, { at: 0, matches: [big] });
-    await opened(page, wvw);
+    await load(page, wvw);
     expect(latest.reads, 'reads of /api/latest').toBeGreaterThan(0);
     expect(await settledScore(page, a.id, sum(a) + 5000), `${a.id}, a body over 256 KiB`).toBe(sum(a));
   });
@@ -130,7 +122,7 @@ test.describe('the history of format 2', () => {
     await serve(page, { get matches() { return matches; }, at: 0 });
     let world = [a, b];
     const asked = await serveHistory(page, wvw, (region, v) => version(region, v, world));
-    await opened(page, wvw);
+    await load(page, wvw);
     expect(await settledScore(page, a.id, sum(a) + 5000), `${a.id}, the newer body`).toBe(sum(a) + 5000);
     expect((await kept(page, a.id)).skirmishes, `${a.id}: its history and the running skirmish, as the game gives them`).toEqual(a.skirmishes);
     expect((await kept(page, b.id)).skirmishes, `${b.id}: the same`).toEqual(b.skirmishes);
@@ -157,7 +149,7 @@ test.describe('the history of format 2', () => {
     await serve(page, { at: 0, matches: [live(a)] });
     let there = false;
     const asked = await serveHistory(page, wvw, (region, v) => (there ? version(region, v, [a]) : null));
-    await opened(page, wvw);
+    await load(page, wvw);
     expect(asked.length, 'reads of the history').toBeGreaterThan(0);
     expect(await scoreOf(page, a.id), `${a.id}, its history a 404`).toBe(sum(a));
     there = true;
@@ -186,7 +178,7 @@ test.describe('the history of format 2', () => {
     ];
     let i = 0;
     await serveHistory(page, wvw, () => wrong[i]);
-    await opened(page, wvw);
+    await load(page, wvw);
     for (i = 1; i < wrong.length; i++) {
       await wvw.skew(61 * 1000);
       await read(page);
@@ -203,7 +195,7 @@ test.describe('a game body that stands still while /api/latest is ahead', () => 
   test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().latestStatus(503).advance(5).latestStatus(null).olderPool(10) });
 
   test('the newer score arrives from /api/latest', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     const t = 17 * MIN;
     const newest = sum(wvw.timeline.body(FOCUS, t)), shown = sum(wvw.timeline.body(FOCUS, 12 * MIN));
     expect(newest, 'a timeline whose newest body is ahead of the one on show').toBeGreaterThan(shown);
@@ -258,7 +250,7 @@ test.describe('the tab hides during a peek', () => {
       await route.fulfill({ status: 200, body: '{}', headers: JSON_HEADERS });
       answered++;
     });
-    await opened(page, wvw);
+    await load(page, wvw);
     await page.evaluate(() => {
       window.__armed = 0;
       const set = window.setTimeout;
@@ -304,7 +296,7 @@ test.describe('a newer body in hand', () => {
       await page.route(/\/api\/latest\/summary$/, route => route.fulfill({ status: 200, body: summary,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } }));
       if (copyDown) await fail(page, wvw, /\/api\/latest$/, 503);
-      await opened(page, wvw);
+      await load(page, wvw);
       let copies = 0;
       page.on('request', r => { if (/\/api\/latest$/.test(r.url())) copies++; });
       const { id, start } = await page.evaluate(() => {
@@ -330,7 +322,7 @@ test.describe('a newer body in hand', () => {
     await page.route(/\/api\/latest\/summary$/, route => route.fulfill({ status: 200, body: summary,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } }));
     await fail(page, wvw, /\/api\/latest$/, 503);
-    await opened(page, wvw);
+    await load(page, wvw);
     let copies = 0, game = 0;
     page.on('request', r => {
       if (/\/api\/latest$/.test(r.url())) copies++;
@@ -374,7 +366,7 @@ test.describe('closing a popover after a skipped tick', () => {
     const seen = { game: [], peeks: 0 };
     await page.route(/\/api\/latest\/summary$/, route => { seen.peeks++; return route.fulfill({ status: 200, body: '{}',
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } }); });
-    await opened(page, wvw);
+    await load(page, wvw);
     await page.locator('.icon-btn.activity-info-btn').first().click();
     await expect(page.locator('.info-popover')).toHaveCount(1);
     seen.peeks = 0;

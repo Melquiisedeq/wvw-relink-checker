@@ -139,6 +139,16 @@ export function keptMatch(page, id) {
   return page.evaluate(i => { const k = newestMatches.get(i); k.at = Date.now(); return JSON.parse(JSON.stringify(k.match)); }, id);
 }
 
+// The score `id` has on the page's board, or -1 while it has no body for it.
+export const scoreOf = (page, id) => page.evaluate(i => { const m = matchDataCache.get(i); return m ? colorSum(m.scores) : -1; }, id);
+
+// Every body on show, as copies, and the colours of `id` by rank.
+export const board = (page, id) => page.evaluate(i => {
+  const list = [...matchDataCache.values()].map(m => JSON.parse(JSON.stringify(m)));
+  const rank = rankMatchByVictoryPoints(matchDataCache.get(i));
+  return { list, byRank: Object.keys(rank).sort((a, b) => rank[a] - rank[b]) };
+}, id);
+
 // Two animation frames: what a repaint scheduled has been drawn.
 export const frame = page => page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
 
