@@ -21,10 +21,10 @@ function showStandingsSkeleton(gridEl) {
 
 // Last VP / skirmish per side, keyed by match and colour and not kept on the
 // cards: a rebuilt card (renderStandingsRegion) compares against the one it replaces.
-const prevSideStats = new Map(); // `${matchId}:${color}` -> { vp, skirmish, pct }
+// start and skirmishId tell a figure of another week or skirmish, which is never a rise.
+const prevSideStats = new Map(); // `${matchId}:${color}` -> { vp, skirmish, pct, start, skirmishId }
 
-// Dropped when a tier's week ends: kept, a fresh zero would be compared against
-// last week's closing figures and float a huge negative delta.
+// Drops the entries of a tier no longer live.
 function forgetSideStats(matchId) {
   for (const color of COLORS) prevSideStats.delete(`${matchId}:${color}`);
 }
@@ -403,7 +403,7 @@ let standingsRegions = new Set();  // region codes ('1', '2') whose standings ha
 let standingsEverLoaded = false;   // the long deadline is for the first one only
 let standingsInFlight = false;
 let standingsExtraUsed = 0;        // extra tries spent since the last cycle load
-let standingsFailed = [];          // { el, label } of what the last load left unloaded
+let standingsFailed = [];          // { el, label, region } of what the last load left unloaded
 let standingsRetry = null;         // { timer, tick } while an extra try is waiting
 
 function cancelStandingsRetry() {
@@ -890,19 +890,21 @@ function sideFigures(match, color, leaderScore) {
   const vpNum = Number(match.victory_points?.[color] ?? 0);
   const skirmish = getSkirmishScore(match, color);
   const statsKey = `${match.id}:${color}`;
-  const prev = prevSideStats.get(statsKey);
+  const skirmishId = match.skirmishes?.[match.skirmishes.length - 1]?.id ?? null;
+  const last = prevSideStats.get(statsKey);
+  const prev = last && last.start === match.start_time ? last : undefined;
   const pctNow = (skirmish !== null && leaderScore !== null && leaderScore > 0)
     ? (skirmish / leaderScore) * 100
     : null;
-  prevSideStats.set(statsKey, { vp: vpNum, skirmish, pct: pctNow });
+  prevSideStats.set(statsKey, { vp: vpNum, skirmish, pct: pctNow, start: match.start_time, skirmishId });
   const serverName = getTeamName(matchTeamId(match, color));
-  return { serverName, kills, deaths, kd: formatKd(kills, deaths), vpNum, skirmish, prev };
+  return { serverName, kills, deaths, kd: formatKd(kills, deaths), vpNum, skirmish, skirmishId, prev };
 }
 
-function queueSideFlashes({ prev, vpNum, skirmish }, vpValue, skirmishValue) {
+function queueSideFlashes({ prev, vpNum, skirmish, skirmishId }, vpValue, skirmishValue) {
   if (!prev) return;
   if (prev.vp !== vpNum) pendingFlashes.push([vpValue, vpNum - prev.vp]);
-  if (skirmishValue && prev.skirmish !== null && prev.skirmish !== skirmish) {
+  if (skirmishValue && prev.skirmishId === skirmishId && prev.skirmish !== null && prev.skirmish !== skirmish) {
     pendingFlashes.push([skirmishValue, skirmish - prev.skirmish]);
   }
 }

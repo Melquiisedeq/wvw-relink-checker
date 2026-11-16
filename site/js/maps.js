@@ -2232,7 +2232,7 @@ function paintCaptures(view, items) {
 
 // ---- the popover -----------------------------------------------------
 function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
-                               sectorsByType, pendingSectors, triggerEl) {
+                               sectorsByType, pendingSectors, triggerEl, swap) {
   popover.textContent = '';
 
   const header = document.createElement('div');
@@ -2561,7 +2561,11 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   const show = (type) => {
     if (current === type) return;
     current = type;
-    for (const b of tabs.children) b.classList.toggle('is-active', b.dataset.type === type);
+    for (const b of tabs.children) {
+      const on = b.dataset.type === type;
+      b.classList.toggle('is-active', on);
+      if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
+    }
     const ready = sectorsByType.get(type);
     if (ready) { draw(type, ready); return; }
     // Not here yet: only the tab that opens is waited on, so clicking another early can land ahead of its outline.
@@ -2709,7 +2713,9 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   let pulledAt = 0;
   let pullSeq = 0;
   let paintedSeq = 0;
+  let replaced = false;
   const pullFresh = async () => {
+    if (replaced) return;
     pulledAt = Date.now();
     const asked = Date.now();
     const seq = ++pullSeq;
@@ -2724,9 +2730,23 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
       if (kept && matchIsBehind(liveMatch, kept.match)) fresh = kept.match;
     }
     firstReadDone = true;
-    if (activeTrigger !== triggerEl || !fresh || !Array.isArray(fresh.maps)) return;
+    if (replaced || activeTrigger !== triggerEl || !fresh || !Array.isArray(fresh.maps)) return;
     if (seq < paintedSeq && !(latestBodyAt.has(fresh) && matchIsBehind(liveMatch, fresh))) return;
     paintedSeq = Math.max(paintedSeq, seq);
+    // A week can bring other maps under the same tabs: the outlines, the pictures and every stage were
+    // built for the old ids, so the opening is done again on this body, on the tab that was open.
+    // Only while this popover is the one open: one closed and reopened by the same button keeps the trigger,
+    // and its late answer would stop the poll of the one on screen.
+    if (activePopover === popover && fresh.maps.some((m) => byType.has(m.type) && byType.get(m.type).id !== m.id)) {
+      replaced = true;
+      freshRecall.data = fresh;
+      clearInterval(mapPollTimer);
+      mapCatchUp = null;
+      mapAhead = null;
+      fillTierMaps(popover, fresh, regionName, tierNum, triggerEl,
+        { type: current, focus: popover.contains(document.activeElement) });
+      return;
+    }
     for (const m of fresh.maps) if (byType.has(m.type)) byType.set(m.type, m);
     liveMatch = fresh;
     // Outlives the popover, so reopening starts from here.
@@ -2822,7 +2842,9 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     if (hotFresh) markHotTab(liveMatch);
     else paintCorners(); // the history may have backdated the score time
   });
-  show(available[0]);
+  const opening = swap && available.includes(swap.type) ? swap.type : available[0];
+  show(opening);
+  if (swap && swap.focus) tabByType.get(opening).focus();
 
   // And once, right now, rather than waiting out the first poll.
   // This popover opens with the match the standings panel is holding, and that panel refreshes every five
@@ -2861,20 +2883,26 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
 
 // The rest of a tier's opening, once maps-early.js has opened the popover
 // with its spinner and this file has loaded.
-async function fillTierMaps(popover, match, regionName, tierNum, triggerEl) {
+// `swap`: the same popover opened again on a body with other map ids, { type, focus } of the tab that was
+// open; the standings match it is paired with in freshRecall stays the one it was.
+async function fillTierMaps(popover, match, regionName, tierNum, triggerEl, swap = null) {
   // Reopen with what we already know, not with what the standings panel is holding: a reopen would paint
   // from a snapshot this popover had already bettered, then correct itself a second later.
   // Which of the two is newer is decided by identity, not by clocks: every standings refresh parses fresh
   // JSON, so a match object we have seen before means that panel has not refreshed and ours is newer. A
   // different object means it is ahead of us, and it wins.
-  if (freshRecall && freshRecall.from === match) {
-    if (freshRecall.data) match = freshRecall.data;
-  } else {
-    freshRecall = { from: match, data: null };
+  if (!swap) {
+    if (freshRecall && freshRecall.from === match) {
+      if (freshRecall.data) match = freshRecall.data;
+    } else {
+      freshRecall = { from: match, data: null };
+    }
   }
 
   const wanted = (match.maps || []).filter((m) => MAP_PANEL_ORDER.includes(m.type));
-  const firstType = MAP_PANEL_ORDER.find((t) => wanted.some((m) => m.type === t));
+  const firstType = swap && wanted.some((m) => m.type === swap.type)
+    ? swap.type
+    : MAP_PANEL_ORDER.find((t) => wanted.some((m) => m.type === t));
   const firstMap = wanted.find((m) => m.type === firstType);
 
   // The terrain picture, asked for here rather than by the <image> node, which is built after everything
@@ -2926,5 +2954,5 @@ async function fillTierMaps(popover, match, regionName, tierNum, triggerEl) {
   // Closed and opened again, the same button holds a new popover.
   if (activePopover !== popover) return;
   renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
-    sectorsByType, pendingSectors, triggerEl);
+    sectorsByType, pendingSectors, triggerEl, swap);
 }
