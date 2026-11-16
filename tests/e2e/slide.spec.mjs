@@ -5,18 +5,11 @@
 import { test, expect } from './support/fixtures.mjs';
 import { FOCUS } from './support/scenarios.mjs';
 import { pastEdge } from './support/edge.mjs';
-import { load, serveList } from './support/steps.mjs';
+import { board, load, serveList } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
 
 const CARDS = `.standing-match[data-match-id="${FOCUS}"] > .standing-side`;
-
-// The tier's bodies as copies, and the colours of FOCUS by rank.
-const board = page => page.evaluate(id => {
-  const list = [...matchDataCache.values()].map(m => JSON.parse(JSON.stringify(m)));
-  const rank = rankMatchByVictoryPoints(matchDataCache.get(id));
-  return { list, byRank: Object.keys(rank).sort((a, b) => rank[a] - rank[b]) };
-}, FOCUS);
 
 // The side that is ahead of `other` by one victory point.
 const overtake = (list, ahead, other) => {
@@ -70,7 +63,7 @@ test.describe('a side overtakes in a tier', () => {
     test(`the cards slide to their new places and leave nothing behind (${move})`, async ({ page, wvw }) => {
       if (move === 'insertBefore') await page.addInitScript(() => { delete Element.prototype.moveBefore; });
       await load(page, wvw);
-      const { list, byRank: [first, second, third] } = await board(page);
+      const { list, byRank: [first, second, third] } = await board(page, FOCUS);
       overtake(list, second, first);
       await serveList(page, list);
       const r = await repaint(page);
@@ -98,7 +91,7 @@ test.describe('a side overtakes in a tier', () => {
 
   test('lasts as long as the columns take to swap', async ({ page, wvw }) => {
     await load(page, wvw);
-    const { list, byRank: [first, second] } = await board(page);
+    const { list, byRank: [first, second] } = await board(page, FOCUS);
     overtake(list, second, first);
     await serveList(page, list);
     const ms = await page.evaluate(async ([id, c]) => {
@@ -113,7 +106,7 @@ test.describe('a side overtakes in a tier', () => {
   test('plays under reduced motion too', async ({ page, wvw }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await load(page, wvw);
-    const { list, byRank: [first, second] } = await board(page);
+    const { list, byRank: [first, second] } = await board(page, FOCUS);
     overtake(list, second, first);
     await serveList(page, list);
     expect((await repaint(page)).slides).toHaveLength(2);
@@ -122,7 +115,7 @@ test.describe('a side overtakes in a tier', () => {
 
   test('a second score in the middle of the slide starts from where the cards are drawn and ends in place', async ({ page, wvw }) => {
     await load(page, wvw);
-    const { list, byRank: [first, second, third] } = await board(page);
+    const { list, byRank: [first, second, third] } = await board(page, FOCUS);
     overtake(list, second, first);
     await serveList(page, list);
     expect((await repaint(page, false, true)).slides).toHaveLength(2);
@@ -148,7 +141,7 @@ test.describe('a side overtakes in a tier', () => {
 
   test('a delta born over a card that slides goes with it', async ({ page, wvw }) => {
     await load(page, wvw);
-    const { list, byRank: [first, second] } = await board(page);
+    const { list, byRank: [first, second] } = await board(page, FOCUS);
     overtake(list, second, first);
     await serveList(page, list);
     await repaint(page);
@@ -159,7 +152,7 @@ test.describe('a side overtakes in a tier', () => {
 
   test('the guild-found strip goes with its card', async ({ page, wvw }) => {
     await load(page, wvw);
-    const { list, byRank: [first, second] } = await board(page);
+    const { list, byRank: [first, second] } = await board(page, FOCUS);
     await page.evaluate(([id, c]) => showGuildFound(matchTeamId(matchDataCache.get(id), c), 'Found Guild'), [FOCUS, second]);
     overtake(list, second, first);
     await serveList(page, list);
@@ -194,7 +187,7 @@ test.describe('a side overtakes in a tier', () => {
     test(`the climber is not cut by the tier at ${width}px`, async ({ page, wvw }) => {
       await page.setViewportSize({ width, height: 900 });
       await load(page, wvw);
-      const { list, byRank: [first, second] } = await board(page);
+      const { list, byRank: [first, second] } = await board(page, FOCUS);
       overtake(list, second, first);
       await serveList(page, list);
       const spare = await page.evaluate(async id => {
