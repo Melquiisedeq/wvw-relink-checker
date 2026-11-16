@@ -31,16 +31,15 @@ const MAX_ZOOM = 4.5;
 // `lite` is the same picture LITE_WIDTH pixels wide; a map opens on it and takes `src` once the zoom
 // needs more pixels than it holds (upgradeTerrain).
 const LITE_WIDTH = 1280;
-const SEARED_IMAGE = 'assets/map-seared-1280.webp';
 const MAP_IMAGE = Object.freeze({
   38: { src: 'assets/map-ebg.webp', lite: 'assets/map-ebg-1280.webp', x: 8846.4, y: 12710.9, w: 3308.0, h: 3293.5, edge: 14 },
   1099: { src: 'assets/map-rbl.webp', lite: 'assets/map-rbl-1280.webp', x: 9133.8, y: 8866.1, w: 3228.6, h: 3245.6, edge: 14 },
   96: { src: 'assets/map-bbl.webp', lite: 'assets/map-bbl-1280.webp', x: 12718.3, y: 10865.3, w: 2660.6, h: 3623.1, edge: 14 },
   95: { src: 'assets/map-gbl.webp', lite: 'assets/map-gbl-1280.webp', x: 5534.1, y: 11493.7, w: 2693.0, h: 3638.3, edge: 14 },
-  // One picture for the three Seared Borderlands maps; there is no bigger one, so src is lite.
-  1652: { src: SEARED_IMAGE, lite: SEARED_IMAGE, x: 9268.0, y: 9045.1, w: 2430.2, h: 3412.8, edge: 14 },
-  1651: { src: SEARED_IMAGE, lite: SEARED_IMAGE, x: 5684.0, y: 11605.1, w: 2430.2, h: 3412.8, edge: 14 },
-  1654: { src: SEARED_IMAGE, lite: SEARED_IMAGE, x: 12852.0, y: 10965.1, w: 2430.2, h: 3412.8, edge: 14 },
+  // One picture for the three Seared Borderlands maps, each its map's continent_rect, one pixel to the unit.
+  1652: { src: 'assets/map-seared.webp', lite: 'assets/map-seared-1280.webp', x: 9214, y: 8958, w: 2560, h: 3584, edge: 14 },
+  1651: { src: 'assets/map-seared.webp', lite: 'assets/map-seared-1280.webp', x: 5630, y: 11518, w: 2560, h: 3584, edge: 14 },
+  1654: { src: 'assets/map-seared.webp', lite: 'assets/map-seared-1280.webp', x: 12798, y: 10878, w: 2560, h: 3584, edge: 14 },
 });
 
 // The three EBG mercenary camps have no usable coord (label_coord sits off the camp), so these are read
