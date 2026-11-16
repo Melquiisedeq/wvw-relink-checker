@@ -75,6 +75,57 @@ test.describe('keyboard on the map', () => {
   }
 });
 
+test.describe('the map window is modal', () => {
+  const where = page => page.evaluate(() => {
+    const a = document.activeElement;
+    return a === document.body ? 'body' : a.closest('.info-popover') ? 'window' : `outside: ${a.tagName}#${a.id}.${a.className}`;
+  });
+
+  test('Tab and Shift+Tab stay in the window; closing gives the page its focus back; the open tab says so', async ({ page, wvw }) => {
+    const tier = await boardOpen(page, wvw);
+    await expect(page.locator(POP)).toHaveAttribute('aria-modal', 'true');
+    const current = () => page.$$eval(`${POP} .wvw-tab`, bs => bs.map(b => [b.classList.contains('is-active'), b.getAttribute('aria-current')]));
+    const check = async why => {
+      const tabs = await current();
+      expect(tabs.length, 'map tabs').toBeGreaterThan(1);
+      for (const [active, attr] of tabs) expect(attr, why).toBe(active ? 'true' : null);
+    };
+    await check('aria-current marks only the open tab');
+
+    // The first and last tabbable of the window, one step outward each.
+    const edge = (which, key) => page.evaluate(([which, key]) => {
+      const win = document.querySelector('.info-popover');
+      const all = [...win.querySelectorAll('button, [href], input, select, textarea, [tabindex]')].filter(e => e.tabIndex >= 0 && !e.disabled && e.offsetParent !== null);
+      all[which === 'first' ? 0 : all.length - 1].focus();
+      return key;
+    }, [which, key]);
+    await edge('first', 'Shift+Tab');
+    await page.keyboard.press('Shift+Tab');
+    expect(await where(page), 'Shift+Tab from the first stays in').not.toMatch(/^outside/);
+    await edge('last', 'Tab');
+    await page.keyboard.press('Tab');
+    expect(await where(page), 'Tab from the last stays in').not.toMatch(/^outside/);
+
+    await page.locator(POP).focus();
+    for (const key of ['Tab', 'Shift+Tab']) {
+      for (let i = 0; i < 12; i++) {
+        await page.keyboard.press(key);
+        expect(await where(page), `${key} press ${i + 1} stays in the window`).not.toMatch(/^outside/);
+      }
+    }
+
+    await page.locator(`${POP} .wvw-tab:not(.is-active)`).first().click();
+    await check('aria-current moves with the tab');
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator(POP)).toHaveCount(0);
+    await expect(tier.button, 'focus goes back to the maps button').toBeFocused();
+    expect(await page.evaluate(() => [...document.body.children].filter(e => e.inert).length), 'nothing stays inert').toBe(0);
+    await page.keyboard.press('Tab');
+    expect(await where(page), 'the page takes focus again').toMatch(/^outside/);
+  });
+});
+
 // The waypoint's chat link: the byte 4 and the point's id, little-endian, in
 // base64 between [& and ].
 const code = id => `[&${Buffer.from([4, id & 255, (id >> 8) & 255, (id >> 16) & 255, (id >> 24) & 255]).toString('base64')}]`;
