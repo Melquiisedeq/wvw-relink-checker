@@ -1054,6 +1054,8 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
     if (!at) continue;
     pts.push({ ob: owners.get(meta.id) || blank(meta), meta, x: at[0], y: at[1] });
   }
+  // A map with nothing to place is no map: the caller says so instead of drawing bare terrain.
+  if (!pts.length) return null;
 
   // The viewBox comes from the sector outlines, so nothing has to agree about map bounds.
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -2545,7 +2547,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
       paintCorners();
       stage.appendChild(plotWrap);
     } else {
-      // The outline is the drawing's frame, so without it there is no map; the other tabs are unaffected,
+      // Without the outline (the frame) or a single marker there is no map; the other tabs are unaffected,
       // which is why this replaces the stage and not the popover.
       const msg = document.createElement('p');
       msg.className = 'hint wvw-stage-msg';
