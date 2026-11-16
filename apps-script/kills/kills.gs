@@ -7,7 +7,7 @@
  *   epoch ms | match id | Center | RedHome | BlueHome | GreenHome | start_time | score
  * The four numbers are kills summed over the three teams. deaths is left out on
  * purpose: it also counts deaths to a lord, a guard or a fall.
- * The site reads columns 0 to 5 and the 8th; the 7th is for this script only;
+ * The site reads the first six columns and the 8th; the 7th is for this script only;
  * the 8th is the match score sum, sent to /api and read by the page only from
  * the sheet, when /api is out.
  *
