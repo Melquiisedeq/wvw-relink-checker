@@ -520,21 +520,32 @@ async function loadStandings(origin = 'cycle') {
   try {
     const asked = Date.now();
     let idList, naMatches, euMatches;
-    // A peek's load reads /api when the summary is ahead; with nothing newer in
-    // hand it leaves the board be. So does a cycle whose copy is fresh and holds
-    // the weeks on show and no region is resetting, reading the game only if the copy asked for gave nothing;
-    // the summary is read first when the one in hand is too old to say (an idle tab peeks every PEEK_IDLE_MAX_MS).
+    // A peek's load reads /api when the summary is ahead; with nothing newer in hand it
+    // leaves the board be. So does a cycle whose copy is fresh and holds the weeks on show
+    // with no region resetting: the copy draws the board, and the game is asked, in one
+    // read, only for the matches whose own `at` is old. The summary is read first when the
+    // one in hand is too old to say; that read of the game may have asked the copy already.
     let fromHand = origin === 'peek', askCopy = peekCopy;
     if (origin === 'cycle' && standingsEverLoaded && !standingsFailed.length && matchDataCache.size
       && !regionResetting('NA', Date.now()) && !regionResetting('EU', Date.now())) {
-      if (!copyHolds([...matchDataCache.values()])) {
+      let held = copyHolds([...matchDataCache.values()]);
+      if (!held) {
         try {
           const sum = await fetchOwnApi(LATEST_SUMMARY_URL, 'no-store');
           if (sum && typeof sum === 'object') latestSummaryLearn(sum);
         } catch { /* the game is read, as ever */ }
+        held = copyHolds([...matchDataCache.values()]);
       }
-      fromHand = copyHolds([...matchDataCache.values()]);
+      fromHand = !!held;
       askCopy = [...matchDataCache.values()].some(summaryAhead);
+      const stalled = held ? [...matchDataCache.keys()].filter((id) => !held.includes(id)) : [];
+      if (stalled.length) {
+        const copyReadAt = latestAskedAt;
+        try {
+          await fetchMatches(`${API_BASE}/wvw/matches?ids=${stalled.map(encodeURIComponent).join(',')}`, timeoutMs);
+        } catch { /* the copy answers for them */ }
+        if (latestAskedAt !== copyReadAt) askCopy = false;
+      }
     }
     let all = fromHand ? await latestBoard(askCopy) : await fetchAllMatches(timeoutMs);
     if (!all && fromHand) {
