@@ -109,3 +109,54 @@ print(json.dumps([mod.KILLS_WORKER_STALE, mod.LATEST_WORKER_STALE, mod.STALE['re
 `, '', join(dir, 'scripts', 'check-worker.py'));
   assert.deepEqual(r, [420, 180, 540, 10800]);
 });
+
+// The kills the page draws come from rows a stolen secret can hold back while every answer is 200.
+const FOLLOW = `
+now = int(time.time())
+mod.week_start = lambda region, at: now - 3 * 3600
+week = (now - 3 * 3600) * 1000
+summary_at = now - arg['summary_age']
+def get(url):
+    if url.endswith('latest/summary'):
+        return {'1-1': {'start': week, 'score': 5, 'at': summary_at, 'by': 'latest-supa-us'}}, None
+    if url.endswith('/kills'):
+        rows = [[(summary_at - arg['lag']) * 1000, '1-1', 1, 2, 3, 4]] if arg['lag'] is not None else [[now * 1000, '1-2', 1, 2, 3, 4]]
+        return {'rows': rows}, None
+    if url.endswith('/relink'):
+        return {'window': 1, 'published': 1}, None
+    return {'matches': [1]}, None
+mod.get_json = get
+mod.game_scores = lambda: None
+mod.kills_age[0] = 0
+problems, notes = [], []
+mod.check_reads(problems, notes)
+mod.check_latest(problems, notes)
+print(json.dumps(problems))
+`;
+const follow = (summary_age, lag) => py(FOLLOW, { summary_age, lag });
+
+test('a match whose newest kills line is 31 minutes behind its fresh summary is reported', () => {
+  const problems = follow(60, 31 * 60);
+  assert.ok(problems.some((p) => /1-1/.test(p) && /at \d{13}\)/.test(p) && /31 minutes/.test(p) && /INGEST_KILLS/.test(p)), problems.join('\n'));
+});
+
+test('a kills line 29 minutes behind the summary is not reported', () => {
+  assert.deepEqual(follow(60, 29 * 60), []);
+});
+
+test('a match with an old summary is not judged, however far its kills lag', () => {
+  assert.deepEqual(follow(6 * 60, 31 * 60), []);
+});
+
+test('a match begun long ago with a fresh summary and no kills line is reported', () => {
+  const problems = follow(60, null);
+  assert.ok(problems.some((p) => /1-1/.test(p) && /no kills line/.test(p)), problems.join('\n'));
+});
+
+test('the kills comparison says so when /api/kills was not read', () => {
+  const notes = py(`
+mod.check_kills_follow({}, None, 0, [], notes := [])
+print(json.dumps(notes))
+`);
+  assert.deepEqual(notes, ['kills vs summary                   not judged, /api/kills unread']);
+});
