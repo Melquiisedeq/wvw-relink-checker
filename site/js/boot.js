@@ -1,13 +1,8 @@
 'use strict';
 // Boot (loads last): the first load, the background refreshes, the ember field, and idling when nobody is looking.
 
-// The names of trebuchet.js and maps-early.js the page calls: a file that did not download leaves its names missing.
+// Said when a file the page needs (js/maps-early.js) did not download.
 const RELOAD_TEXT = "Part of the page didn't load. Reload to fix it.";
-const MAPS_EARLY_NAMES = [typeof recordFightSamples, typeof primeMapBadges];
-function missingParts() {
-  return [typeof sparkFromButton, typeof startCharge, typeof playFinale, typeof onPointerDown, ...MAPS_EARLY_NAMES]
-    .filter((t) => t !== 'function');
-}
 
 // Initial load, then keep both data sets fresh in the background for as
 // long as the tab stays open (see STANDINGS_REFRESH_MS / TIMERS_REFRESH_MS).
@@ -17,7 +12,8 @@ document.querySelectorAll('.rail-swap').forEach((btn) => {
 });
 showStandingsSkeleton(standingsGridNA);
 showStandingsSkeleton(standingsGridEU);
-const standingsParts = MAPS_EARLY_NAMES.every((t) => t === 'function');
+// The standings need js/maps-early.js: a file that did not download leaves its names missing.
+const standingsParts = typeof recordFightSamples === 'function' && typeof primeMapBadges === 'function';
 if (!standingsParts) {
   setStandingsStatus(standingsStatusNA, false, RELOAD_TEXT);
   setStandingsStatus(standingsStatusEU, false, RELOAD_TEXT);
@@ -435,4 +431,4 @@ runBtn.addEventListener('click', run);
 guildInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.ctrlKey && !runBtn.disabled) run();
 });
-if (typeof onPointerDown === 'function') document.addEventListener('pointerdown', onPointerDown, { passive: true });
+document.addEventListener('pointerdown', (e) => fx(() => onPointerDown(e)), { passive: true });
