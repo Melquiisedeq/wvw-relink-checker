@@ -61,7 +61,7 @@ function oldOf(m, from) {
 // A relink night. A normal cycle asks ids=all and nothing else. A partial list
 // is read again for the missing tiers only, by id, and they stay; a gap the
 // second read lacks too keeps the last body seen, or, never seen, a "Waiting
-// on the API" card; a tier missing from both reads with no gap is gone.
+// on the game" card; a tier missing from both reads with no gap is gone.
 test.describe('partial lists', () => {
   const all = recordedJson(ALL);
   const rec = new Map(all.map(m => [m.id, m]));
@@ -98,7 +98,7 @@ test.describe('partial lists', () => {
     expect(r.cards[0].sides, 'tier 1 from its last body').toBe(3);
   });
 
-  test('a tier this page never saw reads "Waiting on the API", with no map', async ({ page, wvw }) => {
+  test('a tier this page never saw reads "Waiting on the game", with no map', async ({ page, wvw }) => {
     await opened(page, wvw);
     const asked = matchReads(page);
     await answer(page, ALL, without('1-1', '1-4'));
@@ -109,7 +109,7 @@ test.describe('partial lists', () => {
     expect(ids(r.cards)).toBe('1-1 1-2 1-3');
     const w = r.cards[0];
     expect({ sides: w.sides, map: w.map, title: w.title, waiting: w.waiting.join('|') })
-      .toEqual({ sides: 0, map: false, title: 'Tier 1', waiting: 'Waiting on the API' });
+      .toEqual({ sides: 0, map: false, title: 'Tier 1', waiting: 'Waiting on the game' });
     await expect(page.locator('#standingsGridNA > [data-match-id="1-1"]').getByRole('heading', { level: 3 }), 'the waiting tier is a heading').toHaveText('Tier 1');
   });
 
@@ -147,7 +147,7 @@ test.describe('partial lists', () => {
     for (const [id, shared, tier] of [['1-2', old2.shared, 3], ['1-4', old4.shared, 1]]) {
       const c = r.cards.find(x => x.id === id), name = await nameOf(page, shared);
       expect({ stale: c.stale, waiting: c.waiting.join('|'), moved: c.moved }, `last week's ${id}`).toEqual({
-        stale: 3, waiting: "Last week's line-up · waiting on the API", moved: [[name, `→ Tier ${tier}`, `This week: Tier ${tier}`]] });
+        stale: 3, waiting: "Last week's line-up · waiting on the game", moved: [[name, `→ Tier ${tier}`, `This week: Tier ${tier}`]] });
     }
     expect(r.cards.find(c => c.id === '1-3').moved.length, "this week's 1-3 marked").toBe(0);
     // The recorded bodies replace last week's.
@@ -286,8 +286,8 @@ test('relink day Check: this week\'s match wins; a team the API lacks gets a gre
   expect(got[0]?.cls, `team ${T} is in ${fresh.id} and in last week's ${old.id}`).toBe(`dot dot-${colorOf(fresh, T)}`);
   expect(await page.evaluate(t => teamToMatchId.get(t), T)).toBe(fresh.id);
   expect(got[1]?.cls).toBe('dot dot-pending');
-  expect(got[1]?.title).toMatch(/not on the API yet/);
-  expect(await page.locator('#matchPanelsContainer .panel-note').allTextContents()).toEqual([`Unknown team (ID ${MISSING}): this week's match isn't on the API yet.`]);
+  expect(got[1]?.title).toMatch(/not in the game's data yet/);
+  expect(await page.locator('#matchPanelsContainer .panel-note').allTextContents()).toEqual([`Unknown team (ID ${MISSING}): this week's match isn't in the game's data yet.`]);
   expect(await page.evaluate(m => teamToMatchId.has(m) || teamToMatchId.has(Number(m)), MISSING), 'a wrong match kept for the missing team').toBe(false);
   expect(wrong.reads, '?world= reads').toBeGreaterThanOrEqual(1);
   expect(wrong.reads).toBeLessThanOrEqual(3);
@@ -303,7 +303,7 @@ test('relink day Check: this week\'s match wins; a team the API lacks gets a gre
 // A team the API holds no match for, in a list with one it does: the run goes on
 // to its end, the missing one first in the list. The grey dot and the panel's note say it, the status says Done for
 // both guilds, and the copy gives the missing team's guild no tier or opponents.
-test('a team whose match is not on the API: the run ends, grey dot, note, and the copy with no tier', async ({ page, wvw }) => {
+test('a team whose match is not in the game data: the run ends, grey dot, note, and the copy with no tier', async ({ page, wvw }) => {
   const all = recordedJson(ALL);
   const live = all.find(m => m.id.startsWith('1-'));
   const T = Number(live.all_worlds.red.find(n => n >= 10000)), MISSING = 99999;
@@ -317,9 +317,9 @@ test('a team whose match is not on the API: the run ends, grey dot, note, and th
   await expect(page.locator('#statusMsg')).toHaveText('Done, checked 2 guild(s).');
   const got = await dots(page);
   expect(got[1]?.cls, 'the dot of the team with a match').toBe(`dot dot-${colorOf(live, T)}`);
-  expect(got[0], 'the dot of the team without').toEqual({ cls: 'dot dot-pending', title: 'Match not on the API yet' });
+  expect(got[0], 'the dot of the team without').toEqual({ cls: 'dot dot-pending', title: "Match not in the game's data yet" });
   expect(await page.locator('#matchPanelsContainer .panel-note').allTextContents())
-    .toEqual([`Unknown team (ID ${MISSING}): this week's match isn't on the API yet.`]);
+    .toEqual([`Unknown team (ID ${MISSING}): this week's match isn't in the game's data yet.`]);
   const [chat, discord] = await page.evaluate(() => [copyChatBtn.dataset.summary, copyDiscordBtn.dataset.summary]);
   for (const text of [chat, discord]) {
     expect(text).toContain(`Early Guild landed on Unknown team (ID ${MISSING})`);
@@ -352,7 +352,7 @@ test.describe('week memory', () => {
       vp: !!b.querySelector('.standing-vp'), names: [...b.querySelectorAll('.standing-side-name')].map(e => e.textContent),
       waiting: [...b.querySelectorAll('.standings-waiting')].map(p => p.textContent) } : null;
   }, id);
-  const LINE = "This week's line-up · scores not in yet", LAST = "Last week's line-up · waiting on the API";
+  const LINE = "This week's line-up · scores not in yet", LAST = "Last week's line-up · waiting on the game";
 
   test('a new week is remembered, and served back when the API still has last week', async ({ page, wvw }) => {
     const start = startOf(wvw.recordedAt);

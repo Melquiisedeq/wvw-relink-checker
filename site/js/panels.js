@@ -305,7 +305,7 @@ function buildWaitingTier(matchId) {
   box.appendChild(label);
   const note = document.createElement('p');
   note.className = 'standings-waiting';
-  note.textContent = 'Waiting on the API';
+  note.textContent = 'Waiting on the game';
   box.appendChild(note);
   return box;
 }

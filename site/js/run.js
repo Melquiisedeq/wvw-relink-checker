@@ -39,7 +39,7 @@ async function run() {
 
   runBtn.disabled = true;
   runBtn.innerHTML = '<span class="btn-pips"><span></span><span></span><span></span></span>';
-  statusMsg.innerHTML = '<span class="spinner"></span>Talking to the GW2 API…';
+  statusMsg.innerHTML = '<span class="spinner"></span>Asking the game…';
   // A popover opened from a row holds the old run's data; its trigger goes with the rows.
   closePopover();
   resultBody.textContent = '';
@@ -136,11 +136,11 @@ async function run() {
         if (!match || !color) {
           const note = document.createElement('p');
           note.className = 'panel-note';
-          note.textContent = `${getTeamName(teamId)}: this week's match isn't on the API yet.`;
+          note.textContent = `${getTeamName(teamId)}: this week's match isn't in the game's data yet.`;
           matchPanelsContainer.appendChild(note);
           // The dot stays grey (dot-pending); only its title changes.
           (dotsByTeam.get(teamId) || []).forEach((dot) => {
-            if (dot) dot.title = 'Match not on the API yet';
+            if (dot) dot.title = "Match not in the game's data yet";
           });
           await sleep(THROTTLE_MS);
           continue;
