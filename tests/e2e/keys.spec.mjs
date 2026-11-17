@@ -3,7 +3,8 @@
 // or by the old way, or are put on the screen when neither works; Ctrl+Enter
 // runs the search; the saved list comes back whole.
 import { test, expect } from './support/fixtures.mjs';
-import { boardOpen, tabTo, search } from './support/steps.mjs';
+import { boardOpen, load, openMap, tabTo, search } from './support/steps.mjs';
+import { FOCUS, MIN, hidden, missed, visible } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
 test.describe.configure({ timeout: 60 * 1000 });
@@ -123,6 +124,52 @@ test.describe('the map window is modal', () => {
     expect(await page.evaluate(() => [...document.body.children].filter(e => e.inert).length), 'nothing stays inert').toBe(0);
     await page.keyboard.press('Tab');
     expect(await where(page), 'the page takes focus again').toMatch(/^outside/);
+  });
+});
+
+test.describe('focus follows a pick made from the right-hand column', () => {
+  test.use({ timeline: missed(150, 30) });
+  const where = page => page.evaluate(() => {
+    const a = document.activeElement;
+    return a === document.body ? 'body' : a.closest('.info-popover') ? `window ${a.className}` : 'outside';
+  });
+
+  test('a name or chip of another map, by Enter: focus stays in the window; Escape gives it to the maps button', async ({ page, wvw }) => {
+    await load(page, wvw);
+    await hidden(page, wvw, 25 * MIN);
+    await visible(page);
+    const button = page.locator(`.tier-map-btn[aria-label*="NA Tier ${FOCUS.split('-')[1]}"]`);
+    await openMap(page, wvw, button);
+    const head = page.locator(`${POP} .wvw-missed:not(.is-leaving) .wvw-missed-head`);
+    await expect(head).toBeAttached();
+    if (await head.getAttribute('aria-expanded') === 'false') await head.click();
+    // The block rebuilds itself when folded and opened by key: the head keeps the focus.
+    await tabTo(page, `${POP} .wvw-missed-head`, 'the block head');
+    await page.keyboard.press('Enter');
+    await expect(head).toHaveAttribute('aria-expanded', 'false');
+    await expect(head, 'the head keeps the focus when the block rebuilds').toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(head).toHaveAttribute('aria-expanded', 'true');
+    await expect(head).toBeFocused();
+    // Name and chip of another map, each by Enter: the redraw gives the row
+    // new classes (it is this map's now) and the focus must follow the item.
+    for (const [sel, what] of [['.wvw-missed-mapname', 'the name of another map'], ['.wvw-chip:not(.wvw-chip-more)', 'a chip of another map']]) {
+      const item = `${POP} .wvw-missed-row.is-other ${sel}`;
+      await page.locator(`${POP} .wvw-tab:not(.is-active)`).first().click();
+      await expect(page.locator(item).first()).toBeAttached();
+      const was = await page.locator(`${POP} .wvw-tab.is-active`).getAttribute('data-type');
+      await tabTo(page, item, what);
+      await page.keyboard.press('Enter');
+      await expect(page.locator(`${POP} .wvw-tab.is-active`)).not.toHaveAttribute('data-type', was);
+      await expect.poll(() => page.evaluate(s => !!document.activeElement.closest('.info-popover') && document.activeElement.matches(s), sel),
+        { message: `focus stays on ${what} after the map changes` }).toBe(true);
+    }
+    // Focus left on <body> by anything that rebuilt its holder: closing still hands it back.
+    await page.evaluate(() => document.activeElement.blur());
+    expect(await where(page)).toBe('body');
+    await page.keyboard.press('Escape');
+    await expect(page.locator(POP)).toHaveCount(0);
+    await expect(button, 'Escape gives the focus to the maps button').toBeFocused();
   });
 });
 
