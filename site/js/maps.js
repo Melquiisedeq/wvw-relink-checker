@@ -1485,6 +1485,7 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
   };
   wrap.addEventListener('pointerup', endDrag);
   wrap.addEventListener('pointercancel', endDrag);
+  if (typeof labMapPan === 'function') labMapPan({ wrap, svg, view, apply, clamp, minX, minY, fullW, fullH }); // LAB (never merged)
 
   const zoomBox = document.createElement('div');
   zoomBox.className = 'wvw-zoom';
