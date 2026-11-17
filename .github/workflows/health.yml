@@ -136,9 +136,7 @@ jobs:
       - name: The written-out objectives and sectors against the game
         run: python3 scripts/check-catalogue.py
 
-  # D1 Free refuses every write past 100,000 rows a day, until 00:00 UTC, and
-  # only the account can read that number: the token is read-only analytics.
-  # Its own job, so the email says "d1-writes" and the secrets reach nothing else.
+  # The only job with secrets, so only it has the env: below.
   d1-writes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
