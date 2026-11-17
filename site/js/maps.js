@@ -50,7 +50,7 @@ const MERC_COORD = Object.freeze({
   '38-125': [11284.6, 14096.6],   // Orgath Uplands
   '38-126': [10631.4, 15310.5],   // Darkrait Inlet: 61 units west of its spot, so it clears Quentin Lake
 });
-// Drawn off the game's spot so that two neighbours clear each other (tests/unit/map-positions.test.mjs).
+// Drawn off the game's spot to leave visible room between two close neighbours.
 const MOVED_COORD = Object.freeze({
   '38-16': [10880.1, 15224.4],    // Quentin Lake: 30 units east, away from Darkrait Inlet
 });
@@ -82,7 +82,7 @@ const SEARED_SHIFT = Object.freeze({ 1652: [0, 0], 1651: [-3584, 2560], 1654: [3
 
 // Where the page draws an objective. coord, not label_coord: label_coord is where the game writes the
 // objective's *name*, clear of the building. The EBG mercenary camps have an empty coord; MERC_COORD stands
-// in for them. MOVED_COORD comes before both.
+// in for them.
 function objectiveAt(meta) {
   const [map, number] = String(meta.id).split('-');
   const seared = SEARED_COORD[number], shift = SEARED_SHIFT[map];
