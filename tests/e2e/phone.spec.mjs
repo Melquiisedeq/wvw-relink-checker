@@ -1,6 +1,7 @@
 // The page on a phone's screen (the protocol's device override, mobile on, from
 // support/steps.mjs): the map board and its targets at 320 and 360 px, the
-// alliances popover back at a wide width, and the result table inside its card.
+// alliances popover back at a wide width, the result table inside its card, and
+// the Activity popover through a pinch zoom.
 import { test, expect } from './support/fixtures.mjs';
 import { load, phone, search } from './support/steps.mjs';
 
@@ -84,4 +85,56 @@ test('the result table stays inside its card at 320 and 390 px', async ({ page, 
     expect(rows.filter(r => r.across < -1 || r.under < -1), `${width} px: rows whose name does not take the whole line`).toEqual([]);
     await cdp.send('Emulation.clearDeviceMetricsOverride');
   }
+});
+
+async function zoomedActivityPopover(page, wvw) {
+  await load(page, wvw);
+  const cdp = await phone(page, 360);
+  await wvw.settle();
+  const btn = page.locator('.activity-btn').first();
+  await btn.scrollIntoViewIfNeeded();
+  await btn.click();
+  await expect(page.locator('.info-popover')).toHaveCount(1);
+  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+  await expect.poll(() => page.evaluate(() => visualViewport.width)).toBe(180);
+  await page.waitForTimeout(300);
+  return cdp;
+}
+
+test('the activity popover stays open through a pinch zoom', async ({ page, wvw }) => {
+  const cdp = await zoomedActivityPopover(page, wvw);
+  await expect(page.locator('.info-popover')).toHaveCount(1);
+  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1.5 });
+  await expect.poll(() => page.evaluate(() => visualViewport.scale)).toBe(1.5);
+  await page.waitForTimeout(300);
+  await expect(page.locator('.info-popover')).toHaveCount(1);
+  // An event with nothing changed (the size must have been stored at the zoom).
+  await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+  await page.waitForTimeout(100);
+  await expect(page.locator('.info-popover')).toHaveCount(1);
+});
+
+test('the activity popover still closes on a real screen change after a zoom', async ({ page, wvw }) => {
+  await zoomedActivityPopover(page, wvw);
+  await expect(page.locator('.info-popover')).toHaveCount(1);
+  await phone(page, 320, { height: 1200 });
+  await expect(page.locator('.info-popover')).toHaveCount(0);
+});
+
+test('the activity popover closes when a rotation changes the zoom too', async ({ page, wvw }) => {
+  const cdp = await zoomedActivityPopover(page, wvw);
+  await Promise.all([
+    cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1.5 }),
+    phone(page, 320, { height: 1200 }),
+  ]);
+  await expect(page.locator('.info-popover')).toHaveCount(0);
+});
+
+test('the activity popover closes when only the visual viewport shrinks at a held zoom', async ({ page, wvw }) => {
+  await zoomedActivityPopover(page, wvw);
+  await page.evaluate(() => {
+    Object.defineProperty(visualViewport, 'height', { get: () => 300 });
+    visualViewport.dispatchEvent(new Event('resize'));
+  });
+  await expect(page.locator('.info-popover')).toHaveCount(0);
 });
