@@ -14,7 +14,7 @@
 // Chromium, so CI's runs are among them.
 //
 //   npm run coverage            everything, locally (node, then the browser), prints the table
-//   npm run coverage:write      the same, then rewrites data/coverage.json (a PR that raises it commits it)
+//   npm run coverage:write      the same, then rewrites data/coverage.json from one run (not what a PR commits: see sweep)
 //   node support/coverage.mjs node    node --test with V8 coverage kept in test-results/coverage-node
 //                                     (after the browser's run: Playwright empties test-results when it starts)
 //   node support/coverage.mjs check   join what the two runs left, table, compare (CI)
@@ -216,7 +216,7 @@ async function main(command, ...args) {
     '', 'Two causes, and this check cannot tell which (it does not see the diff):',
     '- The pull request added code no test runs: write the test.',
     '- The file is not one the pull request touched: it is oscillation. Run the sweep (Actions > Coverage sweep), then cover what it lists with a test. The committed number never goes down.');
-  if (rose.length && !fell.length) lines.push('', 'Coverage rose: run `npm run coverage:write` in `tests/e2e` and commit `data/coverage.json`.', ...rose.map(l => `- ${l}`));
+  if (rose.length && !fell.length) lines.push('', 'Coverage rose: run the "Coverage sweep" workflow on this commit, download its `coverage-<i>` artifacts into one folder (one subfolder each), run `node support/coverage.mjs sweep <folder> --write` in `tests/e2e` and commit `data/coverage.json` (local runs from `npm run coverage:sweep` add to the folder as `run-<i>`, but CI\'s alone can serve).', ...rose.map(l => `- ${l}`));
   console.log(lines.join('\n'));
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, '### Coverage\n\n' + lines.join('\n') + '\n');
   if (fell.length) process.exitCode = 1;

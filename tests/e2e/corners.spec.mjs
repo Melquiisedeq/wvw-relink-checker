@@ -399,10 +399,15 @@ test.describe('kills that stood still, through the Worker', () => {
   test.use({ timezoneId: 'America/Sao_Paulo' });
   const KEY = 'k'.repeat(128);
   const MIN = 60e3;
-  const workerKills = async (id, now, week, ages, kills, newest) => {
+  const workerKills = async (id, now, ages, kills, newest) => {
     const { sql, DB } = fakeD1();
     const env = { DB, INGEST_KILLS: KEY, INGEST_RELINK: 'r'.repeat(128) };
-    const row = ago => [now - ago, id, ...kills(ago), week];
+    // The entrance takes only a week begun on its region's reset: the newest one a day or more back.
+    const [day, hour] = id[0] === '1' ? [6, 2] : [5, 18];
+    const from = new Date(now - 86400e3);
+    let week = Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate(), hour) - ((from.getUTCDay() - day + 7) % 7) * 86400e3;
+    if (week > from.getTime()) week -= 7 * 86400e3;
+    const row = ago => [now - ago, id, ...kills(ago), week, 1];
     const ins = sql.prepare('INSERT INTO kills (match, at, center, red, blue, green, start) VALUES (?,?,?,?,?,?,?)');
     for (const ago of ages) ins.run(id, now - ago, ...kills(ago), week);
     const real = Date.now, log = console.log;
@@ -428,7 +433,7 @@ test.describe('kills that stood still, through the Worker', () => {
   const open = async (page, wvw, ages, bonus, rose = 0) => {
     await load(page, wvw);
     const tier = await firstTier(page);
-    const { now, week, T, match } = await page.evaluate(([id, rose]) => {
+    const { now, T, match } = await page.evaluate(([id, rose]) => {
       localStorage.removeItem('wvw-fight-v1');
       const now = Date.now();
       const k = newestMatches.get(id);
@@ -436,10 +441,10 @@ test.describe('kills that stood still, through the Worker', () => {
       k.at = now - rose;
       k.match.start_time = new Date(now - 4 * 86400e3).toISOString();
       const T = fightTotals(k.match);
-      return { now, week: Date.parse(k.match.start_time), T: KILLS_MAP_ORDER.map(ty => T[ty] || 0), match: k.match };
+      return { now, T: KILLS_MAP_ORDER.map(ty => T[ty] || 0), match: k.match };
     }, [tier.id, rose]);
     const kills = ago => T.map((n, i) => (i === 0 ? n - bonus(ago) : n));
-    await answer(page, wvw.url + 'api/kills', await workerKills(tier.id, now, week, ages, kills, rose));
+    await answer(page, wvw.url + 'api/kills', await workerKills(tier.id, now, ages, kills, rose));
     await answer(page, GAME + tier.id, match);
     await page.evaluate(async () => { killSheetAt = 0; await getKillSheet(); });
     await openMap(page, wvw, tier.button);

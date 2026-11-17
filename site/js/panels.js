@@ -1,5 +1,6 @@
 'use strict';
-// Result rows and match panels: the per-guild answer rows, the match panel under them, and their formatters.
+// The standings board, the per-guild result rows, the match panel and their formatters,
+// and the board's arithmetic: order by victory points, movement arrows, K/D.
 
 function standingsBoard(matches) {
   // A late tier among live ones shows the teams left over (deduceLineup); a body behind

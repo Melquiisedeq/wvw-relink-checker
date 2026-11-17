@@ -3,22 +3,17 @@
 // limit of names.
 import { test, expect } from './support/fixtures.mjs';
 import { fail, answer } from './support/faults.mjs';
-import { search } from './support/steps.mjs';
+import { load, search } from './support/steps.mjs';
 import { thirdInTierTwoStandingsOut, EU_STANDINGS_OUT } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 const GAME = /^https:\/\/api\.guildwars2\.com\/v2\/guild\//;
-const opened = async (page, wvw) => {
-  await page.goto(wvw.url);
-  await expect(page.locator('#standingsGridNA > .standing-match').first()).toBeVisible();
-  await wvw.settle();
-};
 
 // The team the first guild landed on: its card blinks, the page brings it into
 // view, a strip names the guild, and the strip leaves by itself.
 test('guild found: the card blinks, the strip names the guild and leaves', async ({ page, wvw }) => {
   expect(wvw.guilds.length, 'guilds in the recording').toBeGreaterThanOrEqual(2);
-  await opened(page, wvw);
+  await load(page, wvw);
   await search(page, wvw.guilds);
   await expect.poll(() => page.evaluate(() => window.__found.flash && !!window.__found.strip),
     { message: "the found team's card blinking and the strip appearing" }).toBe(true);
@@ -43,7 +38,7 @@ test('guild found: the card blinks, the strip names the guild and leaves', async
 // A guild lookup answered 429 (after its retries) says nothing about the guild:
 // the next Check asks again. A 404 is a definite answer and is kept.
 test('a 429 is not kept against a guild, a 404 is', async ({ page, wvw }) => {
-  await opened(page, wvw);
+  await load(page, wvw);
   const id = 'ZZZZ-CHECK-PAGE-GUILD';
   const url = `https://api.guildwars2.com/v2/guild/${id}`;
   const ask = id => getGuildInfo(id).then(g => 'ok ' + g.name, e => 'err ' + e.status);
@@ -69,7 +64,7 @@ test('a 429 is not kept against a guild, a 404 is', async ({ page, wvw }) => {
 // not count it, so a focus return right after runs it; one that ran is counted,
 // so the same return does not.
 test('a skipped refresh does not spend its turn', async ({ page, wvw }) => {
-  await opened(page, wvw);
+  await load(page, wvw);
   expect(await page.evaluate(async () => { activeTrigger = document.body; const r = await refreshStandings(); activeTrigger = null; return r; }),
     'refreshStandings with a popover open returned').toBe(false);
   const sched = await page.evaluate(() => new Promise(res => {
@@ -92,7 +87,7 @@ test('a skipped refresh does not spend its turn', async ({ page, wvw }) => {
 // answers 404 on purpose, so only the asking is counted.
 for (const over of [true, false]) {
   test(`guild limit: ${over ? 'one name over the limit says so' : 'exactly the limit says nothing'}`, async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     const max = await page.evaluate(() => MAX_ENTRIES);
     const count = over ? max + 1 : max;
     const searches = await fail(page, wvw, /^https:\/\/api\.guildwars2\.com\/v2\/guild\/search\?/, 404);

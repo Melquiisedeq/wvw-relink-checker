@@ -1472,3 +1472,26 @@ test('resolveGuildId: a pasted GUID comes back in capitals, the case of the keys
   const link = await p.run(`resolveGuildId('${id.toLowerCase()}').then((g) => findLink(g, { na: { '${id}': 1001 }, eu: {} }))`);
   assert.equal(link.teamId, 1001);
 });
+
+test('copyHolds: the copy holds the matches with a new read, not the one standing still; none when the copy cannot answer (js/api.js)', () => {
+  const p = loadPage(Date.UTC(2026, 10, 12, 12, 0, 0));
+  const ids = ['1-1', '1-2', '1-3', '1-4', '2-1', '2-2', '2-3', '2-4', '2-5'];
+  const others = ids.filter((id) => id !== '1-3');
+  p.ctx.__ids = ids;
+  const held = (oldAge, lead = 0) => p.run(`(() => {
+    ownClockLead = ${lead};
+    const shown = __ids.map((id) => ({ id, start_time: '2026-11-07T02:00:00Z', end_time: '2026-11-14T02:00:00Z',
+      scores: { red: 5, blue: 1, green: 1 } }));
+    const at = (age) => (Date.now() - ownClockLead - age) / 1000;
+    latestSummaryLearn(Object.fromEntries(shown.map((m) => [m.id,
+      { start: Date.parse(m.start_time), score: 7, at: at(m.id === '1-3' ? ${oldAge} : 10e3) }])));
+    return JSON.stringify(copyHolds(shown));
+  })()`);
+  assert.deepEqual(held(9 * MIN), JSON.stringify(others), 'one of nine 9 minutes old: the other eight are held');
+  assert.deepEqual(held(60e3), JSON.stringify(ids), 'all within the 90 s: all held');
+  assert.deepEqual(held(9 * MIN, 3 * MIN), JSON.stringify(others), 'a device clock 3 minutes ahead: the new eight are still held');
+  assert.equal(p.run(`copyHolds(__ids.map((id) => ({ id, start_time: '2026-11-14T02:00:00Z' })))`), null, 'a week the copy does not know');
+  assert.equal(p.run(`(() => { latestSummaryLearn(Object.fromEntries(__ids.map((id) =>
+    [id, { start: Date.parse('2026-11-07T02:00:00Z'), score: 7, at: (Date.now() - ownClockLead - 5 * 60e3) / 1000 }])));
+    return copyHolds(__ids.map((id) => ({ id, start_time: '2026-11-07T02:00:00Z' }))); })()`), null, 'every at old: the copy cannot answer');
+});

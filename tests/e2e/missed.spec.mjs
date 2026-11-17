@@ -16,7 +16,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
 import { phone, load, firstTier, openMap, later, keptMatch, iso, play } from './support/steps.mjs';
-import { FOCUS, MIN, hidden, missed, missedBehind, missedStopped, missedWeekTurn, visible } from './support/scenarios.mjs';
+import { FOCUS, MIN, hidden, missed, missedBehind, missedFrozenAtTurn, missedStopped, missedWeekTurn, visible } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
 
@@ -704,7 +704,8 @@ test.describe('what you missed, by how long the tab was away', () => {
 // new week and nothing is said of the old. Hidden again for 20 min of the new
 // week, the summary counts those 20 min alone, and the list is on the new week.
 test.describe('what you missed, the week turned while the tab was away', () => {
-  test.use({ timeline: missedWeekTurn(20, 40), clock: 'playwright' });
+  // The embers stand still: drawn on every step of play(), they push this test into its slow() ceiling.
+  test.use({ timeline: missedWeekTurn(20, 40), clock: 'playwright', reducedMotion: 'reduce' });
   const TIER_BUTTON = page => page.locator(`.tier-map-btn[aria-label*="NA Tier ${FOCUS.split('-')[1]}"]`);
 
   test('the week on show is the new one, and the summary counts from the turn', async ({ page, wvw }) => {
@@ -749,5 +750,52 @@ test.describe('what you missed, the week turned while the tab was away', () => {
       await wvw.settle();
     }
     expect((await week()).list, 'the list\'s week within 3 min of the map closing').toBe(start);
+  });
+});
+
+// ---- A summary up when the week turns ---------------------------------------
+// What the tab missed belongs to the week it was raised in: once the week turns
+// it goes, though its ten minutes are not over.
+test.describe('what you missed, the summary is gone once the week turns', () => {
+  test.use({ clock: 'playwright', reducedMotion: 'reduce' });
+  const TIER_BUTTON = page => page.locator(`.tier-map-btn[aria-label*="NA Tier ${FOCUS.split('-')[1]}"]`);
+  const noted = page => page.evaluate(([sel, id]) => ({ block: !!document.querySelector(sel), note: missedNotes.has(id) }), [BLOCK, FOCUS]);
+
+  test.describe('a return 3 min before the turn', () => {
+    test.use({ timeline: missedWeekTurn(14, 40) });
+    test('the tab is visible through the turn', async ({ page, wvw }) => {
+      test.slow();
+      await load(page, wvw);
+      await openMap(page, wvw, TIER_BUTTON(page));
+      await hidden(page, wvw, 12 * MIN);
+      await visible(page);
+      await later(page, wvw, 0);
+      await expect(page.locator(BLOCK), 'the summary at the return').toBeAttached();
+      const old = await page.evaluate(id => newestMatches.get(id).match.start_time, FOCUS);
+      for (let i = 0; i < 10 && (await page.evaluate(id => newestMatches.get(id).match.start_time, FOCUS)) === old; i++) {
+        await play(page, 30 * 1000, { using: true });
+        await wvw.settle();
+      }
+      expect(await page.evaluate(id => newestMatches.get(id).match.start_time, FOCUS), 'the state: the map is on the new week').not.toBe(old);
+      await play(page, 15 * 1000, { using: true });
+      expect(await noted(page), 'a summary of the old week in the new one').toEqual({ block: false, note: false });
+    });
+  });
+
+  test.describe('the API frozen through the gap', () => {
+    test.use({ timeline: missedFrozenAtTurn() });
+    test('the tab is visible through the turn', async ({ page, wvw }) => {
+      test.slow();
+      await load(page, wvw);
+      await openMap(page, wvw, TIER_BUTTON(page));
+      const week = () => page.evaluate(id => newestMatches.get(id).match.start_time, FOCUS);
+      const old = await week();
+      for (let i = 0; i < 40 && !(await noted(page)).note; i++) await play(page, 30 * 1000, { using: true });
+      expect((await noted(page)).note, 'the state: a summary raised before the turn').toBe(true);
+      for (let i = 0; i < 20 && (await week()) === old; i++) await play(page, 30 * 1000, { using: true });
+      expect(await week(), 'the state: the map is on the new week').not.toBe(old);
+      await play(page, 15 * 1000, { using: true });
+      expect(await noted(page), 'a summary of the old week in the new one').toEqual({ block: false, note: false });
+    });
   });
 });

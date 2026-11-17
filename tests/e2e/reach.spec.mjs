@@ -80,6 +80,7 @@ test.describe('desktop', () => {
 
     await expand.click();
     expect(await state(page, btn), 'shrunk').toEqual(OPEN);
+    expect(await page.evaluate(() => [...document.body.children].filter(e => e.inert).length), 'the page answers again after shrinking').toBe(0);
     expect(await aria()).toMatch(/^Expand/);
     const after = await page.locator(POP).boundingBox();
     expect(Math.abs(after.width - before.width), 'the width it had').toBeLessThan(2);
