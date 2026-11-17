@@ -7,6 +7,7 @@ import { createHash, createHmac } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import worker, { Live } from '../../worker/index.mjs';
 import { fakeD1 } from './fake-d1.mjs';
+import { workerHarness } from './worker-harness.mjs';
 import { signHeaders } from './signed.mjs';
 
 const KILLS_KEY = 'k'.repeat(128);
@@ -21,29 +22,20 @@ const weekOf = (match) => (match[0] === '1' ? NA_WEEK : EU_WEEK);
 // way of signing. Every message is signed at a later second than the one
 // before it, as the replay guard requires of real ones.
 function setup(opts = {}) {
-  const { sql, ran, DB } = fakeD1(opts);
-  const env = { DB, INGEST_KILLS: KILLS_KEY, INGEST_RELINK: RELINK_KEY, ...opts.env };
-  let clock = Date.parse('2026-09-30T12:00:00Z');
+  const h = workerHarness({
+    start: Date.parse('2026-09-30T12:00:00Z'),
+    secrets: { INGEST_KILLS: KILLS_KEY, INGEST_RELINK: RELINK_KEY },
+    env: opts.env,
+    ctx: opts.ctx,
+    d1: opts
+  });
+  const call = h.call;
   let lastSigned = 0;
-  const call = async (req) => {
-    const real = Date.now;
-    Date.now = () => clock;
-    try {
-      return await worker.fetch(req, env, opts.ctx);
-    } finally {
-      Date.now = real;
-    }
-  };
-  const w = {
-    sql,
-    ran,
-    env,
+  const w = Object.assign(h, {
     fetch: call,
-    get now() { return clock; },
-    advance(ms) { clock += ms; },
     signed(path, body, { key = KILLS_KEY, t, sigPath = path } = {}) {
       if (t === undefined) {
-        t = Math.max(Math.floor(clock / 1000), lastSigned + 1);
+        t = Math.max(Math.floor(h.now / 1000), lastSigned + 1);
         lastSigned = t;
       }
       return signHeaders(key, t, sigPath, body);
@@ -62,9 +54,9 @@ function setup(opts = {}) {
     // As kills.gs sends them: the match's week, and a score that rises with the row's time, under the week's ceiling.
     rows(at) { return MATCHES.map((m, i) => [at, m, 1000 + i, 2000, 3000, 4000, weekOf(m), Math.floor((at - weekOf(m)) / 100)]); },
     relink(extra = {}) {
-      return { beat: Math.floor(clock / 1000), window: 1790992800, published: 0, fails: 0, ...extra };
+      return { beat: Math.floor(h.now / 1000), window: 1790992800, published: 0, fails: 0, ...extra };
     }
-  };
+  });
   return w;
 }
 
