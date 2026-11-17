@@ -15,7 +15,7 @@ const MAP_SKIP_TYPES = new Set(['Spawn']);
 const OBJ_DRAW_ORDER = ['Castle', 'Keep', 'Tower', 'Mercenary', 'Camp', 'Ruins'];
 // Marker radius in map units, also their on-screen size at the default view.
 // The radii of two markers on a map sum to less than their distance; tests/unit/map-positions.test.mjs
-// holds it, with its one listed exception.
+// holds it.
 const OBJ_SIZE = Object.freeze({
   Castle: 118, Keep: 110, Tower: 100, Camp: 92, Mercenary: 92, Ruins: 80,
 });
@@ -48,7 +48,11 @@ const MAP_IMAGE = Object.freeze({
 const MERC_COORD = Object.freeze({
   '38-123': [9972.9, 14197.7],    // Molevekian Delve
   '38-125': [11284.6, 14096.6],   // Orgath Uplands
-  '38-126': [10692.6, 15310.5],   // Darkrait Inlet
+  '38-126': [10631.4, 15310.5],   // Darkrait Inlet: 61 units west of its spot, so it clears Quentin Lake
+});
+// Drawn off the game's spot to leave visible room between two close neighbours.
+const MOVED_COORD = Object.freeze({
+  '38-16': [10880.1, 15224.4],    // Quentin Lake: 30 units east, away from Darkrait Inlet
 });
 
 // The API gives the Seared Borderlands objectives (1652 and its copies 1651 and 1654) the positions of
@@ -83,8 +87,8 @@ function objectiveAt(meta) {
   const [map, number] = String(meta.id).split('-');
   const seared = SEARED_COORD[number], shift = SEARED_SHIFT[map];
   if (seared && shift) return [seared[0] + shift[0], seared[1] + shift[1]];
-  const at = (meta.coord && meta.coord.length) ? meta.coord
-    : (MERC_COORD[meta.id] || meta.label_coord);
+  const at = MOVED_COORD[meta.id] || ((meta.coord && meta.coord.length) ? meta.coord
+    : (MERC_COORD[meta.id] || meta.label_coord));
   return at || null;
 }
 
