@@ -715,7 +715,8 @@ const LATEST_SUMMARY_URL = '/api/latest/summary';
 const LATEST_QUIET_MS = 90 * 1000;
 const LATEST_GAP_MS = 30 * 1000;
 // The peek reads the summary every 40 s with a map open; past this, the quiet rule
-// above judges instead, and the five-minute refresh reads the game (copyHolds).
+// above judges instead, and the five-minute refresh reads the game (copyHolds): all of
+// it, or only the matches whose own `at` is older than this.
 const LATEST_SUMMARY_FRESH_MS = 90 * 1000;
 const LATEST_WAIT_MS = 1200;           // how long a read holds the paint; a late answer waits for the next one
 const LATEST_BODY_MAX = 256 * 1024;    // per part: characters
@@ -872,18 +873,23 @@ function summaryAhead(m) {
   return !!e && e.start === Date.parse(m.start_time) && e.score > colorSum(m.scores);
 }
 
-// True when the copy's summary holds every match in `shown` for the week drawn and its
-// newest `at`, on the servers' clock, is within LATEST_SUMMARY_FRESH_MS: then the
-// five-minute cycle has nothing to ask the game. A week the summary does not know
-// (a reset, a tier added) is the game's to tell.
+// The ids of `shown` the copy holds with a new read, or null when it cannot answer the
+// five-minute cycle at all. It can when its summary holds every match in `shown` for the
+// week drawn and the newest `at`, on the servers' clock, is within LATEST_SUMMARY_FRESH_MS;
+// a week it does not know (a reset, a tier added) is the game's to tell. A match whose own
+// `at` is older (or missing) is one the readers saw stand still: the copy would keep its
+// old body, so the cycle reads it from the game.
 function copyHolds(shown) {
+  const now = Date.now() - ownClockLead;
   let newest = 0;
+  const held = [];
   for (const m of shown) {
     const e = latestSummary.get(m.id);
-    if (!e || e.start !== Date.parse(m.start_time)) return false;
+    if (!e || e.start !== Date.parse(m.start_time)) return null;
     newest = Math.max(newest, e.at || 0);
+    if (e.at > 0 && now - e.at <= LATEST_SUMMARY_FRESH_MS) held.push(m.id);
   }
-  return newest > 0 && Date.now() - ownClockLead - newest <= LATEST_SUMMARY_FRESH_MS;
+  return newest > 0 && now - newest <= LATEST_SUMMARY_FRESH_MS ? held : null;
 }
 
 // True when one of `ids` is a live match behind what our copy holds, and the
