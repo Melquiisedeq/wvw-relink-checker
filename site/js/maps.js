@@ -17,7 +17,7 @@ const OBJ_DRAW_ORDER = ['Castle', 'Keep', 'Tower', 'Mercenary', 'Camp', 'Ruins']
 // The radii of two markers on a map sum to less than their distance; tests/unit/map-positions.test.mjs
 // holds it.
 const OBJ_SIZE = Object.freeze({
-  Castle: 118, Keep: 110, Tower: 100, Camp: 92, Mercenary: 76, Ruins: 80,
+  Castle: 118, Keep: 110, Tower: 100, Camp: 92, Mercenary: 92, Ruins: 80,
 });
 // How hard markers follow the zoom: 1 holds them fixed on screen, 0 pins them to the ground.
 const MARKER_FOLLOW = 0.2;
@@ -48,7 +48,7 @@ const MAP_IMAGE = Object.freeze({
 const MERC_COORD = Object.freeze({
   '38-123': [9972.9, 14197.7],    // Molevekian Delve
   '38-125': [11284.6, 14096.6],   // Orgath Uplands
-  '38-126': [10692.6, 15310.5],   // Darkrait Inlet
+  '38-126': [10631.4, 15310.5],   // Darkrait Inlet: 61 units west of its spot, so it clears Quentin Lake
 });
 
 // The API gives the Seared Borderlands objectives (1652 and its copies 1651 and 1654) the positions of
