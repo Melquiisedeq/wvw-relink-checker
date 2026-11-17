@@ -3,20 +3,15 @@
 // tier, the side and the arrow in words, and a table that keeps its roles on a phone.
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
-import { check, phone } from './support/steps.mjs';
+import { check, load, phone } from './support/steps.mjs';
 
 const ALL = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
 const EU_ONLY = /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches\?ids=2-[1-9](,2-[1-9])*$/;
 
 test.use({ viewport: { width: 1280, height: 800 } });
-const opened = async (page, wvw) => {
-  await page.goto(wvw.url);
-  await expect(page.locator('#standingsGridNA > .standing-match').first()).toBeVisible();
-  await wvw.settle();
-};
 
 test('the Synced lines are not live regions; the notice stays rendered, empty, between its texts', async ({ page, wvw }) => {
-  await opened(page, wvw);
+  await load(page, wvw);
   for (const r of ['NA', 'EU']) {
     const line = page.locator(`#standingsStatus${r}`);
     await expect(line).toContainText('Synced');
@@ -43,7 +38,7 @@ test('a region that cannot load says so in its alert', async ({ page, wvw }) => 
 });
 
 test('a failure first quiet, then retried, shows its Try again button', async ({ page, wvw }) => {
-  await opened(page, wvw);
+  await load(page, wvw);
   await page.evaluate(() => {
     setStandingsStatus(standingsStatusEU, false, "Couldn't load EU standings.");
     paintRetryStatus(standingsStatusEU, 'Trying again soon.', 'Trying again soon.', false, false);
@@ -52,7 +47,7 @@ test('a failure first quiet, then retried, shows its Try again button', async ({
 });
 
 test('one heading per tier, the side and the arrow in words', async ({ page, wvw }) => {
-  await opened(page, wvw);
+  await load(page, wvw);
   for (const r of ['NA', 'EU']) {
     const heads = page.locator(`#standingsGrid${r} > .standing-match`).getByRole('heading', { level: 3 });
     await expect(heads, `${r}: a heading per tier`).toHaveCount(wvw.tiers[r]);
@@ -69,7 +64,7 @@ test('one heading per tier, the side and the arrow in words', async ({ page, wvw
 // Chromium keeps the table semantics under display:block, so this passes without the
 // explicit roles; they are for other engines, and this only guards them.
 test('the result table has four column headers at 390 px', async ({ page, wvw }) => {
-  await opened(page, wvw);
+  await load(page, wvw);
   await phone(page, 390);
   await check(page, wvw, [wvw.guilds[0]]);
   await expect(page.getByRole('columnheader')).toHaveCount(4);
