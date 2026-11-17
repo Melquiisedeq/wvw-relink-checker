@@ -68,6 +68,8 @@ let ownClockLead = 0;
 // What the countdowns, the ages and matchIsLive subtract: ownClockLead moves by up to a second with every answer and
 // would make them skip. It follows a reading only past CLOCK_BAND_MS from the kept value; a right clock keeps it 0.
 let steadyClockLead = 0;
+// The server's time, as the page reads it.
+const steadyNow = () => Date.now() - steadyClockLead;
 async function fetchOwnApi(url, cache = 'default', raw = false) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), OWN_API_TIMEOUT_MS);
@@ -294,6 +296,7 @@ function keepNewestMatch(match) {
   const same = !!kept && match.start_time === kept.match.start_time;
   const risen = same && colorSum(match.scores) > colorSum(kept.match.scores);
   const now = Date.now();
+  const served = now - steadyClockLead;
   const burst = !!kept && kept.gapFrom !== undefined && now - answeredBefore <= GAP_BURST_MS;
   let gapFrom;
   let rose = same && kept.rose;
@@ -303,14 +306,15 @@ function keepNewestMatch(match) {
   } else if (same && !moved) {
     gapFrom = gapped ? answeredBefore : kept.gapFrom;
   }
-  let at = moved ? now : kept.at;
+  // `at` is on the server's time, like the dates a copy and the history give.
+  let at = moved ? served : kept.at;
   // While `at` is only a first sight, a copy with the same score dates it, or else its summary.
   const copyAt = moved || (same && !kept.rose) ? (latestBodyAt.get(match) ?? summaryDate(match)) : undefined;
   if (copyAt !== undefined && (moved || copyAt < at)) {
     // Our copy dates its body, a gap or not; "rose" only as recent as the
     // quiet-map claim needs (KILLS_ALIVE_MS, js/maps-early.js).
-    at = Math.min(now, copyAt);
-    rose = now - at <= (typeof KILLS_ALIVE_MS === 'number' ? KILLS_ALIVE_MS : 0);
+    at = Math.min(served, copyAt);
+    rose = served - at <= (typeof KILLS_ALIVE_MS === 'number' ? KILLS_ALIVE_MS : 0);
   }
   newestMatches.set(match.id, { match, at, rose, gapFrom });
   weekStoreOffer(match);
@@ -359,7 +363,7 @@ function weekStoreRead() {
     if (!text || text.length > WEEK_STORE_MAX_CHARS) return weekStore;
     const all = JSON.parse(text);
     if (!all || typeof all !== 'object' || Array.isArray(all)) return weekStore;
-    const now = Date.now();
+    const now = steadyNow();
     for (const [id, v] of Object.entries(all)) {
       if (weekStore.size >= WEEK_STORE_MAX) break;
       if (!WEEK_ID_RE.test(id) || !weekEntryOk(v, now)) continue;
@@ -370,7 +374,7 @@ function weekStoreRead() {
 }
 
 function weekStoreSave() {
-  const now = Date.now();
+  const now = steadyNow();
   for (const [id, v] of weekStore) if (v.e <= now) weekStore.delete(id);
   try {
     localStorage.setItem(WEEK_STORE_KEY, JSON.stringify(Object.fromEntries(
@@ -393,7 +397,7 @@ const sameWeek = (a, b) => a.s === b.s && a.e === b.e && COLORS.every((c) => a.t
 // match that may still overrule it. The same start with other teams is the
 // API correcting itself: it goes in.
 function weekStoreOffer(m) {
-  const now = Date.now();
+  const now = steadyNow();
   const entry = weekEntryOf(m, now);
   if (!entry) return;
   const store = weekStoreRead();
@@ -409,7 +413,7 @@ function weekStoreOffer(m) {
 function weekStoreRegion(region, list) {
   const mine = list.filter((m) => isMatchBody(m) && m.id.startsWith(`${region}-`));
   if (mine.length === 0) return;
-  const now = Date.now();
+  const now = steadyNow();
   const entries = mine.map((m) => [m.id, weekEntryOf(m, now)]);
   if (entries.some(([, e]) => !e) || new Set(entries.map(([, e]) => e.s)).size !== 1) return;
   const ids = new Set(mine.map((m) => m.id));
@@ -427,7 +431,7 @@ function weekStoreRegion(region, list) {
 // The entry for a match while it may still overrule the API, or null.
 function weekHeld(id) {
   const v = weekStoreRead().get(id);
-  return v && Date.now() < v.s + WEEK_HOLD_MS ? v : null;
+  return v && steadyNow() < v.s + WEEK_HOLD_MS ? v : null;
 }
 
 function weekHeldIds(region) {
@@ -474,7 +478,7 @@ function weekLineupOfTeam(teamId) {
 // `byMatch`: Map matchId -> samples [{at, n}] oldest first. Returns how many
 // changed.
 function ageFirstSightFromHistory(byMatch, staleMs, totalsOf) {
-  const now = Date.now();
+  const now = steadyNow();
   let n = 0;
   for (const [id, kept] of newestMatches) {
     if (kept.rose) continue;
@@ -521,7 +525,7 @@ function ageBehindHistory(byMatch, totalsOf) {
     // The score rose inside a gap this page did not watch: a line written
     // since its last answer is the rise's own, unless a map is ahead of it.
     const ahead = Object.keys(now).some((t) => now[t] > (Number(last.n && last.n[t]) || 0));
-    if (!(kept.gapFrom && last.at > kept.gapFrom && !ahead)) continue;
+    if (!(kept.gapFrom && last.at > kept.gapFrom - steadyClockLead && !ahead)) continue;
     kept.at = last.at;
     n++;
   }
@@ -864,7 +868,7 @@ function latestSummaryLearn(sum, merge = false) {
   // A body kept before the summary came: a first sight is redated, as keepNewestMatch does.
   for (const k of newestMatches.values()) {
     const at = summaryDate(k.match);
-    if (at < k.at && !k.rose) { k.at = at; k.rose = Date.now() - at <= (typeof KILLS_ALIVE_MS === 'number' ? KILLS_ALIVE_MS : 0); }
+    if (at < k.at && !k.rose) { k.at = at; k.rose = steadyNow() - at <= (typeof KILLS_ALIVE_MS === 'number' ? KILLS_ALIVE_MS : 0); }
   }
   return out;
 }
@@ -911,7 +915,7 @@ function latestWanted(ids, behind = false) {
   return ids.some((id) => {
     const k = newestMatches.get(id);
     if (!k || !matchIsLive(k.match)) return false;
-    return told ? summaryAhead(k.match) : behind || now - k.at >= LATEST_QUIET_MS;
+    return told ? summaryAhead(k.match) : behind || now - steadyClockLead - k.at >= LATEST_QUIET_MS;
   });
 }
 

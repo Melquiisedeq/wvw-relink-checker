@@ -1692,3 +1692,301 @@ test('steadyClockLead: an answer slower than a second changes nothing', async ()
   await p.answer(2, 300, { trip: 2000 });
   assert.equal(p.steady(), kept);
 });
+
+// Every place that compares a game or server instant with the clock (js/standings.js, js/api.js, js/maps-early.js,
+// js/maps.js, js/stat-popovers.js), with the visitor's clock off by minutes: each reads the server's time. A threshold `limit`
+// is probed 30 s to the young side on a clock ahead and 30 s to the old side on one behind, so either wrong clock lands across it.
+for (const lead of [5 * MIN, -5 * MIN]) {
+  const ahead = lead > 0;
+  const side = ahead ? 'ahead' : 'behind';
+  const probe = (limit) => limit + (ahead ? -30 * SEC : 30 * SEC);
+  const skewed = () => {
+    const p = fresh();
+    const server = p.clock.now;
+    p.set('steadyClockLead', lead);
+    p.clock.now = server + lead;
+    return { p, server };
+  };
+  const iso = (ms) => new Date(ms).toISOString();
+  const plain = (x) => JSON.parse(JSON.stringify(x));
+  const teams = { red: 11001, blue: 11002, green: 11003 };
+  const body = (server, over = {}) => ({
+    id: '1-1', start_time: iso(server - 600 * MIN), end_time: iso(server + 24 * 60 * MIN),
+    scores: { red: 1, blue: 1, green: 1 }, kills: { red: 1, blue: 1, green: 1 }, deaths: { red: 1, blue: 1, green: 1 },
+    maps: [], all_worlds: { red: [11001], blue: [11002], green: [11003] }, ...over });
+  const keep = (p, m, at, rose = false) => {
+    p.ctx.__m = { match: m, at, rose };
+    p.run("newestMatches.set(__m.match.id, __m)");
+  };
+  const entry = (s, e, server) => ({ s, e, t: teams, v: server });
+  const weeks = (p, obj) => p.ctx.localStorage.setItem('wvw-weeks-v1', JSON.stringify(obj));
+  // regionResetting's `now` argument, from every call a function makes.
+  const resettingNows = (p) => {
+    const nows = [];
+    p.set('regionResetting', (region, now) => { nows.push(now); return false; });
+    return nows;
+  };
+  const quiet = (promise) => { if (promise && promise.catch) promise.catch(() => {}); };
+
+  test(`clock ${side} by 5 min: showRegion asks regionResetting for the server's time (js/standings.js)`, () => {
+    const { p, server } = skewed();
+    const nows = resettingNows(p);
+    p.call('showRegion', p.ctx.document, p.ctx.document, [], 'NA', 0, false);
+    assert.deepEqual(nows.slice(0, 1), [server]);
+  });
+
+  test(`clock ${side} by 5 min: the retry notices ask regionResetting for the server's time (js/standings.js)`, () => {
+    const { p, server } = skewed();
+    const nows = resettingNows(p);
+    p.set('paintRetryStatus', () => {});
+    p.set('standingsFailed', [{ el: {}, region: 'NA', label: 'NA' }]);
+    p.set('standingsExtraUsed', 99);
+    p.call('planStandingsRetry');
+    assert.deepEqual(nows, [server]);
+    p.set('standingsExtraUsed', 0);
+    p.call('planStandingsRetry');
+    assert.deepEqual(nows, [server, server]);
+  });
+
+  test(`clock ${side} by 5 min: loadStandings asks regionResetting for the server's time (js/standings.js)`, () => {
+    const { p, server } = skewed();
+    const nows = resettingNows(p);
+    p.set('paintRetryStatus', () => {});
+    p.set('standingsFailed', [{ el: {}, region: 'NA', label: 'NA' }]);
+    quiet(p.call('loadStandings', 'retry'));
+    assert.deepEqual(nows, [server]);
+
+    const q = skewed();
+    const cycle = resettingNows(q.p);
+    q.p.set('standingsEverLoaded', true);
+    q.p.run("matchDataCache.set('1-1', {})");
+    quiet(q.p.call('loadStandings', 'cycle'));
+    assert.deepEqual(cycle.slice(0, 2), [q.server, q.server]);
+  });
+
+  test(`clock ${side} by 5 min: the week memory drops an ended entry by the server's time when read and when saved (js/api.js)`, () => {
+    // An entry that ends 1 min after the server's now, on a clock ahead; 1 min before it, on a clock behind.
+    const { p, server } = skewed();
+    const e = ahead ? server + MIN : server - MIN;
+    weeks(p, { '1-1': entry(server - 60 * MIN, e, server) });
+    assert.deepEqual(plain(p.run('[...weekStoreRead().keys()]')), ahead ? ['1-1'] : []);
+    p.run(`weekStore.set('1-2', ${JSON.stringify(entry(server - 60 * MIN, e, server))})`);
+    p.call('weekStoreSave');
+    assert.deepEqual(plain(p.run("[...weekStore.keys()].filter((id) => id === '1-2')")), ahead ? ['1-2'] : []);
+  });
+
+  test(`clock ${side} by 5 min: the week memory holds an entry for two hours by the server's time (js/api.js)`, () => {
+    const { p, server } = skewed();
+    const s = server - probe(120 * MIN);
+    weeks(p, { '1-1': entry(s, server + 7 * 24 * 60 * MIN, server) });
+    assert.equal(!!p.call('weekHeld', '1-1'), ahead);
+  });
+
+  test(`clock ${side} by 5 min: an offered body is kept or refused by the server's time (js/api.js)`, () => {
+    // The memory holds a later week for 2 h by the server's time: an earlier body is refused inside it, kept after.
+    const { p, server } = skewed();
+    const had = server - probe(120 * MIN);
+    weeks(p, { '1-1': entry(had, server + 7 * 24 * 60 * MIN, server) });
+    p.call('weekStoreOffer', body(server, { start_time: iso(had - 60 * MIN) }));
+    assert.equal(p.run("weekStoreRead().get('1-1').s") === had, ahead);
+    // A week that starts 60 min after the server's now is the most that is kept: 62 min is refused, 58 min kept.
+    const q = skewed();
+    const s = q.server + (ahead ? 62 : 58) * MIN;
+    q.p.call('weekStoreOffer', body(q.server, { id: '1-2', start_time: iso(s), end_time: iso(s + 7 * 24 * 60 * MIN) }));
+    assert.equal(q.p.run("weekStoreRead().has('1-2')"), !ahead);
+  });
+
+  test(`clock ${side} by 5 min: a region's line-up is written by the server's time (js/api.js)`, () => {
+    const { p, server } = skewed();
+    const s = server + (ahead ? 62 : 58) * MIN;
+    p.call('weekStoreRegion', '1', [body(server, { start_time: iso(s), end_time: iso(s + 7 * 24 * 60 * MIN) })]);
+    assert.equal(p.run("weekStoreRead().has('1-1')"), !ahead);
+  });
+
+  test(`clock ${side} by 5 min: the history redates a first sight when it is stale by the server's time (js/api.js)`, () => {
+    const { p, server } = skewed();
+    keep(p, body(server), server);
+    p.ctx.__by = new Map([['1-1', [{ at: server - probe(5 * MIN), n: {} }]]]);
+    assert.equal(p.run('ageFirstSightFromHistory(__by, 5 * 60000, () => ({}))'), ahead ? 0 : 1);
+  });
+
+  test(`clock ${side} by 5 min: a summary redates a kept body and says if it rose lately by the server's time (js/api.js)`, () => {
+    const { p, server } = skewed();
+    const m = body(server);
+    keep(p, m, server);
+    const alive = p.run('KILLS_ALIVE_MS');
+    p.call('latestSummaryLearn', { '1-1': { start: Date.parse(m.start_time), score: 3, at: (server - probe(alive)) / 1000 } });
+    assert.equal(p.run("newestMatches.get('1-1').rose"), ahead);
+  });
+
+  test(`clock ${side} by 5 min: a body first seen is dated by the server's time, and a quiet one is asked after by it (js/api.js)`, () => {
+    const { p, server } = skewed();
+    const m = body(server);
+    p.call('keepNewestMatch', m);
+    assert.equal(p.call('matchScoreRoseAt', '1-1'), server);
+    // A copy's date, 1 min old, is the body's time.
+    p.run('newestMatches.clear()');
+    p.ctx.__m = m;
+    p.run('latestBodyAt.set(__m, Date.now() - steadyClockLead - 60000)');
+    p.call('keepNewestMatch', m);
+    assert.equal(p.call('matchScoreRoseAt', '1-1'), server - MIN);
+    // `rose`: a copy's date within KILLS_ALIVE_MS of the server's now.
+    p.run('newestMatches.clear()');
+    p.run(`latestBodyAt.set(__m, Date.now() - steadyClockLead - ${probe(p.run('KILLS_ALIVE_MS'))})`);
+    p.call('keepNewestMatch', m);
+    assert.equal(p.run("newestMatches.get('1-1').rose"), ahead);
+    // latestWanted: a body quiet for LATEST_QUIET_MS is asked after.
+    p.run('latestAskedAt = 0; latestSummaryAt = 0');
+    keep(p, m, server - probe(p.run('LATEST_QUIET_MS')));
+    assert.equal(p.call('latestWanted', ['1-1']), !ahead);
+  });
+
+  test(`clock ${side} by 5 min: a sample is stamped with the server's time of the ask, and kept while it ages by it (js/maps-early.js)`, () => {
+    const { p, server } = skewed();
+    const m = body(server, { maps: [{ type: 'Center', kills: { red: 5, blue: 0, green: 0 } }] });
+    keep(p, m, server - 5000, true);
+    p.call('recordFightSamples', [m], server + lead - 10000);
+    const log = () => JSON.parse(p.ctx.localStorage.getItem(p.run('FIGHT_KEY')));
+    assert.deepEqual(log()['1-1'].map((s) => s.at), [server - 10000]);
+    // Ageing out at FIGHT_KEEP_MS, on the match the call names and on the ones it does not.
+    const old = server - probe(p.run('FIGHT_KEEP_MS'));
+    p.ctx.localStorage.setItem(p.run('FIGHT_KEY'), JSON.stringify({ '1-1': [{ at: old, n: { Center: 1 } }], '1-2': [{ at: old, n: { Center: 1 } }] }));
+    p.call('recordFightSamples', [{ ...m, maps: [] }], server + lead);
+    assert.equal(Object.values(log()).flat().length, ahead ? 2 : 0);
+  });
+
+  test(`clock ${side} by 5 min: fightLogAheadAt reads a sample's age by the server's time (js/maps-early.js)`, () => {
+    const { p, server } = skewed();
+    const m = body(server, { maps: [{ type: 'Center', kills: { red: 1, blue: 0, green: 0 } }] });
+    const at = server - probe(p.run('FIGHT_KEEP_MS'));
+    p.ctx.localStorage.setItem(p.run('FIGHT_KEY'), JSON.stringify({ '1-1': [{ at, n: { Center: 99 } }] }));
+    assert.equal(p.call('fightLogAheadAt', m), ahead ? at : 0);
+  });
+
+  test(`clock ${side} by 5 min: fightSamples drops what is past its floor by the server's time (js/maps-early.js)`, () => {
+    const { p, server } = skewed();
+    const at = server - probe(p.run('FIGHT_STALE_MS'));
+    p.ctx.localStorage.setItem(p.run('FIGHT_KEY'), JSON.stringify({ '1-1': [{ at, n: {} }] }));
+    assert.deepEqual(plain(p.call('fightSamples', body(server)).map((s) => s.at)), ahead ? [at] : []);
+  });
+
+  test(`clock ${side} by 5 min: killView counts a body frozen and alive by the server's time (js/maps-early.js)`, () => {
+    const { p, server } = skewed();
+    const m = body(server);
+    keep(p, m, server - probe(p.run('HUD_STALE_MS')), true);
+    assert.equal(p.call('killView', m, []).frozen, !ahead);
+    keep(p, m, server - probe(p.run('KILLS_ALIVE_MS')), true);
+    assert.equal(p.call('killView', m, []).alive, ahead);
+  });
+
+  test(`clock ${side} by 5 min: the history counts as alive by the server's time (js/maps-early.js)`, () => {
+    const { p, server } = skewed();
+    const m = body(server);
+    keep(p, m, server);
+    const line = server - probe(p.run('HISTORY_LIVE_MS'));
+    p.ctx.__by = new Map([['1-1', [{ at: line, n: {} }]]]);
+    p.run('ageFromHistory(__by)');
+    assert.equal(p.run("newestMatches.get('1-1').at"), ahead ? line : server);
+  });
+
+  test(`clock ${side} by 5 min: the peek compares a kept body's time with the server's (js/standings.js)`, () => {
+    // handAhead() is the peek's other way to load; with it false, only the "behind" test loads.
+    const { p, server } = skewed();
+    const m = body(server);
+    keep(p, m, server - probe(p.run('PEEK_BEHIND_MS')));
+    p.set('handAhead', () => false);
+    p.set('peekLearn', () => {});
+    p.set('pushMissed', () => {});
+    p.set('summaryAt', () => 0);
+    p.set('summaryAhead', () => true);
+    p.set('mapAhead', null);
+    let loads = 0;
+    p.set('loadStandings', () => { loads++; });
+    p.set('fetchOwnApi', async () => ({ '1-1': {} }));
+    p.set('latestSummaryLearn', () => {});
+    p.set('peekLoadedAt', 0);
+    return p.call('peekLatest').then(() => assert.equal(loads, ahead ? 0 : 1));
+  });
+  test(`clock ${side} by 5 min: the "while you were away" summary measures a kept body's age by this page's clock (js/maps-early.js)`, () => {
+    // keepNewestMatch dates a body on the server's time; the summary runs on the page's, so it is carried back.
+    const { p, server } = skewed();
+    const before = body(server, { maps: [{ type: 'Center', kills: { red: 1, blue: 0, green: 0 } }] });
+    const after = body(server, { maps: [{ type: 'Center', kills: { red: 50, blue: 0, green: 0 } }], kills: { red: 50, blue: 1, green: 1 } });
+    keep(p, before, server - probe(p.run('MISSED_AWAY_MS')));
+    p.run(`missedLastOffer.set('1-1', Date.now() - 60000)`);
+    const calls = [];
+    p.set('missedMakeNote', (...a) => { calls.push(a.slice(2, 5)); });
+    p.set('missedRefreshNote', () => true);
+    p.call('missedMatchOffered', after, p.run("newestMatches.get('1-1')"));
+    assert.deepEqual(plain(calls.map((c) => c[2])), ahead ? [] : ['pause']);
+  });
+  test(`clock ${side} by 5 min: the skirmish chart calls a body stalled by the server's time (js/stat-popovers.js)`, () => {
+    const { p, server } = skewed();
+    p.set('ownClockLead', lead);
+    // The block clock is 2 min past the last published block; the body rose just under or over HUD_STALE_MS ago.
+    const start = server - 2 * 2 * 60 * MIN - 2 * MIN;
+    const m = body(server, { start_time: iso(start), skirmishes: [{ scores: { red: 10, blue: 1, green: 1 } }, { scores: { red: 20, blue: 1, green: 1 } }] });
+    keep(p, m, server - probe(p.run('HUD_STALE_MS')), true);
+    const shown = [];
+    p.set('popFigure', (label, value) => { shown.push([label, value]); return p.ctx.document; });
+    p.call('renderSkirmishTrendPopoverContent', p.ctx.document, 'Server', m, 'red');
+    // Stalled: the running block is cut off, so the last block shown is the first.
+    assert.deepEqual(plain(shown.find(([label]) => label === 'Last block')), ['Last block', ahead ? '20' : '10']);
+  });
+  test(`clock ${side} by 5 min: the map's score time is called stale by the server's time (js/maps.js)`, () => {
+    const { p, server } = skewed();
+    const m = body(server);
+    const at = server - probe(p.run('HUD_STALE_MS'));
+    keep(p, m, at, true);
+    // Nodes that take anything and remember the classes toggled on them.
+    const toggled = [];
+    const node = () => new Proxy({}, {
+      get: (o, k) => (k === 'classList' ? { toggle: (c, on) => toggled.push([c, on]), add() {}, remove() {} }
+        : k in o ? o[k] : () => node()),
+      set: (o, k, v) => { o[k] = v; return true; },
+    });
+    p.ctx.document = { createElement: () => node(), createTextNode: () => node() };
+    const corners = p.call('buildMapCorners', node(), '1-1');
+    corners.paint(p.call('killView', m, []), 'Center', at);
+    assert.deepEqual(toggled.find(([c]) => c === 'is-stale'), ['is-stale', !ahead]);
+  });
+  test(`clock ${side} by 5 min: a history line inside a gap redates by the server's time (js/api.js)`, () => {
+    const { p, server } = skewed();
+    const m = body(server);
+    const gapServer = server - 2 * MIN;
+    p.ctx.__m = { match: m, at: server, rose: false, gapFrom: gapServer + lead };
+    p.run("newestMatches.set('1-1', __m)");
+    p.ctx.__by = new Map([['1-1', [{ at: gapServer + (ahead ? 30 : -30) * SEC, n: {} }]]]);
+    p.run('ageBehindHistory(__by, () => ({}))');
+    assert.equal(p.run("newestMatches.get('1-1').at") !== server, ahead);
+  });
+
+  test(`clock ${side} by 5 min: scoreFresh and the "counting since" tip read the server's time (js/maps.js)`, () => {
+    const { p, server } = skewed();
+    assert.equal(p.call('scoreFresh', server - probe(p.run('HOT_NOW_MS')), p.run('HOT_NOW_MS')), ahead);
+    const m = body(server);
+    keep(p, m, server, true);
+    const titles = [];
+    const node = () => new Proxy({}, {
+      get: (o, k) => (k === 'classList' ? { toggle() {}, add() {}, remove() {} } : k in o ? o[k] : () => node()),
+      set: (o, k, v) => { if (k === 'title') titles.push(v); o[k] = v; return true; },
+    });
+    p.ctx.document = { createElement: () => node(), createTextNode: () => node() };
+    p.ctx.matchMedia = () => ({ matches: true, addEventListener() {} });
+    const corners = p.call('buildMapCorners', node(), '1-1');
+    const view = { ...p.call('killView', m, []), counting: { since: server - 9 * MIN, ready: server + (ahead ? MIN : -MIN) } };
+    corners.paint(view, 'Center', server - MIN);
+    assert.equal(titles.some((t) => String(t).startsWith('Counting since')), ahead);
+  });
+
+  test(`clock ${side} by 5 min: recentCaptures sets its ceiling by the server's time (js/maps.js)`, () => {
+    const { p, server } = skewed();
+    const flip = (id, at) => ({ id, type: 'Camp', owner: 'Red', last_flipped: iso(at) });
+    const early = flip('1-1-a', server - 10 * MIN);
+    const edge = flip('1-1-b', ahead ? server + 90 * SEC : server - 210 * SEC);
+    const m = body(server, { maps: [{ type: 'Center', objectives: [early, edge] }] });
+    p.ctx.__m = m;
+    const ids = plain(p.run('recentCaptures(__m)')).map((c) => c.id);
+    assert.deepEqual(ids, ahead ? ['1-1-a'] : ['1-1-b', '1-1-a']);
+  });
+}

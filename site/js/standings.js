@@ -262,7 +262,7 @@ function clearSkeleton(gridEl) {
 // One region onto the page. A failed region keeps what it last rendered; the
 // first load is the exception, as only the skeleton is up.
 function showRegion(gridEl, statusEl, matches, label, syncedAt, failed) {
-  const resetting = regionResetting(label, Date.now());
+  const resetting = regionResetting(label, steadyNow());
   if (matches && (matches.length || !resetting)) {
     renderStandingsRegion(gridEl, matches);
     paintGuildFound(gridEl, false);
@@ -468,13 +468,13 @@ function paintRetryStatus(statusEl, spoken, visible, busy, calm) {
 function planStandingsRetry() {
   const paint = (spoken, visible) => {
     for (const f of standingsFailed) {
-      if (f.region && regionResetting(f.region, Date.now())) paintRetryStatus(f.el, RESET_NOTE, RESET_NOTE, false, true);
+      if (f.region && regionResetting(f.region, steadyNow())) paintRetryStatus(f.el, RESET_NOTE, RESET_NOTE, false, true);
       else paintRetryStatus(f.el, spoken, visible, false);
     }
   };
   if (standingsExtraUsed >= STANDINGS_RETRY_WINDOWS_MS.length) {
     for (const f of standingsFailed) {
-      const text = f.region && regionResetting(f.region, Date.now())
+      const text = f.region && regionResetting(f.region, steadyNow())
         ? RESET_NOTE : `Couldn't load ${f.label}. It will try again in a few minutes.`;
       paintRetryStatus(f.el, text, text, false, text === RESET_NOTE);
     }
@@ -514,7 +514,7 @@ async function loadStandings(origin = 'cycle') {
   if (origin === 'cycle') standingsExtraUsed = 0;
   else if (origin === 'retry') standingsExtraUsed++;
   for (const f of standingsFailed) paintRetryStatus(f.el, 'Trying again.', 'Trying again…', true,
-    f.region && regionResetting(f.region, Date.now()));
+    f.region && regionResetting(f.region, steadyNow()));
   // A refresh has the old table to fall back on; the first load does not.
   const timeoutMs = standingsEverLoaded ? REQUEST_TIMEOUT_MS : SLOW_REQUEST_TIMEOUT_MS;
   try {
@@ -527,7 +527,7 @@ async function loadStandings(origin = 'cycle') {
     // one in hand is too old to say; that read of the game may have asked the copy already.
     let fromHand = origin === 'peek', askCopy = peekCopy;
     if (origin === 'cycle' && standingsEverLoaded && !standingsFailed.length && matchDataCache.size
-      && !regionResetting('NA', Date.now()) && !regionResetting('EU', Date.now())) {
+      && !regionResetting('NA', steadyNow()) && !regionResetting('EU', steadyNow())) {
       let held = copyHolds([...matchDataCache.values()]);
       if (!held) {
         try {
@@ -732,7 +732,7 @@ async function peekLatest() {
   const inHand = handAhead();
   for (const [id, k] of newestMatches) if (matchIsLive(k.match) && summaryAhead(k.match)) copied.add(id);
   if (copied.size && mapAhead) mapAhead(copied);
-  const behind = [...copied].some((id) => now - newestMatches.get(id).at >= PEEK_BEHIND_MS);
+  const behind = [...copied].some((id) => now - steadyClockLead - newestMatches.get(id).at >= PEEK_BEHIND_MS);
   if (!inHand && !behind) return;
   if (activeTrigger || standingsInFlight || standingsFailed.length || now - peekLoadedAt < PEEK_BEHIND_MS) return;
   peekLoadedAt = now;

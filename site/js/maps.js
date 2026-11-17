@@ -712,6 +712,9 @@ function ageWords(ms) {
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
 }
 
+// A score time `at` (the server's time) no older than `ms`.
+const scoreFresh = (at, ms) => steadyNow() - at <= ms;
+
 // The two corners over the map: kills on the left, on the right the age of the match's data
 // (matchScoreRoseAt). Text on a shadow, no box; they go while the map is zoomed. Built once per map;
 // paint() rewrites them in place, so the status region keeps its identity.
@@ -856,7 +859,7 @@ function buildMapCorners(wrap, matchId) {
     if (!line) {
       const wait = view && view.counting;
       text = view && view.noWindow === 'reset' ? HUD_RESET_TIP
-        : wait && wait.ready > Date.now()
+        : wait && wait.ready > steadyNow()
           ? `Counting since ${hhmm(wait.since)}, ready about ${hhmm(wait.ready)}: the kill history does not reach 10 minutes back yet.`
           : HUD_NO_WINDOW_TIP;
     } else {
@@ -896,7 +899,7 @@ function buildMapCorners(wrap, matchId) {
       left.hidden = !at;
       right.hidden = !at;
       if (!at) { paintKills(view, type, false, 0); stale = null; return; }
-      const age = Math.max(0, Date.now() - at);
+      const age = Math.max(0, steadyNow() - at);
       const isStale = age > HUD_STALE_MS;
       paintKills(view, type, isStale, at);
       ago.classList.toggle('is-stale', isStale);
@@ -2192,7 +2195,7 @@ const PANE_FLOOR = 150;  // px, beside the map: under this the column outgrows t
 
 function recentCaptures(match) {
   // A clock running ahead on the API's side must not set the window.
-  const ceiling = Date.now() + 60000;
+  const ceiling = steadyNow() + 60000;
   let newest = 0;
   for (const map of missedMaps(match)) {
     for (const o of missedObjectives(map)) {
@@ -2538,7 +2541,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   const paintCorners = () => {
     if (!corners) return;
     const rose = matchScoreRoseAt(match.id);
-    const known = firstReadDone || (rose > 0 && Date.now() - rose <= HUD_STALE_MS);
+    const known = firstReadDone || (rose > 0 && scoreFresh(rose, HUD_STALE_MS));
     corners.paint(hotView, current, known ? rose : 0);
     // Orange swords only on the busiest map; elsewhere they are neutral.
     const l = plotWrap && plotWrap.querySelector('.wvw-hud-l');
@@ -2868,7 +2871,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   // Unless the body this page keeps rose within HOT_NOW_MS: that one is as fresh as the read, so the swords
   // and the kills go up at once.
   const keptNow = newestMatches.get(match.id);
-  if (keptNow && Date.now() - keptNow.at <= HOT_NOW_MS) {
+  if (keptNow && scoreFresh(keptNow.at, HOT_NOW_MS)) {
     liveMatch = keptNow.match;
     markHotTab(liveMatch);
   }
