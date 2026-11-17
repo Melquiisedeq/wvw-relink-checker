@@ -9,14 +9,6 @@ import { FOCUS, MIN, awayAndBack, playing, skirmishAway } from './support/scenar
 import { check, firstTier, frame, iso, keptMatch, later, load, openMap, search } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
-const NA = '#standingsGridNA > .standing-match';
-
-const opened = async (page, wvw) => {
-  await page.goto(wvw.url);
-  await expect(page.locator(NA)).toHaveCount(wvw.tiers.NA);
-  await expect(page.locator('#standingsGridEU > .standing-match')).toHaveCount(wvw.tiers.EU);
-  await wvw.settle();
-};
 
 // The page's clock stops a moment ahead, and only runFor moves it from there. It runs by
 // itself until then, so the instant asked for may already be behind it: asked again, further on.
@@ -35,7 +27,7 @@ test.describe('a read that never answers', () => {
   test.use({ clock: 'playwright' });
 
   test('the guild row says the request timed out, and the search ends', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     await page.route(/^https:\/\/api\.guildwars2\.com\/v2\/guild\/search\?/, () => new Promise(() => {}));
     await page.locator('#guildInput').fill('Nobody Answers Here');
     // The 10 s run from the moment the read leaves, after the page's own wait for the tables.
@@ -66,7 +58,7 @@ for (const kind of ['wheel', 'touchstart', 'keydown', 'mousedown']) {
     test.use({ viewport: { width: 1280, height: 420 } });
 
     test('the page stops where it is, the card still out of view', async ({ page, wvw }) => {
-      await opened(page, wvw);
+      await load(page, wvw);
       await page.evaluate(kind => {
         window.__cut = null;
         window.addEventListener('scroll', () => {
@@ -94,7 +86,7 @@ for (const kind of ['wheel', 'touchstart', 'keydown', 'mousedown']) {
 // shards thrown from the crest. They stay in the page after they fade; the next
 // blast takes them out before it puts its own, so the pieces do not pile up.
 test('a second search blasts again: the first one\'s lobes, rays and shards are gone', async ({ page, wvw }) => {
-  await opened(page, wvw);
+  await load(page, wvw);
   const PIECES = '.blast-lobe, .blast-ray, .impact-shard';
   const count = () => page.evaluate(sel => ({
     all: document.querySelectorAll(sel).length,
@@ -140,7 +132,7 @@ test.describe('the round on the sling', () => {
   }
 
   test('let go at the top of the swing it flies, and is gone when it lands', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     await page.locator('#guildInput').fill(wvw.guilds[0]);
     await pause(page, wvw);
     await toDone(page);
@@ -156,7 +148,7 @@ test.describe('the round on the sling', () => {
   });
 
   test('a Check pressed in the swing: the new round keeps riding the sling after the old one is let go', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     await page.locator('#guildInput').fill(wvw.guilds[0]);
     await pause(page, wvw);
     await toDone(page);
@@ -187,7 +179,7 @@ test.describe('the round on the sling', () => {
   });
 
   test('a Check pressed before the deferred launch: the old round is let go and lands, the new one keeps gathering', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     await page.locator('#guildInput').fill(wvw.guilds[0]);
     await pause(page, wvw);
     await toDone(page);
@@ -207,7 +199,7 @@ test.describe('the round on the sling', () => {
   });
 
   test('a Check pressed before the last round is let go takes up a new one beside it', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     await page.locator('#guildInput').fill(wvw.guilds[0]);
     await pause(page, wvw);
     await toDone(page);
@@ -535,7 +527,7 @@ test.describe('a skirmish ends while the tab is away', () => {
         Object.defineProperty(document, 'hidden', { configurable: true, get: () => window.__visibility === 'hidden' });
       });
     }
-    await opened(page, wvw);
+    await load(page, wvw);
     const tl = wvw.timeline;
     const back = 107.5 * MIN;
     const older = tl.body(FOCUS, back - 5 * MIN), newest = tl.body(FOCUS, back);

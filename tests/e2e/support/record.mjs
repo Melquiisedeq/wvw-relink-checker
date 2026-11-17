@@ -27,7 +27,7 @@ export const RECORDING_ON = !!process.env.RECORD;
 
 const GAME = 'https://api.guildwars2.com';
 const ORIGINS = { 'api.guildwars2.com': GAME, 'docs.google.com': 'https://docs.google.com' };
-// The only two routes the page reads from /api, each with its full address.
+// The only /api routes the recording holds, each with its full address.
 const OWN_API = ['https://wvwrelink.com/api/kills', 'https://wvwrelink.com/api/relink'];
 
 const dir = () => process.env.RECORD_DIR;
