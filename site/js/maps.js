@@ -2045,9 +2045,23 @@ function missedChip(c, here, goTo, spot) {
   return b;
 }
 
+// A list rebuilt under the keyboard drops its focus to <body>: what was held is
+// named by its role and the map or objective it points at, and gets the focus
+// back once rebuilt.
+const heldName = (el) => [el.classList[0], el.dataset.obj, el.dataset.map, el.dataset.pane].join('|');
+function keepFocus(root, rebuild) {
+  const el = document.activeElement;
+  const had = el && el !== root && root.contains(el) ? heldName(el) : null;
+  rebuild();
+  if (!had || root.contains(document.activeElement)) return;
+  const back = [...root.querySelectorAll('button, [tabindex]')].find((b) => heldName(b) === had);
+  if (back) back.focus({ preventScroll: true });
+}
+
 // The block itself, at the top of the right-hand column. view: { matchId,
 // side, tabs, type, goTo, spot, repaint }. Rebuilt only when what it shows moved.
-function paintMissed(view) {
+function paintMissed(view) { keepFocus(view.side, () => paintMissedNow(view)); }
+function paintMissedNow(view) {
   const note = missedNoteFor(view.matchId);
   const shown = note && missedView(note);
   let box = view.side.querySelector('.wvw-missed:not(.is-leaving)');
@@ -2123,6 +2137,7 @@ function paintMissed(view) {
     const top = missedEl('div', 'wvw-missed-rowhead');
     const name = missedEl('button', 'wvw-missed-mapname');
     name.type = 'button';
+    name.dataset.map = type;
     name.title = `Open ${mapName}`;
     name.appendChild(missedEl('span', `dot dot-${MISSED_MAP_TINT[type] || 'neutral'}`));
     name.append(mapName);
@@ -2145,6 +2160,7 @@ function paintMissed(view) {
       if (hidden > 0) {
         const more = missedEl('button', 'wvw-chip wvw-chip-more', `+${hidden}`);
         more.type = 'button';
+        more.dataset.map = type;
         more.setAttribute('aria-label', `Show ${hidden} more on ${mapName}`);
         more.addEventListener('click', (e) => { e.stopPropagation(); note.moreMaps.add(type); view.repaint(); });
         chips.appendChild(more);
@@ -2201,7 +2217,8 @@ function recentCaptures(match) {
 // spot }. A row lights its objective while pointed at; pressed, it opens the
 // objective's map and lights it a moment, without selecting it - the list
 // stays on screen.
-function paintCaptures(view, items) {
+function paintCaptures(view, items) { keepFocus(view.box, () => paintCapturesNow(view, items)); }
+function paintCapturesNow(view, items) {
   const shown = items.slice(0, CAPTURES_MAX);
   const key = JSON.stringify(shown);
   if (view.box.dataset.key === key) return;
@@ -2536,6 +2553,8 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     // The freshest body, not the one this popover opened with: that one
     // would put the board back to the opening's numbers on a tab change.
     paintMapBoard(board, liveMatch, matchIsLive(liveMatch));
+    // Emptying the stage takes the column out of the document, and its focus with it.
+    const held = side.contains(document.activeElement) ? document.activeElement : null;
     stage.textContent = '';
     plotWrap = sectors && sectors.length
       ? buildMapStage(liveMatch, byType.get(type), sectors, catalogue, (p, m) => {
@@ -2563,6 +2582,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
       stage.appendChild(msg);
     }
     stage.appendChild(side);
+    if (held) held.focus({ preventScroll: true });
     emptyDetail();
     paintNote();
     paintFocus();
