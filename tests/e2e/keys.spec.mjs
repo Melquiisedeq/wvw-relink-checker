@@ -294,7 +294,7 @@ test.describe('Ctrl+Enter and the saved list', () => {
     await page.keyboard.insertText(wvw.guilds.join('\n'));
     await page.keyboard.press('Enter');
     await page.waitForTimeout(300);
-    await expect(page.locator('#statusMsg'), 'Enter alone does not run').not.toHaveText(/Talking|Done/);
+    await expect(page.locator('#statusMsg'), 'Enter alone does not run').not.toHaveText(/Asking|Done/);
     expect(await page.locator('#guildInput').inputValue()).toBe(wvw.guilds.join('\n') + '\n');
     await page.keyboard.press('Control+Enter');
     await expect(page.locator('#runBtn')).toBeDisabled();

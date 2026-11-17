@@ -578,13 +578,17 @@ function stoppedFight(perMin, stopped) {
   return p.call('killView', m, TYPES, now);
 }
 
-test('killView: a fight that stops puts the swords out past one kill step plus 15 kills at its pace, or at 10 minutes, whichever comes first, whatever the score does (js/maps-early.js)', () => {
+test('killView: a fight that stops puts the swords out past one kill step plus 15 kills at its pace, or at 10 minutes (7 under 75 per 10), whichever comes first, whatever the score does (js/maps-early.js)', () => {
   // The silence the kills may keep: KILLS_STEP_MS plus the time to make KILLS_LATE_KILLS at the
-  // fight's own pace (view.strange), cut at HOT_WANT_MS. At 30 a minute the first comes first.
+  // fight's own pace (view.strange), cut at HOT_WANT_MS, or HOT_SMALL_WANT_MS under HOT_BIG.
+  // At 30 a minute the first comes first.
   const p = fresh();
   const step = p.run('KILLS_STEP_MS'), kills = p.run('KILLS_LATE_KILLS'), want = p.run('HOT_WANT_MS');
-  for (const pace of [5, 8, 12, 30]) {
-    const limit = Math.min(step + (kills / pace) * MIN, want);
+  const small = p.run('HOT_SMALL_WANT_MS'), big = p.run('HOT_BIG');
+  assert.equal(small, 7 * MIN);
+  assert.equal(big, 75);
+  for (const pace of [5, 7, 7.5, 8, 12, 30]) {
+    const limit = Math.min(step + (kills / pace) * MIN, pace * 10 < big ? small : want);
     if (pace === 30) assert.ok(limit < want, 'at 30 a minute the late-kills rule, not the window, puts them out');
     const early = stoppedFight(pace, Math.floor(limit - 30000));
     assert.equal(early.frozen, false, 'the score was still offered');
@@ -630,6 +634,41 @@ test('killView: a jump after a stall of 10-20 minutes counts spread over the sta
   // Past 20 min the step is the source catching up, however big.
   assert.equal(catchUp(20 * MIN + 1000, 5000).hot, null);
   assert.equal(catchUp(60 * MIN, 5000).hot, null);
+});
+
+// catchUp's jump, then `quiet` of still kills, the score of the match still offered every 30 s.
+function quietCatchUp(prevRun, jump, quiet) {
+  const p = fresh();
+  const base = matches[3];
+  const now = p.clock.now;
+  const at = now - quiet;
+  const flat = { Center: 100, RedHome: 0, BlueHome: 0, GreenHome: 0 };
+  const rows = [{ at: at - prevRun, n: flat }];
+  if (prevRun > 10 * MIN) rows.push({ at: at - 10 * MIN, n: flat });
+  rows.push({ at, n: { ...flat, Center: 100 + jump } });
+  sheetOf(p, base.id, rows);
+  const m = liveWith(base, { Center: 100 + jump });
+  for (let t = now - 30 * MIN, i = 0; t <= now; t += 30000, i++) {
+    p.clock.now = t;
+    const step = clone(m);
+    step.scores.red += i;
+    p.call('keepNewestMatch', step);
+  }
+  p.clock.now = now;
+  return p.call('killView', m, TYPES, now);
+}
+
+test('killView: a jump spread under 75 per 10 keeps its swords 7 min of silence, and the stall is named only when it alone kept them off (js/maps-early.js)', () => {
+  // 70 over a stall of 11 min are 64 per 10.
+  assert.equal(quietCatchUp(11 * MIN, 70, 6 * MIN).hot, 'Center', '64 per 10 at 6 min of silence');
+  const small = quietCatchUp(11 * MIN, 70, 8 * MIN);
+  assert.equal(small.hot, null, '64 per 10 at 8 min of silence');
+  assert.equal(small.frozen, false);
+  assert.equal(small.jumpHeld, false, '70 whole would be out at 8 min too');
+  // 80 over a stall of 15 min are 53 per 10; whole, 80 would hold them to 10 min.
+  const held = quietCatchUp(15 * MIN, 80, 8 * MIN);
+  assert.equal(held.hot, null, '53 per 10 at 8 min of silence');
+  assert.equal(held.jumpHeld, true, '80 whole would still light them at 8 min');
 });
 
 test('killView: jumpHeld is set only when the stall, not the pace, kept the swords off (js/maps-early.js)', () => {
@@ -1494,4 +1533,201 @@ test('copyHolds: the copy holds the matches with a new read, not the one standin
   assert.equal(p.run(`(() => { latestSummaryLearn(Object.fromEntries(__ids.map((id) =>
     [id, { start: Date.parse('2026-11-07T02:00:00Z'), score: 7, at: (Date.now() - ownClockLead - 5 * 60e3) / 1000 }])));
     return copyHolds(__ids.map((id) => ({ id, start_time: '2026-11-07T02:00:00Z' }))); })()`), null, 'every at old: the copy cannot answer');
+});
+
+// The five places that read a game instant on the server's time, Date.now() - steadyClockLead (js/config.js,
+// js/maps.js, js/relink.js), with the visitor's clock off by minutes.
+const SEC = 1000;
+for (const lead of [5 * MIN, -5 * MIN]) {
+  const ahead = lead > 0;
+  // The banner on server time `server` with the visitor's clock off by `lead`; every stat and banner built is kept.
+  function banner(server, setup) {
+    const p = fresh();
+    p.set('steadyClockLead', lead);
+    p.clock.now = server + lead;
+    const seen = { value: [], stat: [], rebuild: [] };
+    p.set('buildRelinkValue', (...a) => { seen.value.push(a); return p.ctx.document; });
+    p.set('buildRelinkStat', (...a) => { seen.stat.push(a); return p.ctx.document; });
+    p.set('buildRebuildBanner', (...a) => { seen.rebuild.push(a); });
+    setup(p);
+    p.call('updateRelinkBanner');
+    return seen;
+  }
+
+  test(`clock ${ahead ? 'ahead' : 'behind'} by 5 min: matchIsLive, flippedAgo, riLeft, tickRi read the server's time`, () => {
+    const p = fresh();
+    const server = p.clock.now;
+    p.set('steadyClockLead', lead);
+    p.clock.now = server + lead;
+    const at = (ms) => new Date(server + ms).toISOString();
+
+    assert.equal(p.call('matchIsLive', { end_time: at(MIN) }), true);
+    assert.equal(p.call('matchIsLive', { end_time: at(-MIN) }), false);
+
+    assert.equal(p.call('flippedAgo', at(-3 * MIN)), '3m');
+    assert.equal(p.call('flippedAgo', at(MIN)), null);
+
+    assert.equal(p.call('riLeft', at(-4 * MIN)), MIN);
+    assert.equal(p.call('riLeft', at(-6 * MIN)), 0);
+
+    const clocks = [];
+    const badge = (until) => ({
+      dataset: { until: String(server + until) },
+      remove() { this.gone = true; },
+      querySelector: () => ({ set textContent(v) { clocks.push(v); } }),
+    });
+    const live = badge(MIN), over = badge(-MIN);
+    p.call('tickRi', { querySelectorAll: () => [live, over] });
+    assert.equal(over.gone, true);
+    assert.equal(live.gone, undefined);
+    assert.deepEqual(clocks, [p.call('riClock', MIN)]);
+  });
+
+  test(`clock ${ahead ? 'ahead' : 'behind'} by 5 min: the banner's countdown and urgency read the server's time`, () => {
+    const server = Date.UTC(2026, 10, 11, 12);
+    // Two hours is the urgent line: 118 min is urgent, 122 min is not; each wrong clock lands on the other side.
+    const away = (ahead ? 122 : 118) * MIN;
+    const seen = banner(server, (p) => {
+      p.set('relinkNA', server + away);
+      p.set('relinkEU', server + away);
+    });
+    const [naLeft, euLeft, naUrgent, euUrgent] = seen.value[0];
+    assert.equal(naLeft, away);
+    assert.equal(euLeft, away);
+    assert.equal(naUrgent, !ahead);
+    assert.equal(euUrgent, !ahead);
+  });
+
+  for (const [region, day, hour, resetAt] of [['NA', 14, 2], ['EU', 13, 18]]) {
+    test(`clock ${ahead ? 'ahead' : 'behind'} by 5 min: ${region} counts as resetting by the server's time`, () => {
+      // 10 min after the reset the region is resetting; 17 min after it is not (the arrival window is 15).
+      const server = Date.UTC(2026, 10, day, hour) + (ahead ? 10 : 17) * MIN;
+      const seen = banner(server, (p) => {
+        p.set('relinkNA', server + 6 * 60 * MIN);
+        p.set('relinkEU', server + 6 * 60 * MIN);
+      });
+      assert.equal(seen.value[0][region === 'NA' ? 4 : 5], ahead);
+    });
+  }
+
+  test(`clock ${ahead ? 'ahead' : 'behind'} by 5 min: the lockout reads the server's time`, () => {
+    const server = Date.UTC(2026, 10, 11, 12);
+    const seen = banner(server, (p) => {
+      p.set('timersLoaded', true);
+      p.set('lockoutTime', server + 2 * MIN);
+    });
+    const lockout = seen.stat.find((a) => a[0] === 'Season Lockout');
+    assert.equal(lockout[1], '2m');
+  });
+
+  test(`clock ${ahead ? 'ahead' : 'behind'} by 5 min: the rebuild window opens and counts by the server's time`, () => {
+    const server = Date.UTC(2026, 10, 11, 12);
+    const seen = banner(server, (p) => {
+      p.set('timersLoaded', true);
+      p.set('lockoutTime', server - 2 * MIN);
+      p.set('assignNA', server + 2 * MIN);
+      p.set('assignEU', server + 4 * MIN);
+    });
+    assert.deepEqual(seen.rebuild, [[2 * MIN, 4 * MIN]]);
+  });
+}
+
+// What fetchOwnApi keeps in steadyClockLead, by the real path: a fake fetch answers with a Date header
+// (whole seconds, as a server sends it) from a server `trueLead` behind the visitor's clock.
+function metering(trueLead) {
+  const p = fresh();
+  p.ctx.AbortController = AbortController;
+  const T0 = Date.UTC(2026, 10, 11, 12);
+  // One own-API answer, generated `frac` ms into the second `second` s after T0, arriving `trip` ms later.
+  p.answer = async (second, frac, { trip = 0, date = true } = {}) => {
+    const server = T0 + second * SEC + frac;
+    p.clock.now = server + trueLead;
+    p.set('fetch', async () => {
+      const header = new Date(T0 + second * SEC).toUTCString();
+      p.clock.now += trip;
+      return { ok: true, headers: { get: () => (date ? header : null) }, json: async () => ({}) };
+    });
+    await p.call('fetchOwnApi', 'https://wvwrelink.com/api/x', 'no-store');
+  };
+  p.steady = () => p.run('steadyClockLead');
+  p.T0 = T0;
+  return p;
+}
+
+test('steadyClockLead: a right clock stays 0 whatever fraction of a second each answer carries', async () => {
+  const p = metering(0);
+  for (const [i, frac] of [300, 900, 100, 950, 0, 999].entries()) {
+    await p.answer(i, frac);
+    assert.equal(p.steady(), 0);
+    assert.equal(p.run('ownClockLead'), frac, 'ownClockLead still takes every reading as it comes');
+  }
+});
+
+test('steadyClockLead: the RI badge clock on a right clock counts down one second per tick', async () => {
+  const p = metering(0);
+  const clocks = [];
+  const badge = { dataset: { until: String(p.T0 + 130 * SEC) }, remove() {},
+    querySelector: () => ({ set textContent(v) { clocks.push(v); } }) };
+  const fractions = [300, 900, 100, 950, 400];
+  for (const [i, frac] of fractions.entries()) {
+    p.clock.now = p.T0 + i * SEC;
+    p.call('tickRi', { querySelectorAll: () => [badge] });
+    await p.answer(i, frac);
+  }
+  assert.deepEqual(clocks, fractions.map((_, i) => p.call('riClock', (130 - i) * SEC)));
+});
+
+test('steadyClockLead: a clock minutes off is corrected and does not move with the fraction of the second', async () => {
+  const p = metering(5 * MIN);
+  await p.answer(0, 300);
+  const first = p.steady();
+  assert.ok(Math.abs(first - 5 * MIN) <= SEC, `first reading ${first}`);
+  for (const [i, frac] of [900, 100, 950, 0].entries()) {
+    await p.answer(i + 1, frac);
+    assert.equal(p.steady(), first, `moved on fraction ${frac}`);
+  }
+});
+
+test('steadyClockLead: a clock fixed mid-session returns to exactly 0', async () => {
+  const p = metering(10 * MIN);
+  await p.answer(0, 300);
+  assert.ok(p.steady() > 9 * MIN);
+  const fixed = metering(400);
+  fixed.set('steadyClockLead', p.steady());
+  await fixed.answer(1, 0);
+  assert.equal(fixed.steady(), 0);
+});
+
+test('steadyClockLead: a clock 4.5 s ahead stays 0 until a reading leaves the band, then moves once', async () => {
+  const p = metering(4500);
+  await p.answer(0, 300);
+  assert.equal(p.steady(), 0);
+  await p.answer(1, 900);
+  const moved = p.steady();
+  assert.ok(moved > 5 * SEC && moved < 6 * SEC, `moved to ${moved}`);
+  await p.answer(2, 100);
+  assert.equal(p.steady(), moved, 'and stops there');
+});
+
+test('steadyClockLead: an answer without a Date header changes nothing', async () => {
+  const p = metering(5 * MIN);
+  await p.answer(0, 300);
+  const kept = p.steady();
+  await p.answer(1, 300, { date: false });
+  assert.equal(p.steady(), kept);
+  assert.equal(p.run('ownClockLead'), 0, 'ownClockLead still falls to 0 with no Date');
+  const q = metering(0);
+  await q.answer(0, 300, { date: false });
+  assert.equal(q.steady(), 0);
+});
+
+test('steadyClockLead: an answer slower than a second changes nothing', async () => {
+  const p = metering(5 * MIN);
+  await p.answer(0, 300, { trip: 1500 });
+  assert.equal(p.steady(), 0);
+  await p.answer(1, 300, { trip: 1000 });
+  assert.ok(p.steady() > 4 * MIN, 'a second exactly still counts');
+  const kept = p.steady();
+  await p.answer(2, 300, { trip: 2000 });
+  assert.equal(p.steady(), kept);
 });

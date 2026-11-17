@@ -9,6 +9,7 @@
 //   the visitor's group down, copy current visitorDown(20), the map open, then closed
 //   our copy ahead of the visitor's, old   copyAheadOld(20) and (2), the map open
 //   kills in steps, the score rising       killSteps(7, 12, 42), the map open
+//   a fight under 75 a 10 min stops        fightStops(7, 18, 20), the map open
 //   copy unread, its summary read          freeze(3), the map open
 //
 // Invariants, at every look:
@@ -24,7 +25,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { fail } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
-import { FOCUS, HOUR, MIN, apiDown, copyAheadOld, copyBehindAll, frozen, hidden, killSteps, missed, playing, twoPools, visible, visitorDown, wake } from './support/scenarios.mjs';
+import { FOCUS, HOUR, MIN, apiDown, copyAheadOld, copyBehindAll, fightStops, frozen, hidden, killSteps, missed, playing, twoPools, visible, visitorDown, wake } from './support/scenarios.mjs';
 
 const STALE_MS = 6 * MIN;
 // How long the page may take to read the API again: the open map asks every
@@ -473,8 +474,9 @@ const killCorner = page => page.evaluate(id => {
   const q = s => document.querySelector('.info-popover .wvw-plot-wrap ' + s);
   const s2 = q('.wvw-hud-small2');
   const kept = newestMatches.get(id);
+  const view = kept ? killView(kept.match, null) : null;
   return { line2: s2 && !s2.hidden ? s2.textContent.replace(/\s+/g, ' ') : '', dim: !!q('.wvw-hud-l.is-dim'),
-    silence: kept ? killView(kept.match, null).silence : 0 };
+    silence: view ? view.silence : 0, ebg: view && view.rates ? Math.round(view.rates.per.get('Center')) : 0 };
 }, FOCUS);
 
 test.describe('kills in steps, the score rising', () => {
@@ -506,38 +508,52 @@ test.describe('kills in steps, the score rising', () => {
     });
   }
 
-  // The swords stay lit through a step's silence, and go out with the 10 min window.
-  test.describe('a step, then the kills stop: the swords', () => {
-    test.use({ timeline: killSteps(7, 12, 21).advance(20, { kills: {} }) });
-    test('stay on the busiest map at 8 min of silence, out past 10', async ({ page, wvw }) => {
-      const r = rower(page, wvw);
-      await r.load();
-      await r.open();
-      let lit = 0;
-      let out = 0;
-      // The 30 s steps keep the page's timers firing.
-      for (let i = 1; i <= 60; i++) {
-        await page.clock.fastForward(30 * 1000);
-        const silence = (await killCorner(page)).silence;
-        const inLit = silence > 7.5 * MIN && silence < 8.5 * MIN && !lit;
-        const inOut = silence > 10.2 * MIN && !out;
-        if (!inLit && !inOut) continue;
-        await r.check(`swords, +${i / 2} min`, READ_OPEN_MS);
-        const c = await killCorner(page);
-        const hot = await page.locator('.info-popover .wvw-tab.is-hot').evaluateAll(t => t.map(b => b.dataset.type));
-        const at = `the kills silent ${Math.round(c.silence / 1000)} s, swords on [${hot}]`;
-        if (inLit) {
-          expect(hot, `${at}: they should stay on EBG`).toEqual(['Center']);
-          lit++;
-        } else {
-          expect(hot, `${at}: they should be out`).toEqual([]);
-          out++;
+  // The swords stay lit through a step's silence and go out with the 10 min window, or 7 min under 75 kills per 10.
+  // `last`: minutes from the opening to the last kills. The smaller fight kills 7 a minute: the page dates the
+  // last kills when it learns of them, up to 2 min late, so its window reads 52 to 70.
+  const swordCases = [
+    { timeline: killSteps(7, 12, 21).advance(20, { kills: {} }), last: 15, size: [75, Infinity], lit: [8.7, 9.3], out: [10.2, Infinity],
+      name: 'a step, then the kills stop: the swords, 75 or more per 10 min, on at 9 min of silence, out past 10' },
+    { timeline: fightStops(7, 18, 20), last: 18,
+      size: [50, 74], lit: [5.7, 6.3], out: [7.7, 8.3], name: 'a fight under 75 per 10 min stops: the swords on at 6 min of silence, out at 8' },
+  ];
+  for (const c of swordCases) {
+    test.describe(c.name, () => {
+      test.use({ timeline: c.timeline });
+      test('stay on the busiest map, then go out', async ({ page, wvw }) => {
+        const r = rower(page, wvw);
+        await r.load();
+        await r.open();
+        let lit = 0;
+        let out = 0;
+        // The 30 s steps keep the page's timers firing.
+        for (let i = 1; i <= 60; i++) {
+          await page.clock.fastForward(30 * 1000);
+          // Before the last kills, a silence is a gap between steps, not the stop.
+          if (i / 2 <= c.last + 2) continue;
+          const silence = (await killCorner(page)).silence;
+          const inLit = silence > c.lit[0] * MIN && silence < c.lit[1] * MIN && !lit;
+          const inOut = silence > c.out[0] * MIN && silence < c.out[1] * MIN && !out;
+          if (!inLit && !inOut) continue;
+          await r.check(`swords, +${i / 2} min`, READ_OPEN_MS);
+          const k = await killCorner(page);
+          const hot = await page.locator('.info-popover .wvw-tab.is-hot').evaluateAll(t => t.map(b => b.dataset.type));
+          const at = `the kills silent ${Math.round(k.silence / 1000)} s, EBG at ${k.ebg} per 10 min, swords on [${hot}]`;
+          expect(k.ebg, `the state: ${at}`).toBeGreaterThanOrEqual(c.size[0]);
+          expect(k.ebg, `the state: ${at}`).toBeLessThanOrEqual(c.size[1]);
+          if (inLit) {
+            expect(hot, `${at}: they should stay on EBG`).toEqual(['Center']);
+            lit++;
+          } else {
+            expect(hot, `${at}: they should be out`).toEqual([]);
+            out++;
+          }
         }
-      }
-      expect(lit, 'the state: looks between 7.5 and 8.5 min of silence').toBeGreaterThan(0);
-      expect(out, 'the state: looks past 10.2 min of silence').toBeGreaterThan(0);
+        expect(lit, `the state: looks between ${c.lit[0]} and ${c.lit[1]} min of silence`).toBeGreaterThan(0);
+        expect(out, `the state: looks past ${c.out[0]} min of silence`).toBeGreaterThan(0);
+      });
     });
-  });
+  }
 
   test.describe('then the kills stop, the score still rising', () => {
     test.use({ timeline: killSteps(7, 12, 21).advance(20, { kills: {} }) });
@@ -655,5 +671,77 @@ test.describe('map open over normal polls', () => {
     expect(opened, '/api/kills requests when the map opens').toBeGreaterThan(0);
     await r.pass(8, 1, 'polling', READ_OPEN_MS);
     expect(kills.length, '/api/kills requests while the map polls').toBe(opened);
+  });
+});
+
+// The 5 min guard of schedulePeriodicRefresh (js/api.js) on two clocks: the
+// device asleep stops performance.now() on some devices (page.clock.setSystemTime moves only Date), and
+// a device clock set back must not bar a run. Called on its own function, so the
+// page's other reads on the tab's return (the peek, the push) do not count.
+test.describe('the periodic refresh guard, two clocks', () => {
+  const STEP = 5 * MIN;
+  const arm = async (page, wvw) => {
+    await page.goto(wvw.url);
+    await page.waitForFunction(() => typeof schedulePeriodicRefresh === 'function');
+    // Paused before the seed: no real time slips between the looks into the margins below.
+    await page.clock.pauseAt(await wvw.now() + 1000);
+    await page.evaluate(step => {
+      globalThis.__reads = 0;
+      globalThis.__answer = undefined;
+      globalThis.__run = schedulePeriodicRefresh(() => { globalThis.__reads++; return globalThis.__answer; }, step);
+    }, STEP);
+  };
+  const reads = page => page.evaluate(() => globalThis.__reads);
+  const back = async page => { await page.evaluate(() => globalThis.__run()); return reads(page); };
+
+  test('the device asleep: the date jumps, performance.now() stands still, the return reads', async ({ page, wvw }) => {
+    await arm(page, wvw);
+    await hidden(page, wvw, 2 * HOUR);
+    await visible(page);
+    await expect.poll(() => reads(page), { message: 'a read on the return after a 2 h sleep' }).toBe(1);
+  });
+
+  test('the slack: 1 s short of the interval is enough, 1.5 s short is not', async ({ page, wvw }) => {
+    await arm(page, wvw);
+    await wvw.skew(STEP - 1500);
+    expect(await back(page), 'the date 298.5 s on, none on performance.now()').toBe(0);
+    await wvw.skew(1000);
+    expect(await back(page), 'the date 299.5 s on').toBe(1);
+  });
+
+  test('performance.now() alone is enough with the date set back', async ({ page, wvw }) => {
+    await arm(page, wvw);
+    await page.clock.fastForward(STEP - 1500);
+    await wvw.skew(-2 * HOUR);
+    expect(await back(page), 'performance.now() 298.5 s on, the date 2 h behind').toBe(0);
+    await page.clock.fastForward(1000);
+    expect(await back(page), 'performance.now() 299.5 s on, the date 2 h behind').toBe(1);
+  });
+
+  test('a date set back alone never reads', async ({ page, wvw }) => {
+    await arm(page, wvw);
+    await hidden(page, wvw, -2 * HOUR);
+    await visible(page);
+    expect(await reads(page), 'a negative elapsed on the date, none on performance.now()').toBe(0);
+  });
+
+  test('a skipped run hands back both clocks', async ({ page, wvw }) => {
+    await arm(page, wvw);
+    await wvw.skew(2 * HOUR);
+    await page.evaluate(() => { globalThis.__answer = false; });
+    expect(await back(page), 'the sleep return, the work skipped').toBe(1);
+    expect(await back(page), 'tried again at once: the date stamp went back').toBe(2);
+    await page.evaluate(() => { globalThis.__answer = undefined; });
+    expect(await back(page), 'the work done this time').toBe(3);
+    expect(await back(page), 'and counted: nothing more at once').toBe(3);
+  });
+
+  test('a skipped run on performance.now() alone hands back its clock', async ({ page, wvw }) => {
+    await arm(page, wvw);
+    await page.clock.fastForward(STEP - 500);
+    await wvw.skew(-2 * HOUR);
+    await page.evaluate(() => { globalThis.__answer = false; });
+    expect(await back(page), 'performance.now() past the interval, the work skipped').toBe(1);
+    expect(await back(page), 'tried again at once: the performance.now() stamp went back').toBe(2);
   });
 });
