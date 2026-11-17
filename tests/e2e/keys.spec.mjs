@@ -337,3 +337,32 @@ test.describe('Ctrl+Enter and the saved list', () => {
     await wvw.settle();
   });
 });
+
+test.describe('a popover that leaves the page live', () => {
+  const BUTTON = '.icon-btn.activity-btn';
+
+  test('a click on empty page closes it without pulling focus back; Escape still gives it back', async ({ page, wvw }) => {
+    await load(page, wvw);
+    const button = page.locator(BUTTON).first();
+    await button.click();
+    await expect(page.locator(POP)).toBeVisible();
+    // An empty part of the page: the click puts the focus on <body> before the document sees it.
+    await page.mouse.click(2, 2);
+    await expect(page.locator(POP)).toHaveCount(0);
+    await expect(button, 'a click elsewhere does not pull focus to the button').not.toBeFocused();
+    expect(await page.evaluate(() => document.activeElement === document.body), 'focus rests where the click put it').toBe(true);
+
+    await button.click();
+    await expect(page.locator(POP)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator(POP)).toHaveCount(0);
+    await expect(button, 'Escape gives the focus back').toBeFocused();
+  });
+
+  test('the map window holds the page: a click outside it gives the focus back to the maps button', async ({ page, wvw }) => {
+    const tier = await boardOpen(page, wvw);
+    await page.mouse.click(2, 2);
+    await expect(page.locator(POP)).toHaveCount(0);
+    await expect(tier.button, 'the page was held, so the focus goes back').toBeFocused();
+  });
+});

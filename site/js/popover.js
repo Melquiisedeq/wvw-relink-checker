@@ -18,11 +18,14 @@ let mapAhead = null;
 // Separate from the poll: repaints only what ages by the second (the tick in js/maps.js).
 let mapTickTimer = null;
 
-function closePopover() {
+function closePopover(byClick = false) {
   const trigger = activeTrigger;
   // Checked before the node is removed: removal moves focus to <body>. Focus
-  // already on <body> (a pick that rebuilt what held it) counts as inside.
-  const hadFocusInside = !!activePopover && (activePopover.contains(document.activeElement) || document.activeElement === document.body);
+  // already on <body> (a pick that rebuilt what held it) counts as inside,
+  // except after a click on an empty part of a page the popover did not hold:
+  // the click put it there.
+  const bodyIsInside = !byClick || !!activeBackdrop;
+  const hadFocusInside = !!activePopover && (activePopover.contains(document.activeElement) || (bodyIsInside && document.activeElement === document.body));
 
   // Before focus goes back: an inert trigger cannot take it.
   releasePage();
@@ -31,7 +34,6 @@ function closePopover() {
   if (trigger) {
     trigger.classList.remove('active');
     trigger.setAttribute('aria-expanded', 'false');
-    // Only reclaim focus if it was inside what closed; a click elsewhere must not yank the caret back.
     if (hadFocusInside) trigger.focus({ preventScroll: true });
   }
   activePopover = null;
@@ -117,7 +119,7 @@ function setPopoverExpanded(popover, triggerEl, expand) {
 
 document.addEventListener('click', (e) => {
   if (activePopover && !activePopover.contains(e.target) && e.target !== activeTrigger) {
-    closePopover();
+    closePopover(true);
   }
 });
 document.addEventListener('keydown', (e) => {
