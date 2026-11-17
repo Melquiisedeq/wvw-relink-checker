@@ -14,6 +14,11 @@ function lookupErrorText(e) {
   return 'Server error, try again';
 }
 
+// An effect (js/trebuchet.js) never stops the search: missing or throwing, it is skipped.
+function fx(effect) {
+  try { effect(); } catch { /* the effect only */ }
+}
+
 async function run() {
   const { names, cut } = parseGuildNames(guildInput.value);
   // Cleared up front: every statusMsg after this one is progress or success and
@@ -25,10 +30,15 @@ async function run() {
     return;
   }
 
+  // Checked before the button is disabled: the results are drawn with js/maps-early.js, and nothing is left running.
+  if (typeof buildTierMapButton !== 'function') {
+    statusMsg.classList.add('status-err');
+    statusMsg.textContent = RELOAD_TEXT;
+    return;
+  }
+
   runBtn.disabled = true;
   runBtn.innerHTML = '<span class="btn-pips"><span></span><span></span><span></span></span>';
-  sparkFromButton();
-  startCharge();
   statusMsg.innerHTML = '<span class="spinner"></span>Talking to the GW2 API…';
   // A popover opened from a row holds the old run's data; its trigger goes with the rows.
   closePopover();
@@ -51,13 +61,15 @@ async function run() {
     clearTimeout(deployTimer);
     deployTimer = setTimeout(() => pageEl.classList.remove('deploying'), 1200);
 
-    playFinale();
+    fx(() => playFinale());
   };
 
   // Everything past the setup is inside the try, so that however it ends
   // finish() runs: otherwise the button stays disabled, the trebuchet
   // hauled back and followSling's frame loop alive.
   try {
+    fx(() => sparkFromButton());
+    fx(() => startCharge());
     let maps;
     try {
       maps = await getWvwMaps();
