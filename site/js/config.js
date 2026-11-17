@@ -55,7 +55,7 @@ function matchTeamId(match, color) {
 // A match whose end_time has passed is a week that is over. Ask it of a single match, never of a region: tiers are not republished together.
 function matchIsLive(match) {
   const end = Date.parse(match && match.end_time);
-  return Number.isFinite(end) && end > Date.now();
+  return Number.isFinite(end) && end > Date.now() - steadyClockLead;
 }
 
 const API_BASE = "https://api.guildwars2.com/v2";
@@ -108,6 +108,8 @@ const KILLS_SHEET_TTL_MS = 5 * 60 * 1000;
 const OWN_KILLS_URL = '/api/kills';
 const OWN_RELINK_URL = '/api/relink';
 const OWN_API_TIMEOUT_MS = 4000;
+const CLOCK_TRIP_MAX_MS = 1000;   // a longer answer is not measured: the trip inflates the clock reading
+const CLOCK_BAND_MS = 5000;       // a reading within this of the kept one, or of 0, is noise
 // Must match the column order the Apps Script writes.
 const KILLS_MAP_ORDER = Object.freeze(['Center', 'RedHome', 'BlueHome', 'GreenHome']);
 
