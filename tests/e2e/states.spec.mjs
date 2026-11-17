@@ -219,6 +219,151 @@ test.describe('the round on the sling', () => {
     await expect(page.locator(ROUNDS), 'both rounds landed').toHaveCount(0);
     await wvw.settle();
   });
+
+  test('the second round let go soon after the first one struck keeps the broken shield for its own 1.2 s', async ({ page, wvw }) => {
+    await load(page, wvw);
+    await page.locator('#guildInput').fill(wvw.guilds[0]);
+    await pause(page, wvw);
+    await toDone(page);
+    await toSwing(page);
+    await page.locator('#runBtn').click();
+    await page.clock.runFor(300);
+    await expect(page.locator(`${ROUNDS}.flying`), 'the first round, let go').toHaveCount(1);
+    // The second round is let go as the first strikes; the first strike's 1.2 s runs out mid-break of the second.
+    let struck = false, second = false;
+    for (let t = 0; t < 4000 && !second; t += 10) {
+      await page.clock.runFor(10);
+      struck = struck || (await page.locator('#impactOverlay.broken').count()) > 0;
+      second = struck && (await page.locator(`${ROUNDS}.flying`).count()) > 0;
+    }
+    expect(second, 'the second round, let go after the first impact').toBe(true);
+    await page.clock.runFor(1300);
+    await expect(page.locator('#impactOverlay.play.broken'), "the second round's shield, broken and still up").toHaveCount(1);
+    await page.clock.runFor(700);
+    await expect(page.locator('#impactOverlay.play'), "the second round's shield, gone with its own 1.2 s").toHaveCount(0);
+    await wvw.settle();
+  });
+
+  test('a second round let go 700 ms after the first one struck keeps its shield through the flight', async ({ page, wvw }) => {
+    await load(page, wvw);
+    await page.locator('#guildInput').fill(wvw.guilds[0]);
+    await pause(page, wvw);
+    await toDone(page);
+    await toSwing(page);
+    // The second search's name read is held, so its round cannot be let go before the first strikes.
+    const release = await hold(page, new RegExp(`/guild/search\\?name=${encodeURIComponent(wvw.guilds[1])}$`));
+    await page.locator('#guildInput').fill(wvw.guilds[1]);
+    await page.locator('#runBtn').click();
+    await page.clock.runFor(300);
+    await expect(page.locator(`${ROUNDS}.flying`), 'the first round, let go').toHaveCount(1);
+    for (let t = 0; t < 2000 && !(await page.locator('#impactOverlay.broken').count()); t += 10) await page.clock.runFor(10);
+    await expect(page.locator('#impactOverlay.broken'), 'the first impact').toHaveCount(1);
+    await expect(page.locator(`${ROUNDS}.flying`), 'no second round in the air yet').toHaveCount(0);
+    await page.clock.runFor(700);
+    release();
+    await expect.poll(() => release.reads, { message: 'the second search read, held' }).toBe(1);
+    await toDone(page, { press: false });
+    for (let t = 0; t < 2000 && !(await page.locator(`${ROUNDS}.flying`).count()); t += 10) await page.clock.runFor(10);
+    await expect(page.locator(`${ROUNDS}.flying`), 'the second round, let go').toHaveCount(1);
+    // Past the first impact's 1.2 s, short of the second round's landing.
+    await page.clock.runFor(300);
+    await expect(page.locator(`${ROUNDS}.flying`), 'the second round still in the air').toHaveCount(1);
+    await expect(page.locator('#impactOverlay.play'), 'its shield, still up').toHaveCount(1);
+    await wvw.settle();
+  });
+
+  // Two rounds in the air with the first one landing as the second is let go; stepped to the second's landing.
+  async function twoInTheAir(page, wvw, onStep) {
+    await load(page, wvw);
+    await page.locator('#guildInput').fill(wvw.guilds[0]);
+    await pause(page, wvw);
+    await toDone(page);
+    await toSwing(page);
+    await page.locator('#runBtn').click();
+    await page.clock.runFor(300);
+    await expect(page.locator(`${ROUNDS}.flying`), 'the first round, let go').toHaveCount(1);
+    await toDone(page, { press: false });
+    for (let t = 0; t < 4000; t += 10) {
+      await page.clock.runFor(10);
+      await onStep();
+    }
+  }
+
+  test('a second round landing on a shield the first already broke breaks it afresh', async ({ page, wvw }) => {
+    const seen = [];
+    let second = false, inAir = 0;
+    await twoInTheAir(page, wvw, async () => {
+      const now = await page.evaluate(() => {
+        const a = document.querySelector('#impactOverlay .crest-side--l').getAnimations().find(x => x.animationName === 'half-l');
+        window.__halves = window.__halves || [];
+        if (a && !window.__halves.includes(a)) window.__halves.push(a);
+        return { halves: window.__halves.length, flying: document.querySelectorAll('.siege-charge.flying').length };
+      });
+      inAir = Math.max(inAir, now.flying);
+      second = second || inAir > 1;
+      seen.push(now.halves);
+    });
+    expect(second, 'both rounds in the air together').toBe(true);
+    expect(Math.max(...seen), 'a new break animation for each landing').toBe(2);
+    await wvw.settle();
+  });
+
+  test('the cards keep their blur off while a second round is still gathering after the first landed', async ({ page, wvw }) => {
+    await load(page, wvw);
+    await page.locator('#guildInput').fill(wvw.guilds[0]);
+    await pause(page, wvw);
+    await toDone(page);
+    await toSwing(page);
+    // The second search's name read is held: its round gathers on.
+    const release = await hold(page, new RegExp(`/guild/search\\?name=${encodeURIComponent(wvw.guilds[1])}$`));
+    await page.locator('#guildInput').fill(wvw.guilds[1]);
+    await page.locator('#runBtn').click();
+    await page.clock.runFor(300);
+    await expect(page.locator(`${ROUNDS}.flying`), 'the first round, let go').toHaveCount(1);
+    for (let t = 0; t < 2000 && !(await page.locator('#impactOverlay.broken').count()); t += 10) await page.clock.runFor(10);
+    await expect(page.locator('#impactOverlay.broken'), 'the first impact').toHaveCount(1);
+    await expect(page.locator(`${ROUNDS}.charging`), 'the second round, still gathering').toHaveCount(1);
+    await page.clock.runFor(2000);
+    await expect(page.locator(`${ROUNDS}.charging`), 'the second round, still gathering').toHaveCount(1);
+    await expect(page.locator('html.finale'), 'the blur still off, past the first impact\'s tail').toHaveCount(1);
+    release();
+    await wvw.settle();
+    for (let t = 0; t < 8000 && (await page.locator('html.finale').count()); t += 100) await page.clock.runFor(100);
+    await expect(page.locator('html.finale'), 'the blur back once the second round struck').toHaveCount(0);
+  });
+
+  test('the first round let go after a Check pressed before the deferred launch leaves the beam cocked for the new round', async ({ page, wvw }) => {
+    await load(page, wvw);
+    await page.locator('#guildInput').fill(wvw.guilds[0]);
+    await pause(page, wvw);
+    await toDone(page);
+    await expect(page.locator('#trebuchet.firing'), 'no swing yet').toHaveCount(0);
+    // The new search's name read is held: its own round is never let go here.
+    const release = await hold(page, new RegExp(`/guild/search\\?name=${encodeURIComponent(wvw.guilds[1])}$`));
+    await page.locator('#guildInput').fill(wvw.guilds[1]);
+    await page.locator('#runBtn').click();
+    for (let i = 0; i < 100 && !(await page.locator(`${ROUNDS}.flying`).count()); i++) await page.clock.runFor(10);
+    await expect(page.locator(`${ROUNDS}.flying`), 'the old round, let go').toHaveCount(1);
+    await expect(page.locator(`${ROUNDS}.charging`), 'the new round, on the sling').toHaveCount(1);
+    await expect(page.locator('#trebuchet'), 'the beam cocked for the new round').toHaveClass(/cocking/);
+    release();
+    await wvw.settle();
+  });
+
+  test('a click on the page with a round gathering throws its own shot and leaves the beam cocked', async ({ page, wvw }) => {
+    await load(page, wvw);
+    await page.locator('#guildInput').fill(wvw.guilds[0]);
+    await pause(page, wvw);
+    await page.locator('#runBtn').click();
+    await expect(page.locator(`${ROUNDS}.charging`), 'the round, gathering').toHaveCount(1);
+    await expect(page.locator('#trebuchet')).toHaveClass(/cocking/);
+    await page.mouse.click(900, 600);
+    await page.clock.runFor(200);
+    await expect(page.locator('.siege-shot'), "the click's shot, in the air").toHaveCount(1);
+    await expect(page.locator('#trebuchet'), 'the beam still cocked, the round still on the sling').toHaveClass(/cocking/);
+    await expect(page.locator(`${ROUNDS}.charging`)).toHaveCount(1);
+    await wvw.settle();
+  });
 });
 
 // ---- the map's lit objective ---------------------------------------------------

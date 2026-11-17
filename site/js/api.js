@@ -65,15 +65,23 @@ async function fetchJson(url, attempt = 0, cacheMode = 'no-store', timeoutMs = R
 // answer sets ownClockLead: this clock minus the answer's Date header (up to 1 s over), 0 with no Date.
 // `raw`: the answer's text, unparsed.
 let ownClockLead = 0;
+// What the countdowns, the ages and matchIsLive subtract: ownClockLead moves by up to a second with every answer and
+// would make them skip. It follows a reading only past CLOCK_BAND_MS from the kept value; a right clock keeps it 0.
+let steadyClockLead = 0;
 async function fetchOwnApi(url, cache = 'default', raw = false) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), OWN_API_TIMEOUT_MS);
   try {
+    const sentAt = Date.now();
     const res = await fetch(url, { signal: controller.signal, cache });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     if (cache === 'no-store') {
       const lead = Date.now() - Date.parse(res.headers.get('Date'));
       ownClockLead = Number.isFinite(lead) ? lead : 0;
+      // No Date header gives NaN, which fails the band test: the reading is dropped.
+      if (Date.now() - sentAt <= CLOCK_TRIP_MAX_MS && Math.abs(lead - steadyClockLead) > CLOCK_BAND_MS) {
+        steadyClockLead = Math.abs(lead) > CLOCK_BAND_MS ? lead : 0;
+      }
     }
     return await (raw ? res.text() : res.json());
   } finally {
@@ -1216,23 +1224,26 @@ function schedulePeriodicRefresh(fn, intervalMs) {
   let inFlight = false;
   // Seeded with "now": callers load right before scheduling, and without it a quick
   // tab away and back would duplicate that refresh.
-  // performance.now(), not Date.now(): setInterval runs on elapsed time, and a device clock
-  // set back would make the guard below drop the next tick.
+  // Two clocks, either enough: performance.now() stands still while some devices sleep,
+  // and Date.now() jumps back when the device clock is set back.
   let lastRun = performance.now();
+  let lastDate = Date.now();
 
   const run = async () => {
     if (inFlight || document.visibilityState === 'hidden') return;
     // The slack: a tick that ran a few ms late leaves the next one a few ms short
     // of the interval, and the guard would drop it.
-    if (performance.now() - lastRun < intervalMs - 1000) return;
+    const need = intervalMs - 1000;
+    if (performance.now() - lastRun < need && Date.now() - lastDate < need) return;
     inFlight = true;
     // Stamped before the work, not after: setInterval fires on exact multiples of
     // intervalMs, so stamping at the end puts the next tick just under the guard
     // above and drops every other one.
-    const before = lastRun;
+    const before = lastRun, beforeDate = lastDate;
     lastRun = performance.now();
+    lastDate = Date.now();
     try {
-      if (await fn() === false) lastRun = before;
+      if (await fn() === false) { lastRun = before; lastDate = beforeDate; }
     } catch {
       // fn() is expected to handle its own errors; this is just a safety
       // net so a future mistake can't leave an unhandled rejection.

@@ -20,8 +20,9 @@ let mapTickTimer = null;
 
 function closePopover() {
   const trigger = activeTrigger;
-  // Checked before the node is removed: removal moves focus to <body>.
-  const hadFocusInside = !!activePopover && activePopover.contains(document.activeElement);
+  // Checked before the node is removed: removal moves focus to <body>. Focus
+  // already on <body> (a pick that rebuilt what held it) counts as inside.
+  const hadFocusInside = !!activePopover && (activePopover.contains(document.activeElement) || document.activeElement === document.body);
 
   // Before focus goes back: an inert trigger cannot take it.
   releasePage();
@@ -169,10 +170,20 @@ function repositionOnScroll() {
 // visualViewport resize also fires for things that are not real resizes; only a
 // genuine size change may close a popover being read.
 let lastViewportSize = getViewportSize();
+let lastViewportScale = window.visualViewport ? window.visualViewport.scale : 1;
+let lastInnerSize = { width: window.innerWidth, height: window.innerHeight };
 function onViewportResize() {
   const size = getViewportSize();
-  const changed = Math.abs(size.width - lastViewportSize.width) > 2 ||
-                  Math.abs(size.height - lastViewportSize.height) > 2;
+  const scale = window.visualViewport ? window.visualViewport.scale : 1;
+  const inner = { width: window.innerWidth, height: window.innerHeight };
+  // A pinch rescales visualViewport but not the layout viewport (innerWidth/Height).
+  const zoomed = scale !== lastViewportScale &&
+                 Math.abs(inner.width - lastInnerSize.width) <= 2 &&
+                 Math.abs(inner.height - lastInnerSize.height) <= 2;
+  lastViewportScale = scale;
+  lastInnerSize = inner;
+  const changed = !zoomed && (Math.abs(size.width - lastViewportSize.width) > 2 ||
+                              Math.abs(size.height - lastViewportSize.height) > 2);
   lastViewportSize = size;
   if (changed) closeUnlessExpanded();
 }
