@@ -477,7 +477,7 @@ async function getSectors(mapId) {
 
 function flippedAgo(iso) {
   if (!iso) return null;
-  const ms = Date.now() - new Date(iso).getTime();
+  const ms = Date.now() - steadyClockLead - new Date(iso).getTime();
   if (!Number.isFinite(ms) || ms < 0) return null;
   const mins = Math.floor(ms / 60000);
   if (mins < 60) return `${mins}m`;
@@ -941,7 +941,7 @@ const RI_MS = 5 * 60 * 1000;
 function riLeft(iso) {
   if (!iso) return 0;
   const end = new Date(iso).getTime() + RI_MS;
-  const left = end - Date.now();
+  const left = end - (Date.now() - steadyClockLead);
   return Number.isFinite(left) && left > 0 ? left : 0;
 }
 
@@ -990,7 +990,7 @@ function riBadge(r, ob) {
 // run every second beside the thirty-second refresh.
 function tickRi(root) {
   for (const g of root.querySelectorAll('.wvw-ri')) {
-    const left = Number(g.dataset.until) - Date.now();
+    const left = Number(g.dataset.until) - (Date.now() - steadyClockLead);
     if (!(left > 0)) { g.remove(); continue; }
     const t = g.querySelector('text');
     if (t) t.textContent = riClock(left);
