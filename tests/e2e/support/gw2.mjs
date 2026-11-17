@@ -53,6 +53,7 @@ import { recording } from './recordings.mjs';
 const MIN = 60 * 1000;
 const SKIRMISH_MS = 2 * 60 * MIN;
 const WEEK_MS = 7 * 24 * 60 * MIN;
+const RESET_LAG_MS = 2 * MIN;              // the recorded end_time to the reset the page keeps
 const KILLS_WINDOW_MS = 30 * MIN;           // what /api/kills serves (js/maps-early.js, readOwnKills)
 const COLORS = ['red', 'blue', 'green'];
 const MAPS = ['Center', 'RedHome', 'BlueHome', 'GreenHome'];   // js/config.js, KILLS_MAP_ORDER
@@ -132,7 +133,7 @@ function searedBodies() {
 
 // A week of one match: its start, end and teams. `zero`: a week this timeline
 // began, every counter at zero; otherwise the recorded week.
-const weekOf = b => ({ start: Date.parse(b.start_time), end: Date.parse(b.end_time), all_worlds: b.all_worlds, worlds: b.worlds, zero: false });
+const weekOf = (b, lag = 0) => ({ start: Date.parse(b.start_time), end: Date.parse(b.end_time) + lag, all_worlds: b.all_worlds, worlds: b.worlds, zero: false });
 
 // The cumulative state of a match since its week began: kills, deaths per map
 // and colour, score per skirmish, map and colour, new skirmishes, flips.
@@ -244,6 +245,13 @@ class Timeline {
     return this.#with([{ kind: 'seared', at: this.#cursor, untilWeek }]);
   }
 
+  // For the whole timeline the game's weeks end at the reset the page keeps (js/relink.js,
+  // RESET_SCHEDULE), not at the recorded end_time, which is 2 min earlier.
+  resetOnTime() {
+    if (this.#ops.some(o => o.kind === 'minute' || o.kind === 'week')) throw new Error('gw2: resetOnTime comes before the first advance or newWeek');
+    return this.#with([{ kind: 'on-time' }], this.#cursor, this.#opensAt, this.#weekEnd + RESET_LAG_MS);
+  }
+
   // The page's clock starts here.
   pageOpens() {
     return this.#with([], this.#cursor, this.#cursor);
@@ -275,10 +283,11 @@ class Timeline {
     const bodyOf = (id, week) => (searedOp && searedOp.untilWeek && week.zero ? baseBodies() : base).get(id);
     const anchor = recording().recordedAt;
     const ids = [...base.keys()].sort(byId);
+    const lag = this.#ops.some(o => o.kind === 'on-time') ? RESET_LAG_MS : 0;
     const frames = new Map();   // id -> [{ at, state }], at in ms after the recording
     const cur = new Map();
     for (const id of ids) {
-      const s = freshState(weekOf(base.get(id)), 0);
+      const s = freshState(weekOf(base.get(id), lag), 0);
       cur.set(id, s);
       frames.set(id, [{ at: -Infinity, state: copyState(s) }]);
     }

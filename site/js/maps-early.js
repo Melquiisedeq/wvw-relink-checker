@@ -68,7 +68,7 @@ function fightLogAheadAt(match) {
   if (!Array.isArray(list)) return 0;
   const week = Date.parse(match.start_time);
   if (!Number.isFinite(week)) return 0;
-  const now = Date.now();
+  const now = steadyNow();
   const have = fightTotals(match);
   let first = 0;
   for (const s of list.slice(-FIGHT_MAX_SAMPLES)) {
@@ -88,18 +88,19 @@ function fightLogAheadAt(match) {
 // first sight may be the lagging group's copy. Samples too close are declined.
 function recordFightSamples(matches, asked) {
   const log = readFightLog();
-  const now = Date.now();
+  const now = steadyNow();
+  const askedAt = asked - steadyClockLead;
   const seen = new Set();
   for (const match of matches) {
     if (!match || typeof match.id !== 'string' || !Array.isArray(match.maps)) continue;
     seen.add(match.id);
-    // Ageing counts from the real now, not from `asked`.
+    // Ageing counts from the real now, not from `asked`. Samples sit on the server's time, like the history's.
     const kept = (log[match.id] || []).filter((s) => s && now - s.at <= FIGHT_KEEP_MS);
     const newest = newestMatches.get(match.id);
     const last = kept[kept.length - 1];
     // A negative gap (an answer overtaken by a later one) is refused too.
-    if (newest && newest.rose && newest.at >= asked && now - asked <= FIGHT_KEEP_MS
-      && (!last || asked - last.at >= FIGHT_MIN_GAP_MS)) kept.push({ at: asked, n: fightTotals(match) });
+    if (newest && newest.rose && newest.at >= askedAt && now - askedAt <= FIGHT_KEEP_MS
+      && (!last || askedAt - last.at >= FIGHT_MIN_GAP_MS)) kept.push({ at: askedAt, n: fightTotals(match) });
     log[match.id] = kept.slice(-FIGHT_MAX_SAMPLES);
   }
   // Unmentioned matches drop only once they age out: the maps popover records
@@ -127,7 +128,7 @@ const HISTORY_LIVE_MS = 10 * 60 * 1000;
 
 function ageFromHistory(byMatch) {
   ageBehindHistory(byMatch, fightTotals);
-  const now = Date.now();
+  const now = steadyNow();
   let alive = false;
   for (const list of byMatch.values()) {
     const last = list && list[list.length - 1];
@@ -228,7 +229,7 @@ function fightSamples(match) {
   const shared = (killSheet && killSheet.get(id)) || [];
   // Older than FIGHT_STALE_MS is dropped: better no swords than a stale rate.
   const week = Date.parse(match && match.start_time);
-  const floor = Math.max(Date.now() - FIGHT_STALE_MS, Number.isFinite(week) ? week : 0);
+  const floor = Math.max(steadyNow() - FIGHT_STALE_MS, Number.isFinite(week) ? week : 0);
   return [...shared, ...local]
     .filter((s) => s && s.at >= floor)
     .sort((a, b) => a.at - b.at);
@@ -293,7 +294,7 @@ const HOT_FLOOR = 50;      // kills per ten minutes: a real fight, not API noise
 const HOT_BIG = 75;
 const HOT_SMALL_WANT_MS = 7 * 60 * 1000;
 
-function killView(match, types, now = Date.now()) {
+function killView(match, types, now = steadyNow()) {
   const view = { clock: 0, atLeast: false, silence: 0, prevRun: Infinity, rates: null, pace: 0,
     strange: false, frozen: false, alive: false, hot: null, jumpHeld: false, noWindow: 'data', counting: null, long: false, longOk: false, gap: null, still: false, upTo: 0, high: null };
   // Nothing is claimed on a match that is not running.
@@ -617,6 +618,7 @@ function missedRefreshNote(match, now) {
 // Called by keepNewestMatch with every body offered and the one kept before it.
 function missedMatchOffered(match, kept) {
   const now = Date.now();
+  const keptAt = kept ? kept.at + steadyClockLead : 0;   // the summary runs on this page's clock
   const lastOffer = missedLastOffer.get(match.id) || 0;
   missedLastOffer.set(match.id, now);
   if (!kept || matchIsBehind(match, kept.match)) return;
@@ -630,9 +632,9 @@ function missedMatchOffered(match, kept) {
       return;
     }
   }
-  if (now - kept.at > MISSED_AWAY_MS && lastOffer > kept.at && now - lastOffer < MISSED_ASLEEP_MS
+  if (now - keptAt > MISSED_AWAY_MS && lastOffer > keptAt && now - lastOffer < MISSED_ASLEEP_MS
       && missedBodyChanged(kept.match, match)) {
-    missedMakeNote(kept.match, match, kept.at, now, 'pause');
+    missedMakeNote(kept.match, match, keptAt, now, 'pause');
     return;
   }
   if (missedRefreshNote(match, now)) return;

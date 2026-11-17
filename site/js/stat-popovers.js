@@ -182,7 +182,7 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
   const lastEnd = Date.parse(match.start_time) + total * 2 * 3600000;
   const dataAt = matchScoreRoseAt(match.id);
   const stalled = !!progress && total >= 1 && progress.index > total
-    && dataAt > 0 && dataAt <= lastEnd && Date.now() - dataAt > HUD_STALE_MS;
+    && dataAt > 0 && dataAt <= lastEnd && steadyNow() - dataAt > HUD_STALE_MS;
   const cut = scored || stalled ? total - 1 : total;
   // The score is the body's, possibly behind the clock: the pace divides by how far into
   // the block the body was. A body from before this block is at the start; the clock's
