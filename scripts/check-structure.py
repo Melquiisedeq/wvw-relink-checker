@@ -45,8 +45,8 @@ MENTIONED = {
     'www.w3.org': 'SVG and XML namespaces',
     'wiki.guildwars2.com': 'the footer links to the wiki',
     'www.guildwars2.com': 'a link in the page and its JSON-LD sameAs',
-    'gw2mists.com': 'a link in the page and its JSON-LD sameAs',
-    'en.wikipedia.org': 'a link in the page and its JSON-LD sameAs',
+    'gw2mists.com': 'a link in the page (the leaderboards)',
+    'en.wikipedia.org': 'the JSON-LD sameAs',
     'github.com': 'a link in the page and its JSON-LD sameAs',
     'lucide.dev': 'a comment crediting an icon',
 }

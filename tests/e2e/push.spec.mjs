@@ -8,7 +8,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { FOCUS, MIN, connectionDrops, hidden, livePush, playing, playingHalfMinutes, pushWeekTurn, visible } from './support/scenarios.mjs';
 import { versionName } from './support/gw2.mjs';
-import { firstTier, load, openMap, play } from './support/steps.mjs';
+import { firstTier, load, openMap, play, scoreOf } from './support/steps.mjs';
 
 const SITE = 'https://wvwrelink.com';
 const SUMMARY = /\/api\/latest\/summary$/;
@@ -33,8 +33,6 @@ const EARLY = `globalThis.liveEarly = false;
 // Reduced motion: the ember field stands still, so the minutes of clock below run fast.
 test.use({ viewport: { width: 1280, height: 800 }, timeline: playing(), clock: 'playwright', origin: SITE, reducedMotion: 'reduce' });
 test.describe.configure({ timeout: 120 * 1000 });
-
-const scoreOf = (page, id) => page.evaluate(i => { const m = matchDataCache.get(i); return m ? colorSum(m.scores) : -1; }, id);
 
 function reads(page) {
   const n = { summary: 0, copy: 0, versions: [] };

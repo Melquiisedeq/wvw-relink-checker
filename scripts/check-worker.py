@@ -119,6 +119,11 @@ LATEST_WORKER_STALE = worker_seconds(WORKER, 'STALE_LATEST_S')
 # When a region's week starts, UTC (day 0 = Sunday).
 RESET = worker_reset(WORKER)
 SKIRMISH_SECONDS = worker_seconds(WORKER, 'SKIRMISH_MS')
+# A match whose summary is newer than this is live, and its kills must follow.
+KILLS_LIVE_SUMMARY_S = 5 * 60
+# How far its newest kills line may trail the summary's `at` (seconds there,
+# milliseconds in the kills rows).
+KILLS_LAG_MAX_S = 30 * 60
 
 
 def request(url, method='GET', body=None):
@@ -157,6 +162,7 @@ def is_int(n):
 
 
 kills_age = [None]
+kills_rows = [None]
 
 
 game_down = []
@@ -331,6 +337,7 @@ def check_latest(problems, notes):
             % (oldest // 60, LATEST_STALE // 60),
             'Check the Supabase readers.'))
     check_copy(now - max(v['at'] for v in data.values()), now, problems, notes)
+    check_kills_follow(data, kills_rows[0], now, problems, notes)
     game = game_scores()
     if game is None:
         notes.append('game API unreadable: the secret-theft alarm did not run')
@@ -346,6 +353,43 @@ def check_latest(problems, notes):
     else:
         notes.append('%-34s %d matches compared' % ('summary vs game API', sum(
             1 for k, v in data.items() if (k, v['start']) in game)))
+
+
+def check_kills_follow(summary, rows, now, problems, notes):
+    """A kills line ahead of the truth holds a match's kills with every answer 200."""
+    if rows is None:
+        notes.append('%-34s not judged, /api/kills unread' % 'kills vs summary')
+        return
+    newest = {}
+    for row in rows:
+        newest[row[1]] = max(newest.get(row[1], 0), row[0])
+    judged, late = 0, []
+    for k, v in sorted(summary.items()):
+        if now - v['at'] >= KILLS_LIVE_SUMMARY_S:
+            continue
+        if k not in newest:
+            # A fresh `at` comes with the same reader's kills line, and the Worker
+            # keeps each match's newest line RECENT_MS + BASE_MS back.
+            if v['score'] > 0 and now - v['start'] // 1000 > KILLS_LAG_MAX_S:
+                late.append('%s: no kills line in /api/kills, the line holding it is '
+                            'older than what it shows and is found in D1' % k)
+            continue
+        judged += 1
+        lag = v['at'] - newest[k] // 1000
+        if lag > KILLS_LAG_MAX_S:
+            late.append('%s: newest kills line (at %d) is %d minutes behind its '
+                        'summary (limit %d)'
+                        % (k, newest[k], lag // 60, KILLS_LAG_MAX_S // 60))
+    if late:
+        problems.append(
+            'live matches whose kills have stopped following the score: %s. A '
+            'kills line ahead of the truth may be holding the match. In the D1 '
+            'console, delete that match\'s rows of the kills table from that `at` '
+            'on (earlier if the hold began earlier), then every row of the recent '
+            'table. If it comes back, a signing secret was stolen: rotate '
+            'INGEST_KILLS and the INGEST_LATEST_* secrets.' % '; '.join(late))
+    else:
+        notes.append('%-34s %d live matches follow' % ('kills vs summary', judged))
 
 
 def check_reads(problems, notes):
@@ -371,6 +415,7 @@ def check_reads(problems, notes):
                             % (len(bad), len(rows), json.dumps(bad[0])[:120]))
         else:
             notes.append('%-34s %d rows' % ('/api/kills', len(rows)))
+            kills_rows[0] = rows
 
     data, why = get_json(API + 'relink')
     if why:

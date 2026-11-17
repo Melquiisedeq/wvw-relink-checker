@@ -145,10 +145,7 @@ test.describe('the game answering badly', () => {
 
   test('the network dropping once on every address: the same', async ({ page, wvw }) => {
     const down = await abort(page, wvw, GAME, { first: 1 });
-    await page.goto(wvw.url);
-    await expect(page.locator(TIERS)).toHaveCount(wvw.tiers.NA);
-    await expect(page.locator(EU)).toHaveCount(wvw.tiers.EU);
-    await wvw.settle();
+    await load(page, wvw);
     expect(down.reads, 'reads cut off').toBeGreaterThan(0);
     await expect(page.locator('.retry-btn')).toHaveCount(0);
   });
@@ -262,10 +259,7 @@ test.describe('a load fails while a peek waits for the summary', () => {
 // nothing to show; it asks region by region and the board is not empty.
 test('an empty list from ids=all: the page asks region by region and paints', async ({ page, wvw }) => {
   const empty = await answer(page, ALL, []);
-  await page.goto(wvw.url);
-  await expect(page.locator(TIERS)).toHaveCount(wvw.tiers.NA);
-  await expect(page.locator(EU)).toHaveCount(wvw.tiers.EU);
-  await wvw.settle();
+  await load(page, wvw);
   expect(empty.reads, 'reads of the empty list').toBeGreaterThan(0);
   await expect(page.locator('#standingsStatusNA')).toContainText('Synced');
 });

@@ -285,22 +285,14 @@ test('kills lines: enter when the score rose, not when the match did not win, no
   assert.equal(newest.score, 3500);
   assert.equal(newest.at, w.now, 'stamped by the Worker\'s clock');
 
-  await t.test('a sheet line (7 fields) with smaller kills than the newest is refused', async () => {
+  await t.test('a sheet line of 7 fields, with no score, is refused whole', async () => {
     const before = w.count('kills');
-    const at = w.now;
-    assert.equal(await w.post('kills', { rows: [[at, '1-1', 0, 0, 0, 0, NA_START]] }), 200);
+    assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 9, 9, 9, 9, NA_START]] }), 422);
     assert.equal(w.count('kills'), before);
   });
-  await t.test('a sheet line with at least the same kills enters', async () => {
-    const before = w.count('kills');
+  await t.test('a sheet line with a lower score is refused, a higher one enters', async () => {
     w.advance(MIN);
-    assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 1, 2, 3, 4, NA_START]] }), 200);
-    assert.equal(w.count('kills'), before + 1);
-    assert.equal(w.sql.prepare('SELECT score FROM kills ORDER BY at DESC LIMIT 1').get().score, null);
-  });
-  await t.test('an 8-field line with a lower score is refused, a higher one enters', async () => {
-    w.advance(MIN);
-    await push(w, US, '1-1', [2000, 2000, 2000]); // newest line now has a score
+    await push(w, US, '1-1', [2000, 2000, 2000]);
     const before = w.count('kills');
     w.advance(MIN);
     assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 9, 9, 9, 9, NA_START, 5999]] }), 200);
@@ -309,13 +301,13 @@ test('kills lines: enter when the score rose, not when the match did not win, no
     assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 9, 9, 9, 9, NA_START, 6001]] }), 200);
     assert.equal(w.count('kills'), before + 1);
   });
-  await t.test('an older start is refused, a newer one enters', async () => {
+  await t.test('the week before is refused whatever its score, the week after enters', async () => {
     const before = w.count('kills');
     w.advance(MIN);
-    assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 99, 99, 99, 99, NA_START - MIN]] }), 200);
+    assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 99, 99, 99, 99, NA_PREV, 9000]] }), 200);
     assert.equal(w.count('kills'), before);
-    w.advance(MIN);
-    assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 0, 0, 0, 0, NA_START + MIN, 0]] }), 200);
+    w.advance(7 * 86400e3);
+    assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 0, 0, 0, 0, NA_START + 7 * 86400e3, 0]] }), 200);
     assert.equal(w.count('kills'), before + 1);
   });
   await t.test('a score that is not an integer, or 9 fields, is refused', async () => {
@@ -353,7 +345,7 @@ test('kills lines of the readers: two readings 30 s apart with the kills still w
   }
   // The sheet's lines are not thinned.
   w.advance(1e3);
-  assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 3, 3, 4, 5, NA_START]] }), 200);
+  assert.equal(await w.post('kills', { rows: [[w.now, '1-1', 3, 3, 4, 5, NA_START, 3064]] }), 200);
   assert.equal(w.count('kills'), 9, 'a sheet line with the same kills, 1 s on: enters');
 });
 
@@ -368,9 +360,9 @@ test('kills lines of the readers: a new week writes its first line at once, kill
 test('two lines of one match in one batch, both above the newest, both enter', async () => {
   const w = setup();
   const s = NA_START;
-  assert.equal(await w.post('kills', { rows: [[w.now - 10 * MIN, '1-1', 1, 1, 1, 1, s]] }), 200);
+  assert.equal(await w.post('kills', { rows: [[w.now - 10 * MIN, '1-1', 1, 1, 1, 1, s, 1]] }), 200);
   assert.equal(await w.post('kills', {
-    rows: [[w.now - 5 * MIN, '1-1', 2, 2, 2, 2, s], [w.now, '1-1', 3, 3, 3, 3, s]]
+    rows: [[w.now - 5 * MIN, '1-1', 2, 2, 2, 2, s, 2], [w.now, '1-1', 3, 3, 3, 3, s, 3]]
   }), 200);
   assert.equal(w.count('kills'), 3);
 });

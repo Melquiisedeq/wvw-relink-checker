@@ -13,7 +13,7 @@ the files, and it will still work in five years for the same reason. The one
 script from elsewhere is Cloudflare's visit counter, and the page does not
 need it to work. `worker/`, the Supabase readers in `supabase/` and the Apps Scripts in
 `apps-script/` are the code that runs outside the browser; `worker/` follows the
-same rule: one file, no dependencies, nothing to install. The browser tests in
+same rule: one file of code, no dependencies, nothing to install. The browser tests in
 `tests/e2e/` are the one place with dependencies, Playwright Test and
 monocart-coverage-reports, and nothing in `site/` or `worker/` may import from there.
 
@@ -34,7 +34,8 @@ worker/        wvwrelink.com/api: takes each script's signed results into a
                (/api/health), tells the page by WebSocket (/api/ws) when
                newer matches are in, and serves the page its reads (/api/kills,
                /api/relink, /api/latest,
-               /api/latest/summary, /api/history/<region>)
+               /api/latest/summary, /api/history/<region>); its SQL schemas
+               and wrangler.jsonc sit beside index.mjs
 apps-script/   the two Google Apps Script projects behind the spreadsheets:
                the teams notice and the kills history; the copies they are
                pasted from
@@ -44,7 +45,7 @@ supabase/      the reader, one function run from two Supabase regions, one per
 tests/         unit/: the Worker's and the Supabase reader's rules, and the page's
                rules with its scripts in a node:vm, run by node --test;
                e2e/: the browser tests (Playwright Test, monocart-coverage-reports)
-scripts/       the checks (check-*.py), the helper they import (workflow_text.py) and the contract they compare against
+scripts/       the checks (check-*.py), the helper most of them import (workflow_text.py) and the contract they compare against
 .github/       the workflows that run them, and the branch pruning
 wrangler.jsonc the root Worker: serves site/ as static assets, no code
 CONTRIBUTING.md  SECURITY.md  LICENSE
@@ -82,7 +83,7 @@ plays, with the rising embers moving for its two seconds.
 
 **What comes back from the API or the spreadsheet is text, never markup.**
 Guild names are written by other people and end up on the page. They go in as
-text content. Passing a value from a response to `innerHTML` is the one change
+text content. Passing a value from a response to the page as markup (`innerHTML` and the like) is the one change
 that turns this tool into a way to attack the person using it.
 
 ## Running it
@@ -96,7 +97,7 @@ Then open `http://localhost:8000`. No API key, no account, nothing to set up.
 
 The Worker behind `wvwrelink.com/api` has tests, and so do the page's rules
 (its scripts loaded into a `node:vm`, no browser), with nothing to install
-(Node 22.13 or later):
+(Node 22.13 or later, and `python3` for the five tests that run the checks):
 
     node --test "tests/unit/*.test.mjs"
 
