@@ -134,16 +134,24 @@
    waited. */
 .siege-charge{position:fixed;z-index:44;pointer-events:none;width:0;height:0;}
 .siege-charge i{position:absolute;display:block;left:0;top:0;width:0;height:0;}
+/* A 52 px round painted at --max times that, the most it ever grows (2.4 × 1.16, with
+   charge-swell's 2.4, mirrored in launchCharge), and only ever scaled down: a will-change layer is rastered once
+   and the compositor scales it, so a scale above 1 would blur it, and without the layer
+   every size is rastered again. effects.spec.mjs counts both. */
 .siege-charge b{
+  --max:2.784;
   position:absolute;display:block;
-  left:-26px;top:-26px;width:52px;height:52px;border-radius:50%;
+  left:calc(-26px * var(--max));top:calc(-26px * var(--max));
+  width:calc(52px * var(--max));height:calc(52px * var(--max));border-radius:50%;
   /* Blue fire: a small white-hot centre and a blue body; white out to two thirds of the
      radius reads as a light. */
   background:radial-gradient(circle,
     #f0fbff 5%, #a5e6ff 17%, #4fb8ff 37%,
     rgba(45,130,255,.78) 60%, rgba(30,90,235,.28) 76%, transparent 86%);
-  box-shadow:0 0 34px 10px rgba(90,180,255,.85), 0 0 78px 26px rgba(40,110,255,.5);
+  box-shadow:0 0 calc(34px * var(--max)) calc(10px * var(--max)) rgba(90,180,255,.85),
+             0 0 calc(78px * var(--max)) calc(26px * var(--max)) rgba(40,110,255,.5);
   transform:scale(0);
+  will-change:transform;
 }
 /* Forms, then keeps gathering for as long as the check takes: the delay becomes the
    wind-up. */
@@ -153,12 +161,12 @@
 }
 @keyframes charge-up{
   0%{transform:scale(0);}
-  72%{transform:scale(1.12);}
-  100%{transform:scale(1);}
+  72%{transform:scale(calc(1.12 / var(--max)));}
+  100%{transform:scale(calc(1 / var(--max)));}
 }
 @keyframes charge-swell{
-  0%{transform:scale(1);}
-  100%{transform:scale(2.4);}
+  0%{transform:scale(calc(1 / var(--max)));}
+  100%{transform:scale(calc(2.4 / var(--max)));}
 }
 /* Durations are mirrored in FLIGHT_MS. */
 .siege-charge.flying{animation:charge-x .56s linear forwards;}
@@ -183,8 +191,8 @@
    */
 .siege-charge.flying b{animation:charge-hold .56s ease-in forwards;}
 @keyframes charge-hold{
-  0%{transform:scale(var(--grow,1));}
-  100%{transform:scale(calc(var(--grow,1) * 1.16));}
+  0%{transform:scale(calc(var(--grow,1) / var(--max)));}
+  100%{transform:scale(calc(var(--grow,1) * 1.16 / var(--max)));}
 }
 
 /* The one moment big enough to move the whole viewport; it fires on the hit, not on
