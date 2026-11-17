@@ -308,6 +308,8 @@ function finaleOn() {
 }
 function finaleOff() {
   clearTimeout(finaleTimer);
+  // A round still gathering keeps the blur off: its own break ends it.
+  if (chargeBall) return;
   finaleTimer = setTimeout(() => document.documentElement.classList.remove('finale'), FINALE_TAIL_MS);
 }
 
@@ -454,7 +456,8 @@ function launchCharge(ball, startedAt, letGo) {
   const grown = 1 + t * 1.4;
   ball.style.setProperty('--grow', grown.toFixed(3));
 
-  fireTrebuchet();
+  // A round already gathering on the sling keeps the beam cocked.
+  if (!chargeBall) fireTrebuchet();
 
   setTimeout(() => {
     letGo();
@@ -486,6 +489,9 @@ function launchCharge(ball, startedAt, letGo) {
 }
 
 function breakCrest() {
+  // Restarted: a shield an earlier round already broke breaks again.
+  impactOverlay.classList.remove('broken');
+  void impactOverlay.offsetWidth;
   impactOverlay.classList.add('broken');
   // No bloomAt: a clean disc of light makes the impact look circular.
   spawnBlast();
