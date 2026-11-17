@@ -239,8 +239,8 @@ function onPointerDown(e) {
   if (e.target.closest && e.target.closest('#runBtn')) return;
   // Nothing is thrown while a popover is up.
   if (activeTrigger) return;
-
-  fireTrebuchet();
+  // A round on the sling keeps the beam cocked: only the click's own shot flies.
+  if (!chargeBall) fireTrebuchet();
   const mx = e.clientX, my = e.clientY;
 
   // Thrown when the beam gets over the top, so the round leaves the sling.
@@ -296,6 +296,12 @@ let stopFollowing = null;
 // (css/controls.css). Off is always reached: finish() in run.js plays the finale on every outcome.
 const FINALE_TAIL_MS = 1700;
 let finaleTimer = 0;
+// The last impact's clean-up timers: the next round's release or impact cancels them, or they strip its shield.
+let impactTimers = [];
+function clearImpactTimers() {
+  impactTimers.forEach(clearTimeout);
+  impactTimers = [];
+}
 function finaleOn() {
   clearTimeout(finaleTimer);
   document.documentElement.classList.add('finale');
@@ -456,6 +462,7 @@ function launchCharge(ball, startedAt, letGo) {
     ball.style.left = `${from.x}px`;
     ball.style.top = `${from.y}px`;
 
+    clearImpactTimers();
     impactOverlay.classList.remove('play', 'broken');
     pageEl.classList.remove('struck');
     void impactOverlay.offsetWidth;
@@ -488,9 +495,11 @@ function breakCrest() {
   pageEl.classList.remove('struck');
   void pageEl.offsetWidth;
   pageEl.classList.add('struck');
-  setTimeout(() => pageEl.classList.remove('struck'), 600);
-
-  setTimeout(() => impactOverlay.classList.remove('play', 'broken'), 1200);
+  clearImpactTimers();
+  impactTimers = [
+    setTimeout(() => pageEl.classList.remove('struck'), 600),
+    setTimeout(() => impactOverlay.classList.remove('play', 'broken'), 1200),
+  ];
   finaleOff();
 }
 
