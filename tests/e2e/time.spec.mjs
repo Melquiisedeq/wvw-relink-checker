@@ -657,3 +657,75 @@ test.describe('map open over normal polls', () => {
     expect(kills.length, '/api/kills requests while the map polls').toBe(opened);
   });
 });
+
+// The 5 min guard of schedulePeriodicRefresh (js/api.js) on two clocks: the
+// device asleep stops performance.now() on some devices (page.clock.setSystemTime moves only Date), and
+// a device clock set back must not bar a run. Called on its own function, so the
+// page's other reads on the tab's return (the peek, the push) do not count.
+test.describe('the periodic refresh guard, two clocks', () => {
+  const STEP = 5 * MIN;
+  const arm = async (page, wvw) => {
+    await page.goto(wvw.url);
+    await page.waitForFunction(() => typeof schedulePeriodicRefresh === 'function');
+    // Paused before the seed: no real time slips between the looks into the margins below.
+    await page.clock.pauseAt(await wvw.now() + 1000);
+    await page.evaluate(step => {
+      globalThis.__reads = 0;
+      globalThis.__answer = undefined;
+      globalThis.__run = schedulePeriodicRefresh(() => { globalThis.__reads++; return globalThis.__answer; }, step);
+    }, STEP);
+  };
+  const reads = page => page.evaluate(() => globalThis.__reads);
+  const back = async page => { await page.evaluate(() => globalThis.__run()); return reads(page); };
+
+  test('the device asleep: the date jumps, performance.now() stands still, the return reads', async ({ page, wvw }) => {
+    await arm(page, wvw);
+    await hidden(page, wvw, 2 * HOUR);
+    await visible(page);
+    await expect.poll(() => reads(page), { message: 'a read on the return after a 2 h sleep' }).toBe(1);
+  });
+
+  test('the slack: 1 s short of the interval is enough, 1.5 s short is not', async ({ page, wvw }) => {
+    await arm(page, wvw);
+    await wvw.skew(STEP - 1500);
+    expect(await back(page), 'the date 298.5 s on, none on performance.now()').toBe(0);
+    await wvw.skew(1000);
+    expect(await back(page), 'the date 299.5 s on').toBe(1);
+  });
+
+  test('performance.now() alone is enough with the date set back', async ({ page, wvw }) => {
+    await arm(page, wvw);
+    await page.clock.fastForward(STEP - 1500);
+    await wvw.skew(-2 * HOUR);
+    expect(await back(page), 'performance.now() 298.5 s on, the date 2 h behind').toBe(0);
+    await page.clock.fastForward(1000);
+    expect(await back(page), 'performance.now() 299.5 s on, the date 2 h behind').toBe(1);
+  });
+
+  test('a date set back alone never reads', async ({ page, wvw }) => {
+    await arm(page, wvw);
+    await hidden(page, wvw, -2 * HOUR);
+    await visible(page);
+    expect(await reads(page), 'a negative elapsed on the date, none on performance.now()').toBe(0);
+  });
+
+  test('a skipped run hands back both clocks', async ({ page, wvw }) => {
+    await arm(page, wvw);
+    await wvw.skew(2 * HOUR);
+    await page.evaluate(() => { globalThis.__answer = false; });
+    expect(await back(page), 'the sleep return, the work skipped').toBe(1);
+    expect(await back(page), 'tried again at once: the date stamp went back').toBe(2);
+    await page.evaluate(() => { globalThis.__answer = undefined; });
+    expect(await back(page), 'the work done this time').toBe(3);
+    expect(await back(page), 'and counted: nothing more at once').toBe(3);
+  });
+
+  test('a skipped run on performance.now() alone hands back its clock', async ({ page, wvw }) => {
+    await arm(page, wvw);
+    await page.clock.fastForward(STEP - 500);
+    await wvw.skew(-2 * HOUR);
+    await page.evaluate(() => { globalThis.__answer = false; });
+    expect(await back(page), 'performance.now() past the interval, the work skipped').toBe(1);
+    expect(await back(page), 'tried again at once: the performance.now() stamp went back').toBe(2);
+  });
+});

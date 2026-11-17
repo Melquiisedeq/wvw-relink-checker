@@ -5,8 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
-import worker from '../../worker/index.mjs';
-import { fakeD1 } from './fake-d1.mjs';
+import { workerHarness } from './worker-harness.mjs';
 import { signHeaders } from './signed.mjs';
 
 const SOURCES = {
@@ -44,28 +43,19 @@ function body(ms, summaryOver = {}) {
 }
 
 function setup(opts = {}) {
-  const { sql, ran, DB } = fakeD1();
-  const env = { DB, INGEST_KILLS: KEYS.kills, ...Object.fromEntries(Object.entries(SOURCES).map(([s, e]) => [e, KEYS[s]])), ...opts.env };
-  let clock = NOW;
+  const h = workerHarness({
+    start: NOW,
+    secrets: { INGEST_KILLS: KEYS.kills, ...Object.fromEntries(Object.entries(SOURCES).map(([s, e]) => [e, KEYS[s]])) },
+    env: opts.env
+  });
+  const { call } = h;
   let last = 0;
-  const call = async (req, ctx) => {
-    const real = Date.now;
-    Date.now = () => clock;
-    try {
-      return await worker.fetch(req, env, ctx);
-    } finally {
-      Date.now = real;
-    }
-  };
-  const w = {
-    sql, ran, env, call,
-    get now() { return clock; },
-    advance(ms) { clock += ms; },
+  const w = Object.assign(h, {
     async post(source, buf, o = {}) {
       if (!Buffer.isBuffer(buf)) buf = Buffer.from(JSON.stringify(buf));
       const path = '/api/ingest/' + source;
       let t = o.t;
-      if (t === undefined) t = last = Math.max(Math.floor(clock / 1000), last + 1);
+      if (t === undefined) t = last = Math.max(Math.floor(h.now / 1000), last + 1);
       const headers = o.headers || { ...signHeaders(o.key || KEYS[source] || 'z'.repeat(128), t, o.sigPath || path, buf), ...o.extra };
       const r = await call(new Request('https://wvwrelink.com' + path, { method: 'POST', body: buf, headers }));
       w.last = r;
@@ -77,7 +67,7 @@ function setup(opts = {}) {
     },
     count: (t) => w.sql.prepare('SELECT count(*) n FROM ' + t).get().n,
     row: (id) => w.sql.prepare('SELECT * FROM latest WHERE id = ?').get(id)
-  };
+  });
   return w;
 }
 
