@@ -15,7 +15,7 @@ const MAP_SKIP_TYPES = new Set(['Spawn']);
 const OBJ_DRAW_ORDER = ['Castle', 'Keep', 'Tower', 'Mercenary', 'Camp', 'Ruins'];
 // Marker radius in map units, also their on-screen size at the default view.
 // The radii of two markers on a map sum to less than their distance; tests/unit/map-positions.test.mjs
-// holds it, with its one listed exception.
+// holds it.
 const OBJ_SIZE = Object.freeze({
   Castle: 118, Keep: 110, Tower: 100, Camp: 92, Mercenary: 92, Ruins: 80,
 });
@@ -31,16 +31,15 @@ const MAX_ZOOM = 4.5;
 // `lite` is the same picture LITE_WIDTH pixels wide; a map opens on it and takes `src` once the zoom
 // needs more pixels than it holds (upgradeTerrain).
 const LITE_WIDTH = 1280;
-const SEARED_IMAGE = 'assets/map-seared-1280.webp';
 const MAP_IMAGE = Object.freeze({
   38: { src: 'assets/map-ebg.webp', lite: 'assets/map-ebg-1280.webp', x: 8846.4, y: 12710.9, w: 3308.0, h: 3293.5, edge: 14 },
   1099: { src: 'assets/map-rbl.webp', lite: 'assets/map-rbl-1280.webp', x: 9133.8, y: 8866.1, w: 3228.6, h: 3245.6, edge: 14 },
   96: { src: 'assets/map-bbl.webp', lite: 'assets/map-bbl-1280.webp', x: 12718.3, y: 10865.3, w: 2660.6, h: 3623.1, edge: 14 },
   95: { src: 'assets/map-gbl.webp', lite: 'assets/map-gbl-1280.webp', x: 5534.1, y: 11493.7, w: 2693.0, h: 3638.3, edge: 14 },
-  // One picture for the three Seared Borderlands maps; there is no bigger one, so src is lite.
-  1652: { src: SEARED_IMAGE, lite: SEARED_IMAGE, x: 9268.0, y: 9045.1, w: 2430.2, h: 3412.8, edge: 14 },
-  1651: { src: SEARED_IMAGE, lite: SEARED_IMAGE, x: 5684.0, y: 11605.1, w: 2430.2, h: 3412.8, edge: 14 },
-  1654: { src: SEARED_IMAGE, lite: SEARED_IMAGE, x: 12852.0, y: 10965.1, w: 2430.2, h: 3412.8, edge: 14 },
+  // One picture for the three Seared Borderlands maps, each its map's continent_rect, one pixel to the unit.
+  1652: { src: 'assets/map-seared.webp', lite: 'assets/map-seared-1280.webp', x: 9214, y: 8958, w: 2560, h: 3584, edge: 14 },
+  1651: { src: 'assets/map-seared.webp', lite: 'assets/map-seared-1280.webp', x: 5630, y: 11518, w: 2560, h: 3584, edge: 14 },
+  1654: { src: 'assets/map-seared.webp', lite: 'assets/map-seared-1280.webp', x: 12798, y: 10878, w: 2560, h: 3584, edge: 14 },
 });
 
 // The three EBG mercenary camps have no usable coord (label_coord sits off the camp), so these are read
@@ -48,7 +47,11 @@ const MAP_IMAGE = Object.freeze({
 const MERC_COORD = Object.freeze({
   '38-123': [9972.9, 14197.7],    // Molevekian Delve
   '38-125': [11284.6, 14096.6],   // Orgath Uplands
-  '38-126': [10692.6, 15310.5],   // Darkrait Inlet
+  '38-126': [10631.4, 15310.5],   // Darkrait Inlet: 61 units west of its spot, so it clears Quentin Lake
+});
+// Drawn off the game's spot to leave visible room between two close neighbours.
+const MOVED_COORD = Object.freeze({
+  '38-16': [10880.1, 15224.4],    // Quentin Lake: 30 units east, away from Darkrait Inlet
 });
 
 // The API gives the Seared Borderlands objectives (1652 and its copies 1651 and 1654) the positions of
@@ -83,8 +86,8 @@ function objectiveAt(meta) {
   const [map, number] = String(meta.id).split('-');
   const seared = SEARED_COORD[number], shift = SEARED_SHIFT[map];
   if (seared && shift) return [seared[0] + shift[0], seared[1] + shift[1]];
-  const at = (meta.coord && meta.coord.length) ? meta.coord
-    : (MERC_COORD[meta.id] || meta.label_coord);
+  const at = MOVED_COORD[meta.id] || ((meta.coord && meta.coord.length) ? meta.coord
+    : (MERC_COORD[meta.id] || meta.label_coord));
   return at || null;
 }
 
