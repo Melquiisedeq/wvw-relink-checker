@@ -288,6 +288,10 @@ const WINDOW_MIN_MS = 8 * 60 * 1000;
 const WINDOW_MAX_MS = 15 * 60 * 1000;
 const HOT_NOW_MS = 60 * 1000;  // a kept body this fresh paints the swords without waiting for the read
 const HOT_FLOOR = 50;      // kills per ten minutes: a real fight, not API noise
+// A fight under HOT_BIG per 10 min keeps its swords through HOT_SMALL_WANT_MS of silence, not HOT_WANT_MS:
+// longer lights too many that have ended; shorter blinks them out between the API's own steps.
+const HOT_BIG = 75;
+const HOT_SMALL_WANT_MS = 7 * 60 * 1000;
 
 function killView(match, types, now = Date.now()) {
   const view = { clock: 0, atLeast: false, silence: 0, prevRun: Infinity, rates: null, pace: 0,
@@ -388,9 +392,11 @@ function killView(match, types, now = Date.now()) {
       const n = raw * spread;
       if (canLight && n > bestN) { bestN = n; view.hot = type; }
     }
-    if (bestN < HOT_FLOOR) view.hot = null;
+    // The size is the one the floor reads, spread over the stall.
+    const lights = (n) => n >= HOT_FLOOR && (n >= HOT_BIG || view.silence <= HOT_SMALL_WANT_MS);
+    if (!lights(bestN)) view.hot = null;
     // True when the jump would light the swords were it not for the stall.
-    view.jumpHeld = catching && !view.hot && rawBest >= HOT_FLOOR;
+    view.jumpHeld = catching && !view.hot && lights(rawBest);
   }
   return view;
 }

@@ -117,6 +117,12 @@ export const killSteps = (step = 7, pace = 12, min = 42, lag = 0, id) => {
   return tl;
 };
 
+// A fight of `pace` kills a minute on EBG for `fight` minutes from the opening,
+// then `quiet` minutes of still kills, the score rising: a steady size for the
+// swords, the 30 a minute before the opening out of every window.
+export const fightStops = (pace = 7, fight = 18, quiet = 20, id) =>
+  opened(id).advance(fight, { kills: { Center: pace } }).advance(quiet, { kills: {} });
+
 // `min` minutes of play with `flips` objectives changing hands, from the moment
 // the page opens: what a tab away for that long comes back to.
 export const missed = (min = 5, flips = 3, id) => opened(id).advance(min, { flips });
