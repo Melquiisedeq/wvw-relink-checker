@@ -1,7 +1,7 @@
 // A guild whose lookup failed says why in a short phrase in the results table,
 // never the technical message; the two phrases that were already clear stay.
 import { test, expect } from './support/fixtures.mjs';
-import { abort, answer, fail } from './support/faults.mjs';
+import { abort, answer, fail, hold } from './support/faults.mjs';
 import { load } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
@@ -60,4 +60,73 @@ test('the same missing id checked twice (the second from the cache) says the sam
 test('a guild with no link keeps "No WvW link registered yet"', async ({ page, wvw }) => {
   await answer(page, GUILD, { id: ID, name: 'Linkless', tag: 'NO' });
   await expect(await checkOne(page, wvw, ID)).toHaveText('No WvW link registered yet');
+});
+
+// The game not answering: after 3 lookups in a row lost to the connection or to time the series
+// stops, the rows already drawn stay, and "Try again" runs the search again.
+const SILENT = /^https:\/\/api\.guildwars2\.com\/v2\/guild\/search\?name=Silent/;
+const names = n => Array.from({ length: n }, (_, i) => `Silent ${i + 1}`);
+
+async function checkMany(page, wvw, list) {
+  await load(page, wvw);
+  await page.locator('#guildInput').fill(list.join('\n'));
+  await page.locator('#runBtn').click();
+}
+
+test('20 names with the game out: stops after 3 and offers "Try again"', async ({ page, wvw }) => {
+  const out = await abort(page, wvw, SILENT);
+  await checkMany(page, wvw, names(20));
+  const retry = page.locator('#statusMsg .retry-btn');
+  await expect(retry).toBeVisible({ timeout: 20000 });
+  await expect(page.locator('#statusMsg')).toContainText("Couldn't reach the game. Checked 3 of 20");
+  await expect(page.locator('#runBtn')).toBeEnabled();
+  await expect(page.locator('#resultBody tr')).toHaveCount(3);
+  // 3 names, each read once and retried twice.
+  expect(out.reads).toBe(9);
+  out.off();
+  await answer(page, SILENT, []);
+  await retry.click();
+  await expect(page.locator('#statusMsg')).toHaveText(/^Done, checked 20/, { timeout: 30000 });
+  await expect(page.locator('#resultBody tr')).toHaveCount(20);
+});
+
+test('2 lost, 1 found, 2 lost: the series goes on', async ({ page, wvw }) => {
+  await abort(page, wvw, /^https:\/\/api\.guildwars2\.com\/v2\/guild\/search\?name=Silent%20[1245]$/);
+  await answer(page, /^https:\/\/api\.guildwars2\.com\/v2\/guild\/search\?name=Silent%203$/, [ID]);
+  await answer(page, GUILD, { id: ID, name: 'Silent 3', tag: 'S3' });
+  await checkMany(page, wvw, names(5));
+  await expect(page.locator('#statusMsg')).toHaveText(/^Done, checked 5/, { timeout: 30000 });
+  await expect(page.locator('#statusMsg .retry-btn')).toHaveCount(0);
+  await expect(page.locator('#resultBody tr')).toHaveCount(5);
+});
+
+test('3 answers that are not good (503) in a row are not silence: the series goes on', async ({ page, wvw }) => {
+  await fail(page, wvw, /^https:\/\/api\.guildwars2\.com\/v2\/guild\/search\?name=Silent%20[123]$/, 503);
+  await checkMany(page, wvw, names(3));
+  await expect(page.locator('#statusMsg')).toHaveText(/^Done, checked 3/, { timeout: 30000 });
+  await expect(page.locator('#statusMsg .retry-btn')).toHaveCount(0);
+});
+
+test('a list cut to 20 keeps its note beside the stop', async ({ page, wvw }) => {
+  await abort(page, wvw, SILENT);
+  await checkMany(page, wvw, names(25));
+  await expect(page.locator('#statusMsg .retry-btn')).toBeVisible({ timeout: 20000 });
+  await expect(page.locator('#statusMsg')).toContainText("Checked 3 of 20 guild(s). Only the first 20 guilds were checked.");
+});
+
+test.describe('the game answering nothing at all', () => {
+  test.use({ clock: 'playwright' });
+
+  test('3 lookups timing out in a row: stops and offers "Try again"', async ({ page, wvw }) => {
+    test.setTimeout(60 * 1000);
+    await page.clock.pauseAt(wvw.opensAt + 1000);
+    await load(page, wvw);
+    await hold(page, SILENT);
+    await page.locator('#guildInput').fill(names(20).join('\n'));
+    await page.locator('#runBtn').click();
+    await expect.poll(async () => { await page.clock.runFor(2000); return page.locator('#statusMsg .retry-btn').count(); },
+      { message: 'the stop after three timeouts', timeout: 40000, intervals: [100] }).toBe(1);
+    await expect(page.locator('#statusMsg')).toContainText("Couldn't reach the game. Checked 3 of 20");
+    await expect(page.locator('#resultBody tr .status-err')).toHaveText(['Server slow, try again', 'Server slow, try again', 'Server slow, try again']);
+  });
 });

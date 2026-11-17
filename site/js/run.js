@@ -5,6 +5,8 @@
 // off a drop that has only just started.
 let deployTimer = null;
 
+const GIVE_UP_AFTER = 3;   // lookups in a row with no answer from the game
+
 // What a failed lookup says in the results table: a short phrase, decided by the error's fields, never its message.
 function lookupErrorText(e) {
   if (e.notFound) return 'Guild not found (name must match exactly)';
@@ -39,7 +41,7 @@ async function run() {
 
   runBtn.disabled = true;
   runBtn.innerHTML = '<span class="btn-pips"><span></span><span></span><span></span></span>';
-  statusMsg.innerHTML = '<span class="spinner"></span>Talking to the GW2 API…';
+  statusMsg.innerHTML = '<span class="spinner"></span>Asking the game…';
   // A popover opened from a row holds the old run's data; its trigger goes with the rows.
   closePopover();
   resultBody.textContent = '';
@@ -93,7 +95,11 @@ async function run() {
     const successEntries = [];
 
     // Sequential with a small delay between lookups, gentler on the public API.
+    // Failures of the connection or of time, in a row, mean the game is not answering: the series stops.
+    let outInARow = 0;
+    let asked = 0;
     for (const originalName of names) {
+      asked++;
       try {
         const guildId = await resolveGuildId(originalName);
         const info = await getGuildInfo(guildId);
@@ -115,7 +121,13 @@ async function run() {
         }
       } catch (e) {
         renderRow({ originalName, error: lookupErrorText(e) });
+        // Any answer from the game (a 404, a 429, a 5xx) is not silence and ends the run of failures.
+        outInARow = (e.network || e.timedOut) ? outInARow + 1 : 0;
+        if (outInARow >= GIVE_UP_AFTER) break;
+        await sleep(THROTTLE_MS);
+        continue;
       }
+      outInARow = 0;
 
       await sleep(THROTTLE_MS);
     }
@@ -136,11 +148,11 @@ async function run() {
         if (!match || !color) {
           const note = document.createElement('p');
           note.className = 'panel-note';
-          note.textContent = `${getTeamName(teamId)}: this week's match isn't on the API yet.`;
+          note.textContent = `${getTeamName(teamId)}: this week's match isn't in the game's data yet.`;
           matchPanelsContainer.appendChild(note);
           // The dot stays grey (dot-pending); only its title changes.
           (dotsByTeam.get(teamId) || []).forEach((dot) => {
-            if (dot) dot.title = 'Match not on the API yet';
+            if (dot) dot.title = "Match not in the game's data yet";
           });
           await sleep(THROTTLE_MS);
           continue;
@@ -174,8 +186,14 @@ async function run() {
       copyRow.style.display = 'none';
     }
 
-    statusMsg.textContent = `Done, checked ${names.length} guild(s).` +
-      (cut ? ` Only the first ${MAX_ENTRIES} guilds were checked.` : '');
+    const cutNote = cut ? ` Only the first ${MAX_ENTRIES} guilds were checked.` : '';
+    if (outInARow >= GIVE_UP_AFTER) {
+      statusMsg.classList.add('status-err');
+      statusMsg.textContent = `Couldn't reach the game. Checked ${asked} of ${names.length} guild(s).${cutNote}`;
+      statusMsg.appendChild(buildRetryButton(() => { if (!runBtn.disabled) run(); }));
+    } else {
+      statusMsg.textContent = `Done, checked ${names.length} guild(s).${cutNote}`;
+    }
 
     // The first guild of the list that landed on a team: that team's card.
     if (successEntries.length > 0) showGuildFound(successEntries[0].teamId, successEntries[0].name);

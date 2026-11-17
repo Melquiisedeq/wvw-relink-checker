@@ -20,8 +20,9 @@ let mapTickTimer = null;
 
 function closePopover() {
   const trigger = activeTrigger;
-  // Checked before the node is removed: removal moves focus to <body>.
-  const hadFocusInside = !!activePopover && activePopover.contains(document.activeElement);
+  // Checked before the node is removed: removal moves focus to <body>. Focus
+  // already on <body> (a pick that rebuilt what held it) counts as inside.
+  const hadFocusInside = !!activePopover && (activePopover.contains(document.activeElement) || document.activeElement === document.body);
 
   // Before focus goes back: an inert trigger cannot take it.
   releasePage();
