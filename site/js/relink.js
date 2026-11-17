@@ -513,7 +513,7 @@ function updateTeamsNotice(rebuilding) {
 }
 
 function updateRelinkBanner() {
-  const now = Date.now();
+  const now = Date.now() - steadyClockLead;
   const hasRelink = relinkNA !== null || relinkEU !== null;
   const hasLockout = timersLoaded && lockoutTime !== null;
   relinkBanner.textContent = '';
