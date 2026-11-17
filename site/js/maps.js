@@ -1171,8 +1171,9 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
     g.setAttribute('class', `wvw-marker own-${owner} tier-${tier}${selected}${lit}`);
     while (g.firstChild) g.removeChild(g.firstChild);
 
-    // The icon's own disc, and nothing past it: a wider target swallows the
-    // badges hanging off the marker, which have to answer for themselves.
+    // The size of the icon's box, a little more than its painted disc, and no
+    // more: a wider target swallows the badges hanging off the marker, which
+    // have to answer for themselves.
     g.appendChild(svgEl('circle', { class: 'hit', r }));
     // The icon already carries the team colour: a disc behind would only show as a second ring.
     const markerSrc = markerIcon(p.ob.type, p.ob.owner);
