@@ -135,3 +135,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: The written-out objectives and sectors against the game
         run: python3 scripts/check-catalogue.py
+
+  # D1 Free refuses every write past 100,000 rows a day, until 00:00 UTC, and
+  # only the account can read that number: the token is read-only analytics.
+  # Its own job, so the email says "d1-writes" and the secrets reach nothing else.
+  d1-writes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rows written to D1 yesterday and today, against the 80,000 alarm
+        env:
+          CLOUDFLARE_ANALYTICS_TOKEN: ${{ secrets.CLOUDFLARE_ANALYTICS_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: python3 scripts/check-d1-writes.py
