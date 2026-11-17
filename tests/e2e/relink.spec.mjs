@@ -95,6 +95,27 @@ test.describe('js/wvw-static.js did not load', () => {
   });
 });
 
+test.describe('a borderland whose objectives come without a position', () => {
+  const OBJECTIVES = 'https://api.guildwars2.com/v2/wvw/objectives?ids=all';
+
+  test('the tab says it could not load, instead of drawing an empty map', async ({ page, wvw }) => {
+    wvw.allowLog(/\/js\/wvw-static\.js/);
+    await noStatic(page);
+    const borderlands = [1099, 95, 96];
+    const placeless = recordedJson(OBJECTIVES).map(({ coord, label_coord, ...rest }) => (borderlands.includes(rest.map_id) ? rest : { coord, label_coord, ...rest }));
+    await answer(page, OBJECTIVES, placeless);
+    await load(page, wvw);
+    const tier = await firstTier(page);
+    await openMap(page, wvw, tier.button);
+    expect((await owners(page)).length, 'the Eternal Battlegrounds tab still has its markers').toBeGreaterThan(10);
+    await page.locator('.info-popover .wvw-tab[data-type="RedHome"]').click();
+    const message = page.locator('.info-popover .wvw-stage-msg');
+    await expect(message).toHaveText("Couldn't load this map right now.");
+    await expect(page.locator(MARKERS)).toHaveCount(0);
+    await expect(page.locator('.info-popover .wvw-plot')).toHaveCount(0);
+  });
+});
+
 test.describe('what opening a map asks the game for', () => {
   const LISTS = /\/v2\/(wvw\/objectives\?ids=all|continents\/2\/floors\/3\/regions\/7\/maps\/\d+\/sectors\?ids=all)/;
   const listReads = page => {
