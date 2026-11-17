@@ -117,3 +117,69 @@ test('the guild strip opens and closes without moving its height', async ({ page
   expect(leaving[0].h).toBe(open[0].h);
   expect(offList(leaving), 'the exit: only the clip animation is off the list').toEqual({ 'guild-found-out-clip': ['clipPath'] });
 });
+
+// The round that gathers at the button and the two shockwaves change size on every frame
+// (impact.css says how they are drawn). paintCount does not see that (nothing repaints), so the trace's raster tasks are counted
+// per layer, as frames: one raster of a layer is cut into tiles, one task each.
+test('the round and the shockwaves are rastered once, not at every size', async ({ page, wvw, context }) => {
+  await load(page, wvw);
+  const cdp = await context.newCDPSession(page);
+  const owner = new Map();
+  cdp.on('LayerTree.layerTreeDidChange', e => { for (const l of e.layers || []) if (l.backendNodeId) owner.set(String(l.layerId), l.backendNodeId); });
+  const raster = [];
+  cdp.on('Tracing.dataCollected', d => { for (const e of d.value) if (e.name === 'RasterTask' && e.args && e.args.tileData) raster.push(e.args.tileData); });
+  await cdp.send('DOM.enable');
+  await cdp.send('LayerTree.enable');
+  await cdp.send('Tracing.start', { traceConfig: { includedCategories: ['disabled-by-default-devtools.timeline'] } });
+  // Pinned in view: the sling it follows may sit below the fold. Each frame keeps the largest
+  // scale either was shown at.
+  await page.evaluate(() => {
+    startCharge(); stopFollowing(); chargeBall.style.left = '640px'; chargeBall.style.top = '450px';
+    window.__scale = { round: 0, rings: 0 };
+    const most = (key, els) => { for (const el of els) window.__scale[key] = Math.max(window.__scale[key], new DOMMatrix(getComputedStyle(el).transform).a); };
+    const tick = () => { most('round', document.querySelectorAll('.siege-charge b')); most('rings', document.querySelectorAll('.impact-overlay.play .impact-ring')); window.__raf = requestAnimationFrame(tick); };
+    tick();
+  });
+  await page.waitForTimeout(1500);
+  await page.evaluate(() => impactOverlay.classList.add('play'));
+  await page.waitForTimeout(1300);
+  const done = new Promise(r => cdp.once('Tracing.tracingComplete', r));
+  await cdp.send('Tracing.end');
+  await done;
+  const root = (await cdp.send('DOM.getDocument', { depth: 0 })).root.nodeId;
+  const node = async selector => {
+    const { nodeIds } = await cdp.send('DOM.querySelectorAll', { nodeId: root, selector });
+    return Promise.all(nodeIds.map(async nodeId => (await cdp.send('DOM.describeNode', { nodeId })).node.backendNodeId));
+  };
+  const nodes = { round: await node('.siege-charge b'), rings: await node('.impact-ring') };
+  await cdp.send('LayerTree.disable');
+  const scale = await page.evaluate(() => { cancelAnimationFrame(window.__raf); impactOverlay.classList.remove('play'); chargeBall.remove(); return window.__scale; });
+  // The flight's last frame, grown from the most the wind-up reaches: the largest the round gets.
+  const flight = await page.evaluate(() => {
+    const ball = document.createElement('div');
+    ball.className = 'siege-charge flying';
+    ball.style.setProperty('--grow', '2.4');
+    ball.innerHTML = '<i><b></b></i>';
+    document.body.appendChild(ball);
+    const b = ball.querySelector('b');
+    for (const a of b.getAnimations()) { a.pause(); a.currentTime = a.effect.getComputedTiming().endTime; }
+    const most = new DOMMatrix(getComputedStyle(b).transform).a;
+    ball.remove();
+    return most;
+  });
+  const frames = ids => new Set(raster.filter(t => ids.includes(owner.get(String(t.layerId)))).map(t => `${t.layerId}:${t.sourceFrameNumber}`)).size;
+  expect(nodes.round, 'the round is on the page').toHaveLength(1);
+  expect(nodes.rings, 'both rings are on the page').toHaveLength(2);
+  const round = frames(nodes.round), rings = frames(nodes.rings);
+  // Without one raster of the round seen, the ceilings below would hold for nothing.
+  expect(round, 'the round was rastered at all').toBeGreaterThan(0);
+  expect(round, 'frames the round was rastered on').toBeLessThanOrEqual(8);
+  expect(rings, 'the rings were rastered at all').toBeGreaterThan(0);
+  expect(rings, 'frames the rings were rastered on').toBeLessThanOrEqual(8);
+  expect(scale.round, 'the round grew while watched').toBeGreaterThan(0.3);
+  expect(scale.rings, 'the rings grew while watched').toBeGreaterThan(0.5);
+  expect(scale.round, 'the round is never scaled above the size it is painted at').toBeLessThanOrEqual(1);
+  expect(scale.rings, 'the rings are never scaled above the size they are painted at').toBeLessThanOrEqual(1);
+  expect(flight, 'the round at the end of its flight is scaled').toBeGreaterThan(0.9);
+  expect(flight, 'the round at the end of its flight, not above the size it is painted at').toBeLessThanOrEqual(1 + 1e-6);
+});
