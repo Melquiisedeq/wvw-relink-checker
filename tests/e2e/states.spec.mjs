@@ -219,6 +219,73 @@ test.describe('the round on the sling', () => {
     await expect(page.locator(ROUNDS), 'both rounds landed').toHaveCount(0);
     await wvw.settle();
   });
+
+  test('the second round let go soon after the first one struck keeps the broken shield for its own 1.2 s', async ({ page, wvw }) => {
+    await load(page, wvw);
+    await page.locator('#guildInput').fill(wvw.guilds[0]);
+    await pause(page, wvw);
+    await toDone(page);
+    await toSwing(page);
+    await page.locator('#runBtn').click();
+    await page.clock.runFor(300);
+    await expect(page.locator(`${ROUNDS}.flying`), 'the first round, let go').toHaveCount(1);
+    // The second round is let go as the first strikes; the first strike's 1.2 s runs out mid-break of the second.
+    let struck = false, second = false;
+    for (let t = 0; t < 4000 && !second; t += 10) {
+      await page.clock.runFor(10);
+      struck = struck || (await page.locator('#impactOverlay.broken').count()) > 0;
+      second = struck && (await page.locator(`${ROUNDS}.flying`).count()) > 0;
+    }
+    expect(second, 'the second round, let go after the first impact').toBe(true);
+    await page.clock.runFor(1300);
+    await expect(page.locator('#impactOverlay.play.broken'), "the second round's shield, broken and still up").toHaveCount(1);
+    await page.clock.runFor(700);
+    await expect(page.locator('#impactOverlay.play'), "the second round's shield, gone with its own 1.2 s").toHaveCount(0);
+    await wvw.settle();
+  });
+
+  test('a second round let go 700 ms after the first one struck keeps its shield through the flight', async ({ page, wvw }) => {
+    await load(page, wvw);
+    await page.locator('#guildInput').fill(wvw.guilds[0]);
+    await pause(page, wvw);
+    await toDone(page);
+    await toSwing(page);
+    // The second search's name read is held, so its round cannot be let go before the first strikes.
+    const release = await hold(page, new RegExp(`/guild/search\\?name=${encodeURIComponent(wvw.guilds[1])}$`));
+    await page.locator('#guildInput').fill(wvw.guilds[1]);
+    await page.locator('#runBtn').click();
+    await page.clock.runFor(300);
+    await expect(page.locator(`${ROUNDS}.flying`), 'the first round, let go').toHaveCount(1);
+    for (let t = 0; t < 2000 && !(await page.locator('#impactOverlay.broken').count()); t += 10) await page.clock.runFor(10);
+    await expect(page.locator('#impactOverlay.broken'), 'the first impact').toHaveCount(1);
+    await expect(page.locator(`${ROUNDS}.flying`), 'no second round in the air yet').toHaveCount(0);
+    await page.clock.runFor(700);
+    release();
+    await expect.poll(() => release.reads, { message: 'the second search read, held' }).toBe(1);
+    await toDone(page, { press: false });
+    for (let t = 0; t < 2000 && !(await page.locator(`${ROUNDS}.flying`).count()); t += 10) await page.clock.runFor(10);
+    await expect(page.locator(`${ROUNDS}.flying`), 'the second round, let go').toHaveCount(1);
+    // Past the first impact's 1.2 s, short of the second round's landing.
+    await page.clock.runFor(300);
+    await expect(page.locator(`${ROUNDS}.flying`), 'the second round still in the air').toHaveCount(1);
+    await expect(page.locator('#impactOverlay.play'), 'its shield, still up').toHaveCount(1);
+    await wvw.settle();
+  });
+
+  test('a click on the page with a round gathering throws its own shot and leaves the beam cocked', async ({ page, wvw }) => {
+    await load(page, wvw);
+    await page.locator('#guildInput').fill(wvw.guilds[0]);
+    await pause(page, wvw);
+    await page.locator('#runBtn').click();
+    await expect(page.locator(`${ROUNDS}.charging`), 'the round, gathering').toHaveCount(1);
+    await expect(page.locator('#trebuchet')).toHaveClass(/cocking/);
+    await page.mouse.click(900, 600);
+    await page.clock.runFor(200);
+    await expect(page.locator('.siege-shot'), "the click's shot, in the air").toHaveCount(1);
+    await expect(page.locator('#trebuchet'), 'the beam still cocked, the round still on the sling').toHaveClass(/cocking/);
+    await expect(page.locator(`${ROUNDS}.charging`)).toHaveCount(1);
+    await wvw.settle();
+  });
 });
 
 // ---- the map's lit objective ---------------------------------------------------
