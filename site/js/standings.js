@@ -114,7 +114,7 @@ function buildStandingsStale(match, yoursByColor) {
   }
   const note = document.createElement('p');
   note.className = 'standings-waiting';
-  note.textContent = match.lineupOnly ? LINEUP_NOTE : "Last week's line-up \u00b7 waiting on the API";
+  note.textContent = match.lineupOnly ? LINEUP_NOTE : "Last week's line-up \u00b7 waiting on the game";
   wrap.appendChild(note);
   return wrap;
 }
