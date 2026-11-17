@@ -790,12 +790,12 @@ function killsStatement(db, data, t, nowMs) {
 
 // Rows [match, at, center, red, blue, green, start, score], one statement.
 // A row enters only if it is newer than the match's newest stored row and not
-// of an older week, and in the same week its score rose (its kills total did
-// not fall, if the stored row has no score): a stale body cannot put old numbers
-// above newer ones. SQLite reads the whole SELECT before the first insert
-// (a test checks two rows of one match in one batch). `thin` (the readers'
-// lines) also keeps out a row whose four kills equal the newest's and which
-// is under KILLS_LINE_MS after it.
+// of an older week, and in the same week its score rose (a stored row with no
+// score keeps no newer row of its week out): a stale body cannot put old
+// numbers above newer ones. SQLite reads the whole SELECT before the first
+// insert (a test checks two rows of one match in one batch). `thin` (the
+// readers' lines) also keeps out a row whose four kills equal the newest's and
+// which is under KILLS_LINE_MS after it.
 function killsInsert(db, rows, thin = false) {
   return db.prepare(
     'INSERT OR IGNORE INTO kills (match, at, center, red, blue, green, start, score) ' +
@@ -807,8 +807,7 @@ function killsInsert(db, rows, thin = false) {
       'SELECT 1 FROM kills o WHERE o.match = n.m ' +
       'AND o.at = (SELECT at FROM kills WHERE match = n.m ORDER BY at DESC LIMIT 1) ' +
       'AND (NOT (n.at > o.at AND (n.st > o.start OR (n.st = o.start AND ' +
-        'CASE WHEN n.sc IS NOT NULL AND o.score IS NOT NULL THEN n.sc > o.score ' +
-        'ELSE n.c + n.r + n.b + n.g >= o.center + o.red + o.blue + o.green END))) ' +
+        'n.sc > o.score))) ' +
       'OR (?2 = 1 AND n.at - o.at < ' + KILLS_LINE_MS + ' AND n.st = o.start AND ' +
         'n.c = o.center AND n.r = o.red AND n.b = o.blue AND n.g = o.green)))'
   ).bind(JSON.stringify(rows), thin ? 1 : 0);
@@ -871,8 +870,9 @@ const READS = {
     try {
       ({ results } = await env.DB.prepare('SELECT l.id, l.start, l.score, l.at, l.reader, h.n AS hist FROM latest l ' +
         'LEFT JOIN history h ON h.match = l.id AND h.start = l.start').all());
-    } catch {
-      // Without schema-006.
+    } catch (e) {
+      // The summary must answer without `hist` when the history table is missing: the readers cannot begin without it.
+      console.log(JSON.stringify({ read: '/api/latest/summary', history: 'failed', why: String(e) }));
       ({ results } = await env.DB.prepare('SELECT id, start, score, at, reader FROM latest').all());
     }
     const out = {};
@@ -1026,12 +1026,11 @@ function nowS() {
   return Math.floor(Date.now() / 1000);
 }
 
-// maxAge null: no-store, kept by no cache.
 function json(body, maxAge) {
   return new Response(body, {
     headers: {
       'content-type': 'application/json',
-      'cache-control': maxAge === null ? 'no-store' : 'public, max-age=' + maxAge,
+      'cache-control': 'public, max-age=' + maxAge,
       'x-content-type-options': 'nosniff'
     }
   });
