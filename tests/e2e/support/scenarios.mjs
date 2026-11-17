@@ -140,6 +140,15 @@ export const missedWeekTurn = (old = 20, fresh = 40, pace = 3, flips = 6, id) =>
     .advance(old, { kills: { Center: pace }, flips }).newWeek().advance(fresh, { kills: { Center: 2 }, flips: 2 });
 };
 
+// The API answers one body for `frozen` − 3 minutes, then three minutes of a fight
+// with `flips` objectives changing hands, and the week turns: a tab that stayed
+// visible through the silence reads the change just before the turn.
+export const missedFrozenAtTurn = (frozen = 13, flips = 3, fresh = 40, id) => {
+  const turn = gw2.match(id ?? FOCUS).newWeek().end;
+  return gw2.match(id ?? FOCUS).freeze(Math.floor(turn / MIN) - frozen - 15).advance(12).pageOpens()
+    .freeze(frozen - 3).advance(3, { flips }).newWeek().advance(fresh, { kills: { Center: 2 }, flips: 2 });
+};
+
 // A slow fight (`pace` kills a minute on EBG) for `min` minutes from the
 // opening, the visitor's whole group `lag` minutes behind and /api/latest
 // down: every body the page keeps is a few kills behind the shared kill
