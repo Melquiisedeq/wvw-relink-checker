@@ -363,7 +363,7 @@
 }
 
 /* Righteous Indignation: swords and a clock under a marker that just changed hands. */
-/* Hoverable for the clock's label; the marker's hit area is cut back to the icon's disc
+/* Hoverable for the clock's label; the marker's hit area stops at the icon's box
    (see .hit). */
 .wvw-ri{pointer-events:auto;}
 .wvw-ri rect{fill:rgba(8,11,15,.88);stroke:rgba(0,0,0,.55);stroke-width:1.5;}
@@ -374,7 +374,7 @@
 .wvw-ri image{filter:drop-shadow(0 1px 1px rgba(0,0,0,.8));}
 
 .wvw-marker{cursor:pointer;}
-/* Only as big as what lights up when picked: wider covers the badges. */
+/* The circle the icon's image is drawn in, a little past the painted disc: wider covers the badges. */
 .wvw-marker .hit{fill:transparent;}
 /* The icon carries the team colour; only a shadow lifts it off the terrain. */
 .wvw-marker .pip{pointer-events:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.85));}
