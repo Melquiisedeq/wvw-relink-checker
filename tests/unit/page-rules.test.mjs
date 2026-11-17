@@ -578,13 +578,17 @@ function stoppedFight(perMin, stopped) {
   return p.call('killView', m, TYPES, now);
 }
 
-test('killView: a fight that stops puts the swords out past one kill step plus 15 kills at its pace, or at 10 minutes, whichever comes first, whatever the score does (js/maps-early.js)', () => {
+test('killView: a fight that stops puts the swords out past one kill step plus 15 kills at its pace, or at 10 minutes (7 under 75 per 10), whichever comes first, whatever the score does (js/maps-early.js)', () => {
   // The silence the kills may keep: KILLS_STEP_MS plus the time to make KILLS_LATE_KILLS at the
-  // fight's own pace (view.strange), cut at HOT_WANT_MS. At 30 a minute the first comes first.
+  // fight's own pace (view.strange), cut at HOT_WANT_MS, or HOT_SMALL_WANT_MS under HOT_BIG.
+  // At 30 a minute the first comes first.
   const p = fresh();
   const step = p.run('KILLS_STEP_MS'), kills = p.run('KILLS_LATE_KILLS'), want = p.run('HOT_WANT_MS');
-  for (const pace of [5, 8, 12, 30]) {
-    const limit = Math.min(step + (kills / pace) * MIN, want);
+  const small = p.run('HOT_SMALL_WANT_MS'), big = p.run('HOT_BIG');
+  assert.equal(small, 7 * MIN);
+  assert.equal(big, 75);
+  for (const pace of [5, 7, 7.5, 8, 12, 30]) {
+    const limit = Math.min(step + (kills / pace) * MIN, pace * 10 < big ? small : want);
     if (pace === 30) assert.ok(limit < want, 'at 30 a minute the late-kills rule, not the window, puts them out');
     const early = stoppedFight(pace, Math.floor(limit - 30000));
     assert.equal(early.frozen, false, 'the score was still offered');
@@ -630,6 +634,41 @@ test('killView: a jump after a stall of 10-20 minutes counts spread over the sta
   // Past 20 min the step is the source catching up, however big.
   assert.equal(catchUp(20 * MIN + 1000, 5000).hot, null);
   assert.equal(catchUp(60 * MIN, 5000).hot, null);
+});
+
+// catchUp's jump, then `quiet` of still kills, the score of the match still offered every 30 s.
+function quietCatchUp(prevRun, jump, quiet) {
+  const p = fresh();
+  const base = matches[3];
+  const now = p.clock.now;
+  const at = now - quiet;
+  const flat = { Center: 100, RedHome: 0, BlueHome: 0, GreenHome: 0 };
+  const rows = [{ at: at - prevRun, n: flat }];
+  if (prevRun > 10 * MIN) rows.push({ at: at - 10 * MIN, n: flat });
+  rows.push({ at, n: { ...flat, Center: 100 + jump } });
+  sheetOf(p, base.id, rows);
+  const m = liveWith(base, { Center: 100 + jump });
+  for (let t = now - 30 * MIN, i = 0; t <= now; t += 30000, i++) {
+    p.clock.now = t;
+    const step = clone(m);
+    step.scores.red += i;
+    p.call('keepNewestMatch', step);
+  }
+  p.clock.now = now;
+  return p.call('killView', m, TYPES, now);
+}
+
+test('killView: a jump spread under 75 per 10 keeps its swords 7 min of silence, and the stall is named only when it alone kept them off (js/maps-early.js)', () => {
+  // 70 over a stall of 11 min are 64 per 10.
+  assert.equal(quietCatchUp(11 * MIN, 70, 6 * MIN).hot, 'Center', '64 per 10 at 6 min of silence');
+  const small = quietCatchUp(11 * MIN, 70, 8 * MIN);
+  assert.equal(small.hot, null, '64 per 10 at 8 min of silence');
+  assert.equal(small.frozen, false);
+  assert.equal(small.jumpHeld, false, '70 whole would be out at 8 min too');
+  // 80 over a stall of 15 min are 53 per 10; whole, 80 would hold them to 10 min.
+  const held = quietCatchUp(15 * MIN, 80, 8 * MIN);
+  assert.equal(held.hot, null, '53 per 10 at 8 min of silence');
+  assert.equal(held.jumpHeld, true, '80 whole would still light them at 8 min');
 });
 
 test('killView: jumpHeld is set only when the stall, not the pace, kept the swords off (js/maps-early.js)', () => {

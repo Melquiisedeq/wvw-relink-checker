@@ -9,6 +9,7 @@
 //   the visitor's group down, copy current visitorDown(20), the map open, then closed
 //   our copy ahead of the visitor's, old   copyAheadOld(20) and (2), the map open
 //   kills in steps, the score rising       killSteps(7, 12, 42), the map open
+//   a fight under 75 a 10 min stops        fightStops(7, 18, 20), the map open
 //   copy unread, its summary read          freeze(3), the map open
 //
 // Invariants, at every look:
@@ -24,7 +25,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { fail } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
-import { FOCUS, HOUR, MIN, apiDown, copyAheadOld, copyBehindAll, frozen, hidden, killSteps, missed, playing, twoPools, visible, visitorDown, wake } from './support/scenarios.mjs';
+import { FOCUS, HOUR, MIN, apiDown, copyAheadOld, copyBehindAll, fightStops, frozen, hidden, killSteps, missed, playing, twoPools, visible, visitorDown, wake } from './support/scenarios.mjs';
 
 const STALE_MS = 6 * MIN;
 // How long the page may take to read the API again: the open map asks every
@@ -473,8 +474,9 @@ const killCorner = page => page.evaluate(id => {
   const q = s => document.querySelector('.info-popover .wvw-plot-wrap ' + s);
   const s2 = q('.wvw-hud-small2');
   const kept = newestMatches.get(id);
+  const view = kept ? killView(kept.match, null) : null;
   return { line2: s2 && !s2.hidden ? s2.textContent.replace(/\s+/g, ' ') : '', dim: !!q('.wvw-hud-l.is-dim'),
-    silence: kept ? killView(kept.match, null).silence : 0 };
+    silence: view ? view.silence : 0, ebg: view && view.rates ? Math.round(view.rates.per.get('Center')) : 0 };
 }, FOCUS);
 
 test.describe('kills in steps, the score rising', () => {
@@ -506,38 +508,52 @@ test.describe('kills in steps, the score rising', () => {
     });
   }
 
-  // The swords stay lit through a step's silence, and go out with the 10 min window.
-  test.describe('a step, then the kills stop: the swords', () => {
-    test.use({ timeline: killSteps(7, 12, 21).advance(20, { kills: {} }) });
-    test('stay on the busiest map at 8 min of silence, out past 10', async ({ page, wvw }) => {
-      const r = rower(page, wvw);
-      await r.load();
-      await r.open();
-      let lit = 0;
-      let out = 0;
-      // The 30 s steps keep the page's timers firing.
-      for (let i = 1; i <= 60; i++) {
-        await page.clock.fastForward(30 * 1000);
-        const silence = (await killCorner(page)).silence;
-        const inLit = silence > 7.5 * MIN && silence < 8.5 * MIN && !lit;
-        const inOut = silence > 10.2 * MIN && !out;
-        if (!inLit && !inOut) continue;
-        await r.check(`swords, +${i / 2} min`, READ_OPEN_MS);
-        const c = await killCorner(page);
-        const hot = await page.locator('.info-popover .wvw-tab.is-hot').evaluateAll(t => t.map(b => b.dataset.type));
-        const at = `the kills silent ${Math.round(c.silence / 1000)} s, swords on [${hot}]`;
-        if (inLit) {
-          expect(hot, `${at}: they should stay on EBG`).toEqual(['Center']);
-          lit++;
-        } else {
-          expect(hot, `${at}: they should be out`).toEqual([]);
-          out++;
+  // The swords stay lit through a step's silence and go out with the 10 min window, or 7 min under 75 kills per 10.
+  // `last`: minutes from the opening to the last kills. The smaller fight kills 7 a minute: the page dates the
+  // last kills when it learns of them, up to 2 min late, so its window reads 52 to 70.
+  const swordCases = [
+    { timeline: killSteps(7, 12, 21).advance(20, { kills: {} }), last: 15, size: [75, Infinity], lit: [8.7, 9.3], out: [10.2, Infinity],
+      name: 'a step, then the kills stop: the swords, 75 or more per 10 min, on at 9 min of silence, out past 10' },
+    { timeline: fightStops(7, 18, 20), last: 18,
+      size: [50, 74], lit: [5.7, 6.3], out: [7.7, 8.3], name: 'a fight under 75 per 10 min stops: the swords on at 6 min of silence, out at 8' },
+  ];
+  for (const c of swordCases) {
+    test.describe(c.name, () => {
+      test.use({ timeline: c.timeline });
+      test('stay on the busiest map, then go out', async ({ page, wvw }) => {
+        const r = rower(page, wvw);
+        await r.load();
+        await r.open();
+        let lit = 0;
+        let out = 0;
+        // The 30 s steps keep the page's timers firing.
+        for (let i = 1; i <= 60; i++) {
+          await page.clock.fastForward(30 * 1000);
+          // Before the last kills, a silence is a gap between steps, not the stop.
+          if (i / 2 <= c.last + 2) continue;
+          const silence = (await killCorner(page)).silence;
+          const inLit = silence > c.lit[0] * MIN && silence < c.lit[1] * MIN && !lit;
+          const inOut = silence > c.out[0] * MIN && silence < c.out[1] * MIN && !out;
+          if (!inLit && !inOut) continue;
+          await r.check(`swords, +${i / 2} min`, READ_OPEN_MS);
+          const k = await killCorner(page);
+          const hot = await page.locator('.info-popover .wvw-tab.is-hot').evaluateAll(t => t.map(b => b.dataset.type));
+          const at = `the kills silent ${Math.round(k.silence / 1000)} s, EBG at ${k.ebg} per 10 min, swords on [${hot}]`;
+          expect(k.ebg, `the state: ${at}`).toBeGreaterThanOrEqual(c.size[0]);
+          expect(k.ebg, `the state: ${at}`).toBeLessThanOrEqual(c.size[1]);
+          if (inLit) {
+            expect(hot, `${at}: they should stay on EBG`).toEqual(['Center']);
+            lit++;
+          } else {
+            expect(hot, `${at}: they should be out`).toEqual([]);
+            out++;
+          }
         }
-      }
-      expect(lit, 'the state: looks between 7.5 and 8.5 min of silence').toBeGreaterThan(0);
-      expect(out, 'the state: looks past 10.2 min of silence').toBeGreaterThan(0);
+        expect(lit, `the state: looks between ${c.lit[0]} and ${c.lit[1]} min of silence`).toBeGreaterThan(0);
+        expect(out, `the state: looks past ${c.out[0]} min of silence`).toBeGreaterThan(0);
+      });
     });
-  });
+  }
 
   test.describe('then the kills stop, the score still rising', () => {
     test.use({ timeline: killSteps(7, 12, 21).advance(20, { kills: {} }) });
