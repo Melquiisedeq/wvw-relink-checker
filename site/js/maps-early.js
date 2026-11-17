@@ -654,7 +654,9 @@ function missedFold(matchId) {
 
 function missedNoteFor(matchId) {
   const note = missedNotes.get(matchId);
-  if (note && Date.now() > note.until) { missedNotes.delete(matchId); return null; }
+  const kept = newestMatches.get(matchId);
+  const turned = note && kept && kept.match.start_time !== note.after.start_time;
+  if (note && (turned || Date.now() > note.until)) { missedNotes.delete(matchId); return null; }
   return note || null;
 }
 
