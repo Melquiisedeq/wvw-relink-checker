@@ -1281,7 +1281,7 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
   const upgradeTerrain = () => {
     if (!terrain || upgrading) return;
     const onScreen = shownWidth * (window.devicePixelRatio || 1) * (picture.w / view.w);
-    if (onScreen <= LITE_WIDTH || picture.src === picture.lite) return;
+    if (onScreen <= LITE_WIDTH) return;
     upgrading = true;
     const full = new Image();
     full.src = picture.src;
