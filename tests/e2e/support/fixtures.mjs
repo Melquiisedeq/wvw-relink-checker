@@ -56,7 +56,7 @@ export const test = base.extend({
     await site.close();
   }, { scope: 'worker' }],
 
-  wvw: async ({ page, context, site, timeline, clock, origin }, use) => {
+  wvw: async ({ page, context, site, timeline, clock, origin }, use, testInfo) => {
     const problems = [];
     // One line each, whitespace folded: page text must never start a line.
     const problem = text => {
@@ -150,7 +150,11 @@ export const test = base.extend({
 
     // A failure here must not hide the test's own: it joins the problems below.
     await addCoverage(covering).catch(e => problem('coverage: ' + (e?.message || e)));
-    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    // The page's own timers and the reads a late answer starts would otherwise
+    // ask /api/* of the static server (a 404) once the routes are gone. A failed
+    // test keeps its page: Playwright's error-context snapshot is taken from it later.
+    if (!testInfo.errors.length) await page.close().catch(() => {});
+    await page.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
     // The problems in the message's first line: the summary prints that line.
     expect(problems, `${problems.length} problem(s) on the page: ${problems.join(' | ')}`).toEqual([]);
   },

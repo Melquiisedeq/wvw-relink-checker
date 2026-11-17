@@ -25,9 +25,9 @@
 // their recorded bodies, apart from turning over to a new week at their end.
 //
 // The rules every body keeps, each from the code in site/js/ that relies on it:
-// - id matches ^[12]-[1-9]$ (js/api.js:309, WEEK_ID_RE; /api/latest drops others).
-// - start <= now < end for every body of the newest pool (js/config.js:67,
-//   matchIsLive; js/stat-popovers.js:168, skirmishProgress); a week ends, the
+// - id matches ^[12]-[1-9]$ (js/api.js, WEEK_ID_RE; /api/latest drops others).
+// - start <= now < end for every body of the newest pool (js/config.js,
+//   matchIsLive; js/stat-popovers.js, skirmishProgress); a week ends, the
 //   next one starts at that end with every counter at zero.
 // - Inside a week kills+deaths and the scores only grow (js/api.js,
 //   matchIsBehind): the older pool serves a body behind, never a body that
@@ -257,7 +257,7 @@ class Timeline {
   }
 
   // A relink: the new week with the red teams moved one tier down the region,
-  // and for an hour the older group serving last week's bodies (js/api.js:295).
+  // and for an hour the older group serving last week's bodies (js/api.js, WEEK_HOLD_MS).
   relinkNight() {
     return this.newWeek({ relink: true }).olderPool(60);
   }

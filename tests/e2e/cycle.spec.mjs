@@ -6,14 +6,13 @@ import { test, expect } from './support/fixtures.mjs';
 import { fail } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { FOCUS, MIN, copyAheadOld, livePush, playingHalfMinutes } from './support/scenarios.mjs';
-import { load, matchReads, play } from './support/steps.mjs';
+import { load, matchReads, play, scoreOf } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, clock: 'playwright', reducedMotion: 'reduce' });
 test.describe.configure({ timeout: 120 * 1000 });
 
 const LIST = /\/wvw\/matches\?ids=all$/;
 const SUMMARY = /\/api\/latest\/summary$/;
-const scoreOf = page => page.evaluate(id => colorSum(matchDataCache.get(id).scores), FOCUS);
 
 test.describe('fresh copy', () => {
   test.use({ timeline: playingHalfMinutes(14) });
@@ -23,12 +22,12 @@ test.describe('fresh copy', () => {
     const asked = matchReads(page);
     let summaries = 0;
     page.on('request', r => { if (SUMMARY.test(r.url())) summaries++; });
-    const before = await scoreOf(page);
+    const before = await scoreOf(page, FOCUS);
     await play(page, 10 * MIN);
     await wvw.settle();
     expect(asked.filter(u => LIST.test(u)), 'reads of ids=all after the first load').toEqual([]);
     expect(summaries, 'summary reads').toBeGreaterThan(0);
-    expect(await scoreOf(page), 'the board follows the copy').toBeGreaterThan(before);
+    expect(await scoreOf(page, FOCUS), 'the board follows the copy').toBeGreaterThan(before);
   });
 
   test('with /api down the cycle reads the game', async ({ page, wvw }) => {

@@ -6,18 +6,11 @@
 // again.
 import { test, expect } from './support/fixtures.mjs';
 import { FOCUS } from './support/scenarios.mjs';
-import { load, serveList } from './support/steps.mjs';
+import { board, load, serveList } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
 
 const COLORS = ['red', 'blue', 'green'];
-
-// Every body on show, as copies, and the colours of FOCUS by rank.
-const board = page => page.evaluate(id => {
-  const list = [...matchDataCache.values()].map(m => JSON.parse(JSON.stringify(m)));
-  const rank = rankMatchByVictoryPoints(matchDataCache.get(id));
-  return { list, byRank: Object.keys(rank).sort((a, b) => rank[a] - rank[b]) };
-}, FOCUS);
 
 // Marks every card, badge and the live dots, so a later look can tell the
 // same element from a new one.
@@ -59,7 +52,7 @@ test.describe('a new score on the same board', () => {
   for (const move of ['moveBefore', 'insertBefore']) test(`is written into the cards that are there (${move})`, async ({ page, wvw }) => {
     if (move === 'insertBefore') await page.addInitScript(() => { delete Element.prototype.moveBefore; });
     await load(page, wvw);
-    const { list, byRank: [first, second, third] } = await board(page);
+    const { list, byRank: [first, second, third] } = await board(page, FOCUS);
     const focus = list.find(m => m.id === FOCUS);
     const vp = focus.victory_points;
     // The second overtakes the first; the third takes the skirmish lead, so
@@ -115,7 +108,7 @@ test.describe('a new score on the same board', () => {
 
   test('of another shape is built again', async ({ page, wvw }) => {
     await load(page, wvw);
-    const { list } = await board(page);
+    const { list } = await board(page, FOCUS);
     // Two teams of FOCUS trade colours: no card on the page is theirs any more.
     const focus = list.find(m => m.id === FOCUS);
     for (const key of ['all_worlds', 'worlds']) [focus[key].red, focus[key].blue] = [focus[key].blue, focus[key].red];

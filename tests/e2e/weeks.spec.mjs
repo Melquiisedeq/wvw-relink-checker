@@ -8,7 +8,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
-import { check, firstTier, iso, later, openMap, recordedJson, matchReads, serveList } from './support/steps.mjs';
+import { check, firstTier, iso, later, load, openMap, recordedJson, matchReads, serveList } from './support/steps.mjs';
 import { MIN, FOCUS, searedWeekTurn } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, timezoneId: 'UTC', locale: 'en-US' });
@@ -23,13 +23,6 @@ const TEAMS = ['red', 'blue', 'green'];
 const team = m => TEAMS.map(c => String(m.all_worlds[c].find(n => n >= 10000)));
 const nameOf = (page, id) => page.evaluate(i => getTeamName(i), String(id));
 const names = (page, m) => page.evaluate(t => t.map(getTeamName), team(m));
-
-async function opened(page, wvw) {
-  await page.goto(wvw.url);
-  await expect(page.locator(NA)).toHaveCount(wvw.tiers.NA);
-  await expect(page.locator('#standingsGridEU > .standing-match')).toHaveCount(wvw.tiers.EU);
-  await wvw.settle();
-}
 
 // The NA cards, as the standings show them.
 const cards = page => page.evaluate(sel => [...document.querySelectorAll(sel)].map(b => ({
@@ -69,7 +62,7 @@ test.describe('partial lists', () => {
 
   test('a normal cycle reads ids=all once and nothing by id', async ({ page, wvw }) => {
     const asked = matchReads(page);
-    await opened(page, wvw);
+    await load(page, wvw);
     expect(asked.filter(u => u.startsWith(IDS) && u !== ALL), 'the first load read again by id').toEqual([]);
     const r = await cycle(page, wvw, asked);
     expect(r.all, 'reads of ids=all').toBe(1);
@@ -77,7 +70,7 @@ test.describe('partial lists', () => {
   });
 
   test('a list without two tiers is read again for them and they stay', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     const asked = matchReads(page);
     await answer(page, ALL, without('1-1', '1-4'));
     const both = await answer(page, IDS + '1-1,1-4', [rec.get('1-1'), rec.get('1-4')]);
@@ -89,7 +82,7 @@ test.describe('partial lists', () => {
   });
 
   test('a gap the second read lacks too keeps its last body, and a tier missing from both goes', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     const asked = matchReads(page);
     await answer(page, ALL, without('1-1', '1-4'));
     await answer(page, IDS + '1-1,1-4', []);
@@ -99,7 +92,7 @@ test.describe('partial lists', () => {
   });
 
   test('a tier this page never saw reads "Waiting on the API", with no map', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     const asked = matchReads(page);
     await answer(page, ALL, without('1-1', '1-4'));
     await answer(page, IDS + '1-1,1-4', []);
@@ -116,7 +109,7 @@ test.describe('partial lists', () => {
   // A tier on last week (the list from both weeks) is read again by id,
   // alone; still old, its card shows where a shared team plays now.
   test('the only tier on last week shows the line-up left over, no score, no map', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     const asked = matchReads(page);
     const old2 = oldOf(rec.get('1-2'), rec.get('1-3'));
     const newLine = await Promise.all(TEAMS.map(c => nameOf(page, rec.get('1-2').all_worlds[c].find(n => n >= 10000))));
@@ -135,7 +128,7 @@ test.describe('partial lists', () => {
   });
 
   test('two tiers on last week stay old, each marked with the tier its shared team plays now', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     const asked = matchReads(page);
     const old2 = oldOf(rec.get('1-2'), rec.get('1-3')), old4 = oldOf(rec.get('1-4'), rec.get('1-1'));
     await page.evaluate("newestMatches.delete('1-2'); newestMatches.delete('1-4')");
@@ -162,7 +155,7 @@ test.describe('partial lists', () => {
   // split them, three leave 9 with 280, and a table with a team too many or
   // too few breaks the count.
   test('deduceLineup: one late tier whose count closes, nothing else', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     const eu = all.filter(m => m.id.startsWith('2-')).sort((x, y) => x.id.localeCompare(y.id));
     expect(eu).toHaveLength(5);
     const na = ['1-1', '1-2', '1-3', '1-4'].map(i => rec.get(i));
@@ -208,7 +201,7 @@ test.describe('a fresh week', () => {
   test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().newWeek() });
 
   test('every side tied on 0 VP: no arrows, "Tied on VP", a dash for K/D', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     const read = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('#standingsGridNA .standing-match')].map(box => {
       const kd = [...box.querySelectorAll('.standing-side-stats')].map(l => [...l.querySelectorAll('.stat-value')].pop());
       return [box.dataset.matchId, { sides: box.querySelectorAll('.standing-side').length,
@@ -275,7 +268,7 @@ test('relink day Check: this week\'s match wins; a team the API lacks gets a gre
   const moved = structuredClone(tables[where[1].r].body);
   moved[where[1].gid] = typeof moved[where[1].gid] === 'string' ? MISSING : Number(MISSING);
 
-  await opened(page, wvw);
+  await load(page, wvw);
   await answer(page, ALL, [...all, old]);
   await answer(page, tables[where[1].r].url, moved);
   const wrong = await answer(page, `${GAME}wvw/matches?world=${MISSING}`, other);
@@ -308,7 +301,7 @@ test('a team whose match is not on the API: the run ends, grey dot, note, and th
   const live = all.find(m => m.id.startsWith('1-'));
   const T = Number(live.all_worlds.red.find(n => n >= 10000)), MISSING = 99999;
   const [G1, G2] = ['AAAAAAAA-0000-4000-8000-000000000001', 'AAAAAAAA-0000-4000-8000-000000000002'];
-  await opened(page, wvw);
+  await load(page, wvw);
   await answer(page, GAME + 'wvw/guilds/na', { [G1]: T, [G2]: MISSING });
   await answer(page, `${GAME}guild/${G1}`, { id: G1, name: 'Placed Guild', tag: 'PLC' });
   await answer(page, `${GAME}guild/${G2}`, { id: G2, name: 'Early Guild', tag: 'ERL' });
@@ -357,7 +350,7 @@ test.describe('week memory', () => {
   test('a new week is remembered, and served back when the API still has last week', async ({ page, wvw }) => {
     const start = startOf(wvw.recordedAt);
     const newWeek = await serveList(page, all.map(m => (m.id === '1-2' ? fresh(start, t2, t3.all_worlds) : m.id === '1-3' ? fresh(start, t3, t2.all_worlds) : m)));
-    await opened(page, wvw);
+    await load(page, wvw);
     const seen = await card(page, '1-2');
     expect(seen.sides).toBe(3);
     expect([...seen.names].sort()).toEqual([...await names(page, t3)].sort());
@@ -370,7 +363,7 @@ test.describe('week memory', () => {
     // Reloaded onto last week's 1-2 and 1-3, the read by id too.
     newWeek.off();
     const lastWeek = await serveList(page, all.map(m => (m.id === '1-2' || m.id === '1-3' ? old(m) : m)));
-    await opened(page, wvw);
+    await load(page, wvw);
     expect(await card(page, '1-2')).toEqual({ sides: 0, map: false, vp: false, names: await names(page, t3), waiting: [LINE] });
     expect(lastWeek.reads, "last week's 1-2 and 1-3 read again by id").toBeGreaterThan(1);
     // The Check: a team of the new 1-2, every body in hand and ?world= on last week.
@@ -383,7 +376,7 @@ test.describe('week memory', () => {
 
     // Two hours after the remembered week began: the API's body stands.
     await page.addInitScript('__skewClock(' + 2 * 3600000 + ');');
-    await opened(page, wvw);
+    await load(page, wvw);
     const c = await card(page, '1-2');
     expect([...c.names].sort()).toEqual([...await names(page, t2)].sort());
     expect(c.waiting.join('|')).toBe(LAST);
@@ -394,7 +387,7 @@ test.describe('week memory', () => {
     const good = Object.fromEntries(TEAMS.map((c, i) => [c, Number(team(t3)[i])]));
     await serveList(page, all.map(m => (m.id === '1-2' ? old(t2) : m)));
     await page.addInitScript(([k, v]) => localStorage.setItem(k, v), [KEY, JSON.stringify({ '1-2': { s: start, e: start + WEEK, t: good, v: start } })]);
-    await opened(page, wvw);
+    await load(page, wvw);
     const c = await card(page, '1-2');
     expect({ ...c, names: [...c.names].sort() }).toEqual({ sides: 0, map: false, vp: false, names: [...await names(page, t2)].sort(), waiting: [LINE] });
   });
@@ -406,7 +399,7 @@ test.describe('week memory', () => {
     await serveList(page, all.map(m => (m.id === '1-2' ? old(t2) : m.id === '1-4' ? old(t4)
       : m.id === '1-3' ? fresh(start + 5 * MIN, t3, t3.all_worlds) : m)));
     await page.addInitScript(([k, v]) => localStorage.setItem(k, v), [KEY, JSON.stringify({ '1-2': { s: start, e: start + WEEK, t: mine, v: start } })]);
-    await opened(page, wvw);
+    await load(page, wvw);
     const c = await card(page, '1-2');
     expect({ ...c, names: [...c.names].sort() }).toEqual({ sides: 0, map: false, vp: false, names: [...await names(page, t3)].sort(), waiting: [LINE] });
     expect(await page.locator(`${NA}[data-match-id="1-2"] .standing-moved`).count(), 'marks on the remembered line-up').toBe(0);
@@ -429,7 +422,7 @@ test.describe('week memory', () => {
     await page.goto(wvw.url);   // a document to hold the storage
     for (const [what, text] of Object.entries(corrupt)) {
       await page.evaluate(([k, v]) => localStorage.setItem(k, v), [KEY, text]);
-      await opened(page, wvw);
+      await load(page, wvw);
       expect((await card(page, '1-2')).waiting.join('|'), `1-2 with a memory of ${what}`).toBe(LAST);
       expect(await page.evaluate(() => Object.prototype.s !== undefined || ({}).t !== undefined), `${what} reached Object.prototype`).toBe(false);
     }
@@ -446,7 +439,7 @@ const homeObjectives = recordedJson(GAME + 'wvw/matches?id=' + FOCUS).maps
 test.describe('a map opened before the week turned', () => {
   test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().newWeek({ relink: true }).advance(8, { flips: homeObjectives }) });
   test('the tab clicked after the first read is drawn with the new week', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     const tier = await firstTier(page);
     await openMap(page, wvw, tier.button);
     const tabs = await page.$$eval('.info-popover .wvw-tab', t => t.map(b => b.dataset.type));
@@ -473,7 +466,7 @@ test.describe('a map opened before the week turned', () => {
     expect(owned.every(t => t.endsWith(' \u00b7 ' + now.red)), `titles ${JSON.stringify(owned.slice(0, 3))} name "${now.red}", not "${old.red}"`).toBe(true);
   });
   test('the open tab, with no switch, names this week\'s team on its titles and in the clicked panel', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     const tier = await firstTier(page);
     await openMap(page, wvw, tier.button);
     const home = page.locator('.info-popover .wvw-tab[data-type$="Home"]').first();
@@ -502,7 +495,7 @@ test.describe('a map opened before the week turned', () => {
 test.describe('a map open when the week turns its borderlands', () => {
   test.use({ timeline: searedWeekTurn() });
   test('the open tab and the next one are drawn on the new maps, with their owners', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     const tier = await firstTier(page);
     expect(tier.id).toBe(FOCUS);
     await openMap(page, wvw, tier.button);
@@ -537,7 +530,7 @@ test.describe('a map open when the week turns its borderlands', () => {
     expect(await page.evaluate(() => window.__openings), 'one opening, not a second on a read').toBe(1);
   });
   test('a map closed and opened again by the same button keeps polling when the closed one\'s read lands late', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     const tier = await firstTier(page);
     await openMap(page, wvw, tier.button);
     let go;
