@@ -15,7 +15,7 @@ const MAP_SKIP_TYPES = new Set(['Spawn']);
 const OBJ_DRAW_ORDER = ['Castle', 'Keep', 'Tower', 'Mercenary', 'Camp', 'Ruins'];
 // Marker radius in map units, also their on-screen size at the default view.
 // The radii of two markers on a map sum to less than their distance; tests/unit/map-positions.test.mjs
-// holds it, with its one listed exception.
+// holds it.
 const OBJ_SIZE = Object.freeze({
   Castle: 118, Keep: 110, Tower: 100, Camp: 92, Mercenary: 92, Ruins: 80,
 });
@@ -47,7 +47,11 @@ const MAP_IMAGE = Object.freeze({
 const MERC_COORD = Object.freeze({
   '38-123': [9972.9, 14197.7],    // Molevekian Delve
   '38-125': [11284.6, 14096.6],   // Orgath Uplands
-  '38-126': [10692.6, 15310.5],   // Darkrait Inlet
+  '38-126': [10631.4, 15310.5],   // Darkrait Inlet: 61 units west of its spot, so it clears Quentin Lake
+});
+// Drawn off the game's spot to leave visible room between two close neighbours.
+const MOVED_COORD = Object.freeze({
+  '38-16': [10880.1, 15224.4],    // Quentin Lake: 30 units east, away from Darkrait Inlet
 });
 
 // The API gives the Seared Borderlands objectives (1652 and its copies 1651 and 1654) the positions of
@@ -82,8 +86,8 @@ function objectiveAt(meta) {
   const [map, number] = String(meta.id).split('-');
   const seared = SEARED_COORD[number], shift = SEARED_SHIFT[map];
   if (seared && shift) return [seared[0] + shift[0], seared[1] + shift[1]];
-  const at = (meta.coord && meta.coord.length) ? meta.coord
-    : (MERC_COORD[meta.id] || meta.label_coord);
+  const at = MOVED_COORD[meta.id] || ((meta.coord && meta.coord.length) ? meta.coord
+    : (MERC_COORD[meta.id] || meta.label_coord));
   return at || null;
 }
 
@@ -164,7 +168,7 @@ async function getUpgradeCatalogue() {
     const list = await fetchJsonCached(`${API_BASE}/wvw/upgrades?ids=all`);
     for (const u of Array.isArray(list) ? list : []) byId.set(u.id, u);
   } catch {
-    // Upgrades are a nicety, so the map draws without them, but a failure is not kept: the next opening asks again.
+    // Upgrades are a nicety, so the map draws without them, but a failure is not kept: the open map's refresh and the next opening ask again.
     return byId;
   }
   upgradeCatalogue = byId;
@@ -443,7 +447,11 @@ function guildEmblem(guildId) {
   if (!emblemPending.has(guildId)) {
     // true: the stored copy is good enough for a thumbnail-sized badge.
     const pending = Promise.all([getGuildInfo(guildId, true), getEmblemPieces()])
-      .then(([info, pieces]) => ({ info, layers: emblemLayers(info, pieces) }));
+      .then(([info, pieces]) => {
+        // getEmblemPieces answers empty when the catalogue failed: kept, that guild would stay blank until reload.
+        if (!pieces.bg.size || !pieces.fg.size) emblemPending.delete(guildId);
+        return { info, layers: emblemLayers(info, pieces) };
+      });
     // Dropped if it fails so the next marker can retry; a kept rejection would blank that guild's emblem.
     pending.catch(() => emblemPending.delete(guildId));
     emblemPending.set(guildId, pending);
@@ -1053,6 +1061,8 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
     if (!at) continue;
     pts.push({ ob: owners.get(meta.id) || blank(meta), meta, x: at[0], y: at[1] });
   }
+  // A map with nothing to place is no map: the caller says so instead of drawing bare terrain.
+  if (!pts.length) return null;
 
   // The viewBox comes from the sector outlines, so nothing has to agree about map bounds.
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -2544,7 +2554,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
       paintCorners();
       stage.appendChild(plotWrap);
     } else {
-      // The outline is the drawing's frame, so without it there is no map; the other tabs are unaffected,
+      // Without the outline (the frame) or a single marker there is no map; the other tabs are unaffected,
       // which is why this replaces the stage and not the popover.
       const msg = document.createElement('p');
       msg.className = 'hint wvw-stage-msg';
@@ -2728,7 +2738,18 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
       const kept = newestMatches.get(match.id);
       if (kept && matchIsBehind(liveMatch, kept.match)) fresh = kept.match;
     }
+    // Not on the opening's own first read: the opening has just asked, with its retries.
+    const refresh = firstReadDone;
     firstReadDone = true;
+    // A catalogue that failed at the opening is asked for again here; the shields are drawn when it lands.
+    if (refresh && !upgradeCatalogue) {
+      getUpgradeCatalogue().then((lines) => {
+        const now = byType.get(current);
+        if (lines.size && !replaced && activePopover === popover && plotWrap && plotWrap.applyLive && now) {
+          plotWrap.applyLive(now, matchIsLive(liveMatch), liveMatch);
+        }
+      });
+    }
     if (replaced || activeTrigger !== triggerEl || !fresh || !Array.isArray(fresh.maps)) return;
     if (seq < paintedSeq && !(latestBodyAt.has(fresh) && matchIsBehind(liveMatch, fresh))) return;
     paintedSeq = Math.max(paintedSeq, seq);

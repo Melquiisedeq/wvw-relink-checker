@@ -188,7 +188,7 @@ async function accept(request, env, ctx, source, path) {
     return refuse(400, source, 'not JSON');
   }
   const statement = source === 'kills'
-    ? killsStatement(env.DB, data, Number(t))
+    ? killsStatement(env.DB, data, Number(t), Date.now())
     : relinkStatement(env.DB, data, Number(t));
   if (typeof statement === 'string') return refuse(422, source, statement);
 
@@ -422,18 +422,13 @@ function checkSummary(s, nowMs, rest) {
     if (typeof m.id !== 'string' || !/^[12]-[1-9]$/.test(m.id) || seen.has(m.id)) return 'match id';
     seen.add(m.id);
     if (!isInt(m.start) || m.start > nowMs + 300e3 || m.start < nowMs - 8 * 86400e3) return 'start';
-    const d = new Date(m.start);
-    const r = RESET[m.id[0]];
-    if (d.getUTCDay() !== r.day || d.getUTCHours() !== r.hour || d.getUTCMinutes() || d.getUTCSeconds() || d.getUTCMilliseconds()) {
-      return 'start not a reset';
-    }
+    if (!isReset(m.id, m.start)) return 'start not a reset';
     const e = { id: m.id, start: m.start, board: null };
     // A history-only entry carries no counts: it changes neither latest, nor kills, nor board.
     if (m.live !== undefined) {
       if (!isIntList(m.scores, 3) || !isIntList(m.kills, 4)) return 'counts';
       e.score = m.scores[0] + m.scores[1] + m.scores[2];
-      // Independent of what is stored: a week that has just begun cannot hold a big score.
-      if (e.score > MAX_SCORE_PER_MIN * Math.max(0, (nowMs - m.start) / 60e3) + SCORE_SLACK) return 'score for the week';
+      if (pastWeek(e.score, m.start, nowMs)) return 'score for the week';
       e.kills = m.kills.slice();
       // A board field out of shape leaves only the board out (the reason, a string, is logged).
       e.board = checkBoard(m, nowMs);
@@ -459,6 +454,17 @@ function checkSummary(s, nowMs, rest) {
   }
   if (total !== rest) return 'bytes do not add up';
   return out;
+}
+
+function isReset(id, start) {
+  const d = new Date(start);
+  const r = RESET[id[0]];
+  return d.getUTCDay() === r.day && d.getUTCHours() === r.hour && !d.getUTCMinutes() && !d.getUTCSeconds() && !d.getUTCMilliseconds();
+}
+
+// Independent of what is stored: a week that has just begun cannot hold a big score.
+function pastWeek(score, start, nowMs) {
+  return score > MAX_SCORE_PER_MIN * Math.max(0, (nowMs - start) / 60e3) + SCORE_SLACK;
 }
 
 const isSha = (x) => typeof x === 'string' && /^[0-9a-f]{64}$/.test(x);
@@ -755,38 +761,41 @@ async function readCapped(request, max) {
   return out;
 }
 
-// Rows as the sheet has them: [at, match, center, red, blue, green, start] and
-// optionally [..., score] (a line without a score is the sheet's older script).
+// Rows as the sheet has them: [at, match, center, red, blue, green, start, score].
 // Anything off refuses the whole message, so a change of shape on the Google side is seen at once.
+// The week and the score pass the readers' rules (checkSummary): killsInsert lets the row furthest
+// along win, so one ahead of the truth would keep every honest row of its match out.
 // One statement for all of them, through json_each: one INSERT per row could pass
 // the per-invocation query limit after an outage and then fail on every retry.
-function killsStatement(db, data, t) {
+function killsStatement(db, data, t, nowMs) {
   const rows = data && data.rows;
   if (!Array.isArray(rows) || !rows.length || rows.length > 300) return 'rows';
   const tms = t * 1000;
   const out = [];
   for (const r of rows) {
-    if (!Array.isArray(r) || (r.length !== 7 && r.length !== 8)) return 'row shape';
+    if (!Array.isArray(r) || r.length !== 8) return 'row shape';
     const [at, match, c, red, blue, green, start, score] = r;
     if (!isInt(at) || at > tms + 60e3 || at < tms - 45 * 60e3) return 'row time';
     if (typeof match !== 'string' || !/^[12]-[1-9]$/.test(match)) return 'match id';
     for (const n of [c, red, blue, green]) if (!isInt(n) || n < 0 || n > 1e7) return 'count';
     if (!isInt(start) || start > at || start < at - 8 * 86400e3) return 'start';
-    if (r.length === 8 && (!isInt(score) || score < 0 || score > 3e7)) return 'score';
+    if (!isReset(match, start)) return 'start not a reset';
+    if (!isInt(score) || score < 0) return 'score';
+    if (pastWeek(score, start, nowMs)) return 'score for the week';
     // Rebuilt from the checked values, so nothing unchecked reaches SQL.
-    out.push([match, at, c, red, blue, green, start, r.length === 8 ? score : null]);
+    out.push([match, at, c, red, blue, green, start, score]);
   }
   return killsInsert(db, out);
 }
 
-// Rows [match, at, center, red, blue, green, start, score|null], one statement.
+// Rows [match, at, center, red, blue, green, start, score], one statement.
 // A row enters only if it is newer than the match's newest stored row and not
-// of an older week, and in the same week its score rose (its kills total did
-// not fall, if either row has no score): a stale body cannot put old numbers
-// above newer ones. SQLite reads the whole SELECT before the first insert
-// (a test checks two rows of one match in one batch). `thin` (the readers'
-// lines) also keeps out a row whose four kills equal the newest's and which
-// is under KILLS_LINE_MS after it.
+// of an older week, and in the same week its score rose (a stored row with no
+// score keeps no newer row of its week out): a stale body cannot put old
+// numbers above newer ones. SQLite reads the whole SELECT before the first
+// insert (a test checks two rows of one match in one batch). `thin` (the
+// readers' lines) also keeps out a row whose four kills equal the newest's and
+// which is under KILLS_LINE_MS after it.
 function killsInsert(db, rows, thin = false) {
   return db.prepare(
     'INSERT OR IGNORE INTO kills (match, at, center, red, blue, green, start, score) ' +
@@ -798,8 +807,7 @@ function killsInsert(db, rows, thin = false) {
       'SELECT 1 FROM kills o WHERE o.match = n.m ' +
       'AND o.at = (SELECT at FROM kills WHERE match = n.m ORDER BY at DESC LIMIT 1) ' +
       'AND (NOT (n.at > o.at AND (n.st > o.start OR (n.st = o.start AND ' +
-        'CASE WHEN n.sc IS NOT NULL AND o.score IS NOT NULL THEN n.sc > o.score ' +
-        'ELSE n.c + n.r + n.b + n.g >= o.center + o.red + o.blue + o.green END))) ' +
+        'n.sc > o.score))) ' +
       'OR (?2 = 1 AND n.at - o.at < ' + KILLS_LINE_MS + ' AND n.st = o.start AND ' +
         'n.c = o.center AND n.r = o.red AND n.b = o.blue AND n.g = o.green)))'
   ).bind(JSON.stringify(rows), thin ? 1 : 0);
@@ -862,8 +870,9 @@ const READS = {
     try {
       ({ results } = await env.DB.prepare('SELECT l.id, l.start, l.score, l.at, l.reader, h.n AS hist FROM latest l ' +
         'LEFT JOIN history h ON h.match = l.id AND h.start = l.start').all());
-    } catch {
-      // Without schema-006.
+    } catch (e) {
+      // The summary must answer without `hist` when the history table is missing: the readers cannot begin without it.
+      console.log(JSON.stringify({ read: '/api/latest/summary', history: 'failed', why: String(e) }));
       ({ results } = await env.DB.prepare('SELECT id, start, score, at, reader FROM latest').all());
     }
     const out = {};
@@ -1017,12 +1026,11 @@ function nowS() {
   return Math.floor(Date.now() / 1000);
 }
 
-// maxAge null: no-store, kept by no cache.
 function json(body, maxAge) {
   return new Response(body, {
     headers: {
       'content-type': 'application/json',
-      'cache-control': maxAge === null ? 'no-store' : 'public, max-age=' + maxAge,
+      'cache-control': 'public, max-age=' + maxAge,
       'x-content-type-options': 'nosniff'
     }
   });
