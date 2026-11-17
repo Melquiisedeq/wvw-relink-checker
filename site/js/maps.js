@@ -169,7 +169,7 @@ async function getUpgradeCatalogue() {
     const list = await fetchJsonCached(`${API_BASE}/wvw/upgrades?ids=all`);
     for (const u of Array.isArray(list) ? list : []) byId.set(u.id, u);
   } catch {
-    // Upgrades are a nicety, so the map draws without them, but a failure is not kept: the next opening asks again.
+    // Upgrades are a nicety, so the map draws without them, but a failure is not kept: the open map's refresh and the next opening ask again.
     return byId;
   }
   upgradeCatalogue = byId;
@@ -448,7 +448,11 @@ function guildEmblem(guildId) {
   if (!emblemPending.has(guildId)) {
     // true: the stored copy is good enough for a thumbnail-sized badge.
     const pending = Promise.all([getGuildInfo(guildId, true), getEmblemPieces()])
-      .then(([info, pieces]) => ({ info, layers: emblemLayers(info, pieces) }));
+      .then(([info, pieces]) => {
+        // getEmblemPieces answers empty when the catalogue failed: kept, that guild would stay blank until reload.
+        if (!pieces.bg.size || !pieces.fg.size) emblemPending.delete(guildId);
+        return { info, layers: emblemLayers(info, pieces) };
+      });
     // Dropped if it fails so the next marker can retry; a kept rejection would blank that guild's emblem.
     pending.catch(() => emblemPending.delete(guildId));
     emblemPending.set(guildId, pending);
@@ -2735,7 +2739,18 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
       const kept = newestMatches.get(match.id);
       if (kept && matchIsBehind(liveMatch, kept.match)) fresh = kept.match;
     }
+    // Not on the opening's own first read: the opening has just asked, with its retries.
+    const refresh = firstReadDone;
     firstReadDone = true;
+    // A catalogue that failed at the opening is asked for again here; the shields are drawn when it lands.
+    if (refresh && !upgradeCatalogue) {
+      getUpgradeCatalogue().then((lines) => {
+        const now = byType.get(current);
+        if (lines.size && !replaced && activePopover === popover && plotWrap && plotWrap.applyLive && now) {
+          plotWrap.applyLive(now, matchIsLive(liveMatch), liveMatch);
+        }
+      });
+    }
     if (replaced || activeTrigger !== triggerEl || !fresh || !Array.isArray(fresh.maps)) return;
     if (seq < paintedSeq && !(latestBodyAt.has(fresh) && matchIsBehind(liveMatch, fresh))) return;
     paintedSeq = Math.max(paintedSeq, seq);
