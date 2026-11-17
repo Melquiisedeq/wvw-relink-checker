@@ -1,6 +1,9 @@
 'use strict';
 // Boot (loads last): the first load, the background refreshes, the ember field, and idling when nobody is looking.
 
+// Said when a file the page needs (js/maps-early.js) did not download.
+const RELOAD_TEXT = "Part of the page didn't load. Reload to fix it.";
+
 // Initial load, then keep both data sets fresh in the background for as
 // long as the tab stays open (see STANDINGS_REFRESH_MS / TIMERS_REFRESH_MS).
 placeRails();
@@ -9,11 +12,22 @@ document.querySelectorAll('.rail-swap').forEach((btn) => {
 });
 showStandingsSkeleton(standingsGridNA);
 showStandingsSkeleton(standingsGridEU);
-refreshStandings();
+// The standings need js/maps-early.js: a file that did not download leaves its names missing.
+const standingsParts = typeof recordFightSamples === 'function' && typeof primeMapBadges === 'function';
+if (!standingsParts) {
+  setStandingsStatus(standingsStatusNA, false, RELOAD_TEXT);
+  setStandingsStatus(standingsStatusEU, false, RELOAD_TEXT);
+  clearSkeleton(standingsGridNA);
+  clearSkeleton(standingsGridEU);
+} else {
+  refreshStandings();
+}
 fetchTimers();
 setInterval(updateRelinkBanner, 60000); // countdown display, and the pace of the teams notice's reads
-startPeeking(); // /api ahead of the board: load it now (js/standings.js)
-standingsTick = schedulePeriodicRefresh(refreshStandings, STANDINGS_REFRESH_MS);
+if (standingsParts) {
+  startPeeking(); // /api ahead of the board: load it now (js/standings.js)
+  standingsTick = schedulePeriodicRefresh(refreshStandings, STANDINGS_REFRESH_MS);
+}
 schedulePeriodicRefresh(fetchTimers, TIMERS_REFRESH_MS);
 
 // Embers on one canvas. The timing curves below are the CSS keyframes written out by hand,
@@ -417,4 +431,4 @@ runBtn.addEventListener('click', run);
 guildInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.ctrlKey && !runBtn.disabled) run();
 });
-document.addEventListener('pointerdown', onPointerDown, { passive: true });
+document.addEventListener('pointerdown', (e) => fx(() => onPointerDown(e)), { passive: true });

@@ -19,7 +19,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { at, MIN, HOUR } from './support/scenarios.mjs';
 import { recording } from './support/recordings.mjs';
-import { iso } from './support/steps.mjs';
+import { iso, load } from './support/steps.mjs';
 
 const ZONES = [
   { zone: 'Europe/Berlin', city: 'Berlin' },
@@ -79,10 +79,7 @@ const read = page => page.evaluate(() => {
 
 async function opened(page, wvw, anchor) {
   await page.clock.setSystemTime(Date.parse(anchor));
-  await page.goto(wvw.url);
-  await expect(page.locator('#standingsGridNA > .standing-match')).toHaveCount(wvw.tiers.NA);
-  await expect(page.locator('#standingsGridEU > .standing-match')).toHaveCount(wvw.tiers.EU);
-  await wvw.settle();
+  await load(page, wvw);
 }
 
 async function openMapNote(page, wvw) {

@@ -2,20 +2,15 @@
 // support/steps.mjs): the map board and its targets at 320 and 360 px, the
 // alliances popover back at a wide width, and the result table inside its card.
 import { test, expect } from './support/fixtures.mjs';
-import { phone, search } from './support/steps.mjs';
+import { load, phone, search } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
-const opened = async (page, wvw) => {
-  await page.goto(wvw.url);
-  await expect(page.locator('#standingsGridNA > .standing-match').first()).toBeVisible();
-  await wvw.settle();
-};
 
 // The team names get room back, the map's tabs and zoom buttons are 34 px
 // targets, the map's popover has no shrink button.
 for (const width of [320, 360]) {
   test(`phone board, ${width} px`, async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await load(page, wvw);
     await phone(page, width);
     await wvw.settle();
     await page.locator('.tier-map-btn').first().click();
@@ -52,7 +47,7 @@ for (const width of [320, 360]) {
 
 // The alliances popover keeps its own expand button, at a wide width.
 test('the alliances popover keeps its expand button', async ({ page, wvw }) => {
-  await opened(page, wvw);
+  await load(page, wvw);
   await page.locator('.server-guilds-btn').first().click();
   await expect(page.locator('.info-popover .info-popover-body').first()).toBeAttached();
   await expect(page.locator('.info-popover .info-popover-expand'), 'the alliances popover lost its expand button').toBeAttached();
@@ -62,7 +57,7 @@ test('the alliances popover keeps its expand button', async ({ page, wvw }) => {
 
 // No column cut off, nothing past the screen.
 test('the result table stays inside its card at 320 and 390 px', async ({ page, wvw }) => {
-  await opened(page, wvw);
+  await load(page, wvw);
   await search(page, wvw.guilds);
   const tagLine = await page.evaluate(() => Math.max(0, ...[...document.querySelectorAll('#resultCard .tag')].map(t => Math.round(t.getBoundingClientRect().height))));
   for (const width of [320, 390]) {

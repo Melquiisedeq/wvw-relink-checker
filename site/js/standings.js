@@ -403,7 +403,7 @@ let standingsRegions = new Set();  // region codes ('1', '2') whose standings ha
 let standingsEverLoaded = false;   // the long deadline is for the first one only
 let standingsInFlight = false;
 let standingsExtraUsed = 0;        // extra tries spent since the last cycle load
-let standingsFailed = [];          // { el, label } of what the last load left unloaded
+let standingsFailed = [];          // { el, label, region } of what the last load left unloaded
 let standingsRetry = null;         // { timer, tick } while an extra try is waiting
 
 function cancelStandingsRetry() {
