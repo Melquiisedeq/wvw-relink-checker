@@ -1,5 +1,5 @@
 # The committed coverage (tests/e2e/data/coverage.json) is the minimum per file over
-# several runs, because a few lines and branches are covered by luck of timing
+# several runs, never below the committed number, because a few lines and branches are covered by luck of timing
 # (real timers, an aborted read). This runs the whole e2e job N times at once (each run two halves, joined),
 # lists what some runs covered and others did not, and fails if anything did, so the
 # email GitHub sends is the reminder. Nothing is written to the repository: the
