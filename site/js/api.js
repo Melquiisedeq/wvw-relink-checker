@@ -68,6 +68,7 @@ let ownClockLead = 0;
 // What the countdowns, the ages and matchIsLive subtract: ownClockLead moves by up to a second with every answer and
 // would make them skip. It follows a reading only past CLOCK_BAND_MS from the kept value; a right clock keeps it 0.
 let steadyClockLead = 0;
+let clockMeasured = false;   // a reading with a trip of up to CLOCK_TRIP_MAX_MS has been accepted
 // The server's time, as the page reads it.
 const steadyNow = () => Date.now() - steadyClockLead;
 async function fetchOwnApi(url, cache = 'default', raw = false) {
@@ -80,9 +81,19 @@ async function fetchOwnApi(url, cache = 'default', raw = false) {
     if (cache === 'no-store') {
       const lead = Date.now() - Date.parse(res.headers.get('Date'));
       ownClockLead = Number.isFinite(lead) ? lead : 0;
-      // No Date header gives NaN, which fails the band test: the reading is dropped.
-      if (Date.now() - sentAt <= CLOCK_TRIP_MAX_MS && Math.abs(lead - steadyClockLead) > CLOCK_BAND_MS) {
+      // No Date header gives NaN: the reading is dropped.
+      const accepted = Date.now() - sentAt <= CLOCK_TRIP_MAX_MS && Number.isFinite(lead);
+      const was = steadyClockLead;
+      if (accepted && Math.abs(lead - steadyClockLead) > CLOCK_BAND_MS) {
         steadyClockLead = Math.abs(lead) > CLOCK_BAND_MS ? lead : 0;
+      }
+      // Bodies stamped before the first accepted reading took this page's clock (`at` still equal to `clockAt`): moved once, here.
+      if (accepted) {
+        clockMeasured = true;
+        for (const k of newestMatches.values()) {
+          if (k.at === k.clockAt) k.at += was - steadyClockLead;
+          delete k.clockAt;
+        }
       }
     }
     return await (raw ? res.text() : res.json());
@@ -316,7 +327,8 @@ function keepNewestMatch(match) {
     at = Math.min(served, copyAt);
     rose = served - at <= (typeof KILLS_ALIVE_MS === 'number' ? KILLS_ALIVE_MS : 0);
   }
-  newestMatches.set(match.id, { match, at, rose, gapFrom });
+  const clockAt = clockMeasured ? undefined : (at === served ? served : (kept && at === kept.at ? kept.clockAt : undefined));
+  newestMatches.set(match.id, { match, at, rose, gapFrom, clockAt });
   weekStoreOffer(match);
   return match;
 }
