@@ -1,13 +1,14 @@
 # The page is checked two ways: the structure job and the syntax job aim at
 # mistakes that fail *silently* in production - a script missing from the
 # ordered list in index.html, a host missing from the Content Security Policy,
-# a syntax error in a file nothing parses until a browser does - and the e2e
-# job (Playwright Test) opens it in a real Chrome and fails on whatever the
-# browser objects to. The rules job runs the unit tests (tests/unit/), among them
+# a syntax error in a file nothing parses until a browser, or health.yml's
+# schedule, does - and the e2e job (Playwright Test) opens it in a real Chrome
+# and fails on whatever the browser objects to. The rules job runs the unit
+# tests (tests/unit/), among them
 # the Worker behind /api, the page's own functions in a node:vm, and the Apps
-# Script setup() of the teams notice against a fake spreadsheet. Five jobs;
-# four are required (structure, syntax, rules, page), and page passes only if
-# e2e did.
+# Script setup() of the teams notice against a fake spreadsheet. Six jobs, the
+# e2e one on two machines (a half of the suite each); four are required
+# (structure, syntax, rules, page), and page passes only if e2e and coverage did.
 name: Checks
 
 on:
@@ -71,6 +72,15 @@ jobs:
           done
           echo "$(ls site/js/*.js worker/*.mjs apps-script/*/*.gs | wc -l) scripts parse."
 
+      # The outward-looking checks run only in health.yml: a syntax
+      # error in one would pass here and ring as a false alarm later.
+      # py_compile parses a file without running it.
+      - name: Compile every Python check
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/*.py
+          echo "$(ls scripts/*.py | wc -l) Python scripts compile."
+
   rules:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -94,16 +104,19 @@ jobs:
   # read-only token. The API and the sheets answer from a recording, so a GW2
   # outage cannot turn a pull request red; the tests run the pull request's
   # JavaScript in a browser: throwaway machine, no secret.
+  # Two machines, one half of the suite each (--shard); a red half does not cancel the other.
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 17
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     defaults:
       run:
         working-directory: tests/e2e
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 2 # a pull request's HEAD is the merge commit; depth 2 brings its first parent, the base
 
       - name: Install the test dependencies from the lockfile
         run: npm ci --ignore-scripts
@@ -117,18 +130,75 @@ jobs:
       # one. support/summary.mjs turns them back on (E2E_RESUME) only to write
       # its own warnings for tests that passed on their retry.
       - name: The page in Playwright Test (a retry passing is a warning, a skip fails)
+        env:
+          SHARD: ${{ matrix.shard }}
         run: |
           token="$(openssl rand -hex 16)"
           echo "::stop-commands::$token"
           set +e
-          E2E_COVERAGE=1 E2E_RESUME="$token" npx playwright test
+          E2E_COVERAGE=1 E2E_RESUME="$token" npx playwright test --shard="$SHARD/2"
           code=$?
           echo "::$token::"
           exit "$code"
 
-      # Coverage (support/coverage.mjs says how): the node tests run again here, with
-      # V8 coverage on, so the `rules` job and `page` keep their names
-      # and rule. A file falling more than 0.5 point fails this job, so `page`.
+      # The raw V8 coverage of this half, for the coverage job to join. Hidden files are
+      # opted in: the folder starts with a dot, and upload-artifact skips those by default.
+      - name: Keep this shard's coverage
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-shard-${{ matrix.shard }}
+          path: tests/e2e/test-results/coverage/.cache/
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+
+      # Traces of what failed, kept three days; nothing on a green run.
+      - name: Keep the traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-traces-${{ matrix.shard }}
+          path: tests/e2e/test-results/
+          retention-days: 3
+          if-no-files-found: ignore
+
+  # Coverage (support/coverage.mjs says how): the two halves' raw coverage joined, the
+  # node tests run again with V8 coverage on (so the `rules` job and `page` keep their
+  # names and rule), and a file falling more than 0.5 point fails this job, so `page`.
+  coverage:
+    needs: [e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: tests/e2e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2 # a pull request's HEAD is the merge commit; depth 2 brings its first parent, the base
+
+      - name: Install the test dependencies from the lockfile
+        run: npm ci --ignore-scripts
+
+      # Without merge-multiple each half lands in its own folder, shards/coverage-shard-<n>/.
+      - name: Download both halves' coverage
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: coverage-shard-*
+          path: tests/e2e/shards
+
+      # Exactly two folders: a missing half fails here by name, not later as a coverage drop.
+      - name: Join the halves
+        run: |
+          count=$(ls -d shards/coverage-shard-* | wc -l)
+          if [ "$count" -ne 2 ]; then
+            echo "expected 2 coverage shards, found $count" >&2
+            exit 1
+          fi
+          mkdir -p test-results/coverage/.cache
+          # One copy per folder: the source-<hash>.json files share names across halves (same content), and one cp refuses them.
+          for d in shards/coverage-shard-*/; do cp "$d"* test-results/coverage/.cache/; done
+
       - name: Coverage per file, and it may not fall
         run: |
           node support/coverage.mjs node
@@ -143,21 +213,11 @@ jobs:
         continue-on-error: true
         run: node support/coverage.mjs untested "$(git rev-parse HEAD^1)"
 
-      # Traces of what failed, kept three days; nothing on a green run.
-      - name: Keep the traces
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: e2e-traces
-          path: tests/e2e/test-results/
-          retention-days: 3
-          if-no-files-found: ignore
-
   # The required check. The ruleset names `page`, so this job keeps the name
-  # and passes only when `e2e` did: a job that was skipped counts as a success
+  # and passes only when `e2e` and `coverage` did: a job that was skipped counts as a success
   # to the ruleset, hence always() and the explicit test.
   page:
-    needs: [e2e]
+    needs: [e2e, coverage]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -166,9 +226,10 @@ jobs:
       - name: Playwright Test passed
         env:
           E2E: ${{ needs.e2e.result }}
+          COVERAGE: ${{ needs.coverage.result }}
         run: |
           failed=0
-          for pair in "e2e=$E2E"; do
+          for pair in "e2e=$E2E" "coverage=$COVERAGE"; do
             echo "$pair"
             case "${pair#*=}" in
               success) ;;

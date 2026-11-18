@@ -1732,6 +1732,49 @@ test('steadyClockLead: an answer slower than a second changes nothing', async ()
   assert.equal(p.steady(), kept);
 });
 
+test('steadyClockLead: a body first seen before the lead is known is moved to the server\'s time when it is, and one dated by a copy stays', async () => {
+  for (const lead of [5 * MIN, -5 * MIN]) {
+    for (const trip of [0, 1500]) {
+      const p = metering(lead);
+      await p.answer(0, 300);
+      p.set('steadyClockLead', 0);
+      p.set('clockMeasured', false);
+      p.set('ownClockLead', 0);
+      const server = p.T0 + 10 * SEC;
+      p.clock.now = server + lead;
+      p.call('keepNewestMatch', stepOf(1));
+      p.clock.now += 3 * SEC;
+      p.call('keepNewestMatch', stepOf(1));   // the same body again keeps the stamp
+      const dated = { ...stepOf(1), id: '1-2' };
+      p.ctx.__latest = dated;
+      p.run('latestBodyAt.set(__latest, Date.now() - steadyClockLead - 90000)');
+      p.call('keepNewestMatch', dated);
+      const at = () => p.run(`[newestMatches.get('${OPEN_ID}').at, newestMatches.get('1-2').at]`);
+      assert.equal(at()[0], server + lead, 'control: stamped on the page clock, a repeat keeping it');
+      const copyAt = at()[1];
+      await p.answer(11, 300, { trip });
+      // The Date header is whole seconds: the lead is right to within one.
+      assert.ok(Math.abs(at()[0] - (trip > 1000 ? server + lead : server)) < SEC, `lead ${lead}, trip ${trip}: ${at()[0] - server}`);
+      assert.equal(at()[1], copyAt, 'a body the copy dated keeps its time');
+      if (trip > 1000) {
+        await p.answer(12, 300);
+        assert.ok(Math.abs(at()[0] - server) < SEC, 'the next reading moves it');
+      }
+      // A stamp made after the first reading is on the server's time already: a later change of the lead moves nothing.
+      const fixed = at()[0];
+      p.clock.now = p.T0 + 20 * SEC + lead;
+      p.call('keepNewestMatch', stepOf(2));
+      const second = p.run(`newestMatches.get('${OPEN_ID}').at`);
+      p.set('fetch', async () => ({ ok: true, headers: { get: () => new Date(p.T0 + 20 * SEC).toUTCString() }, json: async () => ({}) }));
+      p.clock.now += 3 * MIN;
+      await p.call('fetchOwnApi', 'https://wvwrelink.com/api/x', 'no-store');
+      assert.equal(p.run(`newestMatches.get('${OPEN_ID}').at`), second, 'a later change of the lead moves no stamp');
+      assert.equal(p.run(`newestMatches.get('${OPEN_ID}').clockAt`), undefined, 'after the first reading no stamp is marked as the page clock');
+      assert.ok(fixed !== undefined);
+    }
+  }
+});
+
 // Every place that compares a game or server instant with the clock (js/standings.js, js/api.js, js/maps-early.js,
 // js/maps.js, js/stat-popovers.js), with the visitor's clock off by minutes: each reads the server's time. A threshold `limit`
 // is probed 30 s to the young side on a clock ahead and 30 s to the old side on one behind, so either wrong clock lands across it.
@@ -1946,19 +1989,61 @@ for (const lead of [5 * MIN, -5 * MIN]) {
     p.set('peekLoadedAt', 0);
     return p.call('peekLatest').then(() => assert.equal(loads, ahead ? 0 : 1));
   });
-  test(`clock ${side} by 5 min: the "while you were away" summary measures a kept body's age by this page's clock (js/maps-early.js)`, () => {
-    // keepNewestMatch dates a body on the server's time; the summary runs on the page's, so it is carried back.
+  test(`clock ${side} by 5 min: the "while you were away" summary measures a kept body's age by the server's time (js/maps-early.js)`, () => {
     const { p, server } = skewed();
     const before = body(server, { maps: [{ type: 'Center', kills: { red: 1, blue: 0, green: 0 } }] });
     const after = body(server, { maps: [{ type: 'Center', kills: { red: 50, blue: 0, green: 0 } }], kills: { red: 50, blue: 1, green: 1 } });
     keep(p, before, server - probe(p.run('MISSED_AWAY_MS')));
-    p.run(`missedLastOffer.set('1-1', Date.now() - 60000)`);
+    p.run(`missedLastOffer.set('1-1', steadyNow() - 60000)`);
     const calls = [];
     p.set('missedMakeNote', (...a) => { calls.push(a.slice(2, 5)); });
     p.set('missedRefreshNote', () => true);
     p.call('missedMatchOffered', after, p.run("newestMatches.get('1-1')"));
     assert.deepEqual(plain(calls.map((c) => c[2])), ahead ? [] : ['pause']);
   });
+  // A body offered 20 min after the one kept, with more kills on a map: the summary's period is the server's.
+  const gapOf = (p, server) => {
+    const kills = (n) => ({ maps: [{ type: 'Center', kills: { red: n, blue: 0, green: 0 } }], kills: { red: n, blue: 1, green: 1 } });
+    p.call('keepNewestMatch', body(server, kills(1)));
+    return { after: body(server, kills(50)), server };
+  };
+
+  test(`clock ${side} by 5 min: the summary after a gap spans the server's time, not the page's (js/maps-early.js)`, () => {
+    const { p, server } = skewed();
+    const { after } = gapOf(p, server);
+    p.clock.now += 19 * MIN;
+    p.call('keepNewestMatch', body(server, { maps: [{ type: 'Center', kills: { red: 1, blue: 0, green: 0 } }], kills: { red: 1, blue: 1, green: 1 } }));
+    p.clock.now += 1 * MIN;
+    p.call('keepNewestMatch', after);
+    const note = p.run("missedNotes.get('1-1')");
+    assert.ok(note, 'a summary was made');
+    assert.equal(note.rawSince, server);
+    assert.equal(note.back, server + 20 * MIN);
+    assert.equal(note.until, server + 20 * MIN + p.run('MISSED_SHOW_MS'));
+    assert.ok(p.run("missedNoteFor('1-1')"), 'still up before its time');
+    p.clock.now += p.run('MISSED_SHOW_MS') - 1000;
+    assert.ok(p.run("missedNoteFor('1-1')"), 'still up a second before its time');
+    p.clock.now += 2000;
+    assert.equal(p.run("missedNoteFor('1-1')"), null, 'gone after its time');
+  });
+
+  test(`clock ${side} by 5 min: the summary on a return spans the server's time, not the page's (js/maps-early.js)`, () => {
+    const { p, server } = skewed();
+    const { after } = gapOf(p, server);
+    p.ctx.document = { visibilityState: 'hidden' };
+    p.run('missedOnVisibility()');
+    const away = p.run('MISSED_AWAY_MS') + 2 * MIN;
+    p.clock.now += away;
+    p.ctx.document = { visibilityState: 'visible' };
+    p.run('missedOnVisibility()');
+    p.call('keepNewestMatch', after);
+    const note = p.run("missedNotes.get('1-1')");
+    assert.ok(note, 'a summary was made');
+    assert.equal(note.kind, 'return');
+    assert.equal(note.rawSince, server);
+    assert.equal(note.back, server + away);
+  });
+
   test(`clock ${side} by 5 min: the skirmish chart calls a body stalled by the server's time (js/stat-popovers.js)`, () => {
     const { p, server } = skewed();
     p.set('ownClockLead', lead);
