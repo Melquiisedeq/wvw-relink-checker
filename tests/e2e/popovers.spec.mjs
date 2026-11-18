@@ -91,3 +91,39 @@ test.describe('the Seared Borderlands', () => {
     }
   });
 });
+
+// Selecting a name to copy it: the press starts inside the popover and the release lands
+// outside, so the browser fires the click on the body. That must not close it.
+test('a press started inside a popover and released outside leaves it open; a click outside closes it', async ({ page, wvw }) => {
+  await page.goto(wvw.url);
+  await expect(page.locator('#standingsGridNA > .standing-match').first()).toBeVisible();
+  await wvw.settle();
+  const button = page.locator('.icon-btn.server-guilds-btn:visible').first();
+  await button.click();
+  const body = page.locator('.info-popover .info-popover-body');
+  await expect(body).toBeAttached();
+  const popover = page.locator('.info-popover');
+  const box = await body.boundingBox();
+  await page.mouse.move(box.x + 20, box.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(5, 790, { steps: 5 });
+  await page.mouse.up();
+  await expect(popover, 'the popover after a drag out').toHaveCount(1);
+  await page.mouse.click(5, 790);
+  await expect(popover, 'the popover after a click outside').toHaveCount(0);
+});
+
+// A mouse click on a control inside that stops propagation must not leave the "press began
+// inside" memory behind: the keyboard click that follows (no pointerdown) closes as before.
+test('a keyboard click outside closes a popover after a mouse click on its camera button', async ({ page, wvw }) => {
+  await page.goto(wvw.url);
+  await expect(page.locator('#standingsGridNA > .standing-match').first()).toBeVisible();
+  await wvw.settle();
+  await page.locator('.icon-btn.server-guilds-btn:visible').first().click();
+  const popover = page.locator('.info-popover');
+  await popover.locator('.info-popover-shot').click();
+  await expect(popover).toHaveCount(1);
+  await page.getByRole('button', { name: 'Check', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expect(popover, 'the popover after a keyboard click outside').toHaveCount(0);
+});
