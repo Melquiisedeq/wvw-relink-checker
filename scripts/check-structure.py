@@ -448,8 +448,8 @@ def job_timeout(rel, job):
 def check_sweep_timeout(problems):
     """The coverage sweep's run job must not time out before the suite does.
 
-    It runs the same suite as the e2e job of checks.yml, so the two timeouts
-    must be equal: a lower one cancels every round of the sweep.
+    It runs the same half of the suite as each e2e machine of checks.yml, so
+    the two timeouts must be equal: a lower one cancels every round of the sweep.
     """
     found = {}
     for rel, job in (('checks.yml', 'e2e'), ('coverage-sweep.yml', 'run')):
@@ -462,7 +462,7 @@ def check_sweep_timeout(problems):
     if None not in (a, b) and a != b:
         problems.append(
             'coverage-sweep.yml run has timeout-minutes %d but the e2e job of '
-            'checks.yml has %d: the sweep runs the same suite and must have '
+            'checks.yml has %d: the sweep runs the same half of the suite and must have '
             'the same timeout.' % (b, a))
 
 

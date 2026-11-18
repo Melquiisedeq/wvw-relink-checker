@@ -24,10 +24,11 @@ export default defineConfig({
   workers: process.env.RECORD ? 1 : 3,
   globalSetup: './support/record.mjs',
   // On CI a big red stops early, with the e2e FAIL lines printed, instead of
-  // GitHub cancelling the job with none. globalTimeout stays under the e2e job's
-  // timeout-minutes in checks.yml, with room for the trace upload.
+  // GitHub cancelling the job with none. CI runs one half of the suite per job (--shard,
+  // in checks.yml and coverage-sweep.yml), so globalTimeout is a half's: it stays under
+  // those jobs' timeout-minutes, with room for the setup and the trace upload.
   maxFailures: CI ? 10 : 0,
-  globalTimeout: CI ? 22 * 60 * 1000 : 0,
+  globalTimeout: CI ? 14 * 60 * 1000 : 0,
   // Only on CI, and only the test that failed; a pass on the retry is a
   // warning there (support/summary.mjs), never silence.
   retries: CI ? 1 : 0,

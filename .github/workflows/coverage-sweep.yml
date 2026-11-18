@@ -1,6 +1,6 @@
 # The committed coverage (tests/e2e/data/coverage.json) is the minimum per file over
 # several runs, because a few lines and branches are covered by luck of timing
-# (real timers, an aborted read). This runs the whole e2e job N times at once,
+# (real timers, an aborted read). This runs the whole e2e job N times at once (each run two halves, joined),
 # lists what some runs covered and others did not, and fails if anything did, so the
 # email GitHub sends is the reminder. Nothing is written to the repository: the
 # list is in the job summary, and a test that covers what it names is a normal pull request.
@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       runs:
-        description: 'Number of runs, 2 to 20 (the Free plan runs 20 jobs at once: docs.github.com/en/actions/reference/limits)'
+        description: 'Number of runs, 2 to 10 (two jobs each; the Free plan runs 20 jobs at once: docs.github.com/en/actions/reference/limits)'
         default: '10'
 
 # One sweep at a time: two together would just halve the runners each gets.
@@ -31,28 +31,85 @@ jobs:
     outputs:
       indexes: ${{ steps.indexes.outputs.indexes }}
     steps:
-      # A schedule has no inputs, so 10. Over 20 the extra jobs would queue and
+      # A schedule has no inputs, so 10. Over 10 runs (20 jobs) the extra jobs would queue and
       # the sweep would take twice as long for no more information.
       - name: The number of runs
         id: indexes
         env:
           RUNS: ${{ inputs.runs || '10' }}
         run: |
-          if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [ "$RUNS" -lt 2 ] || [ "$RUNS" -gt 20 ]; then
-            echo "runs must be a whole number from 2 to 20, got '$RUNS'" >&2
+          if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [ "$RUNS" -lt 2 ] || [ "$RUNS" -gt 10 ]; then
+            echo "runs must be a whole number from 2 to 10, got '$RUNS'" >&2
             exit 1
           fi
           echo "indexes=$(seq -s, 1 "$RUNS" | sed 's/^/[/; s/$/]/')" >> "$GITHUB_OUTPUT"
 
-  # The e2e job of checks.yml, kept in step with it by hand, except that the
-  # coverage is saved instead of compared, and the output is kept (tee) for a last
+  # The e2e job of checks.yml (both halves of the suite), kept in step with it by hand,
+  # except that the raw coverage is kept for the join job, and the output is kept (tee) for a last
   # step that fails on a test that passed only on a retry; check-structure.py asserts
   # the two timeouts are equal. A run whose tests failed is not a coverage run, so it
   # fails the sweep; a run that only oscillated is red too but keeps its coverage.
   run:
     needs: [plan]
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 17
+    strategy:
+      fail-fast: false
+      matrix:
+        index: ${{ fromJSON(needs.plan.outputs.indexes) }}
+        shard: [1, 2]
+    defaults:
+      run:
+        working-directory: tests/e2e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the test dependencies from the lockfile
+        run: npm ci --ignore-scripts
+
+      # Commands stopped while the tests run, as in checks.yml: a failure prints
+      # what the page said, and a line starting with "::" would be read as one.
+      - name: The page in Playwright Test
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          token="$(openssl rand -hex 16)"
+          echo "::stop-commands::$token"
+          set +e
+          E2E_COVERAGE=1 E2E_RESUME="$token" npx playwright test --shard="$SHARD/2" 2>&1 | tee e2e-output.txt
+          code=${PIPESTATUS[0]}
+          echo "::$token::"
+          exit "$code"
+
+      # The name carries the index and the shard: equal names in one matrix conflict. Hidden
+      # files are opted in: the folder starts with a dot.
+      - name: Keep this half's raw coverage
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: raw-${{ matrix.index }}-${{ matrix.shard }}
+          path: tests/e2e/test-results/coverage/.cache/
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+
+      # After the coverage is kept: a half that only oscillated still has full coverage,
+      # so failing here must not cost the sweep that half's artifact.
+      - name: A test that passed only on a retry
+        run: |
+          [ -f e2e-output.txt ] || { echo "no e2e-output.txt"; exit 1; }
+          if grep -qE '^e2e: all .* only on a retry' e2e-output.txt; then
+            grep '^e2e FLAKY ' e2e-output.txt
+            exit 1
+          fi
+
+  # What the coverage job of checks.yml does, saving the report instead of comparing it:
+  # the two halves of one run joined. A half that failed leaves no artifact, so the run is
+  # not joined (half the coverage would lower the minimum the sweep writes).
+  join:
+    needs: [plan, run]
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
@@ -66,17 +123,25 @@ jobs:
       - name: Install the test dependencies from the lockfile
         run: npm ci --ignore-scripts
 
-      # Commands stopped while the tests run, as in checks.yml: a failure prints
-      # what the page said, and a line starting with "::" would be read as one.
-      - name: The page in Playwright Test
+      # Without merge-multiple each half lands in its own folder, shards/raw-<i>-<n>/.
+      - name: Download this run's two halves
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: raw-${{ matrix.index }}-*
+          path: tests/e2e/shards
+
+      - name: Join the halves
+        env:
+          INDEX: ${{ matrix.index }}
         run: |
-          token="$(openssl rand -hex 16)"
-          echo "::stop-commands::$token"
-          set +e
-          E2E_COVERAGE=1 E2E_RESUME="$token" npx playwright test 2>&1 | tee e2e-output.txt
-          code=${PIPESTATUS[0]}
-          echo "::$token::"
-          exit "$code"
+          count=$(ls -d shards/raw-"$INDEX"-* 2>/dev/null | wc -l)
+          if [ "$count" -ne 2 ]; then
+            echo "run $INDEX: expected 2 coverage shards, found $count" >&2
+            exit 1
+          fi
+          mkdir -p test-results/coverage/.cache
+          # One copy per folder: the source-<hash>.json files share names across halves (same content), and one cp refuses them.
+          for d in shards/raw-"$INDEX"-*/; do cp "$d"* test-results/coverage/.cache/; done
 
       - name: Coverage of this run
         run: |
@@ -92,18 +157,8 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-      # After the report is kept: a run that only oscillated still has full coverage,
-      # so failing here must not cost the sweep that run's artifact.
-      - name: A test that passed only on a retry
-        run: |
-          [ -f e2e-output.txt ] || { echo "no e2e-output.txt"; exit 1; }
-          if grep -qE '^e2e: all .* only on a retry' e2e-output.txt; then
-            grep '^e2e FLAKY ' e2e-output.txt
-            exit 1
-          fi
-
   report:
-    needs: [plan, run]
+    needs: [plan, run, join]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -113,7 +168,7 @@ jobs:
       # Without merge-multiple each artifact lands in its own folder, coverage-<i>/:
       # every one holds an istanbul.json, which merging would overwrite.
       - name: Download every run's report
-        if: needs.run.result != 'skipped'
+        if: needs.join.result != 'skipped'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: coverage-*
@@ -125,12 +180,13 @@ jobs:
         env:
           PLAN: ${{ needs.plan.result }}
           RUN: ${{ needs.run.result }}
+          JOIN: ${{ needs.join.result }}
         run: |
           cd tests/e2e
           arrived=$(ls -d sweep-in/coverage-* 2>/dev/null | wc -l)
-          echo "Runs that reached the report: $arrived (plan $PLAN, run $RUN)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Runs that reached the report: $arrived (plan $PLAN, run $RUN, join $JOIN)" | tee -a "$GITHUB_STEP_SUMMARY"
           code=0
-          [ "$PLAN" = success ] && [ "$RUN" = success ] || code=1
+          [ "$PLAN" = success ] && [ "$RUN" = success ] && [ "$JOIN" = success ] || code=1
           if [ "$arrived" -ge 2 ]; then
             node support/coverage.mjs sweep sweep-in || code=1
           else
