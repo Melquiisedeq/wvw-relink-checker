@@ -526,9 +526,10 @@ test.describe('kills in steps, the score rising', () => {
         await r.open();
         let lit = 0;
         let out = 0;
-        // The 30 s steps keep the page's timers firing.
+        // The 30 s steps keep the page's timers firing. Each waits for the page's requests: the fake server answers at the page's clock, and the page stamps a kills sample with the time it asked.
         for (let i = 1; i <= 60; i++) {
           await page.clock.fastForward(30 * 1000);
+          await wvw.settle();
           // Before the last kills, a silence is a gap between steps, not the stop.
           if (i / 2 <= c.last + 2) continue;
           const silence = (await killCorner(page)).silence;
@@ -563,9 +564,10 @@ test.describe('kills in steps, the score rising', () => {
       await r.open();
       let quiet = 0;
       let warned = 0;
-      // The 30 s steps keep the page's timers firing.
+      // The 30 s steps keep the page's timers firing; each waits for the network, as in the loop above.
       for (let i = 1; i <= 60; i++) {
         await page.clock.fastForward(30 * 1000);
+        await wvw.settle();
         const silence = (await killCorner(page)).silence;
         const inQuiet = silence > 9.2 * MIN && silence < 9.8 * MIN && !quiet;
         // 9 min plus 15 kills at the window's pace, 12 to 17 a minute.
