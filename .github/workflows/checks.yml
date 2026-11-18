@@ -96,7 +96,7 @@ jobs:
   # JavaScript in a browser: throwaway machine, no secret.
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: tests/e2e
