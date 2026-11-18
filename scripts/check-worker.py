@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Is wvwrelink.com/api still being fed, still answering, and still shut?
 
-The two Apps Scripts push after every tick, and a push that stops is silent:
-the sheets carry on, the page falls back to them, and the history in D1 just
-thins out. /api/health says when each source last reported, which is the one
-thing to ask from outside.
+The kills script pushes after a tick that moved a match, the notice script
+after every tick, and a push that stops is silent: the sheets carry on, the
+page falls back to them, and the history in D1 just thins out. /api/health
+says when each source last reported, which is the one thing to ask from outside.
 
 Then the reads the page tries first, in the shape it reads them - a read
 that fails costs the page nothing, since it falls back to the sheets, which is
