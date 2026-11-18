@@ -1,9 +1,10 @@
 # The page is checked two ways: the structure job and the syntax job aim at
 # mistakes that fail *silently* in production - a script missing from the
 # ordered list in index.html, a host missing from the Content Security Policy,
-# a syntax error in a file nothing parses until a browser does - and the e2e
-# job (Playwright Test) opens it in a real Chrome and fails on whatever the
-# browser objects to. The rules job runs the unit tests (tests/unit/), among them
+# a syntax error in a file nothing parses until a browser, or health.yml's
+# schedule, does - and the e2e job (Playwright Test) opens it in a real Chrome
+# and fails on whatever the browser objects to. The rules job runs the unit
+# tests (tests/unit/), among them
 # the Worker behind /api, the page's own functions in a node:vm, and the Apps
 # Script setup() of the teams notice against a fake spreadsheet. Six jobs, the
 # e2e one on two machines (a half of the suite each); four are required
@@ -70,6 +71,15 @@ jobs:
             node --check "$RUNNER_TEMP/$(basename "$f" .gs).js"
           done
           echo "$(ls site/js/*.js worker/*.mjs apps-script/*/*.gs | wc -l) scripts parse."
+
+      # The outward-looking checks run only in health.yml: a syntax
+      # error in one would pass here and ring as a false alarm later.
+      # py_compile parses a file without running it.
+      - name: Compile every Python check
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/*.py
+          echo "$(ls scripts/*.py | wc -l) Python scripts compile."
 
   rules:
     runs-on: ubuntu-latest
