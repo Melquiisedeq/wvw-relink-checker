@@ -9,7 +9,7 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      # Monthly, not weekly. One action does not produce enough news to be
+      # Monthly, not weekly. Three actions do not produce enough news to be
       # worth a weekly notification that gets ignored.
       interval: monthly
 

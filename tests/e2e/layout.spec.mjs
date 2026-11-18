@@ -1,4 +1,4 @@
-// Nothing past the screen's edge: the page at 320, 360 and 390 px, in five
+// Nothing past the screen's edge: the page at 320, 360 and 390 px, in four
 // fonts, at rest, after a guild search, with a tier's map open, and with the teams notice up.
 //
 // The viewport is a plain narrow window, not a phone's (support/steps.mjs,
