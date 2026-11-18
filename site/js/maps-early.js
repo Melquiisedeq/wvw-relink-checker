@@ -617,8 +617,8 @@ function missedRefreshNote(match, now) {
 
 // Called by keepNewestMatch with every body offered and the one kept before it.
 function missedMatchOffered(match, kept) {
-  const now = Date.now();
-  const keptAt = kept ? kept.at + steadyClockLead : 0;   // the summary runs on this page's clock
+  const now = steadyNow();   // the summary runs on the server's clock, like the bodies' `at`, the samples and the flips
+  const keptAt = kept ? kept.at : 0;
   const lastOffer = missedLastOffer.get(match.id) || 0;
   missedLastOffer.set(match.id, now);
   if (!kept || matchIsBehind(match, kept.match)) return;
@@ -642,16 +642,17 @@ function missedMatchOffered(match, kept) {
   missedRingFor(match.id, missedOwnerChanges(kept.match, match));
 }
 
-document.addEventListener('visibilitychange', () => {
+function missedOnVisibility() {
   if (document.visibilityState === 'hidden') {
-    missedHidden = { at: Date.now(), bodies: new Map([...newestMatches].map(([id, k]) => [id, k.match])) };
+    missedHidden = { at: steadyNow(), bodies: new Map([...newestMatches].map(([id, k]) => [id, k.match])) };
     return;
   }
-  if (missedHidden && Date.now() - missedHidden.at > MISSED_AWAY_MS) {
-    missedReturn = { since: missedHidden.at, back: Date.now(), bodies: missedHidden.bodies };
+  if (missedHidden && steadyNow() - missedHidden.at > MISSED_AWAY_MS) {
+    missedReturn = { since: missedHidden.at, back: steadyNow(), bodies: missedHidden.bodies };
   }
   missedHidden = null;
-});
+}
+document.addEventListener('visibilitychange', missedOnVisibility);
 
 // A click on an objective of the map folds the summary on every width, so the
 // objective's tab has the room; it stays folded until the reader opens it.
@@ -664,7 +665,7 @@ function missedNoteFor(matchId) {
   const note = missedNotes.get(matchId);
   const kept = newestMatches.get(matchId);
   const turned = note && kept && kept.match.start_time !== note.after.start_time;
-  if (note && (turned || Date.now() > note.until)) { missedNotes.delete(matchId); return null; }
+  if (note && (turned || steadyNow() > note.until)) { missedNotes.delete(matchId); return null; }
   return note || null;
 }
 
