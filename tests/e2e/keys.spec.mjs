@@ -365,4 +365,16 @@ test.describe('a popover that leaves the page live', () => {
     await expect(page.locator(POP)).toHaveCount(0);
     await expect(tier.button, 'the page was held, so the focus goes back').toBeFocused();
   });
+
+  test('the expanded guilds list holds the page: a click on its backdrop gives the focus back to the icon', async ({ page, wvw }) => {
+    await load(page, wvw);
+    const button = page.locator('.server-guilds-btn').locator('visible=true').first();
+    await button.click();
+    await expect(page.locator(`${POP} .info-popover-body`).first()).toBeAttached();
+    await page.locator(`${POP} .info-popover-expand`).click();
+    await expect(page.locator('.info-popover-backdrop')).toHaveCount(1);
+    await page.mouse.click(2, 2);
+    await expect(page.locator(POP)).toHaveCount(0);
+    await expect(button, 'the page was held, so the focus goes back').toBeFocused();
+  });
 });
