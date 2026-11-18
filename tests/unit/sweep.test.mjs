@@ -2,7 +2,7 @@
 // what no run covers, and the minimum per file. Reports made by hand, istanbul's shape.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addedLines, compareRuns, mdCode, minimumOf, sweepText, untestedLines, untestedText } from '../e2e/support/sweep.mjs';
+import { addedLines, compareRuns, floorOf, mdCode, minimumOf, sweepText, untestedLines, untestedText } from '../e2e/support/sweep.mjs';
 
 const at = line => ({ start: { line } });
 // Statements on lines 1, 2, 3; one if on line 2 with two arms (lines 2 and 3).
@@ -44,6 +44,14 @@ test('the minimum is taken per file and metric, from every run', () => {
   ]);
   assert.deepEqual(min, { 'a.js': { lines: 70.5, branches: 55.5 }, 'b.js': { lines: 85, branches: 80 }, 'c.js': { lines: 100, branches: 100 } });
   assert.deepEqual(Object.keys(min), ['a.js', 'b.js', 'c.js']);
+});
+
+test('the floor written never goes below the committed one, and names what stayed', () => {
+  const committed = { 'a.js': { lines: 97.7, branches: 90 }, 'b.js': { lines: 80, branches: 70 }, 'gone.js': { lines: 50, branches: 50 } };
+  const measured = { 'a.js': { lines: 97.4, branches: 92 }, 'b.js': { lines: 80, branches: 70 }, 'new.js': { lines: 60, branches: 55 } };
+  const { floor, kept } = floorOf(committed, measured);
+  assert.deepEqual(floor, { 'a.js': { lines: 97.7, branches: 92 }, 'b.js': { lines: 80, branches: 70 }, 'new.js': { lines: 60, branches: 55 } });
+  assert.deepEqual(kept, [{ file: 'a.js', metric: 'lines', committed: 97.7, measured: 97.4 }]);
 });
 
 test('the text names the line, the kind, the count and the code', () => {

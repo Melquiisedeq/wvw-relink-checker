@@ -1,6 +1,6 @@
 // wvwrelink.com/api. What it accepts, and what is worth reporting: SECURITY.md.
 //
-//   POST /api/ingest/kills    the kills script, after every tick
+//   POST /api/ingest/kills    the kills script, after a tick that moved a match
 //   POST /api/ingest/relink   the teams notice script, after every tick
 //   POST /api/ingest/latest-supa-us, latest-supa-eu
 //                              the outside readers of the game API, the newest match bodies,

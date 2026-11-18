@@ -16,7 +16,8 @@ function formatCountdown(msRemaining) {
 }
 
 // Each region's weekly reset, in UTC: [day of week, hour]. The same hours
-// as RESET in worker/index.mjs and supabase/reader.mjs: change all three.
+// as RESET in worker/index.mjs and supabase/reader.mjs: change all three
+// (tests/unit/reset-schedule.test.mjs fails if they disagree).
 const RESET_SCHEDULE = { NA: [6, 2], EU: [5, 18] };
 const RESET_ARRIVAL_MS = 15 * 60 * 1000;
 
@@ -556,7 +557,7 @@ function updateRelinkBanner() {
       false,
       relinkWeek
         ? 'The last reset of the season. At this one the teams themselves are rebuilt, not just the matchups.'
-        : 'When the current matchups end and every tier is redrawn for the week ahead. Weekly - the relink that rebuilds the teams themselves is monthly.'
+        : 'When the current matchups end and every tier is redrawn for the week ahead. Weekly — the relink that rebuilds the teams themselves is monthly.'
     );
     if (relinkWeek) {
       stat.classList.add('relink-week');
@@ -604,7 +605,7 @@ function updateRelinkBanner() {
     alert.innerHTML = WARN_ICON;
     const text = document.createElement('span');
     // Guild or team, not both: a player with a WvW guild cannot pick a team.
-    text.textContent = 'Set your WvW guild before the lockout - or pick a team if you have none. '
+    text.textContent = 'Set your WvW guild before the lockout — or pick a team if you have none. '
       + 'After it, your team is fixed for the month.';
     alert.appendChild(text);
     relinkBanner.appendChild(alert);
