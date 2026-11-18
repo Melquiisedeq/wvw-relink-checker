@@ -203,7 +203,7 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     const figures = document.createElement('div');
     figures.className = 'pop-figures pop-figures--three';
     const fLast = popFigure('Last block', mine.done[mine.done.length - 1].toLocaleString());
-    fLast.title = 'The most recent block that has finished - not the one being played now.';
+    fLast.title = 'The most recent block that has finished — not the one being played now.';
     // With one finished block, average and peak would report the same score under labels
     // promising a comparison, so they hold a dash.
     const comparable = finished >= 2;
@@ -324,7 +324,7 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     now.className = 'trend-live';
     // "The finished ones", not "the chart": the band shows before there is a chart.
     now.title = 'A skirmish is a 2-hour block, 84 of them from reset to reset. This one '
-      + 'is still being played, so its score cannot be compared with the finished ones - '
+      + 'is still being played, so its score cannot be compared with the finished ones — '
       + 'the projection can. ArenaNet publishes a running block late, so no projection '
       + 'is offered before the 45-minute mark.';
     const head = document.createElement('span');
@@ -378,7 +378,7 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
   }
 
   // The last sentence is about the chart, so it goes only where the chart went.
-  const note = 'A skirmish is a 2-hour block - 84 of them in a week. Most of the score '
+  const note = 'A skirmish is a 2-hour block — 84 of them in a week. Most of the score '
     + 'comes from holding objectives, not from kills, so a big number usually means '
     + 'map control.';
   popover.appendChild(popNote(
@@ -440,7 +440,7 @@ function renderActivityInfoPopoverContent(popover, serverName, match, color) {
   popover.appendChild(popBarTotal('Tier total', 'pop-bar-label--wide',
     all.toLocaleString()));
 
-  popover.appendChild(popNote('Activity is kills + deaths this week - a straightforward measure '
+  popover.appendChild(popNote('Activity is kills + deaths this week — a straightforward measure '
     + 'of combat, with none of the PPT ambiguity skirmish score has. It counts fights, not '
     + 'whether they were won; the K/D beside it says that.'));
 }
