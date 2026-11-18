@@ -84,7 +84,7 @@ test('the lockout inside 3 days: the alert line, and the relink stands down', as
   await expect(banner(page)).toHaveClass(/is-lockout/);
   await expect(banner(page)).not.toHaveClass(/is-urgent/);
   await expect(banner(page).locator('.relink-stat-value').nth(1)).toHaveText('2d 5h');
-  await expect(alertLine(page)).toContainText('Set your WvW guild before the lockout');
+  await expect(alertLine(page)).toContainText('Set your WvW guild before the lockout — or pick a team');
   await expect(alertLine(page)).not.toContainText('reset night');
   await expect(titles(page).nth(1).locator('svg'), 'the warning on the lockout').toHaveCount(1);
 });

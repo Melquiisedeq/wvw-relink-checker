@@ -556,7 +556,7 @@ function updateRelinkBanner() {
       false,
       relinkWeek
         ? 'The last reset of the season. At this one the teams themselves are rebuilt, not just the matchups.'
-        : 'When the current matchups end and every tier is redrawn for the week ahead. Weekly - the relink that rebuilds the teams themselves is monthly.'
+        : 'When the current matchups end and every tier is redrawn for the week ahead. Weekly — the relink that rebuilds the teams themselves is monthly.'
     );
     if (relinkWeek) {
       stat.classList.add('relink-week');
@@ -604,7 +604,7 @@ function updateRelinkBanner() {
     alert.innerHTML = WARN_ICON;
     const text = document.createElement('span');
     // Guild or team, not both: a player with a WvW guild cannot pick a team.
-    text.textContent = 'Set your WvW guild before the lockout - or pick a team if you have none. '
+    text.textContent = 'Set your WvW guild before the lockout — or pick a team if you have none. '
       + 'After it, your team is fixed for the month.';
     alert.appendChild(text);
     relinkBanner.appendChild(alert);
