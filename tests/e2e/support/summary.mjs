@@ -2,7 +2,8 @@
 // needs from whoever reads it: one line per failed test (file:line, test,
 // step, selector, the error's first line, the trace's path), one per skipped
 // test, which fails the run - a skip or fixme left in is a test nobody runs -
-// one per test that passed only on its retry, and a single line when all is
+// one per test that passed only on its retry, a count of the tests that did
+// not run, one per file among the ten slowest, and the total when all is
 // green. The dot reporter beside it keeps the full errors.
 //
 // On GitHub Actions (GITHUB_ACTIONS=true) a test that passed on its retry is
@@ -29,6 +30,34 @@ function failedStep(steps) {
   return null;
 }
 
+// Skipped on purpose is what the test declared (test.skip, fixme); any other skipped
+// outcome never finished: a failed beforeAll, a worker that died, a run stopped by
+// maxFailures or globalTimeout.
+export function sort(tests) {
+  const out = { failed: [], skipped: [], notRun: [], flaky: [], passed: 0 };
+  for (const test of tests) {
+    const outcome = test.outcome();
+    if (outcome === 'skipped' && test.expectedStatus !== 'skipped') out.notRun.push(test);
+    else if (outcome === 'unexpected') out.failed.push(test);
+    else if (outcome === 'skipped') out.skipped.push(test);
+    else if (outcome === 'flaky') out.flaky.push(test);
+    else out.passed++;
+  }
+  return out;
+}
+
+// The files with the most time summed over their results, workers in parallel counted together.
+export function slowest(tests, max = 10) {
+  const files = new Map();
+  for (const test of tests) {
+    const f = files.get(test.location.file) || { file: test.location.file, ms: 0, tests: 0 };
+    f.tests++;
+    for (const r of test.results) f.ms += r.duration;
+    files.set(f.file, f);
+  }
+  return [...files.values()].sort((a, b) => b.ms - a.ms).slice(0, max);
+}
+
 export default class Summary {
   onBegin(config, suite) {
     this.suite = suite;
@@ -46,15 +75,7 @@ export default class Summary {
   }
 
   onEnd(result) {
-    const failed = [], skipped = [], flaky = [];
-    let passed = 0;
-    for (const test of this.suite.allTests()) {
-      const outcome = test.outcome();
-      if (outcome === 'unexpected') failed.push(test);
-      else if (outcome === 'skipped') skipped.push(test);
-      else if (outcome === 'flaky') flaky.push(test);
-      else passed++;
-    }
+    const { failed, skipped, notRun, flaky, passed } = sort(this.suite.allTests());
 
     for (const test of failed) {
       const last = test.results[test.results.length - 1];
@@ -74,9 +95,13 @@ export default class Summary {
     for (const test of flaky) {
       console.log(`e2e FLAKY ${this.where(test.location)} | ${one(this.title(test))} | failed, then passed on retry ${test.results.length - 1}`);
     }
+    for (const f of slowest(this.suite.allTests())) {
+      console.log(`e2e SLOW ${relative(process.cwd(), f.file)} | ${Math.round(f.ms / 1000)} s, ${f.tests} tests`);
+    }
+    if (notRun.length) console.log(`e2e: ${notRun.length} did not run (run ${result.status})`);
     if (!failed.length && !skipped.length && result.status === 'passed') {
       console.log(`e2e: all ${passed + flaky.length} passed in ${(result.duration / 1000).toFixed(1)} s${flaky.length ? `, ${flaky.length} only on a retry` : ''}`);
-    } else if (!failed.length && !skipped.length) {
+    } else if (!failed.length && !skipped.length && !notRun.length) {
       console.log(`e2e: run ${result.status}`);
     }
 

@@ -142,12 +142,17 @@ export function keptMatch(page, id) {
 // The score `id` has on the page's board, or -1 while it has no body for it.
 export const scoreOf = (page, id) => page.evaluate(i => { const m = matchDataCache.get(i); return m ? colorSum(m.scores) : -1; }, id);
 
-// Every body on show, as copies, and the colours of `id` by rank.
-export const board = (page, id) => page.evaluate(i => {
-  const list = [...matchDataCache.values()].map(m => JSON.parse(JSON.stringify(m)));
-  const rank = rankMatchByVictoryPoints(matchDataCache.get(i));
-  return { list, byRank: Object.keys(rank).sort((a, b) => rank[a] - rank[b]) };
-}, id);
+// Every body on show, as copies, and the colours of `id` by rank: victory points,
+// then score, then red, blue, green. Worked out here, not asked of the page, so
+// a wrong rule on the page cannot agree with itself.
+export const board = async (page, id) => {
+  const list = await page.evaluate(() => [...matchDataCache.values()].map(m => JSON.parse(JSON.stringify(m))));
+  const m = list.find(x => x.id === id);
+  const n = (o, c) => Number(o?.[c] ?? 0);
+  const byRank = ['red', 'blue', 'green']
+    .sort((a, b) => (n(m.victory_points, b) - n(m.victory_points, a)) || (n(m.scores, b) - n(m.scores, a)));
+  return { list, byRank };
+};
 
 // Two animation frames: what a repaint scheduled has been drawn.
 export const frame = page => page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
