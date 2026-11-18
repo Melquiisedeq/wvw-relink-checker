@@ -117,7 +117,21 @@ function setPopoverExpanded(popover, triggerEl, expand) {
   if (grid && popover.__allianceData) layoutAllianceGrid(grid, popover.__allianceData, expand);
 }
 
+// A press that starts inside and is released outside (selecting a guild name) lands its
+// click on the common ancestor, outside the popover: it must not close it.
+let pressStartedInside = false;
+document.addEventListener('pointerdown', (e) => {
+  pressStartedInside = !!activePopover && activePopover.contains(e.target);
+}, true);
+// Read and cleared in capture: a button inside that stops propagation never lets the
+// click reach the bubbling listener, and a stale flag would swallow a keyboard click.
+let clickFromInside = false;
+document.addEventListener('click', () => {
+  clickFromInside = pressStartedInside;
+  pressStartedInside = false;
+}, true);
 document.addEventListener('click', (e) => {
+  if (clickFromInside) return;
   if (activePopover && !activePopover.contains(e.target) && e.target !== activeTrigger) {
     closePopover(true);
   }
