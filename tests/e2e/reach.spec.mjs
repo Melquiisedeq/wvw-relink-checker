@@ -287,7 +287,7 @@ test.describe('the map: zoom and drag', () => {
     }
     expect(marker, 'a marker well inside the view').not.toBeNull();
     const before = await marker.boundingBox();
-    // Grab the ground beside the marker: a pointerdown on a marker does not drag.
+    // Grab the ground beside the marker.
     const gx = before.x - 30, gy = before.y - 30;
     await page.mouse.move(gx, gy);
     await page.mouse.down();
@@ -323,6 +323,73 @@ test.describe('the map: zoom and drag', () => {
     await t('touchEnd');
     await expect.poll(async () => (await view(page))[0], { message: 'a finger dragging the map right' }).toBeLessThan(z[0]);
     expect((await view(page))[1]).toBeLessThan(z[1]);
+    await wvw.settle();
+  });
+
+  for (const how of ['mouse', 'finger']) test(`a ${how} drag that starts on a marker pans the map and picks nothing; a tap on it picks`, async ({ page, wvw, context }) => {
+    await map(page, wvw);
+    for (let i = 0; i < 3; i++) await zoom(page, 'Zoom in').click();
+    const plot = await page.locator(`${POP} .wvw-plot`).boundingBox();
+    const markers = page.locator(`${POP} .wvw-marker`).locator('visible=true');
+    let marker = null;
+    for (const m of await markers.all()) {
+      const b = await m.boundingBox();
+      if (b && b.x > plot.x + 60 && b.x < plot.x + plot.width - 220 && b.y > plot.y + 60 && b.y < plot.y + plot.height - 220) { marker = m; break; }
+    }
+    expect(marker, 'a marker well inside the view').not.toBeNull();
+    const centre = async () => { const b = await marker.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+    const picked = page.locator(`${POP} .wvw-marker.is-selected`);
+    const cdp = await context.newCDPSession(page);
+    const t = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+
+    {
+      const before = await centre();
+      if (how === 'mouse') {
+        await page.mouse.move(before.x, before.y);
+        await page.mouse.down();
+        await page.mouse.move(before.x + 50, before.y + 50, { steps: 5 });
+        await page.mouse.move(before.x + 100, before.y + 100, { steps: 5 });
+        await page.mouse.up();
+      } else {
+        await t('touchStart', before.x, before.y);
+        for (let i = 1; i <= 10; i++) await t('touchMove', before.x + i * 10, before.y + i * 10);
+        await t('touchEnd');
+      }
+      await expect.poll(async () => Math.round((await centre()).x - before.x), { message: `${how}: the map following the drag` }).toBeGreaterThan(90);
+      const after = await centre();
+      expect(Math.abs(after.x - before.x - 100), `${how}: dragged 100 px right`).toBeLessThanOrEqual(1);
+      expect(Math.abs(after.y - before.y - 100), `${how}: dragged 100 px down`).toBeLessThanOrEqual(1);
+      await expect(picked, `${how}: a drag does not pick the objective`).toHaveCount(0);
+      await expect(page.locator(`${POP} .wvw-plot-wrap`), `${how}: no capture left`).not.toHaveClass(/is-panning/);
+
+      const at = await centre();
+      if (how === 'mouse') await page.mouse.click(at.x, at.y);
+      else await page.touchscreen.tap(at.x, at.y);
+      await expect(picked, `${how}: a tap picks the objective`).toHaveCount(1);
+    }
+    await wvw.settle();
+  });
+
+  test('a short finger drag from a marker, which Chrome still turns into a click, moves the map and picks nothing', async ({ page, wvw, context }) => {
+    await map(page, wvw);
+    for (let i = 0; i < 3; i++) await zoom(page, 'Zoom in').click();
+    const plot = await page.locator(`${POP} .wvw-plot`).boundingBox();
+    const markers = page.locator(`${POP} .wvw-marker`).locator('visible=true');
+    let marker = null;
+    for (const m of await markers.all()) {
+      const b = await m.boundingBox();
+      if (b && b.x > plot.x + 60 && b.x < plot.x + plot.width - 220 && b.y > plot.y + 60 && b.y < plot.y + plot.height - 220) { marker = m; break; }
+    }
+    expect(marker, 'a marker well inside the view').not.toBeNull();
+    const b0 = await marker.boundingBox();
+    const x0 = b0.x + b0.width / 2, y0 = b0.y + b0.height / 2;
+    const cdp = await context.newCDPSession(page);
+    const t = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+    await t('touchStart', x0, y0);
+    for (let i = 1; i <= 5; i++) await t('touchMove', x0 + i * 2, y0);
+    await t('touchEnd');
+    await expect.poll(async () => { const b = await marker.boundingBox(); return Math.round(b.x + b.width / 2 - x0); }, { message: 'the map following the finger' }).toBeGreaterThan(5);
+    await expect(page.locator(`${POP} .wvw-marker.is-selected`), 'the click that follows the drag picks nothing').toHaveCount(0);
     await wvw.settle();
   });
 });

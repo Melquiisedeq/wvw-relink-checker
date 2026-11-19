@@ -112,7 +112,7 @@ test('a ring stays on its icon through a zoom, a drag and a scrolled popover', a
   await frame(page);
   await check('after a zoom');
 
-  // A drag from an empty spot of the map (a marker takes the press for itself).
+  // A drag from an empty spot of the map.
   const box = await page.locator(`${POP} .wvw-plot-wrap`).boundingBox();
   const start = await page.evaluate(([sel, b]) => {
     for (let fy = 0.3; fy < 0.8; fy += 0.05) for (let fx = 0.3; fx < 0.8; fx += 0.05) {
