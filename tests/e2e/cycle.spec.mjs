@@ -3,7 +3,7 @@
 // old, and the copy's summary when the one in hand is too old to say; with the copy
 // old, or /api failing, it reads the game's list as ever.
 import { test, expect } from './support/fixtures.mjs';
-import { fail } from './support/faults.mjs';
+import { answer, fail } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { FOCUS, MIN, copyAheadOld, livePush, playingHalfMinutes } from './support/scenarios.mjs';
 import { load, matchReads, play, scoreOf } from './support/steps.mjs';
@@ -137,8 +137,7 @@ test.describe('fresh summary, the copy not behind it', () => {
     await load(page, wvw);
     const asked = matchReads(page);
     const sum = await summaryNow(wvw, 500);
-    await page.route(SUMMARY, route => route.fulfill({ status: 200, json: sum,
-      headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } }));
+    await answer(page, SUMMARY, sum);
     await fail(page, wvw, /\/api\/latest$/);
     await page.evaluate(() => loadStandings());
     await wvw.settle();
@@ -158,8 +157,7 @@ test.describe('the week turns', () => {
     const turn = wvw.recordedAt + wvw.timeline.end + 3 * MIN;   // just past the NA reset, which the timeline ends a minute or two before
     const sum = await summaryNow(wvw, 0, turn);
     await wvw.skew(turn - await wvw.now());
-    await page.route(SUMMARY, route => route.fulfill({ status: 200, json: sum,
-      headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } }));
+    await answer(page, SUMMARY, sum);
     await page.evaluate(() => loadStandings());
     await wvw.settle();
     expect(asked.filter(u => LIST.test(u)).length, 'reads of ids=all').toBeGreaterThanOrEqual(1);
