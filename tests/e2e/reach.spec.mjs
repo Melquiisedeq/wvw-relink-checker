@@ -326,6 +326,146 @@ test.describe('the map: zoom and drag', () => {
     await wvw.settle();
   });
 
+  // Two fingers by hand: CDP touch points with ids, so a finger can lift while the other stays.
+  const fingers = async (page, context) => {
+    const cdp = await context.newCDPSession(page);
+    let pts = [];
+    const send = type => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(p => ({ ...p })) });
+    return {
+      down: async (...ps) => { pts = ps.map(([x, y], i) => ({ x, y, id: i + 1 })); await send('touchStart'); },
+      move: async (...ps) => { pts = ps.map(([x, y], i) => ({ x, y, id: pts[i].id })); await send('touchMove'); },
+      // touchEnd lists the points that lift.
+      lift: async i => { const gone = pts[i]; await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [{ ...gone }] }); pts = pts.filter((_, j) => j !== i); },
+      up: async () => { pts = []; await send('touchEnd'); },
+    };
+  };
+  // The map point under a client point, through the SVG's own matrix.
+  const under = (page, x, y) => page.locator(`${POP} .wvw-plot`).evaluate((s, [px, py]) => {
+    const p = new DOMPoint(px, py).matrixTransform(s.getScreenCTM().inverse());
+    return [p.x, p.y];
+  }, [x, y]);
+
+  test('two fingers zoom about the point between them, in and out, and carry the map with them', async ({ page, wvw, context }) => {
+    const full = await map(page, wvw);
+    const box = await page.locator(`${POP} .wvw-plot-wrap`).boundingBox();
+    const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+    const f = await fingers(page, context);
+    const ground = await under(page, cx, cy);
+    const onScreen = g => page.locator(`${POP} .wvw-plot`).evaluate((s, [x, y]) => {
+      const p = new DOMPoint(x, y).matrixTransform(s.getScreenCTM());
+      return [p.x, p.y];
+    }, g);
+    await f.down([cx - 40, cy], [cx + 40, cy]);
+    for (let i = 1; i <= 8; i++) await f.move([cx - 40 - i * 10, cy], [cx + 40 + i * 10, cy]);
+    await expect.poll(async () => (await view(page))[2], { message: 'spreading the fingers three-fold zooms in three-fold' }).toBeLessThan(full[2] / 2.9);
+    const zoomed = await view(page);
+    await expect.poll(async () => { const q = await onScreen(ground); return Math.abs(q[0] - cx) + Math.abs(q[1] - cy); }, { message: 'the point between the fingers stays' }).toBeLessThanOrEqual(3);
+
+    // Pinch back in, the middle drifting 15 px right and 10 down: the map goes with it.
+    for (let i = 1; i <= 4; i++) await f.move([cx - 120 + i * 10 + i * 3.75, cy + i * 2.5], [cx + 120 - i * 10 + i * 3.75, cy + i * 2.5]);
+    await expect.poll(async () => { const q = await onScreen(ground); return Math.abs(q[0] - (cx + 15)) + Math.abs(q[1] - (cy + 10)); }, { message: 'the ground follows the middle' }).toBeLessThanOrEqual(3);
+    expect((await view(page))[2], 'closing the fingers zooms out').toBeGreaterThan(zoomed[2] * 1.3);
+
+    // One finger alone going down 40 px moves the middle 20: the ground goes there, not stays under the still finger.
+    await f.move([cx - 65, cy + 10], [cx + 95, cy + 50]);
+    await f.up();
+    await expect.poll(async () => {
+      const q = await onScreen(ground);
+      return Math.abs(q[0] - (cx + 15)) + Math.abs(q[1] - (cy + 30));
+    }, { message: 'the ground follows the middle when only one finger moves' }).toBeLessThanOrEqual(4);
+    await expect(page.locator(`${POP} .wvw-plot-wrap`), 'no capture left').not.toHaveClass(/is-panning/);
+    await wvw.settle();
+  });
+
+  test('lifting one finger of a pinch leaves the other dragging without a jump; a pinch with a finger on a marker picks nothing', async ({ page, wvw, context }) => {
+    await map(page, wvw);
+    for (let i = 0; i < 3; i++) await zoom(page, 'Zoom in').click();
+    const plot = await page.locator(`${POP} .wvw-plot`).boundingBox();
+    const markers = page.locator(`${POP} .wvw-marker`).locator('visible=true');
+    let marker = null;
+    for (const m of await markers.all()) {
+      const b = await m.boundingBox();
+      if (b && b.x > plot.x + 60 && b.x < plot.x + plot.width - 220 && b.y > plot.y + 60 && b.y < plot.y + plot.height - 220) { marker = m; break; }
+    }
+    expect(marker, 'a marker well inside the view').not.toBeNull();
+    const b0 = await marker.boundingBox();
+    const mx = b0.x + b0.width / 2, my = b0.y + b0.height / 2;
+    const centre = async () => { const b = await marker.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+    const f = await fingers(page, context);
+    // One finger on the marker, one on empty ground to its left.
+    await f.down([mx, my], [mx - 100, my]);
+    for (let i = 1; i <= 4; i++) await f.move([mx, my], [mx - 100 - i * 5, my]);
+    await f.lift(1);
+    // The finger on the marker now holds the map: it must not jump, then it drags.
+    await f.move([mx, my]);
+    const still = await centre();
+    expect(Math.abs(still.x - mx) + Math.abs(still.y - my), 'no jump when a finger lifts').toBeLessThanOrEqual(3);
+    const lone = await centre();
+    for (let i = 1; i <= 6; i++) await f.move([mx + i * 10, my + i * 5]);
+    await f.up();
+    await expect.poll(async () => { const c = await centre(); return Math.abs(c.x - lone.x - 60) + Math.abs(c.y - lone.y - 30); }, { message: 'the finger left drags on, by as much as it moved' }).toBeLessThanOrEqual(3);
+    await expect(page.locator(`${POP} .wvw-marker.is-selected`), 'a pinch picks nothing').toHaveCount(0);
+    await expect(page.locator(`${POP} .wvw-plot-wrap`), 'no capture left').not.toHaveClass(/is-panning/);
+    await wvw.settle();
+  });
+
+  test('a pinch that ends on a marker picks nothing; a mouse moving while a finger drags does not take the map', async ({ page, wvw, context }) => {
+    await map(page, wvw);
+    for (let i = 0; i < 3; i++) await zoom(page, 'Zoom in').click();
+    const plot = await page.locator(`${POP} .wvw-plot`).boundingBox();
+    const markers = page.locator(`${POP} .wvw-marker`).locator('visible=true');
+    let marker = null;
+    for (const m of await markers.all()) {
+      const b = await m.boundingBox();
+      if (b && b.x > plot.x + 60 && b.x < plot.x + plot.width - 220 && b.y > plot.y + 60 && b.y < plot.y + plot.height - 220) { marker = m; break; }
+    }
+    expect(marker, 'a marker well inside the view').not.toBeNull();
+    const b0 = await marker.boundingBox();
+    const mx = b0.x + b0.width / 2, my = b0.y + b0.height / 2;
+    const f = await fingers(page, context);
+    await f.down([mx, my], [mx - 100, my]);
+    await f.move([mx, my], [mx - 102, my]);
+    await f.lift(1);
+    await f.up();
+    await wvw.settle();
+    await expect(page.locator(`${POP} .wvw-marker.is-selected`), 'a pinch picks nothing').toHaveCount(0);
+
+    // One finger drags 50 px; a mouse wandering across the map meanwhile is not the finger.
+    const gx = plot.x + 40, gy = plot.y + 40;
+    const m0 = await marker.boundingBox();
+    await f.down([gx, gy]);
+    for (let i = 1; i <= 5; i++) await f.move([gx + i * 10, gy]);
+    await page.mouse.move(plot.x + plot.width - 40, plot.y + plot.height - 40);
+    await f.move([gx + 50, gy]);
+    await f.up();
+    await expect.poll(async () => { const m = await marker.boundingBox(); return Math.round(m.x - m0.x); }, { message: 'the finger dragged the map' }).toBeGreaterThan(40);
+    const m1 = await marker.boundingBox();
+    expect(Math.abs(m1.x - m0.x - 50), 'by what the finger moved, the mouse not counted (x)').toBeLessThanOrEqual(2);
+    expect(Math.abs(m1.y - m0.y), 'and not at all the other way').toBeLessThanOrEqual(2);
+    await wvw.settle();
+  });
+
+  test('a finger that lifts outside the map, over a marker the map has just redrawn, leaves no ghost: the next finger does not pinch', async ({ page, wvw, context }) => {
+    await map(page, wvw);
+    const box = await page.locator(`${POP} .wvw-plot-wrap`).boundingBox();
+    const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+    const f = await fingers(page, context);
+    await f.down([cx - 40, cy], [cx + 40, cy]);
+    await f.move([cx - 50, cy], [cx + 50, cy]);
+    // A live update empties the element the second finger holds, as a redraw of a marker does.
+    await page.evaluate(([x, y]) => document.elementFromPoint(x, y).remove(), [cx + 50, cy]);
+    const out = box.x + box.width + 60;
+    await f.move([cx - 50, cy], [out, cy]);
+    await f.lift(1);
+    await f.lift(0);
+    const v1 = await view(page);
+    await f.down([cx, cy]);
+    for (let i = 1; i <= 5; i++) await f.move([cx + i * 10, cy]);
+    await f.up();
+    expect((await view(page))[2], 'and does not zoom').toBeCloseTo(v1[2], 3);
+    await expect(page.locator(`${POP} .wvw-plot-wrap`), 'no capture left').not.toHaveClass(/is-panning/);
+  });
+
   for (const how of ['mouse', 'finger']) test(`a ${how} drag that starts on a marker pans the map and picks nothing; a tap on it picks`, async ({ page, wvw, context }) => {
     await map(page, wvw);
     for (let i = 0; i < 3; i++) await zoom(page, 'Zoom in').click();
