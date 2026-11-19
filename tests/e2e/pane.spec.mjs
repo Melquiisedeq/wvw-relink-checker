@@ -287,3 +287,58 @@ for (const width of [1280, 360]) {
     }
   });
 }
+
+test.describe('objective panel across a refresh', () => {
+  async function pick(page, wvw) {
+    await load(page, wvw);
+    const tier = await firstTier(page);
+    await openMap(page, wvw, tier.button);
+    await page.locator(`${POP} .wvw-plot g[role='button']`).first().click();
+    await expect(page.locator(`${POP} .wvw-detail-name`)).toBeVisible();
+    await wvw.settle();
+    return tier;
+  }
+  const select = (page, sel) => page.evaluate((s) => {
+    const r = document.createRange();
+    r.selectNodeContents(document.querySelector(s));
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+    return getSelection().toString();
+  }, sel);
+  const refresh = async (page, wvw, ms = 31000) => {
+    await wvw.skew(ms);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.waitForTimeout(1500);
+    await wvw.settle();
+  };
+
+  test('a refresh that changes nothing in the objective keeps the text the reader selected', async ({ page, wvw }) => {
+    await pick(page, wvw);
+    const picked = await select(page, `${POP} .wvw-detail-name`);
+    expect(picked.length).toBeGreaterThan(0);
+    await refresh(page, wvw);
+    expect(await page.evaluate(() => getSelection().toString())).toBe(picked);
+  });
+
+  test('the "For" age keeps counting in place while the rest of the panel stays', async ({ page, wvw }) => {
+    await pick(page, wvw);
+    const age = () => page.locator(`${POP} .wvw-detail .wvw-ago`).textContent();
+    const was = await age();
+    const picked = await select(page, `${POP} .wvw-detail-name`);
+    await refresh(page, wvw, 150000);
+    expect(await age()).not.toBe(was);
+    expect(await page.evaluate(() => getSelection().toString())).toBe(picked);
+  });
+
+  test('a refresh that hands the objective to another team repaints the panel', async ({ page, wvw }) => {
+    const tier = await pick(page, wvw);
+    const id = await page.locator(`${POP} .wvw-detail`).getAttribute('data-showing');
+    const team = () => page.locator(`${POP} .wvw-detail dl > div:has(dt:text-is("Team")) dd`).textContent();
+    const was = await team();
+    const kept = await keptMatch(page, tier.id);
+    for (const m of kept.maps) for (const o of m.objectives) if (String(o.id) === id) o.owner = OWNERS[(OWNERS.indexOf(o.owner) + 1) % 3];
+    await answer(page, tier.url, kept);
+    await refresh(page, wvw);
+    expect(await team()).not.toBe(was);
+  });
+});
