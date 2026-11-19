@@ -940,16 +940,23 @@ function buildMapCorners(wrap, matchId) {
 // Five minutes (wiki), on every objective but sentries, during which the guards cannot be hurt: it
 // answers "can I take it back yet" rather than "who owns this".
 const RI_MS = 5 * 60 * 1000;
+// Covers CLOCK_BAND_MS of lead noise and the Date's whole second.
+const RI_SLACK_MS = 10 * 1000;
 
 function riLeft(iso) {
   if (!iso) return 0;
   const end = new Date(iso).getTime() + RI_MS;
   const left = end - (Date.now() - steadyClockLead);
-  return Number.isFinite(left) && left > 0 ? left : 0;
+  return riValid(left) ? left : 0;
+}
+
+// A remainder past five minutes and the margin means the page's clock is wrong: no badge is better than a false one.
+function riValid(left) {
+  return left > 0 && left <= RI_MS + RI_SLACK_MS;
 }
 
 function riClock(ms) {
-  const s = Math.ceil(ms / 1000);
+  const s = Math.ceil(Math.min(ms, RI_MS) / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
@@ -994,7 +1001,7 @@ function riBadge(r, ob) {
 function tickRi(root) {
   for (const g of root.querySelectorAll('.wvw-ri')) {
     const left = Number(g.dataset.until) - (Date.now() - steadyClockLead);
-    if (!(left > 0)) { g.remove(); continue; }
+    if (!riValid(left)) { g.remove(); continue; }
     const t = g.querySelector('text');
     if (t) t.textContent = riClock(left);
   }

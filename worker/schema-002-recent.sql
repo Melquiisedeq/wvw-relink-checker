@@ -3,7 +3,7 @@
 
 -- The last 30 minutes of kills, rebuilt by every kills message and read by
 -- GET /api/kills. One row, so a read costs one row of D1's 5 million a day
--- whatever it asks: a query over the kills table would cost ~60, and reading
--- it by time alone scans all of it - ~140 requests would stop the database,
--- writes included, until 00:00 UTC.
+-- whatever it asks: a query over the kills table would cost one row per match
+-- per tick of those 30 minutes, and reading it by time alone scans all of it -
+-- enough of those would stop the database, writes included, until 00:00 UTC.
 CREATE TABLE recent (id INTEGER PRIMARY KEY CHECK (id = 1), at INTEGER NOT NULL, rows TEXT NOT NULL);
