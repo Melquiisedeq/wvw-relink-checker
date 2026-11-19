@@ -1352,6 +1352,33 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
     return { x: p.x, y: p.y };
   };
 
+  // Tab to a marker the zoom has put out of sight, or cut by the edge, brings the view to it. Only the
+  // keyboard: :focus-visible is false for a click, a tap or the press that starts a drag. Only a focus that
+  // reaches a marker anew: the window getting its focus back fires focusin on the one still focused, and the
+  // view must stay where the visitor left it.
+  const FOCUS_EDGE = 0.1;
+  let focused = null;
+  svg.addEventListener('focusout', () => { if (document.hasFocus()) focused = null; });
+  svg.addEventListener('focusin', (e) => {
+    const i = nodes.indexOf(e.target);
+    if (i < 0 || e.target === focused || !e.target.matches(':focus-visible')) return;
+    focused = e.target;
+    const p = pts[i];
+    // The browser scrolls the clipped wrapper to a focused marker on its own; the viewBox is the camera.
+    wrap.scrollTop = 0;
+    wrap.scrollLeft = 0;
+    // The drawn box, badges included, as the view sees it: the marker is scaled by k around its point.
+    const k = Math.pow(view.w / fullW, MARKER_FOLLOW);
+    const box = e.target.getBBox();
+    const m = view.w * FOCUS_EDGE;
+    if (p.x + box.x * k >= view.x + m && p.x + (box.x + box.width) * k <= view.x + view.w - m
+      && p.y + box.y * k >= view.y + m && p.y + (box.y + box.height) * k <= view.y + view.h - m) return;
+    view.x = p.x - view.w / 2;
+    view.y = p.y - view.h / 2;
+    clamp();
+    apply();
+  });
+
   wrap.addEventListener('wheel', (e) => {
     e.preventDefault();
     const at = atEvent(e);

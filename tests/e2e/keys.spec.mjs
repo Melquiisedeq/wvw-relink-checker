@@ -378,3 +378,139 @@ test.describe('a popover that leaves the page live', () => {
     await expect(button, 'the page was held, so the focus goes back').toBeFocused();
   });
 });
+
+test.describe('the zoomed map follows the keyboard focus', () => {
+  const WRAP = `${POP} .wvw-plot-wrap`;
+  const state = page => page.evaluate(sel => {
+    const w = document.querySelector(sel);
+    return { box: w.querySelector('.wvw-plot').getAttribute('viewBox'), scroll: w.scrollTop + w.scrollLeft, page: scrollY };
+  }, WRAP);
+  // Which sides of the map the focused marker is cut by: left, right, top, bottom.
+  const cuts = page => page.evaluate(sel => {
+    const w = document.querySelector(sel).getBoundingClientRect();
+    const r = document.activeElement.getBoundingClientRect();
+    return [r.left < w.left, r.right > w.right, r.top < w.top, r.bottom > w.bottom];
+  }, WRAP);
+  const zoom3 = async page => {
+    for (let i = 0; i < 4; i++) await page.locator(`${POP} .wvw-zoom button[aria-label='Zoom in']`).click();
+    await page.mouse.move(5, 5);
+  };
+  // Markers whose middle is between `lo` and `hi` of the map's half-size from its middle, at the current view.
+  const band = (page, lo, hi) => page.evaluate(([sel, lo, hi]) => {
+    const w = document.querySelector(sel).getBoundingClientRect();
+    const cx = w.left + w.width / 2;
+    const cy = w.top + w.height / 2;
+    return [...document.querySelectorAll(`${sel} g[role='button']`)].map((g, i) => {
+      const r = g.getBoundingClientRect();
+      const d = Math.max(Math.abs(r.left + r.width / 2 - cx) / (w.width / 2), Math.abs(r.top + r.height / 2 - cy) / (w.height / 2));
+      return { i, d, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }).filter(m => m.d >= lo && m.d <= hi);
+  }, [WRAP, lo, hi]);
+  // A marker whose whole box sits inside the map's rectangle shrunk by 15% of its width (the view's edge zone is 10%), off the middle.
+  const inSight = page => page.evaluate(sel => {
+    const w = document.querySelector(sel).getBoundingClientRect();
+    const e = w.width * 0.15;
+    return [...document.querySelectorAll(`${sel} g[role='button']`)].findIndex((g) => {
+      const r = g.getBoundingClientRect();
+      return r.left >= w.left + e && r.right <= w.right - e && r.top >= w.top + e && r.bottom <= w.bottom - e
+        && Math.abs(r.left + r.width / 2 - w.left - w.width / 2) > 20;
+    });
+  }, WRAP);
+  const firstMarkerThenTab = async page => {
+    await page.locator(MARKER).first().focus();
+    await page.keyboard.press('Tab');
+  };
+
+  // Every map of the tier: the borderlands draw bigger markers against a smaller view than the eternal one.
+  for (const tab of [0, 1, 2, 3]) {
+    test(`Tab to a marker out of sight or cut by the edge brings it whole into the map, map ${tab + 1}`, async ({ page, wvw }) => {
+      await boardOpen(page, wvw);
+      await page.locator(`${POP} .wvw-tab`).nth(tab).click();
+      await expect(page.locator(`${POP} .wvw-tab`).nth(tab)).toHaveClass(/is-active/);
+      const full = await state(page);
+      await firstMarkerThenTab(page);
+      expect((await state(page)).box, 'no zoom: the view stays').toBe(full.box);
+
+      await zoom3(page);
+      await page.locator(MARKER).first().focus();
+      const start = await state(page);
+      const [fx, fy, fw, fh] = full.box.split(' ').map(Number);
+      let moved = 0;
+      for (let i = 0; i < 40; i++) {
+        await page.keyboard.press('Tab');
+        if (!await page.evaluate(() => !!document.activeElement?.matches("g[role='button']"))) break;
+        const now = await state(page);
+        const [x, y, w, h] = now.box.split(' ').map(Number);
+        // A marker on the rim of the map is cut by the rim itself: only where the view is stopped by the map's edge.
+        const rim = [x <= fx + 1e-6, x + w >= fx + fw - 1e-6, y <= fy + 1e-6, y + h >= fy + fh - 1e-6];
+        const cut = await cuts(page);
+        expect(cut.map((c, k) => c && !rim[k]), 'the focused marker is whole inside the map').toEqual([false, false, false, false]);
+        expect([x >= fx - 1e-6, y >= fy - 1e-6, x + w <= fx + fw + 1e-6, y + h <= fy + fh + 1e-6], 'the view stays on the map').toEqual([true, true, true, true]);
+        expect(now.scroll, 'the wrap is not scrolled').toBe(0);
+        expect(now.page, 'the page does not jump').toBe(start.page);
+        if (now.box !== start.box) moved++;
+      }
+      expect(moved, 'some marker was out of sight and the view followed').toBeGreaterThan(0);
+    });
+  }
+
+  test('the window getting its focus back does not pull the view to the marker still focused', async ({ page, wvw }) => {
+    await boardOpen(page, wvw);
+    await zoom3(page);
+    await firstMarkerThenTab(page);
+    // Drag the focused marker towards the edge: it stays focused, the view moves away from it.
+    const m = (await band(page, 0, 0.2))[0];
+    const half = await page.locator(WRAP).evaluate(w => w.getBoundingClientRect().width / 2);
+    await page.mouse.move(m.x, m.y);
+    await page.mouse.down();
+    await page.mouse.move(m.x + half * 0.4, m.y, { steps: 5 });
+    await page.mouse.move(m.x + half * 0.9, m.y, { steps: 5 });
+    await page.mouse.up();
+    const panned = (await state(page)).box;
+    expect(await page.evaluate(() => document.activeElement.matches("g[role='button']")), 'still focused').toBe(true);
+    // What Chromium does on regaining the window's focus: focusin on the element that still holds it.
+    await page.evaluate(() => document.activeElement.dispatchEvent(new FocusEvent('focusin', { bubbles: true })));
+    expect((await state(page)).box).toBe(panned);
+  });
+
+  test('a marker already in sight does not move the view', async ({ page, wvw }) => {
+    await boardOpen(page, wvw);
+    await zoom3(page);
+    await firstMarkerThenTab(page);
+    await page.locator(`${POP} .wvw-zoom button[aria-label='Zoom out']`).click();
+    const seen = await inSight(page);
+    expect(seen, 'a marker in sight, off the middle').toBeGreaterThanOrEqual(0);
+    const before = await state(page);
+    await page.keyboard.press('Shift');
+    await page.evaluate(([sel, i]) => document.querySelectorAll(`${sel} g[role='button']`)[i].focus(), [WRAP, seen]);
+    expect((await state(page)).box).toBe(before.box);
+  });
+
+  test('a drag from a marker and a click on it, against the edge, do not move the view; the keyboard does', async ({ page, wvw }) => {
+    await boardOpen(page, wvw);
+    await zoom3(page);
+    await firstMarkerThenTab(page);
+    const start = (await state(page)).box;
+    // Drag the centred marker towards the map's right edge: the view moves and the marker ends whole in the view, but inside the edge zone.
+    const m = (await band(page, 0, 0.2))[0];
+    expect(m, 'the centred marker').toBeTruthy();
+    const half = await page.locator(WRAP).evaluate(w => w.getBoundingClientRect().width / 2);
+    await page.mouse.move(m.x, m.y);
+    await page.mouse.down();
+    await page.mouse.move(m.x + half * 0.3, m.y, { steps: 5 });
+    await page.mouse.move(m.x + half * 0.7, m.y, { steps: 5 });
+    await page.mouse.up();
+    const dragged = (await state(page)).box;
+    expect(dragged, 'the drag moved the view').not.toBe(start);
+    await page.evaluate(() => document.activeElement.blur());
+    const edge = (await band(page, 0.6, 0.85)).find(c => c.i === m.i);
+    expect(edge, 'a marker against the edge').toBeTruthy();
+    await page.mouse.click(edge.x, edge.y);
+    expect((await state(page)).box, 'neither the drag nor the click follows the focus').toBe(dragged);
+    // The same marker, focused by a script after a key (the keyboard's :focus-visible), is brought in from the edge.
+    await page.evaluate(() => document.activeElement.blur());
+    await page.keyboard.press('Shift');
+    await page.evaluate(([sel, i]) => document.querySelectorAll(`${sel} g[role='button']`)[i].focus(), [WRAP, edge.i]);
+    expect((await state(page)).box, 'a keyboard focus brings a marker against the edge in').not.toBe(dragged);
+  });
+});
