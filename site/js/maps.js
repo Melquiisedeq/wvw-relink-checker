@@ -1347,10 +1347,11 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
 
   // Through the SVG's own matrix, so the letterbox bands that `meet` leaves
   // beside the drawing in a short window are not counted as map.
-  const atEvent = (e) => {
-    const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
+  const atXY = (x, y) => {
+    const p = new DOMPoint(x, y).matrixTransform(svg.getScreenCTM().inverse());
     return { x: p.x, y: p.y };
   };
+  const atEvent = (e) => atXY(e.clientX, e.clientY);
 
   // Tab to a marker the zoom has put out of sight, or cut by the edge, brings the view to it. Only the
   // keyboard: :focus-visible is false for a click, a tap or the press that starts a drag. Only a focus that
@@ -1385,16 +1386,23 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
     zoomBy(e.deltaY > 0 ? 1.18 : 1 / 1.18, at.x, at.y);
   }, { passive: false });
 
+  // Pointers down on the map by id. One drags; two pinch, and one left of a pinch drags on without a jump.
+  const down = new Map();
   let dragging = null;
+  let pinching = false;
   // A press on a marker only becomes a drag past SLOP px (the
   // same distance the popover's tap-away uses to tell a drag); short of it the click still picks the objective.
   let armed = null;
   let swallowClick = false;
   const SLOP = 6;
   const startDrag = (e, at) => {
-    dragging = { at, x: view.x, y: view.y };
+    dragging = { id: e.pointerId, at };
     wrap.classList.add('is-panning');
-    wrap.setPointerCapture(e.pointerId);
+    try { wrap.setPointerCapture(e.pointerId); } catch { /* already gone */ }
+  };
+  const gap = () => {
+    const [a, b] = [...down.values()];
+    return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   };
   wrap.addEventListener('pointerdown', (e) => {
     swallowClick = false;
@@ -1403,6 +1411,17 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
     // calls setPointerCapture on the wrapper - which retargets the
     // click to the wrapper, so the button's own click listener never runs.
     if (e.target.closest('.wvw-zoom, .wvw-hud, .wvw-hud-note')) return;
+    // A first finger on a bare map: whatever pointer of its kind is still listed lost its pointerup, as when a
+    // redraw removed the element the finger held.
+    if (e.isPrimary) for (const [id, p] of down) if (p.type === e.pointerType) down.delete(id);
+    down.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
+    if (down.size === 2) {
+      // Whatever the first finger was doing, the pair takes over.
+      pinching = true;
+      wrap.classList.add('is-panning');
+      return;
+    }
+    if (down.size > 2) return;
     const at = atEvent(e);
     if (e.target.closest('.wvw-marker')) {
       armed = { id: e.pointerId, cx: e.clientX, cy: e.clientY, at };
@@ -1411,13 +1430,29 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
     startDrag(e, at);
   });
   wrap.addEventListener('pointermove', (e) => {
+    const was = down.get(e.pointerId);
+    if (was && pinching) {
+      const before = gap();
+      down.set(e.pointerId, { ...was, x: e.clientX, y: e.clientY });
+      const now = gap();
+      // Zoom about the middle the fingers were around, then carry the ground under it to where the middle is now.
+      const grabbed = atXY(before.x, before.y);
+      zoomBy(before.d / now.d, grabbed.x, grabbed.y);
+      const under = atXY(now.x, now.y);
+      view.x += grabbed.x - under.x;
+      view.y += grabbed.y - under.y;
+      clamp();
+      apply();
+      return;
+    }
+    if (was) down.set(e.pointerId, { ...was, x: e.clientX, y: e.clientY });
     if (armed && e.pointerId === armed.id && Math.hypot(e.clientX - armed.cx, e.clientY - armed.cy) > SLOP) {
       const from = armed;
       armed = null;
       swallowClick = true;
       startDrag(e, from.at);
     }
-    if (!dragging) return;
+    if (!dragging || e.pointerId !== dragging.id) return;
     const now = atEvent(e);
     const dx = now.x - view.x;
     const dy = now.y - view.y;
@@ -1437,8 +1472,17 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
   }, true);
   const endDrag = (e) => {
     armed = null;
+    const had = down.delete(e.pointerId);
     // The click, if any, follows the pointerup at once.
     if (swallowClick) setTimeout(() => { swallowClick = false; }, 0);
+    if (pinching && had && down.size === 1) {
+      pinching = false;
+      const [id, p] = [...down][0];
+      dragging = { id, at: atXY(p.x, p.y) };
+      return;
+    }
+    if (down.size) return;
+    pinching = false;
     if (!dragging) return;
     dragging = null;
     wrap.classList.remove('is-panning');
