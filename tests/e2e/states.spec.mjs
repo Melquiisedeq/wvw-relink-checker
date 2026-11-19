@@ -614,6 +614,36 @@ test.describe('the tick of an open map', () => {
     await wvw.settle();
   });
 
+  test('a page clock two days behind shows no badge: a remainder past five minutes is a wrong clock', async ({ page, wvw }) => {
+    await load(page, wvw);
+    const tier = await firstTier(page);
+    const body = await keptMatch(page, tier.id);
+    const now = await wvw.now();
+    for (const m of body.maps) {
+      for (const o of m.objectives) o.last_flipped = iso(now - 60 * 1000);
+    }
+    await answer(page, tier.url, body);
+    await page.locator('.tier-map-btn').first().click();
+    const badges = page.locator(`${POP} .wvw-ri`);
+    await expect(badges.first(), 'a fresh flip wearing its badge').toBeAttached();
+    await wvw.settle();
+    await pause(page, wvw);
+    const clocks = () => badges.locator('text').allTextContents();
+    const secs = c => { const [m, s] = c.split(':').map(Number); return m * 60 + s; };
+    for (const c of await clocks()) expect(secs(c), 'a clock on the right time').toBeLessThanOrEqual(300);
+    await page.clock.setSystemTime(await wvw.now() - 2 * 24 * 60 * 60 * 1000);
+    await page.clock.runFor(1000);
+    await expect(badges, 'no badge once the page clock is two days behind').toHaveCount(0);
+    // Drawn afresh on that clock, as when the map is opened again.
+    await page.keyboard.press('Escape');
+    await expect(page.locator(POP), 'the map closed').toHaveCount(0);
+    await page.locator('.tier-map-btn').first().click();
+    await expect(page.locator(`${POP} .wvw-marker`).first(), 'the map drawn again').toBeAttached();
+    await wvw.settle();
+    await expect(badges, 'no badge on a map drawn on that clock').toHaveCount(0);
+    await wvw.settle();
+  });
+
   test('once marked it judges the swords and the corners together: the swords leave, the data turns amber', async ({ page, wvw }) => {
     await opening(page, wvw, false);
     await expect(swords(page), 'swords on the busiest tab').toHaveCount(1);

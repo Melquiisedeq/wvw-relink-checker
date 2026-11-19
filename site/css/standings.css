@@ -190,6 +190,10 @@
 /* The word lights up; the glyph already has its own brighten. */
 .tier-map-btn:hover .tier-map-label,
 .tier-map-btn.active .tier-map-label{color:var(--text);}
+/* In the standings the dim labels sit on the tinted fill over the photo; #8d97a6 is under 4.5:1 at its lightest. */
+.standings-grid .stat-label,
+.standings-grid .skirmish-bar-pct,
+.standings-grid .tier-map-label{color:#b1b8c2;}
 /* The 1.15 lift is sized for a bare glyph; on a word it reads as the text going soft.
    */
 .tier-map-btn:hover,.tier-map-btn.active{
