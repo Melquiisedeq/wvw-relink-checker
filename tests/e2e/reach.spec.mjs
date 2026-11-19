@@ -274,6 +274,41 @@ test.describe('the map: zoom and drag', () => {
     await wvw.settle();
   });
 
+  test('in a short window a drag moves the drawing as far as the cursor, and the wheel keeps its point', async ({ page, wvw }) => {
+    await page.setViewportSize({ width: 1280, height: 600 });
+    await map(page, wvw);
+    for (let i = 0; i < 3; i++) await zoom(page, 'Zoom in').click();
+    const plot = await page.locator(`${POP} .wvw-plot`).boundingBox();
+    const markers = page.locator(`${POP} .wvw-marker`).locator('visible=true');
+    let marker = null;
+    for (const m of await markers.all()) {
+      const b = await m.boundingBox();
+      if (b && b.x > plot.x + 60 && b.x < plot.x + plot.width - 160 && b.y > plot.y + 60 && b.y < plot.y + plot.height - 160) { marker = m; break; }
+    }
+    expect(marker, 'a marker well inside the view').not.toBeNull();
+    const before = await marker.boundingBox();
+    // Grab the ground beside the marker: a pointerdown on a marker does not drag.
+    const gx = before.x - 30, gy = before.y - 30;
+    await page.mouse.move(gx, gy);
+    await page.mouse.down();
+    await page.mouse.move(gx + 50, gy + 50, { steps: 5 });
+    await page.mouse.move(gx + 100, gy + 100, { steps: 5 });
+    await page.mouse.up();
+    const after = await marker.boundingBox();
+    expect(Math.abs(after.x - before.x - 100), 'dragged 100 px right').toBeLessThanOrEqual(1);
+    expect(Math.abs(after.y - before.y - 100), 'dragged 100 px down').toBeLessThanOrEqual(1);
+
+    const px = after.x + after.width / 2, py = after.y + after.height / 2;
+    const wBefore = (await view(page))[2];
+    await page.mouse.move(px, py);
+    await page.mouse.wheel(0, -100);
+    await expect.poll(async () => (await view(page))[2], { message: 'the wheel zooming in' }).toBeLessThan(wBefore);
+    await wvw.settle();
+    const zoomed = await marker.boundingBox();
+    expect(Math.abs(zoomed.x + zoomed.width / 2 - px), 'the marker stays under the cursor (x)').toBeLessThanOrEqual(1);
+    expect(Math.abs(zoomed.y + zoomed.height / 2 - py), 'the marker stays under the cursor (y)').toBeLessThanOrEqual(1);
+  });
+
   test('a finger: tap to zoom, drag to pan', async ({ page, wvw, context }) => {
     await map(page, wvw);
     for (let i = 0; i < 3; i++) await zoom(page, 'Zoom in').tap();
