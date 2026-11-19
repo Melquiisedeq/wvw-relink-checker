@@ -1359,8 +1359,8 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
   }, { passive: false });
 
   let dragging = null;
-  // A press on a marker only becomes a drag past the browser's own click slop;
-  // short of it the click still picks the objective.
+  // A press on a marker only becomes a drag past SLOP px (the
+  // same distance the popover's tap-away uses to tell a drag); short of it the click still picks the objective.
   let armed = null;
   let swallowClick = false;
   const SLOP = 6;

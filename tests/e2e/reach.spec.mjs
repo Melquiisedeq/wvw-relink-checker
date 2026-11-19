@@ -287,7 +287,7 @@ test.describe('the map: zoom and drag', () => {
     }
     expect(marker, 'a marker well inside the view').not.toBeNull();
     const before = await marker.boundingBox();
-    // Grab the ground beside the marker: a pointerdown on a marker does not drag.
+    // Grab the ground beside the marker.
     const gx = before.x - 30, gy = before.y - 30;
     await page.mouse.move(gx, gy);
     await page.mouse.down();
@@ -367,6 +367,29 @@ test.describe('the map: zoom and drag', () => {
       else await page.touchscreen.tap(at.x, at.y);
       await expect(picked, `${how}: a tap picks the objective`).toHaveCount(1);
     }
+    await wvw.settle();
+  });
+
+  test('a short finger drag from a marker, which Chrome still turns into a click, moves the map and picks nothing', async ({ page, wvw, context }) => {
+    await map(page, wvw);
+    for (let i = 0; i < 3; i++) await zoom(page, 'Zoom in').click();
+    const plot = await page.locator(`${POP} .wvw-plot`).boundingBox();
+    const markers = page.locator(`${POP} .wvw-marker`).locator('visible=true');
+    let marker = null;
+    for (const m of await markers.all()) {
+      const b = await m.boundingBox();
+      if (b && b.x > plot.x + 60 && b.x < plot.x + plot.width - 220 && b.y > plot.y + 60 && b.y < plot.y + plot.height - 220) { marker = m; break; }
+    }
+    expect(marker, 'a marker well inside the view').not.toBeNull();
+    const b0 = await marker.boundingBox();
+    const x0 = b0.x + b0.width / 2, y0 = b0.y + b0.height / 2;
+    const cdp = await context.newCDPSession(page);
+    const t = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+    await t('touchStart', x0, y0);
+    for (let i = 1; i <= 5; i++) await t('touchMove', x0 + i * 2, y0);
+    await t('touchEnd');
+    await expect.poll(async () => { const b = await marker.boundingBox(); return Math.round(b.x + b.width / 2 - x0); }, { message: 'the map following the finger' }).toBeGreaterThan(5);
+    await expect(page.locator(`${POP} .wvw-marker.is-selected`), 'the click that follows the drag picks nothing').toHaveCount(0);
     await wvw.settle();
   });
 });
