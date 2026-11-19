@@ -130,11 +130,38 @@ test('the activity popover closes when a rotation changes the zoom too', async (
   await expect(page.locator('.info-popover')).toHaveCount(0);
 });
 
-test('the activity popover closes when only the visual viewport shrinks at a held zoom', async ({ page, wvw }) => {
+test('the activity popover stays open when only the visual viewport shrinks at a held zoom', async ({ page, wvw }) => {
   await zoomedActivityPopover(page, wvw);
   await page.evaluate(() => {
     Object.defineProperty(visualViewport, 'height', { get: () => 300 });
     visualViewport.dispatchEvent(new Event('resize'));
   });
-  await expect(page.locator('.info-popover')).toHaveCount(0);
+  await page.waitForTimeout(100);
+  await expect(page.locator('.info-popover')).toHaveCount(1);
+});
+
+// The browser's address bar going away on a scroll changes the height only.
+test('the activity popover stays open, inside the screen, when the visible height loses 60 px', async ({ page, wvw }) => {
+  await load(page, wvw);
+  await phone(page, 360, { height: 700 });
+  await wvw.settle();
+  const btn = page.locator('.activity-btn').first();
+  // The icon low on the screen: the popover sits above it and is lower than the shrunk window.
+  await btn.evaluate(b => window.scrollTo(0, b.getBoundingClientRect().top + scrollY - 650));
+  await wvw.settle();
+  expect(await btn.evaluate(b => b.getBoundingClientRect().top), 'the icon low on the screen').toBeGreaterThan(600);
+  await btn.click();
+  await expect(page.locator('.info-popover')).toHaveCount(1);
+  expect(await page.evaluate(() => document.querySelector('.info-popover').getBoundingClientRect().bottom), 'open lower than the shrunk window').toBeGreaterThan(640);
+  // The visual viewport alone, as the address bar going shrinks it: no scroll event
+  // comes with it to move the popover.
+  await page.evaluate(() => {
+    Object.defineProperty(visualViewport, 'height', { get: () => 640 });
+    visualViewport.dispatchEvent(new Event('resize'));
+  });
+  await page.waitForTimeout(300);
+  await expect(page.locator('.info-popover'), 'a height change leaves it open').toHaveCount(1);
+  const r = await page.evaluate(() => { const b = document.querySelector('.info-popover').getBoundingClientRect(); return { top: b.top, bottom: b.bottom, vh: visualViewport.height }; });
+  expect(r.top).toBeGreaterThanOrEqual(0);
+  expect(r.bottom).toBeLessThanOrEqual(r.vh);
 });

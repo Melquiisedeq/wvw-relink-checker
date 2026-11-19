@@ -1,5 +1,5 @@
 'use strict';
-// Popover system: one popover at a time, near its trigger, closed on Escape, outside click and scroll.
+// Popover system: one popover at a time, near its trigger, closed on Escape, an outside click, or its own button.
 
 let activePopover = null;
 let activeTrigger = null;
@@ -117,7 +117,21 @@ function setPopoverExpanded(popover, triggerEl, expand) {
   if (grid && popover.__allianceData) layoutAllianceGrid(grid, popover.__allianceData, expand);
 }
 
+// A press that starts inside and is released outside (selecting a guild name) lands its
+// click on the common ancestor, outside the popover: it must not close it.
+let pressStartedInside = false;
+document.addEventListener('pointerdown', (e) => {
+  pressStartedInside = !!activePopover && activePopover.contains(e.target);
+}, true);
+// Read and cleared in capture: a button inside that stops propagation never lets the
+// click reach the bubbling listener, and a stale flag would swallow a keyboard click.
+let clickFromInside = false;
+document.addEventListener('click', () => {
+  clickFromInside = pressStartedInside;
+  pressStartedInside = false;
+}, true);
 document.addEventListener('click', (e) => {
+  if (clickFromInside) return;
   if (activePopover && !activePopover.contains(e.target) && e.target !== activeTrigger) {
     closePopover(true);
   }
@@ -162,15 +176,13 @@ function repositionOnScroll() {
   if (!activePopover || !activeTrigger) return;
   if (activePopover.classList.contains('info-popover--expanded')) return; // centred, follows nothing
 
-  const rect = activeTrigger.getBoundingClientRect();
-  const { height: vh } = getViewportSize();
-  // Anchor scrolled out of sight: clamping would strand the popover against an edge.
-  if (rect.bottom < 0 || rect.top > vh) { closePopover(); return; }
+  // Anchor out of sight: positionPopover clamps it to the screen's edge, still readable.
   positionPopover(activePopover, activeTrigger);
 }
 
 // visualViewport resize also fires for things that are not real resizes; only a
-// genuine size change may close a popover being read.
+// genuine width change (a rotation) may close a popover being read. A height change
+// (the address bar going) only repositions it.
 let lastViewportSize = getViewportSize();
 let lastViewportScale = window.visualViewport ? window.visualViewport.scale : 1;
 let lastInnerSize = { width: window.innerWidth, height: window.innerHeight };
@@ -186,8 +198,11 @@ function onViewportResize() {
   lastInnerSize = inner;
   const changed = !zoomed && (Math.abs(size.width - lastViewportSize.width) > 2 ||
                               Math.abs(size.height - lastViewportSize.height) > 2);
+  const widthChanged = Math.abs(size.width - lastViewportSize.width) > 2;
   lastViewportSize = size;
-  if (changed) closeUnlessExpanded();
+  if (!changed) return;
+  if (widthChanged || (activePopover && activePopover.classList.contains('info-popover--expanded'))) closeUnlessExpanded();
+  else repositionOnScroll();
 }
 
 window.addEventListener('scroll', repositionOnScroll, { passive: true });
