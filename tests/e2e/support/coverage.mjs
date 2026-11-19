@@ -8,7 +8,7 @@
 // Two runs of one commit differ a little in a few files: page timers that do
 // or do not fire before a test ends; a new timer brings it back unless
 // states.spec.mjs takes it to each state. So the committed number is the
-// minimum per file over several runs (`sweep --write`), a fall is only reported past
+// minimum per file over several runs, never below the committed number (`sweep --write`), a fall is only reported past
 // TOLERANCE and a rise only past it too.
 // CI is the referee: its Google Chrome measures some files lower than a local
 // Chromium, so CI's runs are among them.
@@ -23,8 +23,8 @@
 //   node support/coverage.mjs save <dir>    join what the two runs left, keep istanbul.json and measured.json in <dir>
 //   node support/coverage.mjs sweep <dir> [--write]   the lines and branches covered in some runs and not in others, and
 //                                     those in none, over the runs saved under <dir> (one folder each); exit 1 if any
-//                                     oscillates; --write rewrites data/coverage.json with the minimum per file and metric
-//                                     (needs no node_modules: the CI sweep reads artifacts with it)
+//                                     oscillates; --write rewrites data/coverage.json with the minimum per file and metric,
+//                                     never below the committed number (needs no node_modules: the CI sweep reads artifacts with it)
 //   node support/coverage.mjs untested <base>   after `check`: the lines `git diff <base> HEAD` added in site/js, worker and
 //                                     supabase that no test ran, to the job summary; never fails (what a line asks is judgement)
 //
@@ -33,7 +33,7 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { compareRuns, minimumOf, sweepText, untestedLines, untestedText } from './sweep.mjs';
+import { compareRuns, floorOf, minimumOf, sweepText, untestedLines, untestedText } from './sweep.mjs';
 
 // Loaded when needed: the sweep's report reads JSON only and runs without node_modules.
 const monocart = async () => (await import('monocart-coverage-reports')).CoverageReport;
@@ -150,8 +150,10 @@ async function sweep(dir, write) {
   const flaky = Object.values(result.files).reduce((n, f) => n + f.flaky.length, 0);
   const minimum = minimumOf(runs.map(r => r.measured));
   if (write) {
-    writeFileSync(COMMITTED, text(minimum));
-    lines.push('', `data/coverage.json rewritten with the minimum of ${runs.length} runs, ${Object.keys(minimum).length} files.`);
+    const { floor, kept } = floorOf(JSON.parse(readFileSync(COMMITTED, 'utf8')), minimum);
+    writeFileSync(COMMITTED, text(floor));
+    lines.push('', `data/coverage.json rewritten with the minimum of ${runs.length} runs, ${Object.keys(floor).length} files, none lower than the committed number.`);
+    for (const k of kept) lines.push(`- ${k.file} ${k.metric}: kept ${k.committed} (measured minimum ${k.measured})`);
   }
   console.log(lines.join('\n'));
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, '### Coverage sweep\n\n' + lines.join('\n') + '\n');

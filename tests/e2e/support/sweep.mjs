@@ -58,6 +58,22 @@ export function minimumOf(summaries) {
   return Object.fromEntries(Object.entries(out).sort(([a], [b]) => (a < b ? -1 : 1)));
 }
 
+// The floor `sweep --write` records: the higher of the committed number and the measured minimum, per file and metric.
+// A file no longer measured drops out; a new one enters at its minimum. kept: what stayed at the committed number.
+export function floorOf(committed, minimum) {
+  const floor = {};
+  const kept = [];
+  for (const [file, m] of Object.entries(minimum)) {
+    floor[file] = {};
+    for (const metric of ['lines', 'branches']) {
+      const was = committed[file]?.[metric];
+      if (was > m[metric]) kept.push({ file, metric, committed: was, measured: m[metric] });
+      floor[file][metric] = was > m[metric] ? was : m[metric];
+    }
+  }
+  return { floor, kept };
+}
+
 // Source text as a markdown code span inside a table cell: cut first (so no escape is split),
 // then the backslash before the pipe, and a backtick would close the span.
 export const mdCode = s => s.slice(0, 100).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/`/g, "'");
