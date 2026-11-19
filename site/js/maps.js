@@ -1359,16 +1359,37 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
   }, { passive: false });
 
   let dragging = null;
+  // A press on a marker only becomes a drag past the browser's own click slop;
+  // short of it the click still picks the objective.
+  let armed = null;
+  let swallowClick = false;
+  const SLOP = 6;
+  const startDrag = (e, at) => {
+    dragging = { at, x: view.x, y: view.y };
+    wrap.classList.add('is-panning');
+    wrap.setPointerCapture(e.pointerId);
+  };
   wrap.addEventListener('pointerdown', (e) => {
+    swallowClick = false;
+    armed = null;
     // The zoom controls live inside the map, and starting a drag here
     // calls setPointerCapture on the wrapper - which retargets the
     // click to the wrapper, so the button's own click listener never runs.
-    if (e.target.closest('.wvw-marker, .wvw-zoom, .wvw-hud, .wvw-hud-note')) return;
-    dragging = { at: atEvent(e), x: view.x, y: view.y };
-    wrap.classList.add('is-panning');
-    wrap.setPointerCapture(e.pointerId);
+    if (e.target.closest('.wvw-zoom, .wvw-hud, .wvw-hud-note')) return;
+    const at = atEvent(e);
+    if (e.target.closest('.wvw-marker')) {
+      armed = { id: e.pointerId, cx: e.clientX, cy: e.clientY, at };
+      return;
+    }
+    startDrag(e, at);
   });
   wrap.addEventListener('pointermove', (e) => {
+    if (armed && e.pointerId === armed.id && Math.hypot(e.clientX - armed.cx, e.clientY - armed.cy) > SLOP) {
+      const from = armed;
+      armed = null;
+      swallowClick = true;
+      startDrag(e, from.at);
+    }
     if (!dragging) return;
     const now = atEvent(e);
     const dx = now.x - view.x;
@@ -1381,7 +1402,16 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
     clamp();
     apply();
   });
+  // Capture phase: the drag that began on a marker must not pick it when the pointer lifts.
+  wrap.addEventListener('click', (e) => {
+    if (!swallowClick) return;
+    swallowClick = false;
+    e.stopPropagation();
+  }, true);
   const endDrag = (e) => {
+    armed = null;
+    // The click, if any, follows the pointerup at once.
+    if (swallowClick) setTimeout(() => { swallowClick = false; }, 0);
     if (!dragging) return;
     dragging = null;
     wrap.classList.remove('is-panning');

@@ -325,6 +325,50 @@ test.describe('the map: zoom and drag', () => {
     expect((await view(page))[1]).toBeLessThan(z[1]);
     await wvw.settle();
   });
+
+  for (const how of ['mouse', 'finger']) test(`a ${how} drag that starts on a marker pans the map and picks nothing; a tap on it picks`, async ({ page, wvw, context }) => {
+    await map(page, wvw);
+    for (let i = 0; i < 3; i++) await zoom(page, 'Zoom in').click();
+    const plot = await page.locator(`${POP} .wvw-plot`).boundingBox();
+    const markers = page.locator(`${POP} .wvw-marker`).locator('visible=true');
+    let marker = null;
+    for (const m of await markers.all()) {
+      const b = await m.boundingBox();
+      if (b && b.x > plot.x + 60 && b.x < plot.x + plot.width - 220 && b.y > plot.y + 60 && b.y < plot.y + plot.height - 220) { marker = m; break; }
+    }
+    expect(marker, 'a marker well inside the view').not.toBeNull();
+    const centre = async () => { const b = await marker.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+    const picked = page.locator(`${POP} .wvw-marker.is-selected`);
+    const cdp = await context.newCDPSession(page);
+    const t = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+
+    {
+      const before = await centre();
+      if (how === 'mouse') {
+        await page.mouse.move(before.x, before.y);
+        await page.mouse.down();
+        await page.mouse.move(before.x + 50, before.y + 50, { steps: 5 });
+        await page.mouse.move(before.x + 100, before.y + 100, { steps: 5 });
+        await page.mouse.up();
+      } else {
+        await t('touchStart', before.x, before.y);
+        for (let i = 1; i <= 10; i++) await t('touchMove', before.x + i * 10, before.y + i * 10);
+        await t('touchEnd');
+      }
+      await expect.poll(async () => Math.round((await centre()).x - before.x), { message: `${how}: the map following the drag` }).toBeGreaterThan(90);
+      const after = await centre();
+      expect(Math.abs(after.x - before.x - 100), `${how}: dragged 100 px right`).toBeLessThanOrEqual(1);
+      expect(Math.abs(after.y - before.y - 100), `${how}: dragged 100 px down`).toBeLessThanOrEqual(1);
+      await expect(picked, `${how}: a drag does not pick the objective`).toHaveCount(0);
+      await expect(page.locator(`${POP} .wvw-plot-wrap`), `${how}: no capture left`).not.toHaveClass(/is-panning/);
+
+      const at = await centre();
+      if (how === 'mouse') await page.mouse.click(at.x, at.y);
+      else await page.touchscreen.tap(at.x, at.y);
+      await expect(picked, `${how}: a tap picks the objective`).toHaveCount(1);
+    }
+    await wvw.settle();
+  });
 });
 
 test('Ctrl+Enter in the guild box closes a result row\'s popover and leaves no active trigger', async ({ page, wvw }) => {
