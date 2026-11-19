@@ -434,6 +434,32 @@ test('weekStoreRead: every tier remembered survives a reload, not only the last 
   assert.deepEqual(plain([...p.run('weekStoreRead()').keys()].sort()), ['1-1', '1-2', '1-3', '1-4']);
 });
 
+// An entry written 1 min ago by the server's time, read by a page whose clock is 10 min behind; `measured`: whether the page has measured it.
+const weekAfterSkew = (measured) => {
+  const p = fresh();
+  const server = p.clock.now;
+  const [t1, t2] = naTiers();
+  p.clock.now = server - MIN;
+  p.call('weekStoreOffer', bodyAt(t1, server - 30 * MIN));
+  p.run('weekStore = null');
+  p.clock.now = server - 10 * MIN;
+  p.set('clockMeasured', measured);
+  return { p, t2, server };
+};
+const inStorage = (p) => Object.keys(JSON.parse(p.ctx.localStorage.getItem('wvw-weeks-v1'))).sort();
+
+test('weekStoreRead: a clock 10 min behind, not yet measured, keeps an entry written a minute ago and does not save it away (js/api.js)', () => {
+  const { p, t2, server } = weekAfterSkew(false);
+  assert.deepEqual(plain([...p.run('weekStoreRead()').keys()]), ['1-1']);
+  p.call('weekStoreOffer', bodyAt(t2, server - 30 * MIN));
+  assert.deepEqual(inStorage(p), ['1-1', '1-2']);
+});
+
+test('weekStoreRead: once the clock is measured, an entry written more than 5 min ahead of it is still refused (js/api.js)', () => {
+  const { p } = weekAfterSkew(true);
+  assert.deepEqual(plain([...p.run('weekStoreRead()').keys()]), []);
+});
+
 test('weekLineup: the remembered line-up has the three teams and no score at all (js/api.js)', () => {
   const p = fresh();
   const [t1] = naTiers();
