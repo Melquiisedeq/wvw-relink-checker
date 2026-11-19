@@ -1794,8 +1794,22 @@ function group(dl, label) {
 }
 
 function renderObjectiveDetail(panel, p, match) {
-  panel.textContent = '';
   const { ob, meta } = p;
+  // Everything the panel draws from the data except the clock-driven "For" text. An identical key keeps the DOM, and
+  // with it a text selection the reader is about to copy; only the "For" text is rewritten in place.
+  const ownerNow = String(ob.owner || '').toLowerCase();
+  const tierNow = objectiveTier(meta, ob);
+  const agoNow = flippedAgo(ob.last_flipped);
+  const key = JSON.stringify([ob, meta.name, tierNow && [tierNow.tier, tierNow.name, tierNow.yaks, tierNow.next],
+    COLORS.includes(ownerNow) ? getTeamName(matchTeamId(match, ownerNow)) : null, agoNow !== null,
+    (Array.isArray(ob.guild_upgrades) ? ob.guild_upgrades : []).map((id) => tacticCatalogue && tacticCatalogue.get(id))]);
+  if (panel.querySelector('.wvw-detail-name') && panel.dataset.key === key && panel.dataset.showing === String(ob.id)) {
+    const agoEl = panel.querySelector('.wvw-ago');
+    if (agoEl && agoNow !== null) agoEl.textContent = agoNow;
+    return;
+  }
+  panel.dataset.key = key;
+  panel.textContent = '';
   // Which objective this panel is currently showing, so a fetch that
   // lands late cannot repaint over a different one.
   panel.dataset.showing = String(ob.id);
@@ -1841,7 +1855,7 @@ function renderObjectiveDetail(panel, p, match) {
   group(dl, 'Held by');
   row(dl, 'Team', teamId ? getTeamName(teamId) : (ob.owner || 'Nobody'), ownCls);
   const ago = flippedAgo(ob.last_flipped);
-  if (ago) row(dl, 'For', ago);
+  if (ago) row(dl, 'For', ago, 'wvw-ago');
   const claimCell = document.createElement('span');
   if (ob.claimed_by) {
     claimCell.className = 'wvw-claimed';
@@ -1861,7 +1875,11 @@ function renderObjectiveDetail(panel, p, match) {
         claimCell.appendChild(svg);
       }
       claimCell.appendChild(document.createTextNode(`[${info.tag}] ${info.name}`));
-    }).catch(() => { claimCell.textContent = 'claimed, name unavailable'; });
+    }).catch(() => {
+      claimCell.textContent = 'claimed, name unavailable';
+      // guildEmblem forgets a failed lookup: dropping the key lets the next read ask again.
+      if (panel.dataset.showing === String(ob.id)) delete panel.dataset.key;
+    });
   } else {
     claimCell.textContent = 'unclaimed';
   }
@@ -1907,6 +1925,8 @@ function renderObjectiveDetail(panel, p, match) {
   if (unknown.length) {
     getTacticCatalogue(unknown).then(() => {
       if (panel.dataset.showing !== String(ob.id)) return;
+      // A dropped request un-asks its ids; only those may be tried again, or a declined id repaints every read.
+      if (unknown.some((id) => !tacticAsked.has(id) && !tacticCatalogue.has(id))) delete panel.dataset.key;
       if (!unknown.some((id) => tacticCatalogue.has(id))) return;
       renderObjectiveDetail(panel, p, match);
     });
@@ -2363,6 +2383,8 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   const emptyDetail = () => {
     selected = null;
     detail.textContent = '';
+    delete detail.dataset.key;
+    delete detail.dataset.showing;
     const p = document.createElement('p');
     p.className = 'wvw-detail-empty';
     // Both lists are named because the game names them apart and a defender treats them apart: the tier
