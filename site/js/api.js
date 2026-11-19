@@ -780,6 +780,8 @@ async function latestRead(url = LATEST_URL) {
     const text = await fetchOwnApi(url, 'no-store', true);
     const data = JSON.parse(text);
     if (data && Number.isSafeInteger(data.at) && data.at > latestHeldAt) latestHeldAt = data.at;
+    // The server has said this hour: a lead that puts the page's "now" before it (a stale one the refused readings never corrected) gives way.
+    steadyClockLead = Math.min(steadyClockLead, Date.now() - latestHeldAt * 1000);
     const list = data && Array.isArray(data.matches) ? data.matches.slice(0, LATEST_MATCHES_MAX) : [];
     const out = [];
     for (const e of list) {

@@ -1735,6 +1735,24 @@ test('steadyClockLead: a clock 4.5 s ahead stays 0 until a reading leaves the ba
   assert.equal(p.steady(), moved, 'and stops there');
 });
 
+test('steadyClockLead: the page clock is never before the newest `at` the server gave, refused readings included', async () => {
+  const p = metering(0);
+  const DAY = 24 * 60 * MIN;
+  p.set('steadyClockLead', 2 * DAY);
+  const at = Math.floor(p.T0 / 1000) - 5;
+  p.clock.now = p.T0;
+  p.set('fetch', async () => {
+    p.clock.now += 1500;   // past CLOCK_TRIP_MAX_MS: the reading is refused
+    return { ok: true, headers: { get: () => new Date(p.T0).toUTCString() }, text: async () => JSON.stringify({ at, matches: [] }) };
+  });
+  await p.call('latestRead');
+  assert.ok(p.run('steadyNow()') >= at * 1000, `steadyNow ${p.run('steadyNow()')} before ${at * 1000}`);
+  assert.ok(p.steady() < MIN, `lead ${p.steady()}`);
+  const before = p.run('steadyNow()');
+  p.clock.now += 10 * SEC;
+  assert.equal(p.run('steadyNow()'), before + 10 * SEC, 'and it keeps walking');
+});
+
 test('steadyClockLead: an answer without a Date header changes nothing', async () => {
   const p = metering(5 * MIN);
   await p.answer(0, 300);
