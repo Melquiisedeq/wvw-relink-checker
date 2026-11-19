@@ -67,10 +67,29 @@ async function fetchJson(url, attempt = 0, cacheMode = 'no-store', timeoutMs = R
 let ownClockLead = 0;
 // What the countdowns, the ages and matchIsLive subtract: ownClockLead moves by up to a second with every answer and
 // would make them skip. It follows a reading only past CLOCK_BAND_MS from the kept value; a right clock keeps it 0.
+// The newest `at` the server gave also caps it (floorClock).
 let steadyClockLead = 0;
 let clockMeasured = false;   // a reading with a trip of up to CLOCK_TRIP_MAX_MS has been accepted
 // The server's time, as the page reads it.
 const steadyNow = () => Date.now() - steadyClockLead;
+// Bodies stamped before the first accepted reading took this page's clock (`at` still equal to `clockAt`) move with the lead;
+// `measured` is that reading: it ends the wait, so they are moved once.
+function moveClock(lead, measured) {
+  const was = steadyClockLead;
+  steadyClockLead = lead;
+  for (const k of newestMatches.values()) {
+    if (k.at === k.clockAt) {
+      k.at += was - lead;
+      if (!measured) k.clockAt = k.at;
+    }
+    if (measured) delete k.clockAt;
+  }
+}
+// The page's "now" never falls before the newest `at` the server gave: a lead past it (one the refused readings left stale) drops to it.
+function floorClock() {
+  const floor = Date.now() - latestHeldAt * 1000;
+  if (floor < steadyClockLead - CLOCK_BAND_MS) moveClock(floor, false);
+}
 async function fetchOwnApi(url, cache = 'default', raw = false) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), OWN_API_TIMEOUT_MS);
@@ -83,17 +102,10 @@ async function fetchOwnApi(url, cache = 'default', raw = false) {
       ownClockLead = Number.isFinite(lead) ? lead : 0;
       // No Date header gives NaN: the reading is dropped.
       const accepted = Date.now() - sentAt <= CLOCK_TRIP_MAX_MS && Number.isFinite(lead);
-      const was = steadyClockLead;
-      if (accepted && Math.abs(lead - steadyClockLead) > CLOCK_BAND_MS) {
-        steadyClockLead = Math.abs(lead) > CLOCK_BAND_MS ? lead : 0;
-      }
-      // Bodies stamped before the first accepted reading took this page's clock (`at` still equal to `clockAt`): moved once, here.
       if (accepted) {
         clockMeasured = true;
-        for (const k of newestMatches.values()) {
-          if (k.at === k.clockAt) k.at += was - steadyClockLead;
-          delete k.clockAt;
-        }
+        const next = Math.abs(lead - steadyClockLead) > CLOCK_BAND_MS ? (Math.abs(lead) > CLOCK_BAND_MS ? lead : 0) : steadyClockLead;
+        moveClock(next, true);
       }
     }
     return await (raw ? res.text() : res.json());
@@ -780,6 +792,7 @@ async function latestRead(url = LATEST_URL) {
     const text = await fetchOwnApi(url, 'no-store', true);
     const data = JSON.parse(text);
     if (data && Number.isSafeInteger(data.at) && data.at > latestHeldAt) latestHeldAt = data.at;
+    floorClock();
     const list = data && Array.isArray(data.matches) ? data.matches.slice(0, LATEST_MATCHES_MAX) : [];
     const out = [];
     for (const e of list) {

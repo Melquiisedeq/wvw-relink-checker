@@ -1735,6 +1735,57 @@ test('steadyClockLead: a clock 4.5 s ahead stays 0 until a reading leaves the ba
   assert.equal(p.steady(), moved, 'and stops there');
 });
 
+test('steadyClockLead: the page clock is never before the newest `at` the server gave, refused readings included', async () => {
+  const p = metering(0);
+  const DAY = 24 * 60 * MIN;
+  p.set('steadyClockLead', 2 * DAY);
+  const at = Math.floor(p.T0 / 1000) - 5;
+  p.clock.now = p.T0;
+  p.set('fetch', async () => {
+    p.clock.now += 1500;   // past CLOCK_TRIP_MAX_MS: the reading is refused
+    return { ok: true, headers: { get: () => new Date(p.T0).toUTCString() }, text: async () => JSON.stringify({ at, matches: [] }) };
+  });
+  await p.call('latestRead');
+  assert.ok(p.run('steadyNow()') >= at * 1000, `steadyNow ${p.run('steadyNow()')} before ${at * 1000}`);
+  assert.ok(p.steady() < MIN, `lead ${p.steady()}`);
+  const before = p.run('steadyNow()');
+  p.clock.now += 10 * SEC;
+  assert.equal(p.run('steadyNow()'), before + 10 * SEC, 'and it keeps walking');
+});
+
+// One /api/latest answer for `at` s, generated at the server instant `server`; `trip` ms of travel (over CLOCK_TRIP_MAX_MS: refused).
+async function latestAnswer(p, trueLead, server, at, trip) {
+  p.clock.now = server + trueLead;
+  p.set('fetch', async () => {
+    p.clock.now += trip;
+    return { ok: true, headers: { get: () => new Date(server).toUTCString() }, text: async () => JSON.stringify({ at, matches: [] }) };
+  });
+  await p.call('latestRead');
+}
+
+test('steadyClockLead: the floor leaves a lead the server time agrees with, and one within the band', async () => {
+  const measured = metering(-5 * MIN);
+  measured.set('steadyClockLead', -5 * MIN);
+  await latestAnswer(measured, -5 * MIN, measured.T0, measured.T0 / 1000 - 30, 1500);
+  assert.equal(measured.steady(), -5 * MIN, 'a measured lead with an `at` 30 s old');
+  const near = metering(0);
+  await latestAnswer(near, 0, near.T0, near.T0 / 1000 + 3, 1500);
+  assert.equal(near.steady(), 0, 'an `at` 3 s ahead is inside the band');
+});
+
+test('steadyClockLead: a body stamped on the page clock keeps its age when the floor moves the lead and a reading then lands', async () => {
+  const p = metering(-5 * MIN);
+  const S = p.T0;
+  const stamped = S - 5 * MIN;   // the page clock, 5 min behind, took the body's time
+  p.ctx.__k = { at: stamped, clockAt: stamped };
+  p.run("newestMatches.set('m', __k)");
+  await latestAnswer(p, -5 * MIN, S, S / 1000 - 1, 1500);   // refused: the floor moves the lead
+  assert.ok(p.steady() < -4 * MIN, `lead ${p.steady()}`);
+  await latestAnswer(p, -5 * MIN, S, S / 1000 - 1, 0);   // accepted
+  const at = p.run("newestMatches.get('m').at");
+  assert.ok(Math.abs(at - S) <= 5 * SEC, `at ${at - S} from the server's time`);
+});
+
 test('steadyClockLead: an answer without a Date header changes nothing', async () => {
   const p = metering(5 * MIN);
   await p.answer(0, 300);
