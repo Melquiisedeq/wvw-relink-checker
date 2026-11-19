@@ -330,6 +330,33 @@ test.describe('objective panel across a refresh', () => {
     expect(await page.evaluate(() => getSelection().toString())).toBe(picked);
   });
 
+  test('the same objective picked again after a tab change is drawn again', async ({ page, wvw }) => {
+    const tier = await pick(page, wvw);
+    const home = await page.locator(`${POP} .wvw-tab.is-active`).getAttribute('data-type');
+    const other = (await keptMatch(page, tier.id)).maps.map(m => m.type).find(type => type !== home);
+    await page.locator(`${POP} .wvw-tab[data-type="${other}"]`).click();
+    await expect(page.locator(`${POP} .wvw-tab.is-active`)).toHaveAttribute('data-type', other);
+    await page.locator(`${POP} .wvw-tab[data-type="${home}"]`).click();
+    await expect(page.locator(`${POP} .wvw-tab.is-active`)).toHaveAttribute('data-type', home);
+    await expect(page.locator(`${POP} .wvw-detail-name`)).toHaveCount(0);
+    await page.locator(`${POP} .wvw-plot g[role='button']`).first().click();
+    await expect(page.locator(`${POP} .wvw-detail-name`)).toBeVisible();
+  });
+
+  test('a tactic the catalogue lacks is named once its lookup lands', async ({ page, wvw }) => {
+    const tier = await pick(page, wvw);
+    const id = await page.locator(`${POP} .wvw-detail`).getAttribute('data-showing');
+    await page.route('**/v2/guild/upgrades?ids=999001', route => route.fulfill({
+      status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify([{ id: 999001, name: 'Probe Tactic', description: '', icon: '', costs: [{ name: 'Probe Tactic' }] }]),
+    }));
+    const kept = await keptMatch(page, tier.id);
+    for (const m of kept.maps) for (const o of m.objectives) if (String(o.id) === id) o.guild_upgrades = [999001];
+    await answer(page, tier.url, kept);
+    await refresh(page, wvw);
+    await expect(page.locator(`${POP} .wvw-detail .wvw-upgrades li`)).toHaveText('Probe Tactic');
+  });
+
   test('a refresh that hands the objective to another team repaints the panel', async ({ page, wvw }) => {
     const tier = await pick(page, wvw);
     const id = await page.locator(`${POP} .wvw-detail`).getAttribute('data-showing');
