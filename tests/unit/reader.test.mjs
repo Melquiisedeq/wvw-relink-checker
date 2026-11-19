@@ -12,6 +12,7 @@ import {
   splitMatch, MAX_MESSAGE
 } from '../../supabase/reader.mjs';
 import worker from '../../worker/index.mjs';
+import { prng } from './page-harness.mjs';
 
 // The first message: the live parts, when there are any.
 const buildBody = async (ms, summary) => (await buildMessages(ms, summary))[0] ?? null;
@@ -313,7 +314,9 @@ test('the function: a game API that fails, lies or is too big gives a generic 50
 
 test('the function: ten matches with all 84 skirmishes, a body past 1 MiB, are read and sent, each history apart', async () => {
   const trio = (a, b, c) => ({ red: a, blue: b, green: c });
-  const r9 = () => Math.floor(Math.random() * 9000);
+  const SEED = 6319;
+  const rand = prng(SEED);
+  const r9 = () => rand.int(9000);
   const skirmishes = Array.from({ length: 84 }, (_, i) => ({
     id: i + 1, scores: trio(r9(), r9(), r9()),
     map_scores: MAP_TYPES.map((type) => ({ type, scores: trio(r9(), r9(), r9()) }))
@@ -329,20 +332,20 @@ test('the function: ten matches with all 84 skirmishes, a body past 1 MiB, are r
   const ids = ['1-1', '1-2', '1-3', '1-4', '1-5', '2-1', '2-2', '2-3', '2-4', '2-5'];
   const list = ids.map((id) => apiMatch(id, { over: { skirmishes, maps } }));
   const big = JSON.stringify(list, null, 2);
-  assert.ok(big.length > 1024 * 1024, 'the body is past the old cap: ' + big.length);
+  assert.ok(big.length > 1024 * 1024, 'the body is past the old cap: ' + big.length + ' (seed ' + SEED + ')');
   // The NA week's last hour: skirmish 84 runs, 83 have finished.
   const late = Date.parse('2026-10-10T01:00:00Z');
   const r = await callReader({ [GAME]: new Response(big), [SUMMARY]: empty, [INGEST]: () => json({ applied: [] }) }, {}, late);
-  assert.equal(r.status, 200);
+  assert.equal(r.status, 200, 'seed ' + SEED);
   const pushes = r.asked.filter((a) => a.url === INGEST);
   const entries = pushes.flatMap((p) => JSON.parse(new TextDecoder().decode(p.init.body).split('\n')[0]).matches);
-  assert.ok(pushes.every((p) => p.init.body.length <= MAX_MESSAGE), 'each send is within the Worker\'s cap');
+  assert.ok(pushes.every((p) => p.init.body.length <= MAX_MESSAGE), 'each send is within the Worker\'s cap (seed ' + SEED + ')');
   const live = entries.filter((e) => e.live);
   const hist = entries.filter((e) => e.hist);
   assert.equal(live.length, 10);
   assert.equal(hist.length, 10);
   assert.ok(live.every((e) => e.live.bytes <= 64 * 1024) && hist.every((e) => e.hist.n === 83 && e.hist.bytes <= 64 * 1024),
-    'each part is within the Worker\'s limits');
+    'each part is within the Worker\'s limits (seed ' + SEED + ')');
   assert.deepEqual(JSON.parse(r.lines.at(-1)), { region: 'us-east-1', sent: 10, hist: 10, messages: pushes.length, dropped: 0, status: 200 });
 });
 
