@@ -33,8 +33,7 @@ test.describe('desktop', () => {
   test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
 
   test('a click outside closes the popover and keeps the caret; a click inside does not', async ({ page, wvw }) => {
-    // Tall enough that the guild box needs no scrolling to be clicked: a scroll
-    // would close the popover by itself and the click would prove nothing.
+    // Tall enough that the guild box needs no scrolling to be clicked: scrolling, the popover held at an edge could cover the box and the click would land inside it.
     await page.setViewportSize({ width: 1280, height: 2000 });
     const btn = await openGuilds(page, wvw);
     expect(await page.locator('#guildInput').evaluate(i => i.getBoundingClientRect().bottom < innerHeight), 'the guild box in view').toBe(true);
@@ -147,8 +146,10 @@ test.describe('phone', () => {
     expect(await state(page, btn)).toEqual(OPEN);
     await page.locator(`${POP} .info-popover-header span`).tap();
     expect(await state(page, btn), 'a tap inside').toEqual(OPEN);
-    await page.locator('#guildInput').tap();
-    expect(await state(page, btn), 'a tap on the guild box').toEqual(CLOSED);
+    // The popover stays through any scroll and may cover the box: tap the margin beside it.
+    const margin = await page.evaluate(() => { const p = document.querySelector('.info-popover').getBoundingClientRect(); return { x: p.left / 2, y: p.top + p.height / 2 }; });
+    await page.touchscreen.tap(margin.x, margin.y);
+    expect(await state(page, btn), 'a tap outside').toEqual(CLOSED);
     // Watched from before the tap to after the round would have landed.
     const watch = () => page.evaluate(() => {
       window.__shots = { shot: false, firing: false };
@@ -166,7 +167,7 @@ test.describe('phone', () => {
     await expect.poll(() => page.evaluate(() => window.__shots), { message: 'a click throwing a round' }).toEqual({ shot: true, firing: true });
   });
 
-  test('scrolling the page, the popover follows its icon; the icon gone, it closes', async ({ page, wvw }) => {
+  test('scrolling the page, the popover follows its icon; the icon gone, it stays open at the edge', async ({ page, wvw }) => {
     await load(page, wvw);
     const btn = page.locator(GUILDS).locator('visible=true').first();
     await btn.evaluate(b => window.scrollTo(0, b.getBoundingClientRect().top + scrollY - 90));
@@ -194,8 +195,13 @@ test.describe('phone', () => {
       return !!now && now.trigger !== first.trigger && now.off <= 2;
     }, { message: 'the popover following its icon to its new place' }).toBe(true);
     await page.evaluate(() => window.scrollBy(0, 4000));
-    await expect(page.locator(POP), 'the icon out of sight').toHaveCount(0);
-    expect((await state(page, btn)).active).toBe(false);
+    // The icon out of sight above: the popover stays, clamped to the top edge (the rule gives 12 px).
+    await expect.poll(async () => {
+      const now = await beside();
+      return !!now && now.trigger < -40 && now.off <= 2;
+    }, { message: 'the popover held at the edge, the icon out of sight' }).toBe(true);
+    await expect(page.locator(POP), 'the popover stays open').toHaveCount(1);
+    expect((await state(page, btn)).active).toBe(true);
   });
 
   test('a finger does not aim the trebuchet; a mouse does', async ({ page, wvw }) => {
