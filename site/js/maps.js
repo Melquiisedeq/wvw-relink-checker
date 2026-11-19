@@ -1345,12 +1345,11 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
     upgradeTerrain();
   };
 
+  // Through the SVG's own matrix, so the letterbox bands that `meet` leaves
+  // beside the drawing in a short window are not counted as map.
   const atEvent = (e) => {
-    const r = svg.getBoundingClientRect();
-    return {
-      x: view.x + ((e.clientX - r.left) / r.width) * view.w,
-      y: view.y + ((e.clientY - r.top) / r.height) * view.h,
-    };
+    const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
+    return { x: p.x, y: p.y };
   };
 
   wrap.addEventListener('wheel', (e) => {
@@ -1371,12 +1370,12 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
   });
   wrap.addEventListener('pointermove', (e) => {
     if (!dragging) return;
-    const r = svg.getBoundingClientRect();
-    const dx = ((e.clientX - r.left) / r.width) * view.w;
-    const dy = ((e.clientY - r.top) / r.height) * view.h;
-    // Keep the point grabbed at pointerdown under the cursor. Measuring
-    // against the live view.x, which this handler moves, would make the map
-    // creep away from the pointer.
+    const now = atEvent(e);
+    const dx = now.x - view.x;
+    const dy = now.y - view.y;
+    // Put the ground grabbed at pointerdown back under the cursor: dx, dy are
+    // the cursor's offset from the view's corner in map units, independent of
+    // where view.x is now.
     view.x = dragging.at.x - dx;
     view.y = dragging.at.y - dy;
     clamp();
