@@ -356,13 +356,15 @@ const weekTeam = (n) => Number.isInteger(n) && n > 0 && n < 100000
 
 // The exact shape or nothing: a week that has not ended, began at most an
 // hour from now (a later start would hold for longer than WEEK_HOLD_MS, and
-// past year 275760 it is no date at all), at most 8 days long, written no
-// later than now, three distinct teams the table knows.
-function weekEntryOk(v, now) {
+// past year 275760 it is no date at all), at most 8 days long, written at
+// most `writtenSlack` after now (the read allows an hour until the page's
+// clock is measured: the entry carries the server's time), three distinct
+// teams the table knows.
+function weekEntryOk(v, now, writtenSlack = WEEK_CLOCK_SLACK_MS) {
   if (!v || typeof v !== 'object' || !v.t || typeof v.t !== 'object') return false;
   if (!weekTime(v.s) || !weekTime(v.e) || !weekTime(v.v)) return false;
   if (v.s > now + WEEK_AHEAD_MS) return false;
-  if (v.e <= v.s || v.e - v.s > WEEK_MAX_MS || v.e <= now || v.v > now + WEEK_CLOCK_SLACK_MS) return false;
+  if (v.e <= v.s || v.e - v.s > WEEK_MAX_MS || v.e <= now || v.v > now + writtenSlack) return false;
   const teams = COLORS.map((c) => v.t[c]);
   return teams.every(weekTeam) && new Set(teams).size === COLORS.length;
 }
@@ -378,7 +380,7 @@ function weekStoreRead() {
     const now = steadyNow();
     for (const [id, v] of Object.entries(all)) {
       if (weekStore.size >= WEEK_STORE_MAX) break;
-      if (!WEEK_ID_RE.test(id) || !weekEntryOk(v, now)) continue;
+      if (!WEEK_ID_RE.test(id) || !weekEntryOk(v, now, clockMeasured ? WEEK_CLOCK_SLACK_MS : WEEK_AHEAD_MS)) continue;
       weekStore.set(id, { s: v.s, e: v.e, t: { red: v.t.red, blue: v.t.blue, green: v.t.green }, v: v.v });
     }
   } catch { /* off, full, or corrupt - an empty memory is the right answer */ }
