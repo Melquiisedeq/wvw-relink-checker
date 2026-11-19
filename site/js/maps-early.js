@@ -548,6 +548,9 @@ function missedPeriod(before, after, since, back, changes = []) {
 // map as it stands, so it opens only when asked.
 const MISSED_FOLD_MS = 2 * 60 * 60 * 1000;
 
+// From the summary's start to the return: over this (exactly this still shows) there is no summary, only the map as it stands.
+const MISSED_GONE_MS = 24 * 60 * 60 * 1000;
+
 function missedMakeNote(before, after, since, back, kind, endAt = back) {
   const all = missedOwnerChanges(before, after);
   const flippedAt = (c) => (Number.isFinite(c.flipped) ? c.flipped : -Infinity);
@@ -561,6 +564,7 @@ function missedMakeNote(before, after, since, back, kind, endAt = back) {
   // The start is fixed here: the readings that prove it can age out of this
   // browser's log moments later.
   const period = missedPeriod(before, after, since, endAt, listed);
+  if (back - period.start > MISSED_GONE_MS) { missedNotes.delete(after.id); return null; }
   const note = { kind, back, before, rawSince: since, after, endAt, listed, period,
     until: back + MISSED_SHOW_MS, open: false, wideOpen: true, moreMaps: new Set(),
     get since() { return missedView(note).since; },
@@ -573,6 +577,7 @@ function missedMakeNote(before, after, since, back, kind, endAt = back) {
   const view = missedView(note);
   if (view.end - view.since > MISSED_FOLD_MS) note.wideOpen = false;
   if (endAt === back) missedRingFor(after.id, view.changes);
+  return note;
 }
 
 // What the summary says now: the history moves under it without a new body.
@@ -609,8 +614,8 @@ function missedRefreshNote(match, now) {
   const note = missedNoteFor(match.id);
   if (!note || !note.before || !missedBodyChanged(note.after, match)) return false;
   const old = note;
-  missedMakeNote(old.before, match, old.rawSince, old.back, old.kind, now);
-  const fresh = missedNotes.get(match.id);
+  const fresh = missedMakeNote(old.before, match, old.rawSince, old.back, old.kind, now);
+  if (!fresh) return true;
   Object.assign(fresh, { until: old.until, open: old.open, wideOpen: old.wideOpen, moreMaps: old.moreMaps });
   return true;
 }

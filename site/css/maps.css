@@ -278,7 +278,7 @@
 .wvw-cap:focus-visible{outline-offset:-2px;}
 .wvw-cap:active{transform:none;}
 .wvw-cap img{display:block;flex-shrink:0;}
-.wvw-cap-time{color:#8d97a6;font-variant-numeric:tabular-nums;min-width:52px;}
+.wvw-cap-time{color:#8d97a6;font-variant-numeric:tabular-nums;min-width:52px;white-space:nowrap;}
 .wvw-cap-name{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .wvw-cap-map{color:#8d97a6;margin-left:auto;white-space:nowrap;}
 /* The site's thin scrollbar (css/base.css), on the list. */
