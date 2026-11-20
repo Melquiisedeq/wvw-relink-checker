@@ -1308,13 +1308,61 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
     }).observe(svg);
   }
 
-  const apply = () => {
+  // A new viewBox repaints the whole map. A one-pointer drag instead slides the picture already drawn, by a
+  // transform on the svg painted SLIDE_MARGIN of its box past each edge (the wrap clips it), and sets the
+  // viewBox on release or when that margin runs out.
+  const SLIDE_MARGIN = 0.5;
+  let slide = null;
+  const drawn = { x: view.x, y: view.y };
+  const draw = () => {
     svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
+    drawn.x = view.x;
+    drawn.y = view.y;
     const k = Math.pow(view.w / fullW, MARKER_FOLLOW);
     for (let i = 0; i < nodes.length; i++) {
       const p = pts[i];
       nodes[i].setAttribute('transform', `translate(${p.x} ${p.y}) scale(${k})`);
     }
+  };
+  // Draws the view in place; a drag still going on slides again from this picture.
+  const apply = () => {
+    if (slide && slide.live) {
+      svg.style.transform = '';
+      svg.style.clipPath = '';
+      if (!svg.getAttribute('style')) svg.removeAttribute('style');
+      svg.classList.remove('is-sliding');
+    }
+    slide = null;
+    draw();
+  };
+  const settle = () => { if (slide && slide.live) apply(); slide = null; };
+  // Read with no transform on: where the drawn view's corner is on screen, and its scale.
+  const slideFrom = () => {
+    const m = svg.getScreenCTM();
+    const r = svg.getBoundingClientRect();
+    return { left: m.e + m.a * drawn.x, top: m.f + m.d * drawn.y, kx: m.a, ky: m.d, mx: r.width * SLIDE_MARGIN, my: r.height * SLIDE_MARGIN, live: false };
+  };
+  const show = () => {
+    const s = slide;
+    // Whole device pixels, so the layer is never resampled; the view follows, so the release lands where the
+    // picture already is.
+    const dpr = window.devicePixelRatio || 1;
+    let px = Math.round((drawn.x - view.x) * s.kx * dpr) / dpr;
+    let py = Math.round((drawn.y - view.y) * s.ky * dpr) / dpr;
+    view.x = drawn.x - px / s.kx;
+    view.y = drawn.y - py / s.ky;
+    if (!s.live) {
+      if (!px && !py) return;
+      s.live = true;
+      svg.classList.add('is-sliding');
+      svg.style.clipPath = `inset(${-s.my}px ${-s.mx}px)`;
+    }
+    if (Math.abs(px) > s.mx * 0.9 || Math.abs(py) > s.my * 0.9) {
+      draw();
+      px = 0;
+      py = 0;
+    }
+    svg.style.transform = `translate(${px}px, ${py}px)`;
   };
 
   const clamp = () => {
@@ -1374,6 +1422,7 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
 
   wrap.addEventListener('wheel', (e) => {
     e.preventDefault();
+    settle();   // atEvent reads the screen matrix: with no slide on
     const at = atEvent(e);
     zoomBy(e.deltaY > 0 ? 1.18 : 1 / 1.18, at.x, at.y);
   }, { passive: false });
@@ -1409,7 +1458,9 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
     if (e.isPrimary) for (const [id, p] of down) if (p.type === e.pointerType) down.delete(id);
     down.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
     if (down.size === 2) {
-      // Whatever the first finger was doing, the pair takes over.
+      // Whatever the first finger was doing, the pair takes over. The pinch reads the screen matrix: the slide
+      // is set down first, so no engine's handling of a CSS transform in getScreenCTM can shift its anchor.
+      settle();
       pinching = true;
       wrap.classList.add('is-panning');
       return;
@@ -1446,16 +1497,16 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
       startDrag(e, from.at);
     }
     if (!dragging || e.pointerId !== dragging.id) return;
-    const now = atEvent(e);
-    const dx = now.x - view.x;
-    const dy = now.y - view.y;
+    if (!slide) slide = slideFrom();
     // Put the ground grabbed at pointerdown back under the cursor: dx, dy are
     // the cursor's offset from the view's corner in map units, independent of
     // where view.x is now.
+    const dx = (e.clientX - slide.left) / slide.kx;
+    const dy = (e.clientY - slide.top) / slide.ky;
     view.x = dragging.at.x - dx;
     view.y = dragging.at.y - dy;
     clamp();
-    apply();
+    show();
   });
   // Capture phase: the drag that began on a marker must not pick it when the pointer lifts.
   wrap.addEventListener('click', (e) => {
@@ -1467,6 +1518,7 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
     e.stopPropagation();
   }, true);
   const endDrag = (e) => {
+    settle();
     armed = null;
     const had = down.delete(e.pointerId);
     liftedAt = e.timeStamp;
