@@ -2325,6 +2325,7 @@ const PANE_MIN = 210;    // px, stacked
 const PANE_FLOOR = 150;  // px, beside the map: under this the column outgrows the map
 
 function recentCaptures(match) {
+  if (typeof labCaptures === 'function') { const lab = labCaptures(match); if (lab) return lab; } // LAB (never merged)
   // A clock running ahead on the API's side must not set the window.
   const ceiling = steadyNow() + 60000;
   let newest = 0;
@@ -2860,6 +2861,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
         b.title = MAP_PANEL_NAME[type] || type;
       }
     }
+    if (typeof labMarkTabs === 'function') labMarkTabs(tabByType, hot, view, () => { markHotTab(liveMatch); paintPane(); }); // LAB (never merged)
   };
 
   // The freshest answer this popover has seen, which is not the one it

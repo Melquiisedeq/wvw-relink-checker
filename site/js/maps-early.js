@@ -224,6 +224,7 @@ async function readKillSheet() {
 // Both halves as one sorted series, only the match's own week: kills restart
 // at the reset, so last week's line would read as no fight.
 function fightSamples(match) {
+  if (typeof labFightSamples === 'function') { const lab = labFightSamples(match); if (lab) return lab; } // LAB (never merged)
   const id = match && match.id;
   const local = readFightLog()[id] || [];
   const shared = (killSheet && killSheet.get(id)) || [];
@@ -305,7 +306,7 @@ function killView(match, types, now = steadyNow()) {
   view.alive = !!kept && !!kept.rose && now - kept.at <= KILLS_ALIVE_MS;
 
   const list = fightSamples(match);
-  const body = fightTotals(match);
+  const body = (typeof labBody === 'function' && labBody(match, now)) || fightTotals(match); // LAB (never merged)
   const bodyTotal = sumKills(body);
   const series = list.map((s) => ({ at: s.at, total: sumKills(s.n) }));
   const listTop = series.reduce((m, s) => Math.max(m, s.total), 0);
