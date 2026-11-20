@@ -30,9 +30,9 @@ window.addEventListener('error', (e) => {
   // Async ones stand outside the page's order: js/maps.js has its own fallback, and a blocked analytics beacon costs nothing.
   if (!(s instanceof HTMLScriptElement) || s.async || /\/js\/(trebuchet|wvw-static)\.js$/.test(s.src)) return;
   scriptsMissing.push(s.src);
+  // The three lines sit above every <body> script in index.html.
   for (const id of ['statusMsg', 'standingsStatusNA', 'standingsStatusEU']) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = "Part of the page didn't load. Reload to fix it.";
+    document.getElementById(id).textContent = "Part of the page didn't load. Reload to fix it.";
   }
-  document.getElementById('statusMsg')?.classList.add('status-err');
+  document.getElementById('statusMsg').classList.add('status-err');
 }, true);
