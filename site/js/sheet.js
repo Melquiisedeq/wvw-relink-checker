@@ -80,15 +80,10 @@ let communityGuildsCache = null; // Map: teamName -> { alliances, solo }
 let communityGuildsCachedAt = 0;
 
 async function fetchSheetCsv(tab) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const res = await fetch(SHEET_URL(tab), { signal: controller.signal, cache: 'no-store' });
+  return fetchWithTimeout(SHEET_URL(tab), { cache: 'no-store' }, REQUEST_TIMEOUT_MS, (res) => {
     if (!res.ok) throw new Error(`Sheet "${tab}" request failed (HTTP ${res.status})`);
-    return await res.text();
-  } finally {
-    clearTimeout(timer);
-  }
+    return res.text();
+  });
 }
 
 function addToTeam(byTeam, teamName) {

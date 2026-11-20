@@ -89,6 +89,7 @@ const STANDINGS_REFRESH_MS = 5 * 60 * 1000;  // match scores, kills/deaths, VP, 
 const TIMERS_REFRESH_MS = 10 * 60 * 1000;    // season lockout
 // Community sheet is edited by hand; re-fetched on click with a short TTL.
 const COMMUNITY_SHEET_TTL_MS = 5 * 60 * 1000;
+const WVW_MAP_TTL_MS = 10 * 60 * 1000;       // the guild-to-team table
 
 // Kills history: an Apps Script snapshot every five minutes over a rolling two
 // hours. The shape is this project's own: change it at the source.

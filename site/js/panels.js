@@ -42,19 +42,7 @@ function renderStandingsRegion(gridEl, matches) {
     const tierNum = match.id.split('-')[1];
     const regionName = REGION_NAMES[region] || `Region ${region}`;
 
-    const box = document.createElement('div');
-    box.className = 'standing-match';
-    box.dataset.matchId = match.id;
-
-    const label = document.createElement('div');
-    label.className = 'standing-match-title';
-    const tierText = document.createElement('span');
-    tierText.setAttribute('role', 'heading');
-    tierText.setAttribute('aria-level', '3');
-    tierText.textContent = `Tier ${tierNum || '?'}`;
-    label.appendChild(tierText);
-    label.appendChild(buildTierMapButton(match, regionName, tierNum || '?'));
-    box.appendChild(label);
+    const box = buildTierBox(match.id, `Tier ${tierNum || '?'}`, buildTierMapButton(match, regionName, tierNum || '?'));
 
     // Last week's score looks like a live one: the numbers wait, the rest stays.
     if (!matchIsLive(match)) {
@@ -292,7 +280,8 @@ function slideFollowDeltas() {
   }
 }
 
-function buildWaitingTier(matchId) {
+// The box of one tier: its heading, then `extra` beside it.
+function buildTierBox(matchId, title, ...extra) {
   const box = document.createElement('div');
   box.className = 'standing-match';
   box.dataset.matchId = matchId;
@@ -301,9 +290,14 @@ function buildWaitingTier(matchId) {
   const tierText = document.createElement('span');
   tierText.setAttribute('role', 'heading');
   tierText.setAttribute('aria-level', '3');
-  tierText.textContent = `Tier ${matchId.split('-')[1]}`;
-  label.appendChild(tierText);
+  tierText.textContent = title;
+  label.append(tierText, ...extra);
   box.appendChild(label);
+  return box;
+}
+
+function buildWaitingTier(matchId) {
+  const box = buildTierBox(matchId, `Tier ${matchId.split('-')[1]}`);
   const note = document.createElement('p');
   note.className = 'standings-waiting';
   note.textContent = 'Waiting on the game';
@@ -315,17 +309,7 @@ function buildWaitingTier(matchId) {
 // that reads as a standing.
 function buildLineupTier(line) {
   forgetSideStats(line.id);
-  const box = document.createElement('div');
-  box.className = 'standing-match';
-  box.dataset.matchId = line.id;
-  const label = document.createElement('div');
-  label.className = 'standing-match-title';
-  const tierText = document.createElement('span');
-  tierText.setAttribute('role', 'heading');
-  tierText.setAttribute('aria-level', '3');
-  tierText.textContent = `Tier ${line.id.split('-')[1]}`;
-  label.appendChild(tierText);
-  box.appendChild(label);
+  const box = buildTierBox(line.id, `Tier ${line.id.split('-')[1]}`);
   box.appendChild(buildStandingsStale(line));
   return box;
 }
@@ -612,24 +596,7 @@ function renderMatchPanel(match, yourGuildsByColor) {
 
     const head = document.createElement('div');
     head.className = 'team-head';
-    const rankBadge = document.createElement('span');
-    const rank = rankByColor[color];
-    rankBadge.className = `rank-badge rank-${rank}`;
-    rankBadge.textContent = String(rank);
-    const dot = document.createElement('span');
-    dot.className = `dot dot-${color}`;
-    const name = document.createElement('span');
-    name.className = 'team-name';
-    name.textContent = serverName;
-    head.appendChild(rankBadge);
-    head.appendChild(dot);
-    head.appendChild(name);
-    if (regionCode === '1') head.appendChild(buildServerGuildsButton(serverName));
-    const vpEl = document.createElement('span');
-    vpEl.className = 'standing-vp';
-    vpEl.innerHTML = `<span class="stat-label">VP </span><span class="stat-value">${vp}</span>`;
-    vpEl.appendChild(buildMovementIndicator(regionCode, tierNum, rank, isTiedOnVp(match, color)));
-    head.appendChild(vpEl);
+    appendSideHead(head, match, color, rankByColor[color], serverName, vp, 'team-name', false);
     col.appendChild(head);
 
     if (yours.length) {

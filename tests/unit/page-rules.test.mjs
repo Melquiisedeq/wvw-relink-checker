@@ -2191,3 +2191,31 @@ for (const lead of [5 * MIN, -5 * MIN]) {
     assert.deepEqual(ids, ahead ? ['1-1-a'] : ['1-1-b', '1-1-a']);
   });
 }
+
+test('fetchJson: a retry that fails on the network is not retried again by the attempt before it (js/api.js)', async () => {
+  const answers = {
+    '503, then the network twice': [{ status: 503 }, 'net', 'net'],
+    '429 with Retry-After, then the network twice': [{ status: 429, retryAfter: '2' }, 'net', 'net'],
+  };
+  const waits = {
+    '503, then the network twice': [500, 1000],
+    '429 with Retry-After, then the network twice': [2000, 1000],
+  };
+  for (const [name, script] of Object.entries(answers)) {
+    const page = fresh();
+    const slept = [];
+    let fetches = 0;
+    page.ctx.AbortController = AbortController;
+    // The 10 s deadline never fires; a wait between tries returns at once and is noted.
+    page.ctx.setTimeout = (fn, ms) => { if (ms >= 10000) return 0; slept.push(ms); fn(); return 0; };
+    page.ctx.fetch = async () => {
+      const a = script[fetches++];
+      if (a === 'net') throw new (page.run('TypeError'))('offline');
+      return { status: a.status, ok: false, headers: { get: () => a.retryAfter ?? null } };
+    };
+    const err = await page.run("fetchJson('/x').catch((e) => e)");
+    assert.equal(fetches, 3, `${name}: fetches`);
+    assert.deepEqual(slept, waits[name], `${name}: waits`);
+    assert.equal(err.network, true, `${name}: the last error is the network's`);
+  }
+});
