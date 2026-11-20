@@ -85,6 +85,14 @@ function openPopover(triggerEl, label, render, extraClass) {
   return popover;
 }
 
+function hintLine(text) {
+  const p = document.createElement('p');
+  p.className = 'hint';
+  p.style.margin = '0';
+  p.textContent = text;
+  return p;
+}
+
 function markPopoverTrigger(btn) {
   btn.setAttribute('aria-haspopup', 'dialog');
   btn.setAttribute('aria-expanded', 'false');

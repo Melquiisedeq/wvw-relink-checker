@@ -24,7 +24,7 @@ function showStandingsSkeleton(gridEl) {
 // start and skirmishId tell a figure of another week or skirmish, which is never a rise.
 const prevSideStats = new Map(); // `${matchId}:${color}` -> { vp, skirmish, pct, start, skirmishId }
 
-// Drops the entries of a tier no longer live.
+// Drops the entries of a tier drawn as last week's or as a line-up (js/panels.js).
 function forgetSideStats(matchId) {
   for (const color of COLORS) prevSideStats.delete(`${matchId}:${color}`);
 }

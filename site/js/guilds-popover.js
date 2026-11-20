@@ -333,15 +333,6 @@ function renderGuildsPopoverContent(popover, teamName, data, triggerEl) {
   popover.__allianceData = null;
   popover.__soloData = data ? data.solo : null;
 
-  const header = document.createElement('div');
-  header.className = 'info-popover-header';
-  const title = document.createElement('span');
-  title.textContent = teamName;
-  header.appendChild(title);
-
-  const actions = document.createElement('div');
-  actions.className = 'info-popover-header-actions';
-
   const expandBtn = document.createElement('button');
   expandBtn.type = 'button';
   expandBtn.className = 'info-popover-expand';
@@ -364,19 +355,7 @@ function renderGuildsPopoverContent(popover, teamName, data, triggerEl) {
     e.stopPropagation();
     copyGuildsShot(shotBtn, popover, teamName);
   });
-  actions.appendChild(shotBtn);
-  actions.appendChild(expandBtn);
-
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'info-popover-close';
-  closeBtn.textContent = '×';
-  closeBtn.setAttribute('aria-label', 'Close');
-  closeBtn.addEventListener('click', closePopover);
-  actions.appendChild(closeBtn);
-
-  header.appendChild(actions);
-  popover.appendChild(header);
+  popHeader(popover, teamName, [shotBtn, expandBtn]);
   const shotStatus = document.createElement('span');
   shotStatus.className = 'sr-only info-popover-shot-status';
   shotStatus.setAttribute('role', 'status');
@@ -390,10 +369,7 @@ function renderGuildsPopoverContent(popover, teamName, data, triggerEl) {
   const hasSolo = data && data.solo.length > 0;
 
   if (!hasAlliances && !hasSolo) {
-    const empty = document.createElement('p');
-    empty.className = 'hint';
-    empty.style.margin = '0';
-    empty.textContent = 'No guilds listed for this team in the community sheet yet.';
+    const empty = hintLine('No guilds listed for this team in the community sheet yet.');
     body.appendChild(empty);
   } else {
     if (hasAlliances) {
@@ -435,9 +411,7 @@ function renderGuildsPopoverContent(popover, teamName, data, triggerEl) {
 
 async function toggleGuildsPopover(teamName, triggerEl) {
   const popover = openPopover(triggerEl, `Guilds on ${teamName}`, (el) => {
-    const loading = document.createElement('p');
-    loading.className = 'hint';
-    loading.style.margin = '0';
+    const loading = hintLine('');
     loading.innerHTML = '<span class="spinner"></span>Loading community list…';
     el.appendChild(loading);
   }, 'info-popover--guilds');
@@ -449,10 +423,7 @@ async function toggleGuildsPopover(teamName, triggerEl) {
   } catch {
     if (activeTrigger !== triggerEl) return;
     popover.textContent = '';
-    const msg = document.createElement('p');
-    msg.className = 'hint';
-    msg.style.margin = '0';
-    msg.textContent = "Couldn't load the community guild list right now.";
+    const msg = hintLine("Couldn't load the community guild list right now.");
     popover.appendChild(msg);
     return;
   }
