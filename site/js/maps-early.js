@@ -204,11 +204,7 @@ async function readOwnKills() {
 async function readKillSheet() {
   // Without a deadline a silent connection leaves killSheetInFlight pending
   // for every later caller.
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const res = await fetch(KILLS_SHEET_URL,
-      { cache: 'no-store', signal: controller.signal });
+  return fetchWithTimeout(KILLS_SHEET_URL, { cache: 'no-store' }, REQUEST_TIMEOUT_MS, async (res) => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const by = new Map();
     for (const r of parseCsv(await res.text())) {
@@ -216,9 +212,7 @@ async function readKillSheet() {
       addKillSample(by, Number(r[0]), String(r[1] || ''), r.slice(2), r[7]);
     }
     return sortKillSamples(by);
-  } finally {
-    clearTimeout(timer);
-  }
+  });
 }
 
 // Both halves as one sorted series, only the match's own week: kills restart

@@ -15,32 +15,36 @@ function retryAfterMs(header) {
   return Math.min(ms, RETRY_AFTER_MAX_MS);
 }
 
+// `read(res)` runs under the deadline too: the timer is cleared only when it settles, so a stalled body aborts.
+async function fetchWithTimeout(url, options, ms, read) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await read(await fetch(url, { ...options, signal: controller.signal }));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Fetch JSON with a timeout and a small retry budget. Retries on 429
  * (respecting Retry-After), 5xx server errors, and network failures.
  * Does not retry other 4xx codes since those won't succeed on retry.
  */
 async function fetchJson(url, attempt = 0, cacheMode = 'no-store', timeoutMs = REQUEST_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
+  let waitMs = null;   // set when the answer asks for another try
   try {
-    const res = await fetch(url, { signal: controller.signal, cache: cacheMode });
-
-    if (res.status === 429 && attempt < MAX_RETRIES) {
-      await sleep(retryAfterMs(res.headers.get('Retry-After')));
-      return fetchJson(url, attempt + 1, cacheMode, timeoutMs);
-    }
-    if (res.status >= 500 && attempt < MAX_RETRIES) {
-      await sleep(500 * (attempt + 1));
-      return fetchJson(url, attempt + 1, cacheMode, timeoutMs);
-    }
-    if (!res.ok) {
-      const err = new Error(`API request failed (HTTP ${res.status})`);
-      err.status = res.status;   // so a caller can tell 404 from 503
-      throw err;
-    }
-    return await res.json();
+    const body = await fetchWithTimeout(url, { cache: cacheMode }, timeoutMs, async (res) => {
+      if (res.status === 429 && attempt < MAX_RETRIES) { waitMs = retryAfterMs(res.headers.get('Retry-After')); return null; }
+      if (res.status >= 500 && attempt < MAX_RETRIES) { waitMs = 500 * (attempt + 1); return null; }
+      if (!res.ok) {
+        const err = new Error(`API request failed (HTTP ${res.status})`);
+        err.status = res.status;   // so a caller can tell 404 from 503
+        throw err;
+      }
+      return await res.json();
+    });
+    if (waitMs === null) return body;
   } catch (err) {
     if (err.name === 'AbortError') {
       const timeout = new Error('Request timed out');
@@ -55,9 +59,9 @@ async function fetchJson(url, attempt = 0, cacheMode = 'no-store', timeoutMs = R
       err.network = true;
     }
     throw err;
-  } finally {
-    clearTimeout(timer);
   }
+  await sleep(waitMs);
+  return fetchJson(url, attempt + 1, cacheMode, timeoutMs);
 }
 
 // wvwrelink.com/api reads. One try, no retry (the caller's fallback is the sheet); throws on anything but a 200 with JSON.
@@ -91,11 +95,8 @@ function floorClock() {
   if (floor < steadyClockLead - CLOCK_BAND_MS) moveClock(floor, false);
 }
 async function fetchOwnApi(url, cache = 'default', raw = false) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), OWN_API_TIMEOUT_MS);
-  try {
-    const sentAt = Date.now();
-    const res = await fetch(url, { signal: controller.signal, cache });
+  const sentAt = Date.now();
+  return fetchWithTimeout(url, { cache }, OWN_API_TIMEOUT_MS, async (res) => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     if (cache === 'no-store') {
       const lead = Date.now() - Date.parse(res.headers.get('Date'));
@@ -108,10 +109,8 @@ async function fetchOwnApi(url, cache = 'default', raw = false) {
         moveClock(next, true);
       }
     }
-    return await (raw ? res.text() : res.json());
-  } finally {
-    clearTimeout(timer);
-  }
+    return raw ? res.text() : res.json();
+  });
 }
 
 // Static catalogues go through 'default' so the browser cache answers; live match data keeps 'no-store'.
@@ -120,7 +119,7 @@ const fetchJsonCached = (url) => fetchJson(url, 0, 'default');
 // A table kept from before the teams notice went up (teamsNoticeUpAt, js/relink.js) is the old month's, whatever its age.
 async function getWvwMaps() {
   if (wvwMapCache && wvwMapCachedAt >= teamsNoticeUpAt
-    && Date.now() - wvwMapCachedAt < TIMERS_REFRESH_MS) return wvwMapCache;
+    && Date.now() - wvwMapCachedAt < WVW_MAP_TTL_MS) return wvwMapCache;
   const askedAt = Date.now();
 
   const [na, eu] = await Promise.all([
@@ -579,9 +578,11 @@ const byId = (a, b) => {
   return ra - rb || ta - tb;
 };
 
-const rereadMatches = async (url, timeoutMs) => (await Promise.allSettled(
-  Array.from({ length: MATCH_REREADS }, () => fetchJson(url, 0, 'no-store', timeoutMs))))
-  .flatMap((r) => (r.status !== 'fulfilled' ? [] : Array.isArray(r.value) ? r.value : [r.value]));
+const asList = (v) => (Array.isArray(v) ? v : [v]);
+const rereadSettled = (url, timeoutMs) => Promise.allSettled(
+  Array.from({ length: MATCH_REREADS }, () => fetchJson(url, 0, 'no-store', timeoutMs)));
+const rereadMatches = async (url, timeoutMs) => (await rereadSettled(url, timeoutMs))
+  .flatMap((r) => (r.status !== 'fulfilled' ? [] : asList(r.value)));
 
 // The time of this browser's fight log reading a body is behind (js/maps-early.js,
 // loaded after this file), else 0. A fault there costs only the check.
@@ -1220,15 +1221,13 @@ async function getMatchForTeam(teamId) {
   if (!match || !fits(match)) {
     match = null;
     const url = `${API_BASE}/wvw/matches?world=${encodeURIComponent(teamId)}`;
-    const firstWith = (raw) => (Array.isArray(raw) ? raw : [raw]).find(fits);
+    const firstWith = (raw) => asList(raw).find(fits);
     try {
       match = firstWith(await fetchMatches(url));
       if (!match) {
-        const again = await Promise.allSettled(
-          Array.from({ length: MATCH_REREADS }, () => fetchJson(url, 0, 'no-store')));
-        for (const r of again) {
+        for (const r of await rereadSettled(url)) {
           if (r.status !== 'fulfilled') continue;
-          const kept = firstWith((Array.isArray(r.value) ? r.value : [r.value]).map(keepNewestMatch));
+          const kept = firstWith(asList(r.value).map(keepNewestMatch));
           if (kept) { match = kept; break; }
         }
       }

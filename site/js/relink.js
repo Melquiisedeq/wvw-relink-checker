@@ -100,27 +100,31 @@ function swordsIcon() {
   return s;
 }
 
-function buildRelinkValue(naMs, euMs, naNow, euNow, naResetting, euResetting) {
-  const frag = document.createDocumentFragment();
-  const naRegion = document.createElement('span');
-  naRegion.className = naNow ? 'region is-now' : 'region';
-  naRegion.textContent = 'NA ';
-  const naTime = document.createElement('span');
-  naTime.className = naNow ? 'time is-now' : 'time';
-  naTime.textContent = countdownText(naMs, naResetting);
+function regionHalf(name, lit, text) {
+  const region = document.createElement('span');
+  region.className = lit ? 'region is-now' : 'region';
+  region.textContent = name + ' ';
+  const time = document.createElement('span');
+  time.className = lit ? 'time is-now' : 'time';
+  time.textContent = text;
+  return [region, time];
+}
+
+function regionRow(na, eu) {
   // Its own element, so it never takes EU's is-now.
   const sep = document.createElement('span');
   sep.className = 'region';
-  sep.textContent = ' · ';
-  const euRegion = document.createElement('span');
-  euRegion.className = euNow ? 'region is-now' : 'region';
-  euRegion.textContent = 'EU ';
-  const euTime = document.createElement('span');
-  euTime.className = euNow ? 'time is-now' : 'time';
-  euTime.textContent = countdownText(euMs, euResetting);
-  if (railFirst() === 'eu') frag.append(euRegion, euTime, sep, naRegion, naTime);
-  else frag.append(naRegion, naTime, sep, euRegion, euTime);
+  sep.textContent = ' \u00b7 ';
+  const frag = document.createDocumentFragment();
+  if (railFirst() === 'eu') frag.append(...eu, sep, ...na);
+  else frag.append(...na, sep, ...eu);
   return frag;
+}
+
+function buildRelinkValue(naMs, euMs, naNow, euNow, naResetting, euResetting) {
+  return regionRow(
+    regionHalf('NA', naNow, countdownText(naMs, naResetting)),
+    regionHalf('EU', euNow, countdownText(euMs, euResetting)));
 }
 
 let lockoutTime = null;
@@ -213,26 +217,24 @@ function keepBeatInStep(inner) {
 
 // A region that has already relinked shows 'done', not 'any moment now'.
 function buildRebuildValue(naLeft, euLeft) {
-  const frag = document.createDocumentFragment();
   const half = (name, left) => {
-    const lit = left !== null && left > 0 && left <= RELINK_URGENT_MS;
-    const region = document.createElement('span');
-    region.className = lit ? 'region is-now' : 'region';
-    region.textContent = name + ' ';
-    const time = document.createElement('span');
-    time.className = lit ? 'time is-now' : 'time';
-    time.textContent = left !== null && left <= 0 ? 'done' : formatCountdown(left);
-    time.dataset.text = time.textContent;
-    return [region, time];
+    const h = regionHalf(name, left !== null && left > 0 && left <= RELINK_URGENT_MS, left !== null && left <= 0 ? 'done' : formatCountdown(left));
+    h[1].dataset.text = h[1].textContent;
+    return h;
   };
-  const sep = document.createElement('span');
-  sep.className = 'region';
-  sep.textContent = ' \u00b7 ';
-  const [first, second] = railFirst() === 'eu'
-    ? [half('EU', euLeft), half('NA', naLeft)]
-    : [half('NA', naLeft), half('EU', euLeft)];
-  frag.append(...first, sep, ...second);
-  return frag;
+  return regionRow(half('NA', naLeft), half('EU', euLeft));
+}
+
+// The line under the banner. `warn`: the warning icon in place of the swords.
+function appendRelinkAlert(className, text, warn) {
+  const alert = document.createElement('div');
+  alert.className = className;
+  if (warn) alert.innerHTML = WARN_ICON;
+  else alert.appendChild(swordsIcon());
+  const line = document.createElement('span');
+  line.textContent = text;
+  alert.appendChild(line);
+  relinkBanner.appendChild(alert);
 }
 
 function buildRebuildBanner(naLeft, euLeft) {
@@ -264,13 +266,7 @@ function buildRebuildBanner(naLeft, euLeft) {
   relinkBanner.appendChild(inner);
   keepBeatInStep(inner);
 
-  const alert = document.createElement('div');
-  alert.className = 'relink-alert';
-  alert.appendChild(swordsIcon());
-  const line = document.createElement('span');
-  line.textContent = 'New link, new enemies, and a month of good fights ahead.';
-  alert.appendChild(line);
-  relinkBanner.appendChild(alert);
+  appendRelinkAlert('relink-alert', 'New link, new enemies, and a month of good fights ahead.');
 }
 
 // ---- The teams notice -------------------------------------------------
@@ -334,18 +330,12 @@ async function readOwnRelink() {
 
 async function readRelinkSheet() {
   // The same deadline as every request: relinkStateInFlight hands this promise to every later caller.
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const res = await fetch(RELINK_SHEET_URL,
-      { cache: 'no-store', signal: controller.signal });
+  return fetchWithTimeout(RELINK_SHEET_URL, { cache: 'no-store' }, REQUEST_TIMEOUT_MS, async (res) => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const found = RELINK_STATE_RE.exec((await res.text()).trim());
     if (!found) throw new Error('not two integers');
     return { window: Number(found[1]), published: Number(found[2]) };
-  } finally {
-    clearTimeout(timer);
-  }
+  });
 }
 
 // Dismissal is stored as the window id, so next month's window brings the strip back.
@@ -600,36 +590,18 @@ function updateRelinkBanner() {
   relinkBanner.appendChild(inner);
 
   if (lockoutUrgent) {
-    const alert = document.createElement('div');
-    alert.className = 'relink-alert';
-    alert.innerHTML = WARN_ICON;
-    const text = document.createElement('span');
     // Guild or team, not both: a player with a WvW guild cannot pick a team.
-    text.textContent = 'Set your WvW guild before the lockout — or pick a team if you have none. '
-      + 'After it, your team is fixed for the month.';
-    alert.appendChild(text);
-    relinkBanner.appendChild(alert);
+    appendRelinkAlert('relink-alert', 'Set your WvW guild before the lockout — or pick a team if you have none. '
+      + 'After it, your team is fixed for the month.', true);
   } else if (relinkUrgent) {
-    const alert = document.createElement('div');
-    alert.className = 'relink-alert relink-alert--relink';
-    alert.appendChild(swordsIcon());
     const where = [];
     if (naUrgent) where.push('NA');
     if (euUrgent) where.push('EU');
     if (railFirst() === 'eu') where.reverse();
-    const text = document.createElement('span');
-    text.textContent = `${where.join(' and ')} reset night. `
-      + 'Big fight, and the queue that comes with it.';
-    alert.appendChild(text);
-    relinkBanner.appendChild(alert);
+    appendRelinkAlert('relink-alert relink-alert--relink', `${where.join(' and ')} reset night. `
+      + 'Big fight, and the queue that comes with it.');
   } else if (relinkWeek) {
     // No instruction here; that is the lockout's line.
-    const alert = document.createElement('div');
-    alert.className = 'relink-alert relink-alert--relink';
-    alert.appendChild(swordsIcon());
-    const text = document.createElement('span');
-    text.textContent = 'Last week of the season. New teams at the next reset.';
-    alert.appendChild(text);
-    relinkBanner.appendChild(alert);
+    appendRelinkAlert('relink-alert relink-alert--relink', 'Last week of the season. New teams at the next reset.');
   }
 }

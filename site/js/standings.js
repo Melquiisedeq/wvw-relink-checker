@@ -387,7 +387,7 @@ function swapRails(btn) {
 async function fetchAllMatches(timeoutMs) {
   try {
     const all = await fetchMatches(`${API_BASE}/wvw/matches?ids=all`, timeoutMs, ['1', '2']);
-    const ok = Array.isArray(all) ? all.filter((m) => m && typeof m.id === 'string') : [];
+    const ok = Array.isArray(all) ? all.filter(isMatchBody) : [];
     return ok.length > 0 ? ok : null;
   } catch {
     return null;
@@ -466,25 +466,26 @@ function paintRetryStatus(statusEl, spoken, visible, busy, calm) {
 }
 
 function planStandingsRetry() {
-  const paint = (spoken, visible) => {
+  // `texts(f)`: the [spoken, visible] pair of one failed board; a region in its reset says so instead.
+  const paint = (texts) => {
     for (const f of standingsFailed) {
-      if (f.region && regionResetting(f.region, steadyNow())) paintRetryStatus(f.el, RESET_NOTE, RESET_NOTE, false, true);
-      else paintRetryStatus(f.el, spoken, visible, false);
+      const reset = f.region && regionResetting(f.region, steadyNow());
+      const [spoken, visible] = reset ? [RESET_NOTE, RESET_NOTE] : texts(f);
+      paintRetryStatus(f.el, spoken, visible, false, reset);
     }
   };
   if (standingsExtraUsed >= STANDINGS_RETRY_WINDOWS_MS.length) {
-    for (const f of standingsFailed) {
-      const text = f.region && regionResetting(f.region, steadyNow())
-        ? RESET_NOTE : `Couldn't load ${f.label}. It will try again in a few minutes.`;
-      paintRetryStatus(f.el, text, text, false, text === RESET_NOTE);
-    }
+    paint((f) => {
+      const text = `Couldn't load ${f.label}. It will try again in a few minutes.`;
+      return [text, text];
+    });
     return;
   }
   const [lo, hi] = STANDINGS_RETRY_WINDOWS_MS[standingsExtraUsed];
   const ms = lo + Math.random() * (hi - lo);
   let left = Math.ceil(ms / 1000);
   const spoken = "Couldn't load the standings. Trying again shortly.";
-  const show = () => paint(spoken, `Couldn't load standings. Trying again in ${left} s…`);
+  const show = () => paint(() => [spoken, `Couldn't load standings. Trying again in ${left} s…`]);
   show();
   standingsRetry = {
     // A load takes an open popover's anchor down, so the try waits, uncounted.
@@ -572,7 +573,7 @@ async function loadStandings(origin = 'cycle') {
     // Forget matches that no longer exist: a leftover "1-4" would keep
     // getMaxTierForRegion answering 4 and give tier 3 a relegation arrow. A tier
     // missing from the list but read again by id (fetchMatches) is kept.
-    const liveIds = new Set([...idList, ...answered.filter((m) => m && typeof m.id === 'string').map((m) => m.id)]);
+    const liveIds = new Set([...idList, ...answered.filter(isMatchBody).map((m) => m.id)]);
     for (const id of [...matchDataCache.keys()]) {
       if (!liveIds.has(id)) matchDataCache.delete(id);
     }
@@ -651,15 +652,23 @@ let inputAt = Date.now();
 const peekFloor = () => (pushLive() ? PEEK_IDLE_MAX_MS
   : navigator.connection?.saveData === true ? PEEK_SAVE_MS : PEEK_MS);
 
+// What /api/latest gives for the bodies on show (none when `ask` is off or nothing is shown), offered to the page's copy.
+async function readCopyBodies(shown, ask) {
+  const reading = ask && shown.length ? startLatest() : null;
+  const bodies = reading ? await reading : [];
+  offerLatest(bodies);
+  return bodies;
+}
+
+const newestBoard = (shown) => shown.map((m) => (newestMatches.has(m.id) ? newestMatches.get(m.id).match : m));
+
 // The board as this page holds it: each body on show, or the further-along
 // one in hand, after what /api/latest gave when `copy` asks for it. Null when
 // the copy gave nothing and nothing in hand is further along.
 async function latestBoard(copy) {
   const shown = [...matchDataCache.values()];
-  const reading = copy && shown.length ? startLatest() : null;
-  const bodies = reading ? await reading : [];
-  offerLatest(bodies);
-  const board = shown.map((m) => (newestMatches.has(m.id) ? newestMatches.get(m.id).match : m));
+  const bodies = await readCopyBodies(shown, copy);
+  const board = newestBoard(shown);
   if (!bodies.length && board.every((m, i) => m === shown[i])) return null;
   return board.sort((a, b) => byId(a.id, b.id));
 }
@@ -669,12 +678,10 @@ async function latestBoard(copy) {
 // so a clock ahead does not age it. Otherwise it throws `err`.
 async function copyBoard(err) {
   const shown = [...matchDataCache.values()];
-  const reading = shown.length ? startLatest() : null;
-  const bodies = reading ? await reading : [];
-  offerLatest(bodies);
+  const bodies = await readCopyBodies(shown, true);
   const now = Date.now() - ownClockLead;
   if (!bodies.some((b) => now - (latestBodyAt.get(b) || 0) <= HUD_STALE_MS)) throw err;
-  return shown.map((m) => (newestMatches.has(m.id) ? newestMatches.get(m.id).match : m)).sort((a, b) => byId(a.id, b.id));
+  return newestBoard(shown).sort((a, b) => byId(a.id, b.id));
 }
 
 // The newest `at` of a summary in ms, 0 when none is a number.
@@ -920,6 +927,32 @@ function queueSideFlashes({ prev, vpNum, skirmish, skirmishId }, vpValue, skirmi
   }
 }
 
+// Rank, dot, name, the guilds button (NA) and VP, into `head`. `spoken`: the dot carries its side for a screen reader.
+function appendSideHead(head, match, color, rank, serverName, vp, nameClass, spoken) {
+  const badge = document.createElement('span');
+  badge.className = `rank-badge rank-${rank}`;
+  badge.textContent = String(rank);
+  const dot = document.createElement('span');
+  dot.className = `dot dot-${color}`;
+  if (spoken) {
+    const side = document.createElement('span');
+    side.className = 'sr-only';
+    side.textContent = `${color[0].toUpperCase()}${color.slice(1)} side`;
+    dot.appendChild(side);
+  }
+  const name = document.createElement('span');
+  name.className = nameClass;
+  name.textContent = serverName;
+  head.append(badge, dot, name);
+  const [regionCode, tierNum] = match.id.split('-');
+  if (match.id.startsWith('1-')) head.appendChild(buildServerGuildsButton(serverName));
+  const vpEl = document.createElement('span');
+  vpEl.className = 'standing-vp';
+  vpEl.innerHTML = `<span class="stat-label">VP </span><span class="stat-value">${vp}</span>`;
+  vpEl.appendChild(buildMovementIndicator(regionCode, tierNum, rank, isTiedOnVp(match, color)));
+  head.appendChild(vpEl);
+}
+
 function renderStandingSide(match, color, rankByColor, leaders, leaderScore) {
   const figures = sideFigures(match, color, leaderScore);
   const { serverName, kills, deaths, kd, vpNum, skirmish, prev } = figures;
@@ -930,33 +963,8 @@ function renderStandingSide(match, color, rankByColor, leaders, leaderScore) {
   const top = document.createElement('div');
   top.className = 'standing-side-top';
 
-  const badge = document.createElement('span');
   const rank = rankByColor[color];
-  badge.className = `rank-badge rank-${rank}`;
-  badge.textContent = String(rank);
-
-  const dot = document.createElement('span');
-  dot.className = `dot dot-${color}`;
-  const side = document.createElement('span');
-  side.className = 'sr-only';
-  side.textContent = `${color[0].toUpperCase()}${color.slice(1)} side`;
-  dot.appendChild(side);
-
-  const name = document.createElement('span');
-  name.className = 'standing-side-name';
-  name.textContent = serverName;
-
-  top.appendChild(badge);
-  top.appendChild(dot);
-  top.appendChild(name);
-  if (match.id.startsWith('1-')) top.appendChild(buildServerGuildsButton(serverName));
-
-  const vpEl = document.createElement('span');
-  vpEl.className = 'standing-vp';
-  vpEl.innerHTML = `<span class="stat-label">VP </span><span class="stat-value">${vpNum.toLocaleString()}</span>`;
-  const [regionCode, tierNum] = match.id.split('-');
-  vpEl.appendChild(buildMovementIndicator(regionCode, tierNum, rank, isTiedOnVp(match, color)));
-  top.appendChild(vpEl);
+  appendSideHead(top, match, color, rank, serverName, vpNum.toLocaleString(), 'standing-side-name', true);
 
   const statsLine = buildStandingStats(match, color,
     { kills, deaths, kd, skirmish, serverName, leaders }, 'standing-side-stats');
@@ -966,7 +974,7 @@ function renderStandingSide(match, color, rankByColor, leaders, leaderScore) {
 
   // Skirmish is always the first stat when it exists, so its value element
   // is the first .stat-value in the line.
-  queueSideFlashes(figures, vpEl.querySelector('.stat-value'),
+  queueSideFlashes(figures, top.querySelector('.stat-value'),
     skirmish !== null ? statsLine.querySelector('.stat-value') : null);
 
   if (skirmish !== null && leaderScore !== null) {
