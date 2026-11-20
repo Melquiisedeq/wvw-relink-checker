@@ -13,7 +13,9 @@ the files, and it will still work in five years for the same reason. The one
 script from elsewhere is Cloudflare's visit counter, and the page does not
 need it to work. `worker/`, the Supabase readers in `supabase/` and the Apps Scripts in
 `apps-script/` are the code that runs outside the browser; `worker/` follows the
-same rule: one file of code, no dependencies, nothing to install. The browser tests in
+same rule: one file of code, no dependencies, nothing to install. There is no local setup for
+`worker/`: the tests in `tests/unit/` run it under Node against a stand-in for its database;
+merging into `main` deploys the code, and a schema file is run by hand. The browser tests in
 `tests/e2e/` are the one place with dependencies, Playwright Test and
 monocart-coverage-reports, and nothing in `site/` or `worker/` may import from there.
 
@@ -144,6 +146,26 @@ the page fetches and every key it stores must be listed there.
 or a file's test coverage falls (`tests/e2e/data/coverage.json`); the message says
 which measure and which file. `npm run coverage` in `tests/e2e` measures
 it locally, running both test suites and comparing with `data/coverage.json`.
+
+## Words used in the code
+
+The comments in `site/js/` and `worker/` lean on a few words in a narrow sense of their own:
+
+- **copy**: the Worker's stored copy of each match's newest game data, served at `/api/latest`.
+- **body**: one match's full game data, as the game's API gives it; the copy holds it without
+  its finished skirmishes, which `/api/history` gives back (`latestJoin` in `js/api.js`). The
+  **summary** is what `/api/latest/summary` serves: the same, without the bodies.
+- **first sight**: the moment this page first saw a match's score, used as its `at` until a
+  copy or the kill history dates it better (`js/api.js`).
+- **peek**: the page's light, repeated read of the summary while the tab is visible, which
+  loads more only when a match is ahead (`js/standings.js`).
+- **in hand**: already in the page's memory (a summary, a body), so using it costs no request.
+- **push**: two things: what a script or reader sends the Worker, signed; and what the
+  Worker sends the page over `/api/ws` when a newer copy lands.
+- **source**: who feeds the Worker (the kills script, the notice script, the readers); the
+  database remembers when each last reported.
+- **entrance**: the Worker's route that takes a source's push in and checks it (`/api/ingest/...`).
+- **door**: any way in to the database; `worker/wrangler.jsonc` keeps a second one shut.
 
 ## Style
 

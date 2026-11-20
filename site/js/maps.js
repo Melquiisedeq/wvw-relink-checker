@@ -2179,7 +2179,7 @@ function missedDay(ms, ref) {
 }
 
 // "05:03–05:33 PM" rather than "05:03 PM–05:33 PM" when both share the suffix;
-// "yesterday 03:00 PM–12:00 PM" keeps both, the suffix being no longer the same day's.
+// "03:00 PM yesterday–12:00 PM" keeps both, the suffix being no longer the same day's.
 function missedSpan(a, b) {
   const day = missedDay(a, b);
   const x = missedHhmm(a);

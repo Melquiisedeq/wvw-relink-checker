@@ -52,7 +52,7 @@ Discord, read only when you click a shield icon.
 
 ## 🔒 Privacy
 
-**Everything the page does runs in your browser. The guild names you type go
+**The search runs in your browser. The guild names you type go
 only to the game's own API (ArenaNet's), to be looked up; the visits are
 counted, as the table below shows.** There is one small server of mine, at `wvwrelink.com/api`. It receives game
 data from this project's own two Apps Scripts and two Supabase readers, each signed, and the page reads four things
