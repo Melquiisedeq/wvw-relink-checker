@@ -2737,7 +2737,8 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   };
 
   const show = (type, atOpen = false) => {
-    if (current === type) return;
+    // The active tab asks again only when its read came back empty; a drawn tab and a read still in the air stay as they are.
+    if (current === type && !emptyReads.has(pendingSectors.get(type))) return;
     current = type;
     for (const b of tabs.children) {
       const on = b.dataset.type === type;

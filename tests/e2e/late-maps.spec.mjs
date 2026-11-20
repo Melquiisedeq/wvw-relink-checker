@@ -317,3 +317,50 @@ test('the first visit to a tab whose opening read failed asks again; the opening
   await expect(page.locator(`${POP} .wvw-plot g[role='button']`).first(), 'the first visit, the API back').toBeAttached();
   await expect(page.locator(MSG)).toHaveCount(0);
 });
+
+test('touching the active tab whose outline failed asks again and draws; a drawn or loading tab asks for nothing', async ({ page, wvw }) => {
+  await withoutPackedSectors(page);
+  const down = await fail(page, wvw, SECTORS);
+  await load(page, wvw);
+  const { button } = await firstTier(page);
+  await button.click();
+  await expect(page.locator(MSG), 'the opening tab, its outline down').toHaveText("Couldn't load this map right now.", { timeout: 15000 });
+  await expect.poll(async () => { const n = down.reads; await page.waitForTimeout(2500); return down.reads === n ? n : -1; },
+    { timeout: 30000, intervals: [0] }).not.toBe(-1);
+  const active = page.locator(PICKED);
+  // Still down: touching it asks once and says so again.
+  const before = down.reads;
+  await active.click();
+  await expect(page.locator(MSG)).toHaveText("Couldn't load this map right now.", { timeout: 15000 });
+  expect(down.reads, 'touching the failed active tab asked again').toBeGreaterThan(before);
+  await expect.poll(async () => { const n = down.reads; await page.waitForTimeout(2500); return down.reads === n ? n : -1; },
+    { timeout: 30000, intervals: [0] }).not.toBe(-1);
+
+  down.off();
+  // The new read is held: the second touch finds it in the air and leaves the loading note and the one waiting answer alone.
+  const per = [];
+  page.on('request', r => { if (SECTORS.test(r.url())) per.push(r.url()); });
+  const release = await hold(page, SECTORS);
+  await page.evaluate(() => {
+    window.__plots = 0;
+    new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && (n.matches('.wvw-plot') || n.querySelector('.wvw-plot'))) window.__plots++; })
+      .observe(document.querySelector('.info-popover'), { childList: true, subtree: true });
+    document.querySelector('.info-popover .wvw-tab.is-active').click();
+  });
+  await expect(page.locator(`${MSG} .spinner`), 'loading while the read is held').toBeAttached();
+  await expect.poll(() => release.reads).toBeGreaterThan(0);
+  await page.evaluate(() => { window.__note = document.querySelector('.info-popover .wvw-stage-msg'); });
+  await page.evaluate(() => document.querySelector('.info-popover .wvw-tab.is-active').click());
+  expect(await page.evaluate(() => window.__note === document.querySelector('.info-popover .wvw-stage-msg')), 'the loading note is the same node').toBe(true);
+  release();
+  await expect(page.locator(`${POP} .wvw-plot g[role='button']`).first(), 'drawn by touching the same tab').toBeAttached();
+  await expect(page.locator(MSG)).toHaveCount(0);
+  expect(per.length, 'one read for two touches').toBe(1);
+  expect(await page.evaluate(() => window.__plots), 'drawn once').toBe(1);
+  // Drawn: touching it again reads nothing and keeps the same drawing.
+  const plot = await page.locator(`${POP} .wvw-plot`).elementHandle();
+  await active.click();
+  await page.waitForTimeout(1000);
+  expect(per.length, 'a drawn tab asks for nothing').toBe(1);
+  expect(await page.locator(`${POP} .wvw-plot`).elementHandle().then(h => h.evaluate((a, b) => a === b, plot)), 'not redrawn').toBe(true);
+});
