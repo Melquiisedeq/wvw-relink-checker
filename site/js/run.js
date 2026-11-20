@@ -32,13 +32,6 @@ async function run() {
     return;
   }
 
-  // Checked before the button is disabled: the results are drawn with js/maps-early.js, and nothing is left running.
-  if (typeof buildTierMapButton !== 'function') {
-    statusMsg.classList.add('status-err');
-    statusMsg.textContent = RELOAD_TEXT;
-    return;
-  }
-
   runBtn.disabled = true;
   runBtn.innerHTML = '<span class="btn-pips"><span></span><span></span><span></span></span>';
   statusMsg.innerHTML = '<span class="spinner"></span>Asking the game…';
