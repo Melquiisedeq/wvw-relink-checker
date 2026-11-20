@@ -125,6 +125,20 @@ for (const width of [1280, 360]) {
       await cleared(page, 'a tap on empty ground');
     });
 
+    test('a click inside the open objective panel keeps the pick; empty ground still lets go', async ({ page, wvw }) => {
+      await opened(page, wvw, width);
+      await page.locator(`${POP} .wvw-board-head [data-focus-type="Tower"]`).click();
+      await page.locator(`${POP} .wvw-plot .wvw-marker`).first().dispatchEvent('click');
+      const detail = page.locator(`${POP} .wvw-detail`);
+      await expect(detail.locator('.wvw-detail-name')).toBeVisible();
+      await expect(page.locator(`${POP} .wvw-plot`)).toHaveClass(/is-focused/);
+      await detail.locator('.wvw-detail-name').click();
+      await expect(page.locator(`${POP} .wvw-plot`), 'the panel click kept the pick').toHaveClass(/is-focused/);
+      await page.locator(POP).click({ position: { x: 3, y: 3 } });
+      await expect(page.locator(`${POP} .wvw-plot`)).not.toHaveClass(/is-focused/);
+      await cleared(page, 'a tap on empty ground');
+    });
+
     if (width === 1280) {
       test("a repaint that hands one of the team's objectives to the next side keeps the pick on every frame", async ({ page, wvw }) => {
         const tier = await opened(page, wvw, width);
