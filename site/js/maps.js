@@ -2354,7 +2354,8 @@ function recentCaptures(match) {
 function paintCaptures(view, items) { keepFocus(view.box, () => paintCapturesNow(view, items)); }
 function paintCapturesNow(view, items) {
   const shown = items.slice(0, CAPTURES_MAX);
-  const key = JSON.stringify([shown, new Date(steadyNow()).toDateString()]);
+  const unlisted = items.length - shown.length;
+  const key = JSON.stringify([shown, unlisted, new Date(steadyNow()).toDateString()]);
   if (view.box.dataset.key === key) return;
   view.box.dataset.key = key;
   view.box.textContent = '';
@@ -2389,6 +2390,10 @@ function paintCapturesNow(view, items) {
     row.addEventListener('focus', on);
     row.addEventListener('blur', off);
     view.box.appendChild(row);
+  }
+  if (unlisted > 0) {
+    view.box.appendChild(missedEl('p', 'wvw-caps-none wvw-caps-more',
+      `${unlisted} older capture${unlisted === 1 ? '' : 's'} not listed.`));
   }
 }
 

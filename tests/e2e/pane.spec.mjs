@@ -199,6 +199,34 @@ for (const width of [1280, 360]) {
       }
     });
 
+    test('over 40 captures the list ends with how many older ones it leaves out, and no line at 40 or fewer', async ({ page, wvw }) => {
+      const tier = await opened(page, wvw);
+      const kept = await keptMatch(page, tier.id);
+      const pool = kept.maps.flatMap(m => m.objectives).filter(o => ['Camp', 'Tower', 'Keep', 'Castle'].includes(o.type) && OWNERS.includes(o.owner));
+      expect(pool.length, 'the recording has at least 43 capturable objectives').toBeGreaterThan(42);
+      const route = await answer(page, tier.url, kept);
+      // The newest `n` objectives flipped 30 s apart, the rest long before.
+      // The same instants every time, so only the count outside differs between two lists.
+      let base = null;
+      const setTo = async n => {
+        await wvw.skew(31000);
+        base ??= await page.evaluate(() => Date.now()) - 60000;
+        for (const o of kept.maps.flatMap(m => m.objectives)) if (!pool.includes(o)) o.last_flipped = new Date(base - 5 * 3600000).toISOString();
+        pool.forEach((o, i) => { o.last_flipped = new Date(base - (i < n ? i * 30000 : 3 * 3600000 + i * 1000)).toISOString(); });
+        await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+        await expect(tab(page, 'captures')).toHaveText(`Captures (${n})`);
+      };
+      const more = page.locator(`${POP} .wvw-caps .wvw-caps-more`);
+      await tab(page, 'captures').click();
+      for (const [n, text] of [[40, null], [43, '3 older captures not listed.'], [41, '1 older capture not listed.'], [40, null]]) {
+        await setTo(n);
+        await expect(page.locator(`${POP} .wvw-caps .wvw-cap`), `${n} captures: rows`).toHaveCount(Math.min(n, 40));
+        if (text) await expect(more, `${n} captures: the last line`).toHaveText(text);
+        else await expect(more, `${n} captures: no last line`).toHaveCount(0);
+      }
+      route.off();
+    });
+
     test('a map tab change with an objective picked puts the pane back on the board and switches the Objective tab off', async ({ page, wvw }) => {
       await opened(page, wvw);
       await pressMarker(page, 3);
