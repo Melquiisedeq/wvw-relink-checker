@@ -1,0 +1,376 @@
+/* LAB - never merged. Card 82-0: the panel, the swords on every busy map, the map colour on the Captures rows. */
+/* ---- the panel ---------------------------------------------------- */
+.lab-panel{
+  position:fixed;right:12px;bottom:12px;z-index:80;
+  display:flex;flex-direction:column;align-items:flex-end;gap:6px;
+  font-size:.78rem;color:var(--text);
+}
+.lab-toggle{
+  padding:4px 12px;border-radius:999px;border:1px solid rgba(127,214,242,.35);
+  background:rgba(15,18,22,.88);color:var(--accent);font:inherit;font-weight:700;
+  letter-spacing:.06em;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.45);
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+}
+.lab-toggle:hover{color:var(--accent-bright);border-color:rgba(127,214,242,.6);}
+.lab-body{
+  width:min(270px, calc(100vw - 24px));max-height:calc(100vh - 70px);overflow-y:auto;
+  padding:10px 12px;border-radius:10px;border:1px solid var(--border);
+  background:rgba(23,27,33,.97);box-shadow:0 10px 30px rgba(0,0,0,.55);
+  display:flex;flex-direction:column;gap:5px;
+}
+.lab-body[hidden]{display:none;}
+.lab-head{margin-bottom:2px;color:var(--accent);}
+.lab-head strong{text-transform:uppercase;letter-spacing:.06em;font-size:.74rem;}
+.lab-check{display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;margin-top:4px;}
+.lab-check input,.lab-radios input{accent-color:var(--accent);margin:0;}
+.lab-sub{padding-left:20px;display:flex;flex-direction:column;gap:4px;}
+.lab-sub-row{flex-direction:row;align-items:center;flex-wrap:wrap;gap:4px 10px;}
+.lab-radios{border:0;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:2px 8px;}
+.lab-radios label{display:inline-flex;align-items:center;gap:3px;cursor:pointer;}
+.lab-sr-legend{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+.lab-btn{
+  align-self:flex-start;margin:2px 0;padding:3px 10px;border-radius:6px;
+  border:1px solid rgba(127,214,242,.3);background:var(--accent-soft);color:var(--accent);
+  font:inherit;font-size:.74rem;cursor:pointer;
+}
+.lab-btn:hover{color:var(--accent-bright);background:rgba(127,214,242,.24);}
+.lab-status{margin:4px 0 0;color:var(--muted);font-size:.7rem;min-height:1em;}
+.lab-muted{color:var(--muted);}
+.lab-cyan{color:var(--accent);}
+.lab-section{
+  margin-top:8px;padding-top:6px;border-top:1px solid var(--border);
+  font-size:.62rem;font-weight:800;color:#a3adbb;text-transform:uppercase;letter-spacing:.09em;
+}
+.lab-check-small{font-weight:500;font-size:.74rem;margin-top:2px;}
+/* "sim": the simulated summaries, said once and small. */
+.lab-simtag{
+  display:inline-block;margin-left:4px;padding:0 4px;border-radius:3px;
+  background:rgba(154,164,178,.16);color:#7e8899;font-size:.56rem;font-weight:700;
+  letter-spacing:.06em;text-transform:lowercase;vertical-align:1px;
+}
+
+.lab-note{margin:0 0 2px;color:var(--muted);font-size:.66rem;line-height:1.35;}
+.lab-simmark{
+  position:fixed;left:12px;bottom:12px;z-index:80;padding:2px 8px;border-radius:999px;
+  background:rgba(232,154,60,.18);color:#f0b35a;font-size:.66rem;font-weight:700;letter-spacing:.06em;
+  pointer-events:none;
+}
+
+/* ---- swords on every busy map -------------------------------------- */
+/* The others' swords sit where the site puts the busiest's (.wvw-tab-swords). */
+.wvw-tab .lab-sw{
+  position:absolute;left:4px;top:1px;display:block;flex-shrink:0;pointer-events:none;
+  filter:drop-shadow(0 1px 1px rgba(0,0,0,.7));
+}
+.wvw-tab.lab-lit{padding-left:22px;}
+/* A: a thin orange line under the busiest. Inset shadows, so the bevel's clip-path keeps it. */
+html.lab-sw-A .wvw-tab.lab-lead,
+html.lab-sw-A .wvw-tab.lab-lead.is-active{
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.14), inset 0 -2px 0 #f09a38;
+}
+/* C: the busiest's swords a little bigger, with a still glow. */
+html.lab-sw-C .wvw-tab.lab-lead .wvw-tab-swords{
+  width:17px;height:17px;left:4px;top:50%;transform:translateY(-50%);
+  filter:drop-shadow(0 0 2px rgba(255,170,70,.95)) drop-shadow(0 0 4px rgba(255,150,40,.55));
+}
+html.lab-sw-C .wvw-tab.lab-lead.is-hot{padding-left:25px;}
+
+/* Round 2. Only opacity, transform and a 14px background move; all inside the tab's bevel. */
+/* D and G: A's line under the busiest, breathing. */
+html.lab-sw-D .wvw-tab.lab-lead::after,
+html.lab-sw-G .wvw-tab.lab-lead::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:#f09a38;
+  pointer-events:none;animation:lab-breathe-line 2.8s ease-in-out infinite alternate;
+}
+html.lab-sw-D .wvw-tab.lab-lead.is-active::after,
+html.lab-sw-G .wvw-tab.lab-lead.is-active::after{background:#b85a00;}
+@keyframes lab-breathe-line{from{opacity:.45}to{opacity:1}}
+/* E and G: an ember glow behind the busiest's swords, breathing; the swords keep their size. */
+html.lab-sw-E .wvw-tab.lab-lead.is-hot::before,
+html.lab-sw-G .wvw-tab.lab-lead.is-hot::before{
+  content:"";position:absolute;left:0;top:-3px;width:22px;height:22px;border-radius:50%;
+  background:radial-gradient(circle, rgba(255,170,70,.75) 0%, rgba(240,140,40,.35) 45%, transparent 70%);
+  pointer-events:none;animation:lab-breathe 2.8s ease-in-out infinite alternate;
+}
+html.lab-sw-E .wvw-tab.lab-lead.is-hot.is-active::before,
+html.lab-sw-G .wvw-tab.lab-lead.is-hot.is-active::before{
+  background:radial-gradient(circle, rgba(230,110,0,.7) 0%, rgba(210,100,0,.3) 45%, transparent 70%);
+}
+@keyframes lab-breathe{from{opacity:.3}to{opacity:1}}
+/* F: a shine sweeping over the busiest's swords, cut to the icon's own shape. */
+html.lab-sw-F .wvw-tab.lab-lead.is-hot::after{
+  content:"";position:absolute;left:4px;top:1px;width:14px;height:14px;pointer-events:none;
+  -webkit-mask:url(../assets/icons/Event_Swords.webp) center/14px 14px no-repeat;
+  mask:url(../assets/icons/Event_Swords.webp) center/14px 14px no-repeat;
+  background:linear-gradient(115deg, transparent 35%, rgba(255,240,200,.95) 50%, transparent 65%) 0 0/300% 100% no-repeat;
+  animation:lab-shine 4.5s ease-in-out infinite;
+}
+@keyframes lab-shine{0%{background-position:100% 0}35%,100%{background-position:0 0}}
+/* H and I: a blurred copy of the swords behind them, breathing: the glow keeps the icon's shape. */
+.wvw-tab .lab-glow{
+  position:absolute;left:4px;top:1px;pointer-events:none;
+  transform:scale(1.3);filter:blur(2.5px) brightness(2) saturate(1.5);
+  animation:lab-breathe 2.4s ease-in-out infinite alternate;
+}
+/* I: the swords' own colour warming to gold: a light layer cut to the icon, breathing with the glow. */
+html.lab-sw-I .wvw-tab.lab-lead.is-hot::after{
+  content:"";position:absolute;left:4px;top:1px;width:14px;height:14px;pointer-events:none;
+  -webkit-mask:url(../assets/icons/Event_Swords.webp) center/14px 14px no-repeat;
+  mask:url(../assets/icons/Event_Swords.webp) center/14px 14px no-repeat;
+  background:#ffd27a;mix-blend-mode:screen;
+  animation:lab-breathe-gold 2.4s ease-in-out infinite alternate;
+}
+/* J: the busiest's two swords swing apart about their hilts and strike, a flash and sparks at the cross.
+   The site's own icon is hidden under them. Only transform and opacity move. */
+html.lab-sw-J .wvw-tab.lab-lead .wvw-tab-swords{visibility:hidden;}
+.wvw-tab .lab-clash{position:absolute;left:4px;top:1px;width:14px;height:14px;pointer-events:none;}
+.lab-clash-sw{position:absolute;left:0;top:0;width:14px;height:14px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.7));}
+.lab-clash-up{transform-origin:3.94px 9.19px;animation:lab-swing-up var(--lab-cycle) infinite;}
+.lab-clash-back{transform-origin:10.06px 9.19px;animation:lab-swing-back var(--lab-cycle) infinite;}
+.wvw-tab .lab-clash{--lab-cycle:3.2s;}
+/* The cycle: at rest the icon's cross; each sword lifts back about its hilt until the two stand
+   apart, strikes past the cross, holds a beat (the hit), settles. Sparks and a flash at the hit. */
+@keyframes lab-swing-up{
+  0%{transform:rotate(0);animation-timing-function:cubic-bezier(.3,0,.4,1);}
+  10%{transform:rotate(-50deg);animation-timing-function:cubic-bezier(.55,0,1,.45);}
+  14%,17%{transform:rotate(5deg);animation-timing-function:linear(0,1.18 40%,.96 70%,1);}
+  27%,100%{transform:rotate(0);}
+}
+@keyframes lab-swing-back{
+  0%{transform:rotate(0);animation-timing-function:cubic-bezier(.3,0,.4,1);}
+  10%{transform:rotate(50deg);animation-timing-function:cubic-bezier(.55,0,1,.45);}
+  14%,17%{transform:rotate(-5deg);animation-timing-function:linear(0,1.18 40%,.96 70%,1);}
+  27%,100%{transform:rotate(0);}
+}
+/* The whole icon punches a little at the hit. */
+.wvw-tab .lab-clash{animation:lab-punch var(--lab-cycle) infinite;transform-origin:50% 60%;}
+@keyframes lab-punch{0%,13.9%{transform:scale(1);}14.6%{transform:scale(1.14);}19%,100%{transform:scale(1);}}
+.lab-clash-flash{
+  position:absolute;left:2.8px;top:2px;width:8px;height:8px;border-radius:50%;
+  background:radial-gradient(circle,#fffdf0 0%,rgba(255,220,130,.85) 30%,rgba(255,170,60,.35) 55%,transparent 72%);
+  opacity:0;animation:lab-flash var(--lab-cycle) infinite;
+}
+@keyframes lab-flash{0%,13.9%{opacity:0;transform:scale(.4);}14.4%{opacity:.85;transform:scale(1.1);}19%,100%{opacity:0;transform:scale(1.45);}}
+/* Five streaks thrown up and out from the cross, hot white at the head, orange at the tail. */
+.lab-spark{
+  position:absolute;left:6.8px;top:6px;width:4px;height:1.3px;margin-top:-.65px;border-radius:1px;
+  background:linear-gradient(90deg,rgba(255,150,40,0),#ffb347 45%,#fff8d6);transform-origin:0 50%;
+  opacity:0;animation:lab-spark var(--lab-cycle) infinite;
+}
+.lab-spark-0{--a:-158deg;--d:7px;} .lab-spark-1{--a:-118deg;--d:6px;animation-delay:20ms;}
+.lab-spark-2{--a:-75deg;--d:7px;animation-delay:10ms;} .lab-spark-3{--a:-35deg;--d:6px;animation-delay:30ms;}
+.lab-spark-4{--a:170deg;--d:5px;animation-delay:15ms;}
+@keyframes lab-spark{
+  0%,13.9%{opacity:0;transform:rotate(var(--a)) translateX(1px) scaleX(.6);}
+  14%{opacity:1;transform:rotate(var(--a)) translateX(1.5px) scaleX(1);animation-timing-function:cubic-bezier(.15,.8,.35,1);}
+  18%{opacity:1;}
+  22%,100%{opacity:0;transform:rotate(var(--a)) translateX(var(--d)) scaleX(.5);}
+}
+/* K and L: J's strike on a 5.6 s cycle, then F's shine over the crossed swords, then still.
+   The same strike timings in ms as J; only the cycle is longer. L adds an orange flare at the hit. */
+html.lab-sw-K .wvw-tab.lab-lead .wvw-tab-swords,html.lab-sw-L .wvw-tab.lab-lead .wvw-tab-swords{visibility:hidden;}
+html.lab-sw-K .wvw-tab .lab-clash,html.lab-sw-L .wvw-tab .lab-clash{--lab-cycle:5.6s;animation-name:lab-punch-k;}
+html.lab-sw-K .lab-clash-up,html.lab-sw-L .lab-clash-up{animation-name:lab-swing-up-k;}
+html.lab-sw-K .lab-clash-back,html.lab-sw-L .lab-clash-back{animation-name:lab-swing-back-k;}
+html.lab-sw-K .lab-clash-flash,html.lab-sw-L .lab-clash-flash{animation-name:lab-flash-k;}
+html.lab-sw-K .lab-spark,html.lab-sw-L .lab-spark{animation-name:lab-spark-k;}
+@keyframes lab-swing-up-k{
+  0%{transform:rotate(0);animation-timing-function:cubic-bezier(.3,0,.4,1);}
+  5.71%{transform:rotate(-50deg);animation-timing-function:cubic-bezier(.55,0,1,.45);}
+  8%,9.71%{transform:rotate(5deg);animation-timing-function:linear(0,1.18 40%,.96 70%,1);}
+  15.43%,100%{transform:rotate(0);}
+}
+@keyframes lab-swing-back-k{
+  0%{transform:rotate(0);animation-timing-function:cubic-bezier(.3,0,.4,1);}
+  5.71%{transform:rotate(50deg);animation-timing-function:cubic-bezier(.55,0,1,.45);}
+  8%,9.71%{transform:rotate(-5deg);animation-timing-function:linear(0,1.18 40%,.96 70%,1);}
+  15.43%,100%{transform:rotate(0);}
+}
+@keyframes lab-punch-k{
+  0%,7.95%{transform:scale(1);}
+  8.34%{transform:scale(1.14);}
+  10.86%,100%{transform:scale(1);}
+}
+@keyframes lab-flash-k{
+  0%,7.95%{opacity:0;transform:scale(.4);}
+  8.23%{opacity:.85;transform:scale(1.1);}
+  10.86%,100%{opacity:0;transform:scale(1.45);}
+}
+@keyframes lab-spark-k{
+  0%,7.95%{opacity:0;transform:rotate(var(--a)) translateX(1px) scaleX(.6);}
+  8%{opacity:1;transform:rotate(var(--a)) translateX(1.5px) scaleX(1);animation-timing-function:cubic-bezier(.15,.8,.35,1);}
+  10.29%{opacity:1;}
+  12.57%,100%{opacity:0;transform:rotate(var(--a)) translateX(var(--d)) scaleX(.5);}
+}
+html.lab-sw-K .lab-clash-shine,html.lab-sw-L .lab-clash-shine{
+  position:absolute;left:0;top:0;width:14px;height:14px;pointer-events:none;
+  -webkit-mask:url(../assets/icons/Event_Swords.webp) center/14px 14px no-repeat;
+  mask:url(../assets/icons/Event_Swords.webp) center/14px 14px no-repeat;
+  background:linear-gradient(115deg, transparent 35%, rgba(255,240,200,.95) 50%, transparent 65%) 100% 0/300% 100% no-repeat;
+  animation:lab-shine-k 5.6s infinite;
+}
+@keyframes lab-shine-k{
+  0%,16.96%{background-position:100% 0;animation-timing-function:ease-in-out;}
+  31.25%,100%{background-position:0 0;}
+}
+html.lab-sw-L .wvw-tab .lab-glow,html.lab-sw-M .wvw-tab .lab-glow{filter:blur(3px) brightness(1.25) saturate(1.35);}
+html.lab-sw-L .wvw-tab .lab-glow{animation:lab-flare-k 5.6s infinite;}
+@keyframes lab-flare-k{
+  0%,7.95%{opacity:0;}
+  8.57%{opacity:1;animation-timing-function:cubic-bezier(.2,.6,.4,1);}
+  41.07%,100%{opacity:0;}
+}
+/* M: I without the gold: H's glow a little wider, and the swords lifted in their own orange. */
+html.lab-sw-M .wvw-tab .lab-glow{transform:scale(1.45);}
+html.lab-sw-M .wvw-tab.lab-lead.is-hot::after{
+  content:"";position:absolute;left:4px;top:1px;width:14px;height:14px;pointer-events:none;
+  -webkit-mask:url(../assets/icons/Event_Swords.webp) center/14px 14px no-repeat;
+  mask:url(../assets/icons/Event_Swords.webp) center/14px 14px no-repeat;
+  background:#ff9f45;mix-blend-mode:screen;
+  animation:lab-breathe-orange 2.4s ease-in-out infinite alternate;
+}
+@keyframes lab-breathe-orange{from{opacity:0}to{opacity:.28}}
+
+/* N, O and P: L's strike, shine and flare with about a second still: a 2.8 s cycle, the same ms. */
+html.lab-sw-N .wvw-tab.lab-lead .wvw-tab-swords,html.lab-sw-O .wvw-tab.lab-lead .wvw-tab-swords,html.lab-sw-P .wvw-tab.lab-lead .wvw-tab-swords{visibility:hidden;}
+html.lab-sw-N .wvw-tab .lab-clash,html.lab-sw-O .wvw-tab .lab-clash,html.lab-sw-P .wvw-tab .lab-clash{--lab-cycle:2.8s;animation-name:lab-punch-n;}
+html.lab-sw-N .lab-clash-up,html.lab-sw-O .lab-clash-up,html.lab-sw-P .lab-clash-up{animation-name:lab-swing-up-n;}
+html.lab-sw-N .lab-clash-back,html.lab-sw-O .lab-clash-back,html.lab-sw-P .lab-clash-back{animation-name:lab-swing-back-n;}
+html.lab-sw-N .lab-clash-flash,html.lab-sw-O .lab-clash-flash,html.lab-sw-P .lab-clash-flash{animation-name:lab-flash-n;}
+html.lab-sw-N .lab-spark,html.lab-sw-O .lab-spark,html.lab-sw-P .lab-spark{animation-name:lab-spark-n;}
+@keyframes lab-swing-up-n{
+  0%{transform:rotate(0);animation-timing-function:cubic-bezier(.3,0,.4,1);}
+  11.43%{transform:rotate(-50deg);animation-timing-function:cubic-bezier(.55,0,1,.45);}
+  16%,19.43%{transform:rotate(5deg);animation-timing-function:linear(0,1.18 40%,.96 70%,1);}
+  30.86%,100%{transform:rotate(0);}
+}
+@keyframes lab-swing-back-n{
+  0%{transform:rotate(0);animation-timing-function:cubic-bezier(.3,0,.4,1);}
+  11.43%{transform:rotate(50deg);animation-timing-function:cubic-bezier(.55,0,1,.45);}
+  16%,19.43%{transform:rotate(-5deg);animation-timing-function:linear(0,1.18 40%,.96 70%,1);}
+  30.86%,100%{transform:rotate(0);}
+}
+@keyframes lab-punch-n{
+  0%,15.89%{transform:scale(1);}
+  16.68%{transform:scale(1.14);}
+  21.71%,100%{transform:scale(1);}
+}
+@keyframes lab-flash-n{
+  0%,15.89%{opacity:0;transform:scale(.4);}
+  16.46%{opacity:.85;transform:scale(1.1);}
+  21.71%,100%{opacity:0;transform:scale(1.45);}
+}
+@keyframes lab-spark-n{
+  0%,15.89%{opacity:0;transform:rotate(var(--a)) translateX(1px) scaleX(.6);}
+  16%{opacity:1;transform:rotate(var(--a)) translateX(1.5px) scaleX(1);animation-timing-function:cubic-bezier(.15,.8,.35,1);}
+  20.57%{opacity:1;}
+  25.14%,100%{opacity:0;transform:rotate(var(--a)) translateX(var(--d)) scaleX(.5);}
+}
+html.lab-sw-N .lab-clash-shine,html.lab-sw-O .lab-clash-shine,html.lab-sw-P .lab-clash-shine{
+  position:absolute;left:0;top:0;width:14px;height:14px;pointer-events:none;
+  -webkit-mask:url(../assets/icons/Event_Swords.webp) center/14px 14px no-repeat;
+  mask:url(../assets/icons/Event_Swords.webp) center/14px 14px no-repeat;
+  background:linear-gradient(115deg, transparent 35%, rgba(255,240,200,.95) 50%, transparent 65%) 100% 0/300% 100% no-repeat;
+  animation:lab-shine-n 2.8s infinite;
+}
+@keyframes lab-shine-n{
+  0%,33.93%{background-position:100% 0;animation-timing-function:ease-in-out;}
+  62.5%,100%{background-position:0 0;}
+}
+html.lab-sw-N .wvw-tab .lab-glow,html.lab-sw-O .wvw-tab .lab-glow{filter:blur(3px) brightness(1.25) saturate(1.35);}
+html.lab-sw-N .wvw-tab .lab-glow{animation:lab-flare-n 2.8s infinite;}
+@keyframes lab-flare-n{
+  0%,15.89%{opacity:0;}
+  17.14%{opacity:1;animation-timing-function:cubic-bezier(.2,.6,.4,1);}
+  71.43%,100%{opacity:0;}
+}
+/* O: the glow never quite out: low between strikes, a slow swell, full at the hit. */
+html.lab-sw-O .wvw-tab .lab-glow{transform:scale(1.4);animation:lab-glow-o 2.8s infinite;}
+@keyframes lab-glow-o{
+  0%{opacity:.4;}
+  15.89%{opacity:.45;}
+  17.14%{opacity:1;animation-timing-function:cubic-bezier(.2,.6,.4,1);}
+  53.57%{opacity:.35;animation-timing-function:ease-in-out;}
+  78.57%{opacity:.55;animation-timing-function:ease-in-out;}
+  100%{opacity:.4;}
+}
+/* P: G's orange line under the tab, low at rest, bright at the hit. */
+html.lab-sw-P .wvw-tab.lab-lead::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:#f09a38;pointer-events:none;
+  animation:lab-line-p 2.8s infinite;
+}
+html.lab-sw-P .wvw-tab.lab-lead.is-active::after{background:#b85a00;}
+@keyframes lab-line-p{
+  0%,15.89%{opacity:.5;}
+  17.14%{opacity:1;animation-timing-function:cubic-bezier(.2,.6,.4,1);}
+  64.29%,100%{opacity:.5;}
+}
+
+@keyframes lab-breathe-gold{from{opacity:0}to{opacity:.7}}
+@media (prefers-reduced-motion: reduce){
+  .wvw-tab.lab-lead::before,.wvw-tab.lab-lead::after,.wvw-tab .lab-glow,
+  .wvw-tab .lab-clash,.lab-clash-sw,.lab-clash-flash,.lab-spark,.lab-clash-shine,
+  .wvw-hud-l img,.wvw-hud-l::after,.wvw-hud-l .wvw-hud-big{animation-play-state:paused !important;}
+}
+
+/* The corner of any map with a fight keeps its orange swords and number (maps.css's .is-cold undone). */
+html.lab-corner-warm .wvw-hud-l.is-cold img{filter:drop-shadow(0 1px 1px #000);opacity:1;}
+html.lab-corner-warm .wvw-hud-l.is-cold .wvw-hud-big{color:#ffb070;}
+
+/* "The map's corner": on the busiest map (N, O, P) its swords and number shine in step with its tab:
+   a glow at the strike, the shine after. Another busy map's corner: orange, still (above). */
+html.lab-cornerFx .wvw-hud-l.lab-hud-lead img:not(.lab-clash-sw){animation:lab-corner-glow 2.8s infinite;}
+@keyframes lab-corner-glow{
+  0%,15%{filter:drop-shadow(0 1px 1px #000) drop-shadow(0 0 1px rgba(255,150,40,.3));}
+  18%{filter:drop-shadow(0 1px 1px #000) drop-shadow(0 0 4px rgba(255,160,50,1));animation-timing-function:cubic-bezier(.2,.6,.4,1);}
+  70%,100%{filter:drop-shadow(0 1px 1px #000) drop-shadow(0 0 1px rgba(255,150,40,.3));}
+}
+html.lab-cornerFx .wvw-hud-l.lab-hud-lead::after{
+  content:"";position:absolute;pointer-events:none;
+  left:var(--lab-cx,0);top:var(--lab-cy,0);width:var(--lab-cs,18px);height:var(--lab-cs,18px);
+  -webkit-mask:url(../assets/icons/Event_Swords.webp) center/contain no-repeat;
+  mask:url(../assets/icons/Event_Swords.webp) center/contain no-repeat;
+  background:linear-gradient(115deg, transparent 35%, rgba(255,240,200,.95) 50%, transparent 65%) 100% 0/300% 100% no-repeat;
+  animation:lab-shine-n 2.8s infinite;
+}
+/* The number: the swords' shine crossing its digits, in step (the text painted by its background). */
+html.lab-cornerFx .wvw-hud-l.lab-hud-lead .wvw-hud-big{
+  color:transparent;
+  background:linear-gradient(115deg, #ffb070 40%, #fff6e0 50%, #ffb070 60%) 100% 0/300% 100% no-repeat;
+  -webkit-background-clip:text;background-clip:text;
+  /* The button's text-shadow paints over a clipped background: a drop-shadow sits under it instead. */
+  text-shadow:none;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.95));
+  animation:lab-shine-n 2.8s infinite;
+}
+
+/* Strike: the tab's clash over the corner's icon, scaled to it; the icon and its shine step aside. */
+.wvw-hud-l.lab-has-clash img:not(.lab-clash-sw){visibility:hidden;}
+html.lab-cornerFx .wvw-hud-l.lab-hud-lead.lab-has-clash::after{content:none;}
+.lab-hud-clash{
+  position:absolute;left:var(--lab-cx,0);top:var(--lab-cy,0);width:14px;height:14px;pointer-events:none;
+  transform:scale(var(--lab-k,1));transform-origin:0 0;
+}
+.lab-hud-clash .lab-clash{position:absolute;left:0;top:0;width:14px;height:14px;--lab-cycle:2.8s;animation:lab-punch-n 2.8s infinite;transform-origin:50% 60%;}
+
+/* ---- Captures: the map's colour ------------------------------------ */
+/* EBG is neutral, each borderland its own colour: MISSED_MAP_TINT's. */
+.wvw-cap{--lab-map:#c3ccd7;--lab-map-soft:rgba(195,204,215,.14);}
+.wvw-cap[data-map=RedHome]{--lab-map:var(--red);--lab-map-soft:rgba(225,92,92,.2);}
+.wvw-cap[data-map=BlueHome]{--lab-map:var(--blue);--lab-map-soft:rgba(91,143,240,.22);}
+.wvw-cap[data-map=GreenHome]{--lab-map:var(--green);--lab-map-soft:rgba(76,175,125,.22);}
+/* A: the dot before the map's name, the "What you missed" one. */
+html.lab-caps-A .wvw-cap-map{display:inline-flex;align-items:center;gap:4px;}
+html.lab-caps-A .wvw-cap-map::before{
+  content:"";width:7px;height:7px;border-radius:50%;flex-shrink:0;
+  background:radial-gradient(circle at 30% 30%, #f1f4f8, #aab4c0);
+}
+html.lab-caps-A .wvw-cap[data-map=RedHome] .wvw-cap-map::before{background:radial-gradient(circle at 30% 30%, #ff9a9a, var(--red));}
+html.lab-caps-A .wvw-cap[data-map=BlueHome] .wvw-cap-map::before{background:radial-gradient(circle at 30% 30%, #b8cdff, var(--blue));}
+html.lab-caps-A .wvw-cap[data-map=GreenHome] .wvw-cap-map::before{background:radial-gradient(circle at 30% 30%, #b3ecce, var(--green));}
+/* B: a thin bar on the row's left edge. */
+html.lab-caps-B .wvw-cap{box-shadow:inset 3px 0 0 var(--lab-map);padding-left:9px;border-radius:2px 4px 4px 2px;}
+/* F: the map's name on a soft tint of its colour. */
+html.lab-caps-F .wvw-cap-map{
+  padding:0 6px;border-radius:3px;background:var(--lab-map-soft);color:#dbe3ec;
+  font-size:.62rem;font-weight:700;line-height:1.5;
+}
