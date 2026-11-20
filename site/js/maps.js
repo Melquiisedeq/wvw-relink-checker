@@ -424,11 +424,10 @@ function emblemFilterFactory(defs, prefix) {
 // centre, which is why the translate is twice the edge plus the span.
 function paintEmblem(parent, layers, box, filterFor) {
   for (const layer of layers) {
-    const im = svgEl('image', {
+    const im = svgImage({
       class: 'claim-emblem', href: layer.src, filter: `url(#${filterFor(layer.hex)})`,
       x: box.x, y: box.y, width: box.w, height: box.h,
     });
-    im.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', layer.src);
     if (layer.flipH || layer.flipV) {
       im.setAttribute('transform',
         `translate(${layer.flipH ? 2 * box.x + box.w : 0}`
@@ -610,12 +609,10 @@ function waypointBadge(r, p) {
   const chat = waypointChat((WAYPOINT_AT[p.meta.id] || [])[2]);
 
   const put = (cx, cy) => {
-    const im = svgEl('image', {
+    const im = svgImage({
       href: 'assets/icons/Waypoint.webp',
       x: cx - w / 2, y: cy - w / 2, width: w, height: w,
     });
-    im.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href',
-      'assets/icons/Waypoint.webp');
     g.appendChild(im);
 
     const tip = svgEl('title', {});
@@ -677,6 +674,12 @@ const svgEl = (name, attrs) => {
   for (const k in attrs) el.setAttribute(k, attrs[k]);
   return el;
 };
+// Both href spellings, for the browsers that read only xlink:href.
+const svgImage = (attrs) => {
+  const el = svgEl('image', attrs);
+  el.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', attrs.href);
+  return el;
+};
 
 // The heraldic shield both badges are cut from, centred on (cx, cy).
 function shieldPath(cx, cy, w, h, cls) {
@@ -720,13 +723,7 @@ const scoreFresh = (at, ms) => steadyNow() - at <= ms;
 // paint() rewrites them in place, so the status region keeps its identity.
 function buildMapCorners(wrap, matchId) {
   const svg = wrap.querySelector('.wvw-plot');
-  const mk = (tag, cls, text) => {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text) e.textContent = text;
-    return e;
-  };
-  const note = mk('p', 'wvw-hud-note');
+  const note = missedEl('p', 'wvw-hud-note');
   note.id = `wvw-hud-note-${++plotSerial}`;
   note.hidden = true;
   let openKey = null;
@@ -741,7 +738,7 @@ function buildMapCorners(wrap, matchId) {
 
   // One text for the hover title and the touch balloon.
   const corner = (side, key, btn) => {
-    const box = mk('div', `wvw-hud wvw-hud-${side}`);
+    const box = missedEl('div', `wvw-hud wvw-hud-${side}`);
     btn.type = 'button';
     btn.className = 'wvw-hud-btn';
     btn.setAttribute('aria-expanded', 'false');
@@ -767,44 +764,44 @@ function buildMapCorners(wrap, matchId) {
     return box;
   };
 
-  const swords = mk('img');
+  const swords = missedEl('img');
   swords.src = 'assets/icons/Event_Swords.webp';
   swords.alt = '';
   swords.width = 18;
   swords.height = 18;
   // Line one: the number and "kills" with its window. Line two, only when the
   // number is old: where its data ends.
-  const big = mk('span', 'wvw-hud-big');
-  const small = mk('span', 'wvw-hud-small');
-  const smallSep = mk('span');
-  const smallMins = mk('span');
-  const smallLong = mk('span', 'wvw-hud-long');
-  const smallShort = mk('span', 'wvw-hud-short');
-  const smallTail = mk('span');
+  const big = missedEl('span', 'wvw-hud-big');
+  const small = missedEl('span', 'wvw-hud-small');
+  const smallSep = missedEl('span');
+  const smallMins = missedEl('span');
+  const smallLong = missedEl('span', 'wvw-hud-long');
+  const smallShort = missedEl('span', 'wvw-hud-short');
+  const smallTail = missedEl('span');
   smallTail.append(smallSep, smallMins, smallLong, smallShort);
   small.append('kills', smallTail);
-  const line1 = mk('span', 'wvw-hud-line');
+  const line1 = missedEl('span', 'wvw-hud-line');
   line1.append(big, small);
-  const lead = mk('span');
-  const smallTime = mk('time', 'wvw-hud-when');
-  const smallMark = mk('span');
-  const line2 = mk('span', 'wvw-hud-small wvw-hud-small2');
+  const lead = missedEl('span');
+  const smallTime = missedEl('time', 'wvw-hud-when');
+  const smallMark = missedEl('span');
+  const line2 = missedEl('span', 'wvw-hud-small wvw-hud-small2');
   line2.append(smallMark, lead, smallTime);
-  const fightsBtn = mk('button');
-  const txt = mk('span', 'wvw-hud-txt');
+  const fightsBtn = missedEl('button');
+  const txt = missedEl('span', 'wvw-hud-txt');
   txt.append(line1, line2);
   fightsBtn.append(swords, txt);
   const left = corner('l', 'fights', fightsBtn);
 
-  const ago = mk('time', 'wvw-hud-ago');
-  const mark = mk('span', 'wvw-hud-mark');
-  const word = mk('span', 'wvw-hud-word', 'data from ');
-  const val = mk('span', 'wvw-hud-when');
+  const ago = missedEl('time', 'wvw-hud-ago');
+  const mark = missedEl('span', 'wvw-hud-mark');
+  const word = missedEl('span', 'wvw-hud-word', 'data from ');
+  const val = missedEl('span', 'wvw-hud-when');
   ago.append(mark, word, val);
-  const whenBtn = mk('button');
+  const whenBtn = missedEl('button');
   whenBtn.appendChild(ago);
   // Spoken only when the state turns, not every second.
-  const live = mk('span', 'wvw-hud-live');
+  const live = missedEl('span', 'wvw-hud-live');
   live.setAttribute('role', 'status');
   const right = corner('r', 'when', whenBtn);
   right.appendChild(live);
@@ -812,7 +809,6 @@ function buildMapCorners(wrap, matchId) {
   wrap.append(left, right, note);
 
   const put = (node, text) => { if (node.textContent !== text) node.textContent = text; };
-  const hhmm = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const setTip = (key, btn, text) => {
     if (text === tips[key]) return;
     tips[key] = text;
@@ -844,12 +840,12 @@ function buildMapCorners(wrap, matchId) {
     put(lead, hole ? 'data gap ' : two ? (old && !odd && !unproven ? (view.still ? 'no new kills since before ' : 'no new kills since ') : 'data up to ') : '');
     put(smallMark, odd ? '\u26a0\u00a0' : '');
     if (hole) {
-      put(smallTime, `${hhmm(view.gap.from)}\u2013${hhmm(view.gap.to)}`);
+      put(smallTime, `${missedHhmm(view.gap.from)}\u2013${missedHhmm(view.gap.to)}`);
       smallTime.removeAttribute('datetime');
     } else if (two) {
       // Still all along, the oldest reading is not where the data stops.
       const at = (odd || unproven) && view.still ? view.upTo : view.clock;
-      put(smallTime, hhmm(at));
+      put(smallTime, missedHhmm(at));
       smallTime.dateTime = new Date(at).toISOString();
     } else {
       put(smallTime, '');
@@ -860,22 +856,22 @@ function buildMapCorners(wrap, matchId) {
       const wait = view && view.counting;
       text = view && view.noWindow === 'reset' ? HUD_RESET_TIP
         : wait && wait.ready > steadyNow()
-          ? `Counting since ${hhmm(wait.since)}, ready about ${hhmm(wait.ready)}: the kill history does not reach 10 minutes back yet.`
+          ? `Counting since ${missedHhmm(wait.since)}, ready about ${missedHhmm(wait.ready)}: the kill history does not reach 10 minutes back yet.`
           : HUD_NO_WINDOW_TIP;
     } else {
-      const t = hhmm(view.clock);
-      const behind = (fallback) => hhmm(isStale && at ? at : fallback);
+      const t = missedHhmm(view.clock);
+      const behind = (fallback) => missedHhmm(isStale && at ? at : fallback);
       // The tail names the stall only when it, not the pace, kept the swords off.
       const tail = view.jumpHeld
         ? ` No swords: the last jump came after ${Math.round(view.prevRun / 60000)} min without new kill data.` : '';
       if (view.long) {
-        text = `${line.kills} kills in the ${line.mins} min up to ${t}. No kill data reached us between ${hhmm(view.gap.from)} and ${hhmm(view.gap.to)}.`
+        text = `${line.kills} kills in the ${line.mins} min up to ${t}. No kill data reached us between ${missedHhmm(view.gap.from)} and ${missedHhmm(view.gap.to)}.`
           + (hole ? ' The swords count the pace per 10 minutes.' : '')
           + (odd ? ` The game's API has been behind since ${behind(view.clock)}, so this is not now.` : unproven ? ` No newer data from the game's API since ${t} yet.` : old ? ` No new kills since ${t}, as on a quiet map.` : '') + tail;
       } else if (odd && view.still) {
-        text = `The kill count has not moved from ${t}, the oldest reading, to ${hhmm(view.upTo)}. The game's API has been behind since ${behind(view.upTo)}, so this is not now.`;
+        text = `The kill count has not moved from ${t}, the oldest reading, to ${missedHhmm(view.upTo)}. The game's API has been behind since ${behind(view.upTo)}, so this is not now.`;
       } else if (unproven && view.still) {
-        text = `The kill count has not moved from ${t}, the oldest reading, to ${hhmm(view.upTo)}. No newer data from the game's API yet: an empty map or the API behind, too soon to tell.`;
+        text = `The kill count has not moved from ${t}, the oldest reading, to ${missedHhmm(view.upTo)}. No newer data from the game's API yet: an empty map or the API behind, too soon to tell.`;
       } else if (unproven) {
         text = `${line.kills} kills in the ${line.mins} min up to ${t}. No newer data from the game's API yet: a quiet map or the API behind, too soon to tell.${tail}`;
       } else if (odd) {
@@ -907,15 +903,15 @@ function buildMapCorners(wrap, matchId) {
       const mins = Math.floor(age / 60000);
       // Past the limit the sign is the signal, never the colour alone.
       put(mark, isStale ? '⚠ ' : '');
-      put(val, hhmm(at));
+      put(val, missedHhmm(at));
       const answered = gameAnsweredAt.get(matchId);
       const late = isStale ? `, ${ageWords(age)} ago` : '';
       const kept = newestMatches.get(matchId);
       // The body on show decides the wording, not the game's last answer: ours may be the newer.
       const fromCopy = !!answered && !!kept && latestBodyAt.has(kept.match);
       setTip('when', whenBtn, fromCopy
-        ? `Score last changed at ${hhmm(at)}${late}, read by our server. The game last answered this page ${ageWords(Date.now() - answered)} ago.`
-        : `Score last changed at ${hhmm(at)}${late}. This page checks the game every 30 s; `
+        ? `Score last changed at ${missedHhmm(at)}${late}, read by our server. The game last answered this page ${ageWords(Date.now() - answered)} ago.`
+        : `Score last changed at ${missedHhmm(at)}${late}. This page checks the game every 30 s; `
           + `${answered ? `last answer ${ageWords(Date.now() - answered)} ago` : 'no answer yet'}.`
           + " The game's data runs about 40 s behind play.");
       if (stale !== null && stale !== isStale) {
@@ -979,12 +975,10 @@ function riBadge(r, ob) {
     x: -r * 1.3, y: r * 1.05, width: r * 2.6, height: r * 0.95,
     rx: r * 0.475,
   }));
-  const im = svgEl('image', {
+  const im = svgImage({
     href: 'assets/icons/Event_Swords.webp', x: -r * 1.16, y: r * 1.15,
     width: r * 0.75, height: r * 0.75,
   });
-  im.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href',
-    'assets/icons/Event_Swords.webp');
   g.appendChild(im);
 
   const t = svgEl('text', {
@@ -1113,12 +1107,11 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
   // Terrain first, everything else on top of it.
   const picture = MAP_IMAGE[mapData.id];
   const terrainAt = (src) => {
-    const img = svgEl('image', {
+    const img = svgImage({
       href: src, x: picture.x, y: picture.y,
       width: picture.w, height: picture.h,
       preserveAspectRatio: 'none',
     });
-    img.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', src);
     return img;
   };
   let terrain = null;
@@ -1188,11 +1181,10 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
     // The icon already carries the team colour: a disc behind would only show as a second ring.
     const markerSrc = markerIcon(p.ob.type, p.ob.owner);
     if (markerSrc) {
-      const icon = svgEl('image', {
+      const icon = svgImage({
         class: 'pip', href: markerSrc,
         x: -r, y: -r, width: r * 2, height: r * 2,
       });
-      icon.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', markerSrc);
       g.appendChild(icon);
     }
     const wp = hasWaypoint(p.ob, tierInfo);
@@ -2201,7 +2193,7 @@ function keepFocus(root, rebuild) {
 }
 
 // The block itself, at the top of the right-hand column. view: { matchId,
-// side, tabs, type, goTo, spot, repaint }. Rebuilt only when what it shows moved.
+// side, type, goTo, spot, repaint }. Rebuilt only when what it shows moved.
 function paintMissed(view) { keepFocus(view.side, () => paintMissedNow(view)); }
 function paintMissedNow(view) {
   const note = missedNoteFor(view.matchId);
@@ -2408,32 +2400,13 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
                                sectorsByType, pendingSectors, triggerEl, swap) {
   popover.textContent = '';
 
-  const header = document.createElement('div');
-  header.className = 'info-popover-header';
-  const title = document.createElement('span');
-  title.textContent = `${regionName} Tier ${tierNum} · Live map`;
-  header.appendChild(title);
-
-  const actions = document.createElement('div');
-  actions.className = 'info-popover-header-actions';
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'info-popover-close';
-  closeBtn.textContent = '\u00d7';
-  closeBtn.setAttribute('aria-label', 'Close');
-  closeBtn.addEventListener('click', closePopover);
-  actions.appendChild(closeBtn);
-  header.appendChild(actions);
-  popover.appendChild(header);
+  popHeader(popover, `${regionName} Tier ${tierNum} · Live map`, []);
 
   const byType = new Map((match.maps || []).map((m) => [m.type, m]));
   // A tab exists because the tier has that map, not because its outline has arrived yet.
   const available = MAP_PANEL_ORDER.filter((t) => byType.has(t) && pendingSectors.has(t));
   if (!available.length) {
-    const msg = document.createElement('p');
-    msg.className = 'hint';
-    msg.style.margin = '0';
-    msg.textContent = 'No objective data for this tier right now.';
+    const msg = hintLine('No objective data for this tier right now.');
     popover.appendChild(msg);
     return;
   }
@@ -2785,7 +2758,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     if (sectorsByType.get(type)) pick(); else pendingSectors.get(type).then(pick);
   };
   const paintNote = () => {
-    paintMissed({ matchId: match.id, side, tabs: tabByType, type: current, goTo, spot: spotlight, repaint: paintNote });
+    paintMissed({ matchId: match.id, side, type: current, goTo, spot: spotlight, repaint: paintNote });
     paintPane();
     if (plotWrap) plotWrap.ringChanged();
     if (focusSpot && focusSpot.el && !focusSpot.el.isConnected) paintFocus();
@@ -3141,10 +3114,7 @@ async function fillTierMaps(popover, match, regionName, tierNum, triggerEl, swap
   } catch {
     if (activePopover !== popover) return;
     popover.textContent = '';
-    const msg = document.createElement('p');
-    msg.className = 'hint';
-    msg.style.margin = '0';
-    msg.textContent = "Couldn't load the map data right now.";
+    const msg = hintLine("Couldn't load the map data right now.");
     popover.appendChild(msg);
     return;
   }

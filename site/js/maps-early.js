@@ -700,9 +700,7 @@ function loadMapsScript() {
 }
 
 function showMapsLoading(el) {
-  const loading = document.createElement('p');
-  loading.className = 'hint';
-  loading.style.margin = '0';
+  const loading = hintLine('');
   loading.innerHTML = '<span class="spinner"></span>Loading maps…';
   el.appendChild(loading);
 }
@@ -725,10 +723,7 @@ async function fillWhenLoaded(popover, match, regionName, tierNum, triggerEl) {
     } catch {
       if (activePopover !== popover) return;
       popover.textContent = '';
-      const msg = document.createElement('p');
-      msg.className = 'hint';
-      msg.style.margin = '0';
-      msg.textContent = "Couldn't load the maps right now. ";
+      const msg = hintLine("Couldn't load the maps right now. ");
       msg.appendChild(buildRetryButton((e) => {
         // Kept from the document's handler, which would take the detached
         // button for a click outside and close the popover.

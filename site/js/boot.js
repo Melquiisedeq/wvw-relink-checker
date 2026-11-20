@@ -25,7 +25,7 @@ if (!standingsParts) {
 fetchTimers();
 setInterval(updateRelinkBanner, 60000); // countdown display, and the pace of the teams notice's reads
 if (standingsParts) {
-  startPeeking(); // /api ahead of the board: load it now (js/standings.js)
+  startPeeking(); // starts the /api peek timer and opens the socket; reads nothing itself (js/standings.js)
   standingsTick = schedulePeriodicRefresh(refreshStandings, STANDINGS_REFRESH_MS);
 }
 schedulePeriodicRefresh(fetchTimers, TIMERS_REFRESH_MS);

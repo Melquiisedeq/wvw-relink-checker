@@ -89,7 +89,9 @@ function popBarTotal(label, labelClass, value) {
   return row;
 }
 
-function popHeader(popover, title) {
+// extras (an array, even an empty one) puts the buttons, then the close, in a
+// .info-popover-header-actions box; without it the close sits beside the title.
+function popHeader(popover, title, extras) {
   const header = document.createElement('div');
   header.className = 'info-popover-header';
   const t = document.createElement('span');
@@ -101,7 +103,15 @@ function popHeader(popover, title) {
   closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.addEventListener('click', closePopover);
   header.appendChild(t);
-  header.appendChild(closeBtn);
+  if (extras) {
+    const actions = document.createElement('div');
+    actions.className = 'info-popover-header-actions';
+    for (const b of extras) actions.appendChild(b);
+    actions.appendChild(closeBtn);
+    header.appendChild(actions);
+  } else {
+    header.appendChild(closeBtn);
+  }
   popover.appendChild(header);
 }
 

@@ -306,12 +306,9 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
     }
     popover.appendChild(legend);
   } else {
-    const why = document.createElement('p');
-    why.className = 'hint';
-    why.style.margin = '0';
-    why.textContent = finished === 1
+    const why = hintLine(finished === 1
       ? 'Only one block done so far. The chart shows up once there are two.'
-      : 'First block of the week is still being played.';
+      : 'First block of the week is still being played.');
     popover.appendChild(why);
   }
 
