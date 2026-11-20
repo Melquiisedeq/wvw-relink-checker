@@ -674,12 +674,11 @@ test.describe('a side\'s VP moves on a refresh', () => {
     const list = await page.evaluate(async u => (await fetch(u)).json(), url);
     const mine = list.find(m => m.id === FOCUS);
     mine.victory_points.red += 7;
-    await page.route(/^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches\?ids=/, route => {
-      const want = new URL(route.request().url()).searchParams.get('ids');
+    await answer(page, /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches\?ids=/, url => {
+      const want = new URL(url).searchParams.get('ids');
       const ids = want === 'all' ? null : want.split(',');
-      return route.fulfill({ status: 200, json: list.filter(m => !ids || ids.includes(m.id)),
-        headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } });
-    });
+      return list.filter(m => !ids || ids.includes(m.id));
+    }, { contentType: 'application/json' });
     expect(await pulsing(), 'cards pulsing before the refresh').toEqual([]);
     await page.evaluate(() => loadStandings('manual'));
     await expect(page.locator(`.standing-match[data-match-id="${FOCUS}"] .side-red .standing-vp .stat-value`),

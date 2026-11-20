@@ -100,9 +100,9 @@ test.describe('one match standing still in the copy', () => {
   test('a stalled match that moves in the game reaches the board, without the list', async ({ page, wvw }) => {
     await load(page, wvw);
     const moved = await page.evaluate(focus => [...matchDataCache.keys()].find(id => id !== focus), FOCUS);
-    await page.route(OTHERS, async route => {
-      const ids = idsOf(route.request().url());
-      const list = await page.evaluate(([want, up]) => want.map(id => {
+    await answer(page, OTHERS, async url => {
+      const ids = idsOf(url);
+      return page.evaluate(([want, up]) => want.map(id => {
         const m = JSON.parse(JSON.stringify(matchDataCache.get(id)));
         if (id === up) {
           for (const k of Object.keys(m.scores)) m.scores[k] += 5000;
@@ -110,8 +110,7 @@ test.describe('one match standing still in the copy', () => {
         }
         return m;
       }), [ids, moved]);
-      await route.fulfill({ json: list, headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } });
-    });
+    }, { contentType: 'application/json' });
     const asked = matchReads(page);
     const before = await scoreOf(page, moved);
     await play(page, 6 * MIN);

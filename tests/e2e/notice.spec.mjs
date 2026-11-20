@@ -60,12 +60,9 @@ test.describe('the notice on the one-minute tick', () => {
     const lockout = at(open ? -3600000 : DAY);
     await answer(page, GAME + 'wvw/timers/lockout', { na: lockout, eu: lockout });
     await answer(page, GAME + 'wvw/timers/teamAssignment', { na: at(2 * DAY), eu: at(2 * DAY - 8 * 3600000) });
-    const cell = { windowId: Math.floor((wvw.opensAt + 2 * DAY) / 1000), reads: 0, published: 0 };
-    await page.route('**/api/relink', async route => {
-      cell.reads++;
-      await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' },
-        body: JSON.stringify({ window: cell.windowId, published: cell.published }) });
-    });
+    const cell = { windowId: Math.floor((wvw.opensAt + 2 * DAY) / 1000), published: 0 };
+    const served = await answer(page, '**/api/relink', () => ({ window: cell.windowId, published: cell.published }), { contentType: 'application/json' });
+    Object.defineProperty(cell, 'reads', { get: () => served.reads });
     await page.goto(wvw.url);
     if (open) await expect(page.locator('#relinkBanner')).toHaveClass(/is-rebuild/);
     await wvw.settle();

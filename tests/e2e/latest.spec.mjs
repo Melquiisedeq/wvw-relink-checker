@@ -4,7 +4,7 @@
 // game never gave, one over the size cap, and garbage in any field the page
 // checks change nothing and say nothing; a 503 or a hung answer costs nothing.
 import { test, expect } from './support/fixtures.mjs';
-import { fail } from './support/faults.mjs';
+import { answer, fail } from './support/faults.mjs';
 import { gw2, historyOf, liveOf } from './support/gw2.mjs';
 import { load, recordedJson, scoreOf } from './support/steps.mjs';
 import { recording } from './support/recordings.mjs';
@@ -293,8 +293,7 @@ test.describe('a newer body in hand', () => {
   for (const copyDown of [false, true]) {
     test(copyDown ? 'the next peek reloads the list with /api/latest down' : 'the next peek reloads the list without reading /api/latest', async ({ page, wvw }) => {
       let summary = '{}';
-      await page.route(/\/api\/latest\/summary$/, route => route.fulfill({ status: 200, body: summary,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } }));
+      await answer(page, /\/api\/latest\/summary$/, () => summary, { contentType: 'application/json' });
       if (copyDown) await fail(page, wvw, /\/api\/latest$/, 503);
       await load(page, wvw);
       let copies = 0;
@@ -319,8 +318,7 @@ test.describe('a newer body in hand', () => {
 
   test('a peek with the summary ahead, /api/latest down and nothing in hand leaves the list as it is', async ({ page, wvw }) => {
     let summary = '{}';
-    await page.route(/\/api\/latest\/summary$/, route => route.fulfill({ status: 200, body: summary,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } }));
+    await answer(page, /\/api\/latest\/summary$/, () => summary, { contentType: 'application/json' });
     await fail(page, wvw, /\/api\/latest$/, 503);
     await load(page, wvw);
     let copies = 0, game = 0;
