@@ -91,14 +91,16 @@ body{
   7%{transform:translateY(-12px);}
   100%{transform:translateY(0);}
 }
-/* Only the infinite ones, bar the loading indicators (.spinner, .btn-pips); embers.spec.mjs asserts they pause and the run-once ones play. */
+/* Only the infinite ones, bar the loading indicators (.spinner, .btn-pips); embers.spec.mjs and fights.spec.mjs assert they pause and the run-once ones play. */
 @media (prefers-reduced-motion: reduce){
   .header-rule::before,.rank-1::after,.skel::after,
   .relink-banner.is-urgent::before,.relink-banner.is-lockout::before,
   .relink-banner.is-rebuild::before,.relink-banner.is-rebuild::after,
   .relink-banner.is-rebuild .relink-inner::before,
   .relink-banner.is-rebuild .time.is-now::before,.relink-banner.is-rebuild .time.is-now::after,
-  .live-dot,.trend-live-dot{animation-play-state:paused !important;}
+  .live-dot,.trend-live-dot,
+  .wvw-tab.is-striking::before,.wvw-clash,.wvw-clash-sword,.wvw-clash-flash,.wvw-clash-shine,.wvw-clash-spark,
+  .wvw-hud-l.is-striking .wvw-hud-big{animation-play-state:paused !important;}
 }
 
 /* ---- Scrollbars: the popovers and the map's detail column. -webkit- pseudo-elements,

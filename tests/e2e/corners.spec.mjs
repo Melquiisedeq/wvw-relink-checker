@@ -63,7 +63,7 @@ test.describe('map corners', () => {
     expect(hotTab.title, `the corner says ${kills} kills`).toContain(` ${kills} kills `);
     await expect(page.locator(hud('.wvw-hud-l.is-cold')), 'swords neutral on the hot tab').toHaveCount(0);
 
-    const cold = await page.evaluate(() => [...document.querySelectorAll('.info-popover .wvw-tab')].find(t => !t.classList.contains('is-hot'))?.dataset.type);
+    const cold = await page.evaluate(() => [...document.querySelectorAll('.info-popover .wvw-tab')].find(t => !t.classList.contains('is-lit'))?.dataset.type);
     expect(cold, 'a tab without swords').toBeTruthy();
     await page.locator(`.info-popover .wvw-tab[data-type="${cold}"]`).click();
     await expect(page.locator(hud('.wvw-hud-l.is-cold')), 'the kills corner, neutral, on a tab without swords').toBeVisible();
@@ -261,7 +261,7 @@ test.describe('corners by the data clock', () => {
     return { big: q('.wvw-hud-big')?.textContent || '', small: q('.wvw-hud-small').innerText,
       two: !!s2 && !s2.hidden, line2: s2?.hidden === false ? s2.textContent : '',
       dim: !!q('.wvw-hud-l.is-dim'), cold: !!q('.wvw-hud-l.is-cold'),
-      swords: !!document.querySelector('.info-popover .wvw-tab.is-hot'), right: q('.wvw-hud-ago')?.textContent || '',
+      swords: !!document.querySelector('.info-popover .wvw-tab-swords'), right: q('.wvw-hud-ago')?.textContent || '',
       when: q('.wvw-hud-ago')?.dateTime || '' };
   });
 
@@ -354,9 +354,9 @@ test.describe('corners by the data clock', () => {
         const tip = await balloon(page, 'l');
         // The tail names the stall only when the stall, not the pace, kept the swords off.
         if (name === 'jumpHeld') expect(tip, 'a big jump held back by the stall says so')
-          .toMatch(/^Player kills on this map in the last \d+ minutes\. Orange swords mark the busiest map, past 50\. No swords: the last jump came after 25 min without new kill data\.$/);
+          .toMatch(/^Player kills on this map in the last \d+ minutes\. Orange swords mark each map past 50; with several, the busiest one strikes\. No swords: the last jump came after 25 min without new kill data\.$/);
         if (name === 'jumpSmall') expect(tip, 'no stall to blame: no tail')
-          .toMatch(/^Player kills on this map in the last \d+ minutes\. Orange swords mark the busiest map, past 50\.$/);
+          .toMatch(/^Player kills on this map in the last \d+ minutes\. Orange swords mark each map past 50; with several, the busiest one strikes\.$/);
         // In a window past 20 min the gap sentence already says why: the balloon is those two sentences.
         if (name === 'jumpLong') expect(tip, 'the balloon of a window past 20 min')
           .toMatch(/^\d+ kills in the 25 min up to \S+( \S+)?\. No kill data reached us between \S+( \S+)? and \S+( \S+)?\.$/);
@@ -457,7 +457,7 @@ test.describe('kills that stood still, through the Worker', () => {
     const s2 = q('.wvw-hud-small2');
     return { big: q('.wvw-hud-big')?.textContent || '', small: q('.wvw-hud-small').innerText,
       line2: s2?.hidden === false ? s2.textContent.replace(/\s+/g, ' ') : '', dim: !!q('.wvw-hud-l.is-dim'),
-      swords: !!document.querySelector('.info-popover .wvw-tab.is-hot') };
+      swords: !!document.querySelector('.info-popover .wvw-tab-swords') };
   });
 
   test('still for 40 min, a row a minute: the quiet corner, with the time of the last kill', async ({ page, wvw }) => {

@@ -102,6 +102,15 @@ export const visitorDown = (min = 10, code = 503, id) =>
 export const killsGap = (gap = 12, before = 6, after = 2, id) =>
   gw2.match(id ?? FOCUS).advance(before).killHistory(false).advance(gap).killHistory(true).advance(after).pageOpens().advance(2);
 
+// Fights on three of the four maps for `min` minutes after the opening, the fourth below the swords' floor
+// (50 kills in ten minutes): Green BL the busiest (14 a minute), EBG (8) and Red BL (6) past it, Blue BL (4, 40 per ten minutes) under.
+export const fightsOnThree = (min = 25, id) =>
+  opened(id).advance(min, { kills: { GreenHome: 14, Center: 8, RedHome: 6, BlueHome: 4 } });
+
+// A fight on one map only: Green BL 14 kills a minute, the others under the floor.
+export const fightOnOne = (min = 25, id) =>
+  opened(id).advance(min, { kills: { GreenHome: 14, Center: 2, RedHome: 1, BlueHome: 1 } });
+
 // A busy match whose kills the API publishes in steps: every `step` minutes
 // the step's kills land at once on EBG (`pace` a minute), while the score
 // rises every minute, for `min` minutes after the opening. `lag`: the

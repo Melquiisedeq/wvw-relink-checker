@@ -701,8 +701,49 @@ function fightCount(rates, type) {
   };
 }
 
+// The busiest map's swords: the icon cut in two, each half swinging about its hilt to strike at the cross
+// (css/maps.css). The tab and the corner each hold one, started in step.
+function strikeSwords() {
+  const box = document.createElement('span');
+  box.className = 'wvw-clash';
+  const part = (cls, file) => {
+    const im = document.createElement('img');
+    im.className = `wvw-clash-sword ${cls}`;
+    im.src = `assets/icons/Event_Swords_${file}.webp`;
+    im.alt = '';
+    im.width = 14;
+    im.height = 14;
+    return im;
+  };
+  const dot = (cls) => {
+    const e = document.createElement('span');
+    e.className = cls;
+    return e;
+  };
+  box.append(part('is-back', 'back'), part('is-up', 'up'), dot('wvw-clash-flash'), dot('wvw-clash-shine'));
+  for (let i = 0; i < 5; i++) box.appendChild(dot(`wvw-clash-spark wvw-clash-spark-${i}`));
+  return box;
+}
+
+// The corner of the busiest map strikes with its tab. Called every second: only a change does anything.
+function strikeCorner(hud, on, tab) {
+  // Not yet on the page: its animations do not exist to be set in step.
+  if (!hud.isConnected || hud.classList.contains('is-striking') === on) return;
+  hud.classList.toggle('is-striking', on);
+  const box = hud.querySelector('.wvw-hud-swords');
+  const had = box.querySelector('.wvw-hud-clash');
+  if (!on) { if (had) had.remove(); return; }
+  const wrap = document.createElement('span');
+  wrap.className = 'wvw-hud-clash';
+  wrap.appendChild(strikeSwords());
+  box.appendChild(wrap);
+  // The strike, the shine on the number and the tab's own all count from the same moment.
+  const ref = tab && tab.getAnimations({ subtree: true }).find((a) => a instanceof CSSAnimation);
+  if (ref && ref.currentTime !== null) for (const a of hud.getAnimations({ subtree: true })) a.currentTime = ref.currentTime;
+}
+
 const HUD_EXPLAIN = {
-  fights: 'Player kills on this map in the last 10 minutes. Orange swords mark the busiest map, past 50.',
+  fights: 'Player kills on this map in the last 10 minutes. Orange swords mark each map past 50; with several, the busiest one strikes.',
 };
 const HUD_RESET_TIP = 'Counting starts about 10 minutes after the reset: there is nothing earlier this week to compare with.';
 const HUD_NO_WINDOW_TIP = 'Not enough kill data to count 10 minutes.';
@@ -790,7 +831,10 @@ function buildMapCorners(wrap, matchId) {
   const fightsBtn = missedEl('button');
   const txt = missedEl('span', 'wvw-hud-txt');
   txt.append(line1, line2);
-  fightsBtn.append(swords, txt);
+  // The strike's swords lie over the corner's own icon, which this box holds in place.
+  const swordsBox = missedEl('span', 'wvw-hud-swords');
+  swordsBox.appendChild(swords);
+  fightsBtn.append(swordsBox, txt);
   const left = corner('l', 'fights', fightsBtn);
 
   const ago = missedEl('time', 'wvw-hud-ago');
@@ -881,7 +925,7 @@ function buildMapCorners(wrap, matchId) {
       } else if (old) {
         text = `No new kills since ${t}, as on a quiet map. ${line.kills} kills in the ${line.mins} min up to then.${tail}`;
       } else {
-        text = `Player kills on this map in the last ${line.mins} minutes. Orange swords mark the busiest map, past 50.${tail}`;
+        text = `Player kills on this map in the last ${line.mins} minutes. Orange swords mark each map past 50; with several, the busiest one strikes.${tail}`;
       }
     }
     setTip('fights', fightsBtn, text);
@@ -2714,6 +2758,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   let corners = null;
   let hotView = null;
   let hotType = null; // the tab markHotTab chose, null when none is hot
+  let litTypes = []; // the tabs wearing swords: hotType and every map past the same floor
   // Until this popover's own first read ends, the score time is the
   // standings' read (up to five minutes old) and could flash amber: an age
   // that is not stale yet shows at once, a stale one waits for the read.
@@ -2723,10 +2768,13 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     const rose = matchScoreRoseAt(match.id);
     const known = firstReadDone || (rose > 0 && scoreFresh(rose, HUD_STALE_MS));
     corners.paint(hotView, current, known ? rose : 0);
-    // Orange swords only on the busiest map; elsewhere they are neutral.
+    // Orange swords on every map with a fight, striking on the busiest; elsewhere they are neutral.
     const l = plotWrap && plotWrap.querySelector('.wvw-hud-l');
-    if (l) l.classList.toggle('is-cold', current !== hotType);
+    if (!l) return;
+    l.classList.toggle('is-cold', !litTypes.includes(current));
+    paintStrike(l);
   };
+  const paintStrike = (l) => strikeCorner(l, hotType !== null && current === hotType && litTypes.length > 1, hotType && tabByType.get(hotType));
 
   // A pick made from a list (the summary's chips, the captures) leaves the
   // summary as it is: only a click on the map itself folds it.
@@ -2756,6 +2804,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
       corners = buildMapCorners(plotWrap, match.id);
       paintCorners();
       stage.appendChild(plotWrap);
+      paintStrike(plotWrap.querySelector('.wvw-hud-l'));
     } else {
       // Without the outline (the frame) or a single marker there is no map; the other tabs are unaffected,
       // which is why this replaces the stage and not the popover.
@@ -2891,12 +2940,14 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     hotMarked = true;
     hotView = view;
     hotType = hot;
-    paintCorners();
+    litTypes = view.lit;
     paintMapBadges(match.id);
 
+    // Every second: what is already there stays, or the strike would start over.
     for (const [type, b] of tabByType) {
       const had = b.querySelector('.wvw-tab-swords');
-      if (type === hot) {
+      const clash = b.querySelector('.wvw-clash');
+      if (litTypes.includes(type)) {
         if (!had) {
           const im = document.createElement('img');
           im.className = 'wvw-tab-swords';
@@ -2907,16 +2958,24 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
           b.insertBefore(im, b.firstChild);
           // The label shifts over rather than the swords sitting in the
           // text flow: pinned to the corner they would land on top of it.
-          b.classList.add('is-hot');
+          b.classList.add('is-lit');
         }
         const c = fightCount(rates, type);
-        b.title = `${MAP_PANEL_NAME[type] || type} —`
-          + ` ${c.kills} kills in ${c.mins} min, more than any other map`;
+        b.title = `${MAP_PANEL_NAME[type] || type} — ${c.kills} kills in ${c.mins} min`
+          + (type === hot ? ', more than any other map' : '');
       } else {
-        if (had) { had.remove(); b.classList.remove('is-hot'); }
+        if (had) { had.remove(); b.classList.remove('is-lit'); }
         b.title = MAP_PANEL_NAME[type] || type;
       }
+      b.classList.toggle('is-hot', type === hot);
+      // The strike singles out the busiest of several; a lone fight keeps the plain swords.
+      const strikes = type === hot && litTypes.length > 1;
+      b.classList.toggle('is-striking', strikes);
+      if (strikes && !clash) b.insertBefore(strikeSwords(), b.firstChild);
+      else if (!strikes && clash) clash.remove();
     }
+    // After the tabs: the corner's strike starts in step with the tab's.
+    paintCorners();
   };
 
   // The freshest answer this popover has seen, which is not the one it
