@@ -1786,6 +1786,19 @@ test('steadyClockLead: a body stamped on the page clock keeps its age when the f
   assert.ok(Math.abs(at - S) <= 5 * SEC, `at ${at - S} from the server's time`);
 });
 
+test('steadyClockLead: a body stamped on the page clock still moves when the reading after the floor lands outside the band', async () => {
+  const p = metering(-10 * MIN);
+  const S = p.T0;
+  const stamped = S - 10 * MIN;
+  p.ctx.__k = { at: stamped, clockAt: stamped };
+  p.run("newestMatches.set('m', __k)");
+  await latestAnswer(p, -10 * MIN, S, S / 1000 - 20, 1500);   // refused: the floor moves the lead 21.5 s from the truth
+  assert.ok(p.steady() < -9 * MIN, `lead ${p.steady()}`);
+  await latestAnswer(p, -10 * MIN, S, S / 1000 - 20, 0);   // accepted: 21.5 s is past the band
+  const at = p.run("newestMatches.get('m').at");
+  assert.ok(Math.abs(at - S) <= 5 * SEC, `at ${at - S} from the server's time`);
+});
+
 test('steadyClockLead: an answer without a Date header changes nothing', async () => {
   const p = metering(5 * MIN);
   await p.answer(0, 300);
@@ -2219,3 +2232,40 @@ test('fetchJson: a retry that fails on the network is not retried again by the a
     assert.equal(err.network, true, `${name}: the last error is the network's`);
   }
 });
+
+// The Captures list (js/maps.js) names "yesterday" and redraws when the day turns on the server's time, with the visitor's clock off by minutes.
+for (const lead of [5 * MIN, -5 * MIN]) {
+  const ahead = lead > 0;
+  const captures = () => {
+    const p = fresh();
+    p.set('steadyClockLead', lead);
+    const midnight = new Date(2026, 10, 10).getTime();
+    const whens = [];
+    p.set('missedEl', (tag, cls, text) => { if (tag === 'time') whens.push(text); return { dataset: {}, appendChild() {}, setAttribute() {}, addEventListener() {} }; });
+    p.set('markerIcon', () => null);
+    p.set('missedShortName', () => 'x');
+    p.set('missedFullName', () => 'x');
+    p.set('matchTeamId', () => 0);
+    const view = { box: { dataset: {}, textContent: '', appendChild() {} }, match: {} };
+    const paint = (server, items) => { p.clock.now = server + lead; p.call('paintCapturesNow', view, items); };
+    return { p, view, whens, paint, midnight };
+  };
+
+  test(`clock ${ahead ? 'ahead' : 'behind'} by 5 min: the Captures list says "yesterday" by the server's day`, () => {
+    // Ahead: server 30 s before midnight, the visitor already past it; behind: 30 s after, the visitor still before it.
+    const c = captures();
+    const server = c.midnight + (ahead ? -30 * SEC : 30 * SEC);
+    c.paint(server, [{ id: 'o', map: 'Center', type: 'Camp', owner: 'red', at: server - 60 * SEC }]);
+    const yesterday = /yesterday/.test(c.whens[0]);
+    assert.equal(yesterday, !ahead, `"${c.whens[0]}"`);
+  });
+
+  test(`clock ${ahead ? 'ahead' : 'behind'} by 5 min: the Captures list redraws when the server's day turns`, () => {
+    const c = captures();
+    const items = [{ id: 'o', map: 'Center', type: 'Camp', owner: 'red', at: c.midnight - 3600000 }];
+    c.paint(c.midnight - 30 * SEC, items);
+    const before = c.view.box.dataset.key;
+    c.paint(c.midnight + 30 * SEC, items);
+    assert.notEqual(c.view.box.dataset.key, before);
+  });
+}

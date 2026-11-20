@@ -82,6 +82,25 @@ function fightLogAheadAt(match) {
   return first;
 }
 
+// The `at`s this page wrote before the first accepted clock reading, per match: they sit on this page's clock and move
+// with it, like the bodies' `clockAt` (js/api.js). Another tab's samples and the history's are never listed.
+const unmeasuredSamples = new Map();
+function moveFightSamples(delta, measured) {
+  if (delta) {
+    const log = readFightLog();
+    for (const [id, ats] of unmeasuredSamples) {
+      for (const s of log[id] || []) {
+        if (!ats.has(s.at)) continue;
+        ats.delete(s.at);
+        s.at += delta;
+        if (!measured) ats.add(s.at);
+      }
+    }
+    try { localStorage.setItem(FIGHT_KEY, JSON.stringify(log)); } catch { /* storage off */ }
+  }
+  if (measured) unmeasuredSamples.clear();
+}
+
 // `asked` is when the request went out; the sample is stamped with it, not
 // with the write time (a sleeping computer would carry the waking-up time).
 // Only bodies whose score this page watched rise since `asked` are written: a
@@ -100,7 +119,13 @@ function recordFightSamples(matches, asked) {
     const last = kept[kept.length - 1];
     // A negative gap (an answer overtaken by a later one) is refused too.
     if (newest && newest.rose && newest.at >= askedAt && now - askedAt <= FIGHT_KEEP_MS
-      && (!last || askedAt - last.at >= FIGHT_MIN_GAP_MS)) kept.push({ at: askedAt, n: fightTotals(match) });
+      && (!last || askedAt - last.at >= FIGHT_MIN_GAP_MS)) {
+      kept.push({ at: askedAt, n: fightTotals(match) });
+      if (!clockMeasured) {
+        if (!unmeasuredSamples.has(match.id)) unmeasuredSamples.set(match.id, new Set());
+        unmeasuredSamples.get(match.id).add(askedAt);
+      }
+    }
     log[match.id] = kept.slice(-FIGHT_MAX_SAMPLES);
   }
   // Unmentioned matches drop only once they age out: the maps popover records
