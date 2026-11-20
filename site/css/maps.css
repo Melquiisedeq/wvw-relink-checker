@@ -28,7 +28,83 @@
   display:block;flex-shrink:0;pointer-events:none;
   filter:drop-shadow(0 1px 1px rgba(0,0,0,.7));
 }
-.wvw-tab.is-hot{padding-left:22px;}
+.wvw-tab.is-lit{padding-left:22px;}
+/* The busiest map's tab: the icon cut in two swords that strike (the plain one stays under, hidden), and a line along its foot.
+   Transform and opacity move, and the shine moves its background, all inside the tab's bevel. On ::before: button:active::after is the press strip (css/controls.css). */
+.wvw-tab.is-hot .wvw-tab-swords{visibility:hidden;}
+.wvw-tab.is-hot::before{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:#f09a38;pointer-events:none;
+  animation:clash-line 2.8s infinite;
+}
+.wvw-tab.is-hot.is-active::before{background:#b85a00;}
+.wvw-clash{
+  position:absolute;left:4px;top:1px;width:14px;height:14px;pointer-events:none;
+  transform-origin:50% 60%;animation:clash-punch 2.8s infinite;
+}
+.wvw-clash-sword{position:absolute;left:0;top:0;width:14px;height:14px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.7));}
+/* Each half turns about its own guard, the point where its sword meets the icon's edge. */
+.wvw-clash-sword.is-up{transform-origin:3.94px 9.19px;animation:clash-swing-up 2.8s infinite;}
+.wvw-clash-sword.is-back{transform-origin:10.06px 9.19px;animation:clash-swing-back 2.8s infinite;}
+.wvw-clash-flash{
+  position:absolute;left:2.8px;top:2px;width:8px;height:8px;border-radius:50%;
+  background:radial-gradient(circle,#fffdf0 0%,rgba(255,220,130,.85) 30%,rgba(255,170,60,.35) 55%,transparent 72%);
+  opacity:0;animation:clash-flash 2.8s infinite;
+}
+.wvw-clash-shine{
+  position:absolute;left:0;top:0;width:14px;height:14px;pointer-events:none;
+  -webkit-mask:url(../assets/icons/Event_Swords.webp) center/14px 14px no-repeat;
+  mask:url(../assets/icons/Event_Swords.webp) center/14px 14px no-repeat;
+  background:linear-gradient(115deg, transparent 35%, rgba(255,240,200,.95) 50%, transparent 65%) 100% 0/300% 100% no-repeat;
+  animation:clash-shine 2.8s infinite;
+}
+.wvw-clash-spark{
+  position:absolute;left:6.8px;top:6px;width:4px;height:1.3px;margin-top:-.65px;border-radius:1px;
+  background:linear-gradient(90deg,rgba(255,150,40,0),#ffb347 45%,#fff8d6);transform-origin:0 50%;
+  opacity:0;animation:clash-spark 2.8s infinite;
+}
+.wvw-clash-spark-0{--a:-158deg;--d:7px;}
+.wvw-clash-spark-1{--a:-118deg;--d:6px;animation-delay:20ms;}
+.wvw-clash-spark-2{--a:-75deg;--d:7px;animation-delay:10ms;}
+.wvw-clash-spark-3{--a:-35deg;--d:6px;animation-delay:30ms;}
+.wvw-clash-spark-4{--a:170deg;--d:5px;animation-delay:15ms;}
+/* One 2.8 s cycle: the swords lift, strike past the cross at 16%, hold a beat, settle; the shine follows, then about a second still. */
+@keyframes clash-swing-up{
+  0%{transform:rotate(0);animation-timing-function:cubic-bezier(.3,0,.4,1);}
+  11.43%{transform:rotate(-50deg);animation-timing-function:cubic-bezier(.55,0,1,.45);}
+  16%,19.43%{transform:rotate(5deg);animation-timing-function:linear(0,1.18 40%,.96 70%,1);}
+  30.86%,100%{transform:rotate(0);}
+}
+@keyframes clash-swing-back{
+  0%{transform:rotate(0);animation-timing-function:cubic-bezier(.3,0,.4,1);}
+  11.43%{transform:rotate(50deg);animation-timing-function:cubic-bezier(.55,0,1,.45);}
+  16%,19.43%{transform:rotate(-5deg);animation-timing-function:linear(0,1.18 40%,.96 70%,1);}
+  30.86%,100%{transform:rotate(0);}
+}
+@keyframes clash-punch{
+  0%,15.89%{transform:scale(1);}
+  16.68%{transform:scale(1.14);}
+  21.71%,100%{transform:scale(1);}
+}
+@keyframes clash-flash{
+  0%,15.89%{opacity:0;transform:scale(.4);}
+  16.46%{opacity:.85;transform:scale(1.1);}
+  21.71%,100%{opacity:0;transform:scale(1.45);}
+}
+@keyframes clash-spark{
+  0%,15.89%{opacity:0;transform:rotate(var(--a)) translateX(1px) scaleX(.6);}
+  16%{opacity:1;transform:rotate(var(--a)) translateX(1.5px) scaleX(1);animation-timing-function:cubic-bezier(.15,.8,.35,1);}
+  20.57%{opacity:1;}
+  25.14%,100%{opacity:0;transform:rotate(var(--a)) translateX(var(--d)) scaleX(.5);}
+}
+@keyframes clash-shine{
+  0%,33.93%{background-position:100% 0;animation-timing-function:ease-in-out;}
+  62.5%,100%{background-position:0 0;}
+}
+@keyframes clash-line{
+  0%,15.89%{opacity:.5;}
+  17.14%{opacity:1;animation-timing-function:cubic-bezier(.2,.6,.4,1);}
+  64.29%,100%{opacity:.5;}
+}
 .wvw-tab:hover{color:#dbe3ec;}
 /* The clip-path would cut away the strip that button:active::after hangs above
    the sunk tab (css/controls.css); the same bevelled shape, open 2px upward. */
@@ -478,6 +554,19 @@
    say so, not the grey alone. */
 .wvw-hud-l.is-dim .wvw-hud-big{color:#8d97a2;}
 .wvw-hud-l.is-dim .wvw-hud-small2{color:#ffb347;}
+.wvw-hud-swords{position:relative;display:block;flex:none;width:18px;height:18px;}
+/* The busiest map's corner: its tab's strike at 18/14 over the icon, and the shine crossing the number in step.
+   The number is painted by its background: the button's text-shadow would cover it, so a drop-shadow sits under it. */
+.wvw-hud-l.is-striking .wvw-hud-swords > img{visibility:hidden;}
+.wvw-hud-clash{position:absolute;left:0;top:0;width:14px;height:14px;transform:scale(1.2857);transform-origin:0 0;pointer-events:none;}
+.wvw-hud-clash .wvw-clash{left:0;top:0;}
+.wvw-hud-l.is-striking .wvw-hud-big{
+  color:transparent;
+  background:linear-gradient(115deg, #ffb070 40%, #fff6e0 50%, #ffb070 60%) 100% 0/300% 100% no-repeat;
+  -webkit-background-clip:text;background-clip:text;
+  text-shadow:none;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.95));
+  animation:clash-shine 2.8s infinite;
+}
 .wvw-hud-short{display:none;}
 /* Clipped, not hidden, so a screen reader still gets the turn. */
 .wvw-hud-live{

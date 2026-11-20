@@ -76,7 +76,7 @@ three are a single value each that gets overwritten.
 |---|---|
 | `wvw-relink-checker:guilds` | The list you typed, so it is still there next time |
 | `wvw-guilds-v1` | Name, tag and emblem of guilds already looked up, so the maps don't ask twice |
-| `wvw-fight-v1` | Recent kill counts per match — what puts the crossed swords on the busiest map |
+| `wvw-fight-v1` | Recent kill counts per match — what puts the crossed swords on each map with a fight |
 | `wvw-weeks-v1` | The week's team line-up per tier, so a reload on a relink night does not bring back last week's while the API catches up |
 | `wvw-rail-first` | Which region's standings column you put on the left, `na` or `eu` |
 | `wvw-relink-checker:teams-notice` | Which relink's "the new teams are out" notice you dismissed, so it stays dismissed until the next one |

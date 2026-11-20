@@ -290,7 +290,7 @@ const HOT_SMALL_WANT_MS = 7 * 60 * 1000;
 
 function killView(match, types, now = steadyNow()) {
   const view = { clock: 0, atLeast: false, silence: 0, prevRun: Infinity, rates: null, pace: 0,
-    strange: false, frozen: false, alive: false, hot: null, jumpHeld: false, noWindow: 'data', counting: null, long: false, longOk: false, gap: null, still: false, upTo: 0, high: null };
+    strange: false, frozen: false, alive: false, hot: null, lit: [], jumpHeld: false, noWindow: 'data', counting: null, long: false, longOk: false, gap: null, still: false, upTo: 0, high: null };
   // Nothing is claimed on a match that is not running.
   if (!match || !matchIsLive(match)) return view;
   const rose = matchScoreRoseAt(match.id);
@@ -380,16 +380,20 @@ function killView(match, types, now = steadyNow()) {
     const pick = types || MAP_PANEL_ORDER.filter((t) => (match.maps || []).some((m) => m.type === t));
     let bestN = 0;
     let rawBest = 0;
+    const sizes = new Map();
     // A strict win, so a tie keeps the first map and the swords do not flip.
     for (const type of pick) {
       const raw = view.rates.per.get(type) || 0;
       rawBest = Math.max(rawBest, raw);
       const n = raw * spread;
+      sizes.set(type, n);
       if (canLight && n > bestN) { bestN = n; view.hot = type; }
     }
     // The size is the one the floor reads, spread over the stall.
     const lights = (n) => n >= HOT_FLOOR && (n >= HOT_BIG || view.silence <= HOT_SMALL_WANT_MS);
     if (!lights(bestN)) view.hot = null;
+    // Every map past the same floor wears swords; with none lit for the busiest, none is.
+    if (view.hot) view.lit = pick.filter((type) => lights(sizes.get(type)));
     // True when the jump would light the swords were it not for the stall.
     view.jumpHeld = catching && !view.hot && lights(rawBest);
   }
