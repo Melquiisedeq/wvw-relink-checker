@@ -532,6 +532,29 @@ test.describe('the map: zoom and drag', () => {
     await expect(page.locator(`${POP} .wvw-marker.is-selected`), 'the click that follows the drag picks nothing').toHaveCount(0);
     await wvw.settle();
   });
+
+  test('the click of a drag that began on a marker is swallowed even when a timer runs before it, and a later click still picks', async ({ page, wvw }) => {
+    await map(page, wvw);
+    for (let i = 0; i < 3; i++) await zoom(page, 'Zoom in').click();
+    const marker = page.locator(`${POP} .wvw-marker`).locator('visible=true').first();
+    const handle = await marker.elementHandle();
+    const selected = page.locator(`${POP} .wvw-marker.is-selected`);
+    const press = (after) => handle.evaluate(async (el, wait) => {
+      const b = el.getBoundingClientRect();
+      const x = b.x + b.width / 2, y = b.y + b.height / 2;
+      const pe = (type, dx) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: x + dx, clientY: y }));
+      pe('pointerdown', 0);
+      pe('pointermove', 10);
+      pe('pointerup', 10);
+      await new Promise((r) => setTimeout(r, wait));
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }, after);
+    await press(0);
+    await expect(selected, 'a timer ran between the pointerup and its click: still swallowed').toHaveCount(0);
+    await press(300);
+    await expect(selected, 'a click long after a drag is not the drag\'s').toHaveCount(1);
+    await wvw.settle();
+  });
 });
 
 test('Ctrl+Enter in the guild box closes a result row\'s popover and leaves no active trigger', async ({ page, wvw }) => {

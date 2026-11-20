@@ -1394,6 +1394,7 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
   // same distance the popover's tap-away uses to tell a drag); short of it the click still picks the objective.
   let armed = null;
   let swallowClick = false;
+  let liftedAt = 0;
   const SLOP = 6;
   const startDrag = (e, at) => {
     dragging = { id: e.pointerId, at };
@@ -1468,13 +1469,15 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
   wrap.addEventListener('click', (e) => {
     if (!swallowClick) return;
     swallowClick = false;
+    // The drag's own click comes within 100 ms of its pointerup, though other tasks may run between them; a later
+    // click (a screen reader's, a script's) is not the drag's.
+    if (e.timeStamp - liftedAt > 100) return;
     e.stopPropagation();
   }, true);
   const endDrag = (e) => {
     armed = null;
     const had = down.delete(e.pointerId);
-    // The click, if any, follows the pointerup at once.
-    if (swallowClick) setTimeout(() => { swallowClick = false; }, 0);
+    liftedAt = e.timeStamp;
     if (pinching && had && down.size === 1) {
       pinching = false;
       const [id, p] = [...down][0];
