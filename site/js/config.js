@@ -72,7 +72,7 @@ const SHEET_HUMAN_URL =
 const MAX_ENTRIES = 20;        // hard cap so a pasted wall of text can't hammer a public API
 const MAX_NAME_LENGTH = 64;    // real guild names and GUIDs are well under this
 const REQUEST_TIMEOUT_MS = 10000;
-// Only the first standings load and the guild search wait this long; every refresh keeps the short deadline.
+// The first standings load and the guild-to-team table wait this long; every standings refresh keeps the short deadline.
 const SLOW_REQUEST_TIMEOUT_MS = 30000;
 // After a failed standings load: the window, in ms, of each extra try, with full
 // jitter (a random point inside it). Then the ordinary cycle takes over.
