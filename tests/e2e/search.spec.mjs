@@ -126,3 +126,15 @@ test('EU standings out, NA up: an EU third in tier 2 is not told it is at the bo
   expect(titles.length, 'movement marks in the panel').toBe(3);
   expect(titles.filter(t => /bottom tier/.test(t)), 'no claim about the bottom tier').toEqual([]);
 });
+
+test('the pasted list comes back after a reload, and Check runs it', async ({ page, wvw }) => {
+  await page.goto(wvw.url);
+  const names = `${wvw.guilds[0]}\n${wvw.guilds[1]}`;
+  await page.locator('#guildInput').fill(names);
+  // Saved once typing pauses: polled, since the pause is the page's to time.
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('wvw-relink-checker:guilds'))).toBe(names);
+  await page.reload();
+  await expect(page.locator('#guildInput')).toHaveValue(names);
+  await page.locator('#runBtn').click();
+  await expect(page.locator('#statusMsg')).toContainText('Done, checked 2 guild');
+});
