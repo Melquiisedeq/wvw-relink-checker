@@ -2401,6 +2401,9 @@ function paintCapturesNow(view, items) {
 }
 
 // ---- the popover -----------------------------------------------------
+// Outline reads that resolved empty: the map's tab asks anew when picked, except the one the popover opens on,
+// which has just waited on that read.
+const emptyReads = new WeakSet();
 function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
                                sectorsByType, pendingSectors, triggerEl, swap) {
   popover.textContent = '';
@@ -2733,7 +2736,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     paintFocus();
   };
 
-  const show = (type) => {
+  const show = (type, atOpen = false) => {
     if (current === type) return;
     current = type;
     for (const b of tabs.children) {
@@ -2749,7 +2752,15 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     wait.className = 'hint wvw-stage-msg';
     wait.innerHTML = '<span class="spinner"></span>Loading this map\u2026';
     stage.appendChild(wait);
-    pendingSectors.get(type).then((arr) => {
+    let read = pendingSectors.get(type);
+    if (!atOpen && emptyReads.has(read)) {
+      read = getSectors(byType.get(type).id).catch(() => []);
+      pendingSectors.set(type, read);
+    }
+    const asked = read;
+    asked.then((arr) => {
+      // Before the guard: a tab left before the answer lands is owed a new read too.
+      if (!arr.length) emptyReads.add(asked);
       // The popover can be closed and another tab picked while this is in the air.
       if (activeTrigger !== triggerEl || current !== type) return;
       if (arr && arr.length) sectorsByType.set(type, arr);
@@ -3029,7 +3040,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     else paintCorners(); // the history may have backdated the score time
   });
   const opening = swap && available.includes(swap.type) ? swap.type : available[0];
-  show(opening);
+  show(opening, true);
   if (swap && swap.focus) tabByType.get(opening).focus();
 
   // And once, right now, rather than waiting out the first poll.
@@ -3116,7 +3127,7 @@ async function fillTierMaps(popover, match, regionName, tierNum, triggerEl, swap
   for (const m of wanted) {
     const p = getSectors(m.id).catch(() => []);
     pendingSectors.set(m.type, p);
-    p.then((arr) => { if (arr.length) sectorsByType.set(m.type, arr); });
+    p.then((arr) => { if (arr.length) sectorsByType.set(m.type, arr); else emptyReads.add(p); });
   }
 
   let catalogue;
