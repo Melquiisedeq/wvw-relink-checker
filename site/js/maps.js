@@ -2084,10 +2084,19 @@ function renderObjectiveDetail(panel, p, match) {
 // ---- its pieces ----------------------------------------------------------
 const missedHhmm = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-// "05:03–05:33 PM" rather than "05:03 PM–05:33 PM" when both share the suffix.
+// " yesterday" (to follow the hour) when `ms` falls on the calendar day before `ref`'s, in the visitor's clock.
+function missedDay(ms, ref) {
+  const day = (t) => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+  return Math.round((day(ref) - day(ms)) / 86400000) === 1 ? ' yesterday' : '';
+}
+
+// "05:03–05:33 PM" rather than "05:03 PM–05:33 PM" when both share the suffix;
+// "yesterday 03:00 PM–12:00 PM" keeps both, the suffix being no longer the same day's.
 function missedSpan(a, b) {
+  const day = missedDay(a, b);
   const x = missedHhmm(a);
   const y = missedHhmm(b);
+  if (day) return `${x}${day}\u2013${y}`;
   const sx = /\s?[^\d:\s]+$/.exec(x);
   const sy = /\s?[^\d:\s]+$/.exec(y);
   if (sx && sy && sx[0] === sy[0]) return `${x.slice(0, -sx[0].length)}\u2013${y}`;
@@ -2221,7 +2230,7 @@ function paintMissedNow(view) {
   box.classList.toggle('is-open', open);
 
   const away = note.kind === 'return';
-  const span = shown.sure ? missedSpan(shown.since, shown.end) : `since before ${missedHhmm(shown.since)}`;
+  const span = shown.sure ? missedSpan(shown.since, shown.end) : `since before ${missedHhmm(shown.since)}${missedDay(shown.since, shown.end)}`;
   const changes = shown.changes;
 
   const head = missedEl('button', 'wvw-missed-head');
@@ -2353,7 +2362,7 @@ function recentCaptures(match) {
 function paintCaptures(view, items) { keepFocus(view.box, () => paintCapturesNow(view, items)); }
 function paintCapturesNow(view, items) {
   const shown = items.slice(0, CAPTURES_MAX);
-  const key = JSON.stringify(shown);
+  const key = JSON.stringify([shown, new Date(steadyNow()).toDateString()]);
   if (view.box.dataset.key === key) return;
   view.box.dataset.key = key;
   view.box.textContent = '';
@@ -2367,7 +2376,8 @@ function paintCapturesNow(view, items) {
     row.type = 'button';
     row.dataset.obj = it.id;
     row.dataset.map = it.map;
-    const time = missedEl('time', 'wvw-cap-time', missedHhmm(it.at));
+    const when = missedHhmm(it.at) + missedDay(it.at, steadyNow());
+    const time = missedEl('time', 'wvw-cap-time', when);
     time.dateTime = new Date(it.at).toISOString();
     row.appendChild(time);
     const src = markerIcon(it.type, it.owner);
@@ -2376,7 +2386,7 @@ function paintCapturesNow(view, items) {
     row.appendChild(missedEl('span', 'wvw-cap-map', map));
     const id = matchTeamId(view.match, it.owner);
     const words = `${missedFullName(it.id)} (${map}): taken by ${id ? getTeamName(id) : FOCUS_COLOR_WORD[it.owner]}`
-      + ` at ${missedHhmm(it.at)}`;
+      + ` at ${when}`;
     row.title = words;
     row.setAttribute('aria-label', words);
     row.addEventListener('click', (e) => { e.stopPropagation(); view.goTo(it.map, it.id, false); });

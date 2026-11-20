@@ -25,7 +25,8 @@
 import { test, expect } from './support/fixtures.mjs';
 import { fail } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
-import { FOCUS, HOUR, MIN, apiDown, copyAheadOld, copyBehindAll, fightStops, frozen, hidden, killSteps, missed, playing, twoPools, visible, visitorDown, wake } from './support/scenarios.mjs';
+import { recording } from './support/recordings.mjs';
+import { FOCUS, HOUR, MIN, apiDown, at, copyAheadOld, copyBehindAll, fightStops, frozen, hidden, killSteps, missed, playing, twoPools, visible, visitorDown, wake } from './support/scenarios.mjs';
 
 const STALE_MS = 6 * MIN;
 // How long the page may take to read the API again: the open map asks every
@@ -300,6 +301,78 @@ test.describe('tab hidden 2 h, then back', () => {
     }
     const kills = k => Object.values(k).reduce((a, b) => a + b, 0);
     expect(seen.missed.kills, 'the kills while away').toBe(kills(tl.killsByMap(FOCUS, to)) - kills(tl.killsByMap(FOCUS, from)));
+  });
+});
+
+// "What you missed" and the captures list name the day when it began on the one
+// before (the visitor's calendar, here UTC), and the summary is not made over 24 h.
+test.describe('"What you missed" and the day', () => {
+  // The tab hidden `hours`, the fight going on, then back: the summary, or null.
+  const away = async (page, wvw, hours) => {
+    const r = rower(page, wvw);
+    await r.load();
+    await hidden(page, wvw, hours * HOUR + MIN);
+    await visible(page);
+    await r.check('back');
+    await r.open();
+    return (await r.check('back, map opened')).missed;
+  };
+  const SUNDAY = '2026-12-06T15:00:00Z';
+  const fight = hours => at(SUNDAY).advance(hours * 60, { flips: 40, kills: { Center: 3 } });
+
+  test.describe('21 h across midnight', () => {
+    test.use({ timeline: fight(21) });
+    test('the start says "yesterday"', async ({ page, wvw }) => {
+      const m = await away(page, wvw, 21);
+      expect(m, 'the summary').not.toBeNull();
+      expect(m.time).toMatch(/^(since before 0[23]:\d\d PM yesterday|0[23]:\d\d PM yesterday\u2013\d\d:\d\d (AM|PM))$/);
+    });
+    test('the span keeps both suffixes after "yesterday", and merges them within a day', async ({ page, wvw }) => {
+      await page.goto(wvw.url);
+      await expect(page.locator(`.standing-match[data-match-id="${FOCUS}"] .standing-side`)).toHaveCount(3);
+      await page.locator(`.tier-map-btn[aria-label*="${TIER}"]`).click();
+      await expect(page.locator('.info-popover .wvw-plot')).toBeVisible();
+      const span = (a, b) => page.evaluate(([x, y]) => missedSpan(Date.parse(x), Date.parse(y)), [a, b]);
+      expect(await span('2026-12-06T15:00:00Z', '2026-12-07T12:00:00Z')).toBe('03:00 PM yesterday\u201312:00 PM');
+      expect(await span('2026-12-06T11:00:00Z', '2026-12-06T14:00:00Z')).toBe('11:00 AM\u201302:00 PM');
+      expect(await span('2026-12-06T23:30:00Z', '2026-12-07T00:30:00Z')).toBe('11:30 PM yesterday\u201312:30 AM');
+      expect(await span('2026-12-06T15:00:00Z', '2026-12-06T17:30:00Z')).toBe('03:00\u201305:30 PM');
+    });
+  });
+  test.describe('1 h the same day', () => {
+    test.use({ timeline: fight(1) });
+    test('the hours alone, as ever', async ({ page, wvw }) => {
+      const m = await away(page, wvw, 1);
+      expect(m, 'the summary').not.toBeNull();
+      expect(m.time).toBe('02:59\u201303:59 PM');
+    });
+  });
+  test.describe('25 h', () => {
+    test.use({ timeline: fight(25) });
+    test('no summary', async ({ page, wvw }) => {
+      expect(await away(page, wvw, 25), 'the summary').toBeNull();
+    });
+  });
+
+  // Flips from 23:51 to 00:03: the rows before midnight say "yesterday".
+  test.describe('captures over midnight', () => {
+    const open = Date.parse('2026-12-07T00:03:00Z');
+    test.use({ timeline: gw2.match(FOCUS).freeze(Math.floor((open - recording().recordedAt) / MIN) - 12).advance(12, { flips: 8 }).pageOpens() });
+    test('a capture of the day before is dated by it', async ({ page, wvw }) => {
+      await page.goto(wvw.url);
+      await expect(page.locator(`.standing-match[data-match-id="${FOCUS}"] .standing-side`)).toHaveCount(3);
+      await page.locator(`.tier-map-btn[aria-label*="${TIER}"]`).click();
+      await page.locator('.info-popover .wvw-subtab[data-pane="captures"]').click();
+      const rows = await page.locator('.info-popover .wvw-cap').evaluateAll(els => els.map(e => ({
+        text: e.querySelector('.wvw-cap-time').textContent, at: Date.parse(e.querySelector('.wvw-cap-time').dateTime), label: e.getAttribute('aria-label') })));
+      const midnight = Date.parse('2026-12-07T00:00:00Z');
+      expect(rows.some(x => x.at < midnight), 'a capture before midnight').toBe(true);
+      expect(rows.some(x => x.at >= midnight), 'a capture after it').toBe(true);
+      for (const x of rows) {
+        expect(x.text, `the row at ${new Date(x.at).toISOString()}`).toMatch(x.at < midnight ? /^\d\d:\d\d (AM|PM) yesterday$/ : /^\d\d:\d\d (AM|PM)$/);
+        expect(x.label, 'its words').toContain(` at ${x.text}`);
+      }
+    });
   });
 });
 
