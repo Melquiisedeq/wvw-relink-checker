@@ -43,9 +43,10 @@ for (const file of NEEDED) {
 }
 
 // An image that fails is not a script: assets/treb-frame.webp is in index.html.
-for (const file of ['', 'js/trebuchet.js', 'js/wvw-static.js', 'js/region.js', 'assets/treb-frame.webp']) {
+for (const [file, pattern] of [['', null], ['js/trebuchet.js', /\/js\/trebuchet\.js$/], ['js/wvw-static.js', /\/js\/wvw-static\.js$/],
+  ['js/region.js', /\/js\/region\.js$/], ['assets/treb-frame.webp', /\/assets\/treb-frame\.webp$/]]) {
   test(`${file ? `${file} missing` : 'every script in'}: Check runs and shows its result, without a word about it`, async ({ page, wvw }) => {
-    const down = file ? await abort(page, wvw, new RegExp(`/${file.replace(/[.]/g, '\\.')}$`)) : null;
+    const down = pattern ? await abort(page, wvw, pattern) : null;
     await page.goto(wvw.url);
     await expect(page.locator('#standingsGridNA > .standing-match')).toHaveCount(wvw.tiers.NA);
     await expect(page.locator('#standingsStatusNA')).toContainText('Synced');
