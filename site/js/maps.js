@@ -2248,9 +2248,14 @@ function keepFocus(root, rebuild) {
 // side, type, goTo, spot, repaint }. Rebuilt only when what it shows moved.
 function paintMissed(view) { keepFocus(view.side, () => paintMissedNow(view)); }
 function paintMissedNow(view) {
+  let box = view.side.querySelector('.wvw-missed:not(.is-leaving)');
+  // Held by the mouse over it (a phone keeps :hover on the tapped element) or by a keyboard focus inside it;
+  // a focus left by a click is not held. The one-second repaint lets go once neither is there.
+  const kept = missedNotes.get(view.matchId);
+  const focused = document.activeElement;
+  if (kept) kept.held = !!box && (box.matches(':hover') || (box.contains(focused) && focused.matches(':focus-visible')));
   const note = missedNoteFor(view.matchId);
   const shown = note && missedView(note);
-  let box = view.side.querySelector('.wvw-missed:not(.is-leaving)');
   if (!note || (!shown.changes.length && !shown.kills)) {
     if (box) {
       box.classList.add('is-leaving');
