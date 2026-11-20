@@ -1337,13 +1337,40 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
     upgradeTerrain();
   };
 
-  const atEvent = (e) => {
-    const r = svg.getBoundingClientRect();
-    return {
-      x: view.x + ((e.clientX - r.left) / r.width) * view.w,
-      y: view.y + ((e.clientY - r.top) / r.height) * view.h,
-    };
+  // Through the SVG's own matrix, so the letterbox bands that `meet` leaves
+  // beside the drawing in a short window are not counted as map.
+  const atXY = (x, y) => {
+    const p = new DOMPoint(x, y).matrixTransform(svg.getScreenCTM().inverse());
+    return { x: p.x, y: p.y };
   };
+  const atEvent = (e) => atXY(e.clientX, e.clientY);
+
+  // Tab to a marker the zoom has put out of sight, or cut by the edge, brings the view to it. Only the
+  // keyboard: :focus-visible is false for a click, a tap or the press that starts a drag. Only a focus that
+  // reaches a marker anew: the window getting its focus back fires focusin on the one still focused, and the
+  // view must stay where the visitor left it.
+  const FOCUS_EDGE = 0.1;
+  let focused = null;
+  svg.addEventListener('focusout', () => { if (document.hasFocus()) focused = null; });
+  svg.addEventListener('focusin', (e) => {
+    const i = nodes.indexOf(e.target);
+    if (i < 0 || e.target === focused || !e.target.matches(':focus-visible')) return;
+    focused = e.target;
+    const p = pts[i];
+    // The browser scrolls the clipped wrapper to a focused marker on its own; the viewBox is the camera.
+    wrap.scrollTop = 0;
+    wrap.scrollLeft = 0;
+    // The drawn box, badges included, as the view sees it: the marker is scaled by k around its point.
+    const k = Math.pow(view.w / fullW, MARKER_FOLLOW);
+    const box = e.target.getBBox();
+    const m = view.w * FOCUS_EDGE;
+    if (p.x + box.x * k >= view.x + m && p.x + (box.x + box.width) * k <= view.x + view.w - m
+      && p.y + box.y * k >= view.y + m && p.y + (box.y + box.height) * k <= view.y + view.h - m) return;
+    view.x = p.x - view.w / 2;
+    view.y = p.y - view.h / 2;
+    clamp();
+    apply();
+  });
 
   wrap.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -1351,30 +1378,106 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
     zoomBy(e.deltaY > 0 ? 1.18 : 1 / 1.18, at.x, at.y);
   }, { passive: false });
 
+  // Pointers down on the map by id. One drags; two pinch, and one left of a pinch drags on without a jump.
+  const down = new Map();
   let dragging = null;
+  let pinching = false;
+  // A press on a marker only becomes a drag past SLOP px (the
+  // same distance the popover's tap-away uses to tell a drag); short of it the click still picks the objective.
+  let armed = null;
+  let swallowClick = false;
+  let liftedAt = 0;
+  const SLOP = 6;
+  const startDrag = (e, at) => {
+    dragging = { id: e.pointerId, at };
+    wrap.classList.add('is-panning');
+    try { wrap.setPointerCapture(e.pointerId); } catch { /* already gone */ }
+  };
+  const gap = () => {
+    const [a, b] = [...down.values()];
+    return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  };
   wrap.addEventListener('pointerdown', (e) => {
+    swallowClick = false;
+    armed = null;
     // The zoom controls live inside the map, and starting a drag here
     // calls setPointerCapture on the wrapper - which retargets the
     // click to the wrapper, so the button's own click listener never runs.
-    if (e.target.closest('.wvw-marker, .wvw-zoom, .wvw-hud, .wvw-hud-note')) return;
-    dragging = { at: atEvent(e), x: view.x, y: view.y };
-    wrap.classList.add('is-panning');
-    wrap.setPointerCapture(e.pointerId);
+    if (e.target.closest('.wvw-zoom, .wvw-hud, .wvw-hud-note')) return;
+    // A first finger on a bare map: whatever pointer of its kind is still listed lost its pointerup, as when a
+    // redraw removed the element the finger held.
+    if (e.isPrimary) for (const [id, p] of down) if (p.type === e.pointerType) down.delete(id);
+    down.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
+    if (down.size === 2) {
+      // Whatever the first finger was doing, the pair takes over.
+      pinching = true;
+      wrap.classList.add('is-panning');
+      return;
+    }
+    if (down.size > 2) return;
+    const at = atEvent(e);
+    if (e.target.closest('.wvw-marker')) {
+      armed = { id: e.pointerId, cx: e.clientX, cy: e.clientY, at };
+      return;
+    }
+    startDrag(e, at);
   });
   wrap.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
-    const r = svg.getBoundingClientRect();
-    const dx = ((e.clientX - r.left) / r.width) * view.w;
-    const dy = ((e.clientY - r.top) / r.height) * view.h;
-    // Keep the point grabbed at pointerdown under the cursor. Measuring
-    // against the live view.x, which this handler moves, would make the map
-    // creep away from the pointer.
+    const was = down.get(e.pointerId);
+    if (was && pinching) {
+      const before = gap();
+      down.set(e.pointerId, { ...was, x: e.clientX, y: e.clientY });
+      const now = gap();
+      // Zoom about the middle the fingers were around, then carry the ground under it to where the middle is now.
+      const grabbed = atXY(before.x, before.y);
+      zoomBy(before.d / now.d, grabbed.x, grabbed.y);
+      const under = atXY(now.x, now.y);
+      view.x += grabbed.x - under.x;
+      view.y += grabbed.y - under.y;
+      clamp();
+      apply();
+      return;
+    }
+    if (was) down.set(e.pointerId, { ...was, x: e.clientX, y: e.clientY });
+    if (armed && e.pointerId === armed.id && Math.hypot(e.clientX - armed.cx, e.clientY - armed.cy) > SLOP) {
+      const from = armed;
+      armed = null;
+      swallowClick = true;
+      startDrag(e, from.at);
+    }
+    if (!dragging || e.pointerId !== dragging.id) return;
+    const now = atEvent(e);
+    const dx = now.x - view.x;
+    const dy = now.y - view.y;
+    // Put the ground grabbed at pointerdown back under the cursor: dx, dy are
+    // the cursor's offset from the view's corner in map units, independent of
+    // where view.x is now.
     view.x = dragging.at.x - dx;
     view.y = dragging.at.y - dy;
     clamp();
     apply();
   });
+  // Capture phase: the drag that began on a marker must not pick it when the pointer lifts.
+  wrap.addEventListener('click', (e) => {
+    if (!swallowClick) return;
+    swallowClick = false;
+    // The drag's own click comes within 100 ms of its pointerup, though other tasks may run between them; a later
+    // click (a screen reader's, a script's) is not the drag's.
+    if (e.timeStamp - liftedAt > 100) return;
+    e.stopPropagation();
+  }, true);
   const endDrag = (e) => {
+    armed = null;
+    const had = down.delete(e.pointerId);
+    liftedAt = e.timeStamp;
+    if (pinching && had && down.size === 1) {
+      pinching = false;
+      const [id, p] = [...down][0];
+      dragging = { id, at: atXY(p.x, p.y) };
+      return;
+    }
+    if (down.size) return;
+    pinching = false;
     if (!dragging) return;
     dragging = null;
     wrap.classList.remove('is-panning');
@@ -1787,8 +1890,22 @@ function group(dl, label) {
 }
 
 function renderObjectiveDetail(panel, p, match) {
-  panel.textContent = '';
   const { ob, meta } = p;
+  // Everything the panel draws from the data except the clock-driven "For" text. An identical key keeps the DOM, and
+  // with it a text selection the reader is about to copy; only the "For" text is rewritten in place.
+  const ownerNow = String(ob.owner || '').toLowerCase();
+  const tierNow = objectiveTier(meta, ob);
+  const agoNow = flippedAgo(ob.last_flipped);
+  const key = JSON.stringify([ob, meta.name, tierNow && [tierNow.tier, tierNow.name, tierNow.yaks, tierNow.next],
+    COLORS.includes(ownerNow) ? getTeamName(matchTeamId(match, ownerNow)) : null, agoNow !== null,
+    (Array.isArray(ob.guild_upgrades) ? ob.guild_upgrades : []).map((id) => tacticCatalogue && tacticCatalogue.get(id))]);
+  if (panel.querySelector('.wvw-detail-name') && panel.dataset.key === key && panel.dataset.showing === String(ob.id)) {
+    const agoEl = panel.querySelector('.wvw-ago');
+    if (agoEl && agoNow !== null) agoEl.textContent = agoNow;
+    return;
+  }
+  panel.dataset.key = key;
+  panel.textContent = '';
   // Which objective this panel is currently showing, so a fetch that
   // lands late cannot repaint over a different one.
   panel.dataset.showing = String(ob.id);
@@ -1834,7 +1951,7 @@ function renderObjectiveDetail(panel, p, match) {
   group(dl, 'Held by');
   row(dl, 'Team', teamId ? getTeamName(teamId) : (ob.owner || 'Nobody'), ownCls);
   const ago = flippedAgo(ob.last_flipped);
-  if (ago) row(dl, 'For', ago);
+  if (ago) row(dl, 'For', ago, 'wvw-ago');
   const claimCell = document.createElement('span');
   if (ob.claimed_by) {
     claimCell.className = 'wvw-claimed';
@@ -1854,7 +1971,11 @@ function renderObjectiveDetail(panel, p, match) {
         claimCell.appendChild(svg);
       }
       claimCell.appendChild(document.createTextNode(`[${info.tag}] ${info.name}`));
-    }).catch(() => { claimCell.textContent = 'claimed, name unavailable'; });
+    }).catch(() => {
+      claimCell.textContent = 'claimed, name unavailable';
+      // guildEmblem forgets a failed lookup: dropping the key lets the next read ask again.
+      if (panel.dataset.showing === String(ob.id)) delete panel.dataset.key;
+    });
   } else {
     claimCell.textContent = 'unclaimed';
   }
@@ -1900,6 +2021,8 @@ function renderObjectiveDetail(panel, p, match) {
   if (unknown.length) {
     getTacticCatalogue(unknown).then(() => {
       if (panel.dataset.showing !== String(ob.id)) return;
+      // A dropped request un-asks its ids; only those may be tried again, or a declined id repaints every read.
+      if (unknown.some((id) => !tacticAsked.has(id) && !tacticCatalogue.has(id))) delete panel.dataset.key;
       if (!unknown.some((id) => tacticCatalogue.has(id))) return;
       renderObjectiveDetail(panel, p, match);
     });
@@ -1953,10 +2076,19 @@ function renderObjectiveDetail(panel, p, match) {
 // ---- its pieces ----------------------------------------------------------
 const missedHhmm = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-// "05:03–05:33 PM" rather than "05:03 PM–05:33 PM" when both share the suffix.
+// " yesterday" (to follow the hour) when `ms` falls on the calendar day before `ref`'s, in the visitor's clock.
+function missedDay(ms, ref) {
+  const day = (t) => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+  return Math.round((day(ref) - day(ms)) / 86400000) === 1 ? ' yesterday' : '';
+}
+
+// "05:03–05:33 PM" rather than "05:03 PM–05:33 PM" when both share the suffix;
+// "yesterday 03:00 PM–12:00 PM" keeps both, the suffix being no longer the same day's.
 function missedSpan(a, b) {
+  const day = missedDay(a, b);
   const x = missedHhmm(a);
   const y = missedHhmm(b);
+  if (day) return `${x}${day}\u2013${y}`;
   const sx = /\s?[^\d:\s]+$/.exec(x);
   const sy = /\s?[^\d:\s]+$/.exec(y);
   if (sx && sy && sx[0] === sy[0]) return `${x.slice(0, -sx[0].length)}\u2013${y}`;
@@ -2090,7 +2222,7 @@ function paintMissedNow(view) {
   box.classList.toggle('is-open', open);
 
   const away = note.kind === 'return';
-  const span = shown.sure ? missedSpan(shown.since, shown.end) : `since before ${missedHhmm(shown.since)}`;
+  const span = shown.sure ? missedSpan(shown.since, shown.end) : `since before ${missedHhmm(shown.since)}${missedDay(shown.since, shown.end)}`;
   const changes = shown.changes;
 
   const head = missedEl('button', 'wvw-missed-head');
@@ -2222,7 +2354,7 @@ function recentCaptures(match) {
 function paintCaptures(view, items) { keepFocus(view.box, () => paintCapturesNow(view, items)); }
 function paintCapturesNow(view, items) {
   const shown = items.slice(0, CAPTURES_MAX);
-  const key = JSON.stringify(shown);
+  const key = JSON.stringify([shown, new Date(steadyNow()).toDateString()]);
   if (view.box.dataset.key === key) return;
   view.box.dataset.key = key;
   view.box.textContent = '';
@@ -2236,7 +2368,8 @@ function paintCapturesNow(view, items) {
     row.type = 'button';
     row.dataset.obj = it.id;
     row.dataset.map = it.map;
-    const time = missedEl('time', 'wvw-cap-time', missedHhmm(it.at));
+    const when = missedHhmm(it.at) + missedDay(it.at, steadyNow());
+    const time = missedEl('time', 'wvw-cap-time', when);
     time.dateTime = new Date(it.at).toISOString();
     row.appendChild(time);
     const src = markerIcon(it.type, it.owner);
@@ -2245,7 +2378,7 @@ function paintCapturesNow(view, items) {
     row.appendChild(missedEl('span', 'wvw-cap-map', map));
     const id = matchTeamId(view.match, it.owner);
     const words = `${missedFullName(it.id)} (${map}): taken by ${id ? getTeamName(id) : FOCUS_COLOR_WORD[it.owner]}`
-      + ` at ${missedHhmm(it.at)}`;
+      + ` at ${when}`;
     row.title = words;
     row.setAttribute('aria-label', words);
     row.addEventListener('click', (e) => { e.stopPropagation(); view.goTo(it.map, it.id, false); });
@@ -2260,6 +2393,9 @@ function paintCapturesNow(view, items) {
 }
 
 // ---- the popover -----------------------------------------------------
+// Outline reads that resolved empty: the map's tab asks anew when picked, except the one the popover opens on,
+// which has just waited on that read.
+const emptyReads = new WeakSet();
 function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
                                sectorsByType, pendingSectors, triggerEl, swap) {
   popover.textContent = '';
@@ -2337,6 +2473,8 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   const emptyDetail = () => {
     selected = null;
     detail.textContent = '';
+    delete detail.dataset.key;
+    delete detail.dataset.showing;
     const p = document.createElement('p');
     p.className = 'wvw-detail-empty';
     // Both lists are named because the game names them apart and a defender treats them apart: the tier
@@ -2571,8 +2709,9 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     paintFocus();
   };
 
-  const show = (type) => {
-    if (current === type) return;
+  const show = (type, atOpen = false) => {
+    // The active tab asks again only when its read came back empty; a drawn tab and a read still in the air stay as they are.
+    if (current === type && !emptyReads.has(pendingSectors.get(type))) return;
     current = type;
     for (const b of tabs.children) {
       const on = b.dataset.type === type;
@@ -2587,7 +2726,15 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     wait.className = 'hint wvw-stage-msg';
     wait.innerHTML = '<span class="spinner"></span>Loading this map\u2026';
     stage.appendChild(wait);
-    pendingSectors.get(type).then((arr) => {
+    let read = pendingSectors.get(type);
+    if (!atOpen && emptyReads.has(read)) {
+      read = getSectors(byType.get(type).id).catch(() => []);
+      pendingSectors.set(type, read);
+    }
+    const asked = read;
+    asked.then((arr) => {
+      // Before the guard: a tab left before the answer lands is owed a new read too.
+      if (!arr.length) emptyReads.add(asked);
       // The popover can be closed and another tab picked while this is in the air.
       if (activeTrigger !== triggerEl || current !== type) return;
       if (arr && arr.length) sectorsByType.set(type, arr);
@@ -2867,7 +3014,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     else paintCorners(); // the history may have backdated the score time
   });
   const opening = swap && available.includes(swap.type) ? swap.type : available[0];
-  show(opening);
+  show(opening, true);
   if (swap && swap.focus) tabByType.get(opening).focus();
 
   // And once, right now, rather than waiting out the first poll.
@@ -2954,7 +3101,7 @@ async function fillTierMaps(popover, match, regionName, tierNum, triggerEl, swap
   for (const m of wanted) {
     const p = getSectors(m.id).catch(() => []);
     pendingSectors.set(m.type, p);
-    p.then((arr) => { if (arr.length) sectorsByType.set(m.type, arr); });
+    p.then((arr) => { if (arr.length) sectorsByType.set(m.type, arr); else emptyReads.add(p); });
   }
 
   let catalogue;

@@ -5,7 +5,7 @@
 // downloading asks for nothing more, and the click opens the map when it lands;
 // a download that fails says so and its "Try again" opens the map.
 import { test, expect } from './support/fixtures.mjs';
-import { abort, hold } from './support/faults.mjs';
+import { abort, fail, hold } from './support/faults.mjs';
 import { load, firstTier, recordedJson, serveList } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
@@ -211,4 +211,156 @@ test('a list read waiting on /api/latest hands out the newer body that landed me
   const scores = await list;
   latestGo();
   expect(scores, 'the score the list hands out').toEqual([sum(rec) + 5]);
+});
+
+// A map whose outline is not in the static pack asks the API for it; when that fails the tab says so,
+// and picking the tab again, with the API back, asks again and draws.
+const SECTORS = /\/maps\/\d+\/sectors/;
+const POP = '.info-popover';
+const MSG = `${POP} .wvw-stage-msg`;
+const PICKED = `${POP} .wvw-tab.is-active`;
+
+async function withoutPackedSectors(page) {
+  await page.route(/\/js\/wvw-static\.js$/, async route => {
+    const res = await route.fetch();
+    await route.fulfill({ response: res, body: (await res.text()) + '\nWVW_STATIC.sectors = {};' });
+  });
+}
+
+test('a tab whose outline failed asks again when it is picked next, once per visit', async ({ page, wvw }) => {
+  await withoutPackedSectors(page);
+  const down = await fail(page, wvw, SECTORS);
+  await load(page, wvw);
+  const { button } = await firstTier(page);
+  await button.click();
+  const home = await page.locator(PICKED).getAttribute('data-type');
+  await expect(page.locator(MSG), 'the opening tab, its outline down').toHaveText("Couldn't load this map right now.", { timeout: 15000 });
+  const awayType = await page.locator(`${POP} .wvw-tab:not(.is-active)`).first().getAttribute('data-type');
+  const away = page.locator(`${POP} .wvw-tab[data-type="${awayType}"]`);
+  // A tab left before its answer shows is owed the same new ask on its next visit.
+  const thirdType = await page.locator(`${POP} .wvw-tab:not(.is-active)`).nth(1).getAttribute('data-type');
+  // Both picks in one task: the first tab's answer can only land after it was left.
+  await page.evaluate(([x, y]) => {
+    document.querySelector(`.info-popover .wvw-tab[data-type="${x}"]`).click();
+    document.querySelector(`.info-popover .wvw-tab[data-type="${y}"]`).click();
+  }, [awayType, thirdType]);
+  await expect(page.locator(MSG)).toHaveText("Couldn't load this map right now.", { timeout: 15000 });
+  // Every read in flight has given up before the count is taken.
+  await expect.poll(async () => { const n = down.reads; await page.waitForTimeout(2500); return down.reads === n ? n : -1; },
+    { timeout: 30000, intervals: [0] }).not.toBe(-1);
+  const left = down.reads;
+  await away.click();
+  await expect(page.locator(MSG)).toHaveText("Couldn't load this map right now.", { timeout: 15000 });
+  expect(down.reads, 'a tab left before its answer showed asks again on return').toBeGreaterThan(left);
+  await expect(page.locator(MSG), 'another tab, its outline down').toHaveText("Couldn't load this map right now.", { timeout: 15000 });
+  // Still down: coming back asks once more and says so again.
+  const before = down.reads;
+  await page.locator(`${POP} .wvw-tab[data-type="${home}"]`).click();
+  await expect(page.locator(MSG)).toHaveText("Couldn't load this map right now.", { timeout: 15000 });
+  expect(down.reads, 'the visit asked again').toBeGreaterThan(before);
+  await wvw.settle();
+  const after = down.reads;
+  await page.waitForTimeout(1500);
+  expect(down.reads, 'nothing asks in a loop').toBe(after);
+
+  down.off();
+  await away.click();
+  await expect(page.locator(`${POP} .wvw-plot g[role='button']`).first(), `${awayType} drawn once the API is back`).toBeAttached();
+  await expect(page.locator(MSG)).toHaveCount(0);
+  await page.locator(`${POP} .wvw-tab[data-type="${home}"]`).click();
+  await expect(page.locator(`${POP} .wvw-plot g[role='button']`).first(), `${home} drawn, the tab the map opened on`).toBeAttached();
+  await expect(page.locator(MSG)).toHaveCount(0);
+});
+
+test('a capture on a map whose outline failed opens it and lights the objective once the API is back', async ({ page, wvw }) => {
+  await withoutPackedSectors(page);
+  const down = await fail(page, wvw, SECTORS);
+  await load(page, wvw);
+  const { button } = await firstTier(page);
+  await button.click();
+  const home = await page.locator(PICKED).getAttribute('data-type');
+  await expect(page.locator(MSG)).toHaveText("Couldn't load this map right now.", { timeout: 15000 });
+  await page.locator(`${POP} .wvw-subtab[data-pane="captures"]`).click();
+  const row = page.locator(`${POP} .wvw-cap:not([data-map="${home}"])`).first();
+  await expect(row, 'a capture on another map').toBeAttached();
+  const obj = await row.getAttribute('data-obj');
+  const map = await row.getAttribute('data-map');
+  await row.click();
+  await expect(page.locator(PICKED)).toHaveAttribute('data-type', map);
+  await expect(page.locator(MSG), 'that map, its outline down').toHaveText("Couldn't load this map right now.", { timeout: 15000 });
+  await page.locator(`${POP} .wvw-tab[data-type="${home}"]`).click();
+  await expect(page.locator(MSG)).toHaveText("Couldn't load this map right now.", { timeout: 15000 });
+  down.off();
+  await row.click();
+  await expect(page.locator(PICKED)).toHaveAttribute('data-type', map);
+  await expect(page.locator(`${POP} .wvw-marker.is-lit`), `${obj} lit on the map that failed before`).toHaveAttribute('data-obj', obj);
+});
+
+test('the first visit to a tab whose opening read failed asks again; the opening tab does not ask twice', async ({ page, wvw }) => {
+  await withoutPackedSectors(page);
+  const down = await fail(page, wvw, SECTORS);
+  const per = new Map();
+  page.on('request', r => { const m = /\/maps\/(\d+)\/sectors/.exec(r.url()); if (m) per.set(m[1], (per.get(m[1]) || 0) + 1); });
+  await load(page, wvw);
+  const { button } = await firstTier(page);
+  await button.click();
+  await expect(page.locator(MSG)).toHaveText("Couldn't load this map right now.", { timeout: 15000 });
+  await expect.poll(async () => { const n = down.reads; await page.waitForTimeout(2500); return down.reads === n ? n : -1; },
+    { timeout: 30000, intervals: [0] }).not.toBe(-1);
+  const counts = [...per.values()];
+  expect(counts.length, 'one outline read per map').toBeGreaterThan(1);
+  expect(new Set(counts).size, `the opening tab read as often as a tab nobody opened: ${counts}`).toBe(1);
+
+  down.off();
+  const away = page.locator(`${POP} .wvw-tab:not(.is-active)`).first();
+  await away.click();
+  await expect(page.locator(`${POP} .wvw-plot g[role='button']`).first(), 'the first visit, the API back').toBeAttached();
+  await expect(page.locator(MSG)).toHaveCount(0);
+});
+
+test('touching the active tab whose outline failed asks again and draws; a drawn or loading tab asks for nothing', async ({ page, wvw }) => {
+  await withoutPackedSectors(page);
+  const down = await fail(page, wvw, SECTORS);
+  await load(page, wvw);
+  const { button } = await firstTier(page);
+  await button.click();
+  await expect(page.locator(MSG), 'the opening tab, its outline down').toHaveText("Couldn't load this map right now.", { timeout: 15000 });
+  await expect.poll(async () => { const n = down.reads; await page.waitForTimeout(2500); return down.reads === n ? n : -1; },
+    { timeout: 30000, intervals: [0] }).not.toBe(-1);
+  const active = page.locator(PICKED);
+  // Still down: touching it asks once and says so again.
+  const before = down.reads;
+  await active.click();
+  await expect(page.locator(MSG)).toHaveText("Couldn't load this map right now.", { timeout: 15000 });
+  expect(down.reads, 'touching the failed active tab asked again').toBeGreaterThan(before);
+  await expect.poll(async () => { const n = down.reads; await page.waitForTimeout(2500); return down.reads === n ? n : -1; },
+    { timeout: 30000, intervals: [0] }).not.toBe(-1);
+
+  down.off();
+  // The new read is held: the second touch finds it in the air and leaves the loading note and the one waiting answer alone.
+  const per = [];
+  page.on('request', r => { if (SECTORS.test(r.url())) per.push(r.url()); });
+  const release = await hold(page, SECTORS);
+  await page.evaluate(() => {
+    window.__plots = 0;
+    new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && (n.matches('.wvw-plot') || n.querySelector('.wvw-plot'))) window.__plots++; })
+      .observe(document.querySelector('.info-popover'), { childList: true, subtree: true });
+    document.querySelector('.info-popover .wvw-tab.is-active').click();
+  });
+  await expect(page.locator(`${MSG} .spinner`), 'loading while the read is held').toBeAttached();
+  await expect.poll(() => release.reads).toBeGreaterThan(0);
+  await page.evaluate(() => { window.__note = document.querySelector('.info-popover .wvw-stage-msg'); });
+  await page.evaluate(() => document.querySelector('.info-popover .wvw-tab.is-active').click());
+  expect(await page.evaluate(() => window.__note === document.querySelector('.info-popover .wvw-stage-msg')), 'the loading note is the same node').toBe(true);
+  release();
+  await expect(page.locator(`${POP} .wvw-plot g[role='button']`).first(), 'drawn by touching the same tab').toBeAttached();
+  await expect(page.locator(MSG)).toHaveCount(0);
+  expect(per.length, 'one read for two touches').toBe(1);
+  expect(await page.evaluate(() => window.__plots), 'drawn once').toBe(1);
+  // Drawn: touching it again reads nothing and keeps the same drawing.
+  const plot = await page.locator(`${POP} .wvw-plot`).elementHandle();
+  await active.click();
+  await page.waitForTimeout(1000);
+  expect(per.length, 'a drawn tab asks for nothing').toBe(1);
+  expect(await page.locator(`${POP} .wvw-plot`).elementHandle().then(h => h.evaluate((a, b) => a === b, plot)), 'not redrawn').toBe(true);
 });

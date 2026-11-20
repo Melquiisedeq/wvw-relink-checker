@@ -121,9 +121,7 @@ test.describe('the notice on the one-minute tick', () => {
 
   test('after /api/relink fails for five minutes, the notice is up within two minutes of it answering', async ({ page, wvw }) => {
     const cell = await relinkWindow(page, wvw);
-    await page.route('**/api/relink', route => route.fulfill({ status: 200, contentType: 'application/json',
-      headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' },
-      body: JSON.stringify({ window: cell.windowId, published: 5 }) }));
+    await answer(page, '**/api/relink', { window: cell.windowId, published: 5 });
     const down = await fail(page, wvw, /\/api\/relink$/);
     let sheetReads = 0;
     await page.route(/^https:\/\/docs\.google\.com\/spreadsheets\//, route => { sheetReads++; return route.fulfill({

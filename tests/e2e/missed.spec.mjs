@@ -63,6 +63,11 @@ function rulesInPage(group) {
       check('a real gap listed other changes', !!n && n.changes.length === 2 && a.taken.every(x => n.changes.some(c => c.id === x)), n && n.changes.map(c => c.id).join(','));
       check('a real gap counted kills other than after minus before', !!n && n.kills === 50, n && n.kills);
       check('the same body again raised a summary', !offer(clone(), 12 * MIN, 30000));
+      const long = after();
+      check('a pause over 24 h raised no summary', !offer(long.m, 24 * 60 * MIN + 1000, 30000));
+      const edge = after();
+      n = offer(edge.m, 24 * 60 * MIN - 1000, 30000);
+      check('a pause 1 s under 24 h still raised one', !!n && n.kind === 'pause');
       const behind = clone(); behind.scores.red -= 50; behind.maps[0].kills.red += 5;
       check('a body behind raised a summary', !offer(behind, 12 * MIN, 30000));
       const week = after().m; week.start_time = new Date(Date.parse(M0.start_time) + 7 * 86400000).toISOString();
