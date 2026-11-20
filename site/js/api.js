@@ -88,6 +88,7 @@ function moveClock(lead, measured) {
     }
     if (measured) delete k.clockAt;
   }
+  moveFightSamples(was - lead, measured);
 }
 // The page's "now" never falls before the newest `at` the server gave: a lead past it (one the refused readings left stale) drops to it.
 function floorClock() {
