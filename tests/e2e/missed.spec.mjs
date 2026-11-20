@@ -425,6 +425,54 @@ test.describe('what happened', () => {
     expect(await page.evaluate(([sel, id]) => !!document.querySelector(sel) || missedNotes.has(id), [BLOCK, g.tier.id]),
       'a body with only the score up raised the block').toBe(false);
   });
+
+  // The ten minutes wait for a reader who has the mouse on the block or the keyboard focus in it; a focus left
+  // by a mouse click does not hold it.
+  const isHeld = (page, id, want) => page.waitForFunction(([i, w]) => missedNotes.get(i)?.held === w, [id, want]);
+  const overdue = (page, id) => page.evaluate(i => missedNotes.has(i) && steadyNow() > missedNotes.get(i).until, id);
+  for (const how of ['mouse', 'keyboard focus']) {
+    test(`the ten minutes wait for the ${how}, and the block goes once it leaves`, async ({ page, wvw }) => {
+      const g = await gap(page, wvw);
+      await g.afterTheGap();
+      await expect(page.locator(BLOCK)).toBeAttached();
+      for (let i = 0; i < 5; i++) await later(page, wvw, 100000);
+      if (how === 'mouse') await page.locator(BLOCK).hover();
+      else {
+        await page.keyboard.press('Shift');
+        await page.locator(`${BLOCK} .wvw-chip[data-obj]`).first().focus();
+      }
+      await isHeld(page, g.tier.id, true);
+      for (let i = 0; i < 3; i++) await later(page, wvw, 100000);
+      expect(await overdue(page, g.tier.id), 'the ten minutes are over').toBe(true);
+      await expect(page.locator(BLOCK), `the block 14 min on, the ${how} on it`).toBeAttached();
+      if (how === 'mouse') await page.mouse.move(2, 2);
+      else await page.evaluate(() => document.activeElement.blur());
+      await expect(page.locator(BLOCK), `the block once the ${how} left`).toHaveCount(0);
+    });
+  }
+
+  test('a focus left by a mouse click on a chip does not hold the block once the mouse is away', async ({ page, wvw }) => {
+    const g = await gap(page, wvw);
+    await g.afterTheGap();
+    for (let i = 0; i < 5; i++) await later(page, wvw, 100000);
+    await page.locator(`${BLOCK} .wvw-chip[data-obj]`).first().click();
+    await page.mouse.move(2, 2);
+    expect(await page.evaluate(() => document.activeElement.matches('.wvw-missed *')), 'the state: the click left the focus in the block').toBe(true);
+    await page.evaluate(id => { missedNotes.get(id).held = null; }, g.tier.id);   // only a repaint writes it again
+    await isHeld(page, g.tier.id, false);
+    for (let i = 0; i < 3; i++) await later(page, wvw, 100000);
+    await expect(page.locator(BLOCK), 'the block 14 min on, only a click focus in it').toHaveCount(0);
+  });
+
+  test('a week that turned takes the block at once, the mouse on it or not', async ({ page, wvw }) => {
+    const g = await gap(page, wvw);
+    await g.afterTheGap();
+    await page.locator(BLOCK).hover();
+    await isHeld(page, g.tier.id, true);
+    await page.evaluate(id => { missedNotes.get(id).after = { ...missedNotes.get(id).after, start_time: 'an older week' }; }, g.tier.id);
+    await later(page, wvw, 2000);
+    await expect(page.locator(BLOCK), 'the block of an older week, the mouse on it').toHaveCount(0);
+  });
 });
 
 // ---- The block, other shapes ------------------------------------------------

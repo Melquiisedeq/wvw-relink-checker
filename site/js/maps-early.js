@@ -610,7 +610,7 @@ function missedRefreshNote(match, now) {
   const old = note;
   const fresh = missedMakeNote(old.before, match, old.rawSince, old.back, old.kind, now);
   if (!fresh) return true;
-  Object.assign(fresh, { until: old.until, open: old.open, wideOpen: old.wideOpen, moreMaps: old.moreMaps });
+  Object.assign(fresh, { until: old.until, held: old.held, open: old.open, wideOpen: old.wideOpen, moreMaps: old.moreMaps });
   return true;
 }
 
@@ -660,11 +660,15 @@ function missedFold(matchId) {
   if (note) { note.open = false; note.wideOpen = false; }
 }
 
+// `note.held` (set by each paint of the box): the reader has the mouse over it
+// or the focus in it, so the ten minutes wait. A turned week never waits, its
+// summary would be wrong. Every body offered asks too (missedRefreshNote), so
+// the flag lives on the note, not in the caller.
 function missedNoteFor(matchId) {
   const note = missedNotes.get(matchId);
   const kept = newestMatches.get(matchId);
   const turned = note && kept && kept.match.start_time !== note.after.start_time;
-  if (note && (turned || steadyNow() > note.until)) { missedNotes.delete(matchId); return null; }
+  if (note && (turned || (!note.held && steadyNow() > note.until))) { missedNotes.delete(matchId); return null; }
   return note || null;
 }
 
