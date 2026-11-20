@@ -147,19 +147,44 @@ function labMapPan(m) {
   m.pan = null;
   labMaps.push(m);
   const skip = (t) => t.closest('.wvw-marker, .wvw-zoom, .wvw-hud, .wvw-hud-note');
-  wrap.addEventListener('pointerdown', (e) => {
-    // A second finger: the site re-anchors on the untransformed map, so the picture is settled first.
-    if (m.pan) labPanCommit(m);
-    if (labPrefs.drag !== 'new' || skip(e.target)) return;
+  // Every pointer down on the map, with where it last was: the lab slides the picture for one finger only,
+  // and the site's pinch needs the true position of a finger whose moves the lab kept from it.
+  const ptrs = new Map();
+  let resyncing = false;
+  const begin = (id, x, y) => {
     const r = svg.getBoundingClientRect();
     m.pan = {
+      id,
       r,
-      at: { x: view.x + ((e.clientX - r.left) / r.width) * view.w, y: view.y + ((e.clientY - r.top) / r.height) * view.h },
+      at: { x: view.x + ((x - r.left) / r.width) * view.w, y: view.y + ((y - r.top) / r.height) * view.h },
       live: false,
     };
+  };
+  wrap.addEventListener('pointerdown', (e) => {
+    if (e.isPrimary) for (const [id, p] of ptrs) if (p.type === e.pointerType) ptrs.delete(id);
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType, held: false });
+    // A second finger: the site re-anchors on the untransformed map, so the picture is settled first.
+    if (m.pan) labPanCommit(m);
+    if (ptrs.size > 1) {
+      // The site's pinch starts from where it last saw each finger: give it the moves the lab held back.
+      resyncing = true;
+      for (const [id, p] of ptrs) {
+        if (id === e.pointerId || !p.held) continue;
+        p.held = false;
+        wrap.dispatchEvent(new PointerEvent('pointermove', { pointerId: id, clientX: p.x, clientY: p.y, pointerType: p.type, isPrimary: true, bubbles: true }));
+      }
+      resyncing = false;
+      return;
+    }
+    if (labPrefs.drag !== 'new' || skip(e.target)) return;
+    begin(e.pointerId, e.clientX, e.clientY);
   }, true);
   wrap.addEventListener('pointermove', (e) => {
-    if (!m.pan || !m.pan.at) return;
+    if (resyncing) return;
+    const p = ptrs.get(e.pointerId);
+    if (p) { p.x = e.clientX; p.y = e.clientY; }
+    if (!m.pan || !m.pan.at || e.pointerId !== m.pan.id || ptrs.size !== 1) return;
+    if (p) p.held = true;
     e.stopImmediatePropagation();
     // The trebuchet aims at the mouse from a window listener this stop would starve.
     if (e.pointerType !== 'touch') window.dispatchEvent(new PointerEvent('pointermove', { clientX: e.clientX, clientY: e.clientY, pointerType: e.pointerType }));
@@ -169,7 +194,16 @@ function labMapPan(m) {
     m.clamp();
     labPanShow(m);
   }, true);
-  const end = () => { if (m.pan) labPanCommit(m); };
+  const end = (e) => {
+    ptrs.delete(e.pointerId);
+    if (m.pan) labPanCommit(m);
+    // One finger left of a pinch drags on: the lab slides the picture for it from here.
+    if (ptrs.size === 1 && labPrefs.drag === 'new') {
+      const [[id, p]] = [...ptrs];
+      p.held = false;
+      begin(id, p.x, p.y);
+    }
+  };
   wrap.addEventListener('pointerup', end, true);
   wrap.addEventListener('pointercancel', end, true);
   // A zoom mid-drag changes the viewBox through the site's own apply(): the transform must follow it.
