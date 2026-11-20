@@ -39,7 +39,10 @@ function skewedPage() {
   const body = (k) => JSON.stringify({ id: '1-1', start_time: new Date(NOW - 86400000).toISOString(),
     end_time: new Date(NOW + 86400000).toISOString(),
     maps: [{ type: 'Center', kills: { red: k, blue: 0, green: 0 } }], scores: { red: k, blue: 0, green: 0 } });
-  const offer = (k) => page.run(`(() => { const b = ${body(k)}; newestMatches.set('1-1', { match: b, at: steadyNow(), rose: true }); recordFightSamples([b], Date.now()); })()`);
+  const offer = (k) => {
+    page.ctx.offeredBody = body(k);
+    return page.run(`(() => { const b = JSON.parse(offeredBody); newestMatches.set('1-1', { match: b, at: steadyNow(), rose: true }); recordFightSamples([b], Date.now()); })()`);
+  };
   const log = () => JSON.parse(page.run(`localStorage.getItem('wvw-fight-v1')`))['1-1'];
   const served = () => page.run('steadyNow()');
   return { ...page, offer, log, served };
