@@ -2625,12 +2625,12 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     e.preventDefault();
     pickFromBoard(e.target);
   });
-  // A tap anywhere else in the popover lets go - not one on the board or a
-  // marker, and not the end of a drag across the map.
+  // A tap on the popover's empty space lets go - not one on a control or in a pane
+  // (the list below), and not the end of a drag across the map.
   let downAt = null;
   popover.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY]; }, true);
   popover.addEventListener('click', (e) => {
-    if (!focusPick || e.target.closest('.wvw-board, .wvw-marker, .wvw-zoom, .wvw-hud, .wvw-hud-note, .wvw-missed, .wvw-tabs, .wvw-subtabs, .wvw-caps')) return;
+    if (!focusPick || e.target.closest('.wvw-board, .wvw-marker, .wvw-zoom, .wvw-hud, .wvw-hud-note, .wvw-missed, .wvw-tabs, .wvw-subtabs, .wvw-caps, .wvw-detail')) return;
     if (downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6) return;
     pickFocus(null);
   });
