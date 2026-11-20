@@ -743,7 +743,7 @@ function strikeCorner(hud, on, tab) {
 }
 
 const HUD_EXPLAIN = {
-  fights: 'Player kills on this map in the last 10 minutes. Orange swords mark each map past 50, the busiest one striking.',
+  fights: 'Player kills on this map in the last 10 minutes. Orange swords mark each map past 50; with several, the busiest one strikes.',
 };
 const HUD_RESET_TIP = 'Counting starts about 10 minutes after the reset: there is nothing earlier this week to compare with.';
 const HUD_NO_WINDOW_TIP = 'Not enough kill data to count 10 minutes.';
@@ -925,7 +925,7 @@ function buildMapCorners(wrap, matchId) {
       } else if (old) {
         text = `No new kills since ${t}, as on a quiet map. ${line.kills} kills in the ${line.mins} min up to then.${tail}`;
       } else {
-        text = `Player kills on this map in the last ${line.mins} minutes. Orange swords mark each map past 50, the busiest one striking.${tail}`;
+        text = `Player kills on this map in the last ${line.mins} minutes. Orange swords mark each map past 50; with several, the busiest one strikes.${tail}`;
       }
     }
     setTip('fights', fightsBtn, text);
@@ -2774,7 +2774,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     l.classList.toggle('is-cold', !litTypes.includes(current));
     paintStrike(l);
   };
-  const paintStrike = (l) => strikeCorner(l, hotType !== null && current === hotType, hotType && tabByType.get(hotType));
+  const paintStrike = (l) => strikeCorner(l, hotType !== null && current === hotType && litTypes.length > 1, hotType && tabByType.get(hotType));
 
   // A pick made from a list (the summary's chips, the captures) leaves the
   // summary as it is: only a click on the map itself folds it.
@@ -2968,8 +2968,11 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
         b.title = MAP_PANEL_NAME[type] || type;
       }
       b.classList.toggle('is-hot', type === hot);
-      if (type === hot && !clash) b.insertBefore(strikeSwords(), b.firstChild);
-      else if (type !== hot && clash) clash.remove();
+      // The strike singles out the busiest of several; a lone fight keeps the plain swords.
+      const strikes = type === hot && litTypes.length > 1;
+      b.classList.toggle('is-striking', strikes);
+      if (strikes && !clash) b.insertBefore(strikeSwords(), b.firstChild);
+      else if (!strikes && clash) clash.remove();
     }
     // After the tabs: the corner's strike starts in step with the tab's.
     paintCorners();

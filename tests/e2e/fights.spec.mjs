@@ -4,7 +4,7 @@
 // Blue BL (4) under it. The map is open the whole time, so the page's one-second repaint runs over it.
 import { test, expect } from './support/fixtures.mjs';
 import { load, looping } from './support/steps.mjs';
-import { FOCUS, fightsOnThree } from './support/scenarios.mjs';
+import { FOCUS, fightOnOne, fightsOnThree } from './support/scenarios.mjs';
 
 test.describe.configure({ timeout: 90 * 1000 });
 test.use({ clock: 'playwright', timeline: fightsOnThree(25), locale: 'en-US', viewport: { width: 1280, height: 900 } });
@@ -117,5 +117,20 @@ test.describe('reduced motion', () => {
       expect(names.filter(x => x.startsWith(`${n}:`)).length, n).toBeGreaterThan(0);
     }
     expect(names.filter(x => !x.endsWith(':paused')), 'not paused').toEqual([]);
+  });
+});
+
+test.describe('a fight on one map only', () => {
+  test.use({ timeline: fightOnOne(25) });
+
+  test('keeps the plain swords: no strike, no line, a still corner', async ({ page, wvw }) => {
+    await fightOn(page, wvw);
+    expect(await worn(page, 'GreenHome'), 'the only map with a fight').toEqual({ lit: true, hot: true, plain: true, strike: false, room: '22px', under: 'visible', moving: 0 });
+    await expect(page.locator(tab('GreenHome'))).not.toHaveClass(/is-striking/);
+    for (const type of ['Center', 'RedHome', 'BlueHome']) expect((await worn(page, type)).lit, `${type}, under the floor`).toBe(false);
+    await page.locator(tab('GreenHome')).click();
+    await expect(page.locator(hud), 'the corner is orange').not.toHaveClass(/is-cold/);
+    await expect(page.locator(hud), 'and does not strike').not.toHaveClass(/is-striking/);
+    await expect(page.locator(`${hud} .wvw-hud-clash`)).toHaveCount(0);
   });
 });

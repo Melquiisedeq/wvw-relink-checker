@@ -107,6 +107,10 @@ export const killsGap = (gap = 12, before = 6, after = 2, id) =>
 export const fightsOnThree = (min = 25, id) =>
   opened(id).advance(min, { kills: { GreenHome: 14, Center: 8, RedHome: 6, BlueHome: 4 } });
 
+// A fight on one map only: Green BL 14 kills a minute, the others under the floor.
+export const fightOnOne = (min = 25, id) =>
+  opened(id).advance(min, { kills: { GreenHome: 14, Center: 2, RedHome: 1, BlueHome: 1 } });
+
 // A busy match whose kills the API publishes in steps: every `step` minutes
 // the step's kills land at once on EBG (`pace` a minute), while the score
 // rises every minute, for `min` minutes after the opening. `lag`: the

@@ -354,9 +354,9 @@ test.describe('corners by the data clock', () => {
         const tip = await balloon(page, 'l');
         // The tail names the stall only when the stall, not the pace, kept the swords off.
         if (name === 'jumpHeld') expect(tip, 'a big jump held back by the stall says so')
-          .toMatch(/^Player kills on this map in the last \d+ minutes\. Orange swords mark each map past 50, the busiest one striking\. No swords: the last jump came after 25 min without new kill data\.$/);
+          .toMatch(/^Player kills on this map in the last \d+ minutes\. Orange swords mark each map past 50; with several, the busiest one strikes\. No swords: the last jump came after 25 min without new kill data\.$/);
         if (name === 'jumpSmall') expect(tip, 'no stall to blame: no tail')
-          .toMatch(/^Player kills on this map in the last \d+ minutes\. Orange swords mark each map past 50, the busiest one striking\.$/);
+          .toMatch(/^Player kills on this map in the last \d+ minutes\. Orange swords mark each map past 50; with several, the busiest one strikes\.$/);
         // In a window past 20 min the gap sentence already says why: the balloon is those two sentences.
         if (name === 'jumpLong') expect(tip, 'the balloon of a window past 20 min')
           .toMatch(/^\d+ kills in the 25 min up to \S+( \S+)?\. No kill data reached us between \S+( \S+)? and \S+( \S+)?\.$/);

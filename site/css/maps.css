@@ -31,12 +31,12 @@
 .wvw-tab.is-lit{padding-left:22px;}
 /* The busiest map's tab: the icon cut in two swords that strike (the plain one stays under, hidden), and a line along its foot.
    Transform and opacity move, and the shine moves its background, all inside the tab's bevel. On ::before: button:active::after is the press strip (css/controls.css). */
-.wvw-tab.is-hot .wvw-tab-swords{visibility:hidden;}
-.wvw-tab.is-hot::before{
+.wvw-tab.is-striking .wvw-tab-swords{visibility:hidden;}
+.wvw-tab.is-striking::before{
   content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:#f09a38;pointer-events:none;
   animation:clash-line 2.8s infinite;
 }
-.wvw-tab.is-hot.is-active::before{background:#b85a00;}
+.wvw-tab.is-striking.is-active::before{background:#b85a00;}
 .wvw-clash{
   position:absolute;left:4px;top:1px;width:14px;height:14px;pointer-events:none;
   transform-origin:50% 60%;animation:clash-punch 2.8s infinite;

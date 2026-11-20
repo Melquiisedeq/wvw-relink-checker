@@ -99,7 +99,7 @@ body{
   .relink-banner.is-rebuild .relink-inner::before,
   .relink-banner.is-rebuild .time.is-now::before,.relink-banner.is-rebuild .time.is-now::after,
   .live-dot,.trend-live-dot,
-  .wvw-tab.is-hot::before,.wvw-clash,.wvw-clash-sword,.wvw-clash-flash,.wvw-clash-shine,.wvw-clash-spark,
+  .wvw-tab.is-striking::before,.wvw-clash,.wvw-clash-sword,.wvw-clash-flash,.wvw-clash-shine,.wvw-clash-spark,
   .wvw-hud-l.is-striking .wvw-hud-big{animation-play-state:paused !important;}
 }
 
