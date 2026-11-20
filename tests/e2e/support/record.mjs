@@ -10,7 +10,8 @@
 //   cd tests/e2e && RECORD=1 npx playwright test
 //   RECORDINGS=/tmp/new.json.gz RECORD=1 npx playwright test   (writes there instead)
 //
-// Cloud sandbox: NODE_USE_ENV_PROXY=1 NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt
+// Behind a proxy, Node's fetch needs NODE_USE_ENV_PROXY=1, and the proxy's
+// certificate authority in NODE_EXTRA_CA_CERTS.
 // Fetches go to the table below, never to an address the page built: its host
 // picks the origin, its path and query are appended.
 import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';

@@ -4,14 +4,11 @@
 //   cd tests/e2e && npm ci --ignore-scripts && npx playwright test
 //
 // No browser is downloaded. CHROME names the executable to drive; without it,
-// the cloud sandbox's /opt/pw-browsers/chromium when it exists, else the
-// installed Google Chrome (channel 'chrome', which is what CI uses).
-import { existsSync } from 'node:fs';
+// the installed Google Chrome (channel 'chrome', which is what CI uses).
 import { defineConfig } from '@playwright/test';
 
+const executable = process.env.CHROME || '';
 const CI = !!process.env.CI;
-const SANDBOX_CHROMIUM = '/opt/pw-browsers/chromium';
-const executable = process.env.CHROME || (!CI && existsSync(SANDBOX_CHROMIUM) ? SANDBOX_CHROMIUM : '');
 
 export default defineConfig({
   testDir: '.',
