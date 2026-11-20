@@ -1,0 +1,93 @@
+/* LAB - never merged. Card 82-3-0: the map colour on the map tabs, the Captures F, the fight line preview. */
+/* ---- the panel ---------------------------------------------------- */
+.lab-panel{
+  position:fixed;right:12px;bottom:12px;z-index:80;
+  display:flex;flex-direction:column;align-items:flex-end;gap:6px;
+  font-size:.78rem;color:var(--text);
+}
+.lab-toggle{
+  padding:4px 12px;border-radius:999px;border:1px solid rgba(127,214,242,.35);
+  background:rgba(15,18,22,.88);color:var(--accent);font:inherit;font-weight:700;
+  letter-spacing:.06em;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.45);
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+}
+.lab-toggle:hover{color:var(--accent-bright);border-color:rgba(127,214,242,.6);}
+.lab-body{
+  width:min(270px, calc(100vw - 24px));max-height:calc(100vh - 70px);overflow-y:auto;
+  padding:10px 12px;border-radius:10px;border:1px solid var(--border);
+  background:rgba(23,27,33,.97);box-shadow:0 10px 30px rgba(0,0,0,.55);
+  display:flex;flex-direction:column;gap:5px;
+}
+.lab-body[hidden]{display:none;}
+.lab-head{margin-bottom:2px;color:var(--accent);}
+.lab-head strong{text-transform:uppercase;letter-spacing:.06em;font-size:.74rem;}
+.lab-check{display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;margin-top:4px;}
+.lab-check input,.lab-radios input{accent-color:var(--accent);margin:0;}
+.lab-sub{padding-left:20px;display:flex;flex-direction:column;gap:4px;}
+.lab-sub-row{flex-direction:row;align-items:center;flex-wrap:wrap;gap:4px 10px;}
+.lab-radios{border:0;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:2px 8px;}
+.lab-radios label{display:inline-flex;align-items:center;gap:3px;cursor:pointer;}
+.lab-sr-legend{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+.lab-btn{
+  align-self:flex-start;margin:2px 0;padding:3px 10px;border-radius:6px;
+  border:1px solid rgba(127,214,242,.3);background:var(--accent-soft);color:var(--accent);
+  font:inherit;font-size:.74rem;cursor:pointer;
+}
+.lab-btn:hover{color:var(--accent-bright);background:rgba(127,214,242,.24);}
+.lab-status{margin:4px 0 0;color:var(--muted);font-size:.7rem;min-height:1em;}
+.lab-muted{color:var(--muted);}
+.lab-cyan{color:var(--accent);}
+.lab-section{
+  margin-top:8px;padding-top:6px;border-top:1px solid var(--border);
+  font-size:.62rem;font-weight:800;color:#a3adbb;text-transform:uppercase;letter-spacing:.09em;
+}
+.lab-check-small{font-weight:500;font-size:.74rem;margin-top:2px;}
+/* "sim": the simulated summaries, said once and small. */
+.lab-simtag{
+  display:inline-block;margin-left:4px;padding:0 4px;border-radius:3px;
+  background:rgba(154,164,178,.16);color:#7e8899;font-size:.56rem;font-weight:700;
+  letter-spacing:.06em;text-transform:lowercase;vertical-align:1px;
+}
+
+.lab-note{margin:2px 0 0;color:var(--muted);font-size:.68rem;line-height:1.35;}
+
+/* ---- the map's colour: EBG neutral, each borderland its own (the Captures F's tones) ---- */
+.wvw-tab,.wvw-cap{--lab-map:#c3ccd7;--lab-map-soft:rgba(195,204,215,.14);}
+.wvw-tab[data-type=RedHome],.wvw-cap[data-map=RedHome]{--lab-map:var(--red);--lab-map-soft:rgba(225,92,92,.2);}
+.wvw-tab[data-type=BlueHome],.wvw-cap[data-map=BlueHome]{--lab-map:var(--blue);--lab-map-soft:rgba(91,143,240,.22);}
+.wvw-tab[data-type=GreenHome],.wvw-cap[data-map=GreenHome]{--lab-map:var(--green);--lab-map-soft:rgba(76,175,125,.22);}
+.wvw-tab{--lab-dot:radial-gradient(circle at 30% 30%, #f1f4f8, #aab4c0);}
+.wvw-tab[data-type=RedHome]{--lab-dot:radial-gradient(circle at 30% 30%, #ff9a9a, var(--red));}
+.wvw-tab[data-type=BlueHome]{--lab-dot:radial-gradient(circle at 30% 30%, #b8cdff, var(--blue));}
+.wvw-tab[data-type=GreenHome]{--lab-dot:radial-gradient(circle at 30% 30%, #b3ecce, var(--green));}
+
+/* Inset shadows, not ::after: controls.css's pressed strip is the tab's ::after, and the bevel's
+   clip-path keeps an inset shadow. Each choice swaps one of the tab's two edges. */
+html.lab-tabs-line .wvw-tab,html.lab-fight .wvw-tab{
+  box-shadow:var(--lab-top,inset 0 1px 0 rgba(255,255,255,.14)), var(--lab-bottom,inset 0 -1px 0 rgba(0,0,0,.45));
+}
+/* Top line: in place of the bevel's 1px top highlight, so the tab keeps its size. */
+html.lab-tabs-line .wvw-tab{--lab-top:inset 0 2px 0 var(--lab-map);}
+/* Soft tint: over the tab's own gradient; the open tab keeps its plain light blue. */
+html.lab-tabs-tint .wvw-tab:not(.is-active){
+  background:linear-gradient(var(--lab-map-soft),var(--lab-map-soft)),linear-gradient(180deg,#2b323d,#1b212a);
+  color:#b3bdca;
+}
+/* Dot: in the left padding, the padding moved across so the tab keeps its width. */
+html.lab-tabs-dot .wvw-tab::before{
+  content:"";position:absolute;left:5px;top:50%;width:7px;height:7px;margin-top:-3.5px;border-radius:50%;
+  background:var(--lab-dot);box-shadow:0 0 0 1px rgba(0,0,0,.35);pointer-events:none;
+}
+html.lab-tabs-dot .wvw-tab{padding-left:16px;padding-right:6px;}
+html.lab-tabs-dot .wvw-tab.is-hot{padding-left:29px;padding-right:4px;}
+html.lab-tabs-dot .wvw-tab.is-hot::before{left:19px;}
+
+/* ---- the fight line (82-1), still: 2px orange under the busiest tab ---- */
+html.lab-fight .wvw-tab.is-hot{--lab-bottom:inset 0 -2px 0 #f09a38;}
+html.lab-fight .wvw-tab.is-hot.is-active{--lab-bottom:inset 0 -2px 0 #b85a00;}
+
+/* ---- Captures F: the map's name on a soft tint of its colour (82-0, round 2) ---- */
+html.lab-caps-F .wvw-cap-map{
+  padding:0 6px;border-radius:3px;background:var(--lab-map-soft);color:#dbe3ec;
+  font-size:.62rem;font-weight:700;line-height:1.5;
+}
