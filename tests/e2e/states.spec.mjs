@@ -5,6 +5,7 @@
 // what a visitor sees at the end, not that the code was passed.
 import { test, expect } from './support/fixtures.mjs';
 import { answer, hold } from './support/faults.mjs';
+import { gw2 } from './support/gw2.mjs';
 import { FOCUS, MIN, awayAndBack, playing, skirmishAway } from './support/scenarios.mjs';
 import { check, firstTier, frame, iso, keptMatch, later, load, openMap, search } from './support/steps.mjs';
 
@@ -429,8 +430,8 @@ test('a capture row rebuilt under the pointer takes its light with it', async ({
 // way (a slow line) is overtaken by the next one; when it lands at last, the
 // map keeps what the newer read painted. The held read's body is the further
 // along one (a server ahead of the others) and hands Red every camp, tower and
-// keep of the map in view, so a map that painted it would show Red's share of
-// the bar over the map grow past what the newer read drew.
+// keep of the map in view, and the points they earn in the skirmish, so a map that
+// painted it would show Red's share of the bar over the map grow past what the newer read drew.
 test('a read overtaken on the way is dropped when it lands', async ({ page, wvw }) => {
   await load(page, wvw);
   const tier = await firstTier(page);
@@ -442,6 +443,10 @@ test('a read overtaken on the way is dropped when it lands', async ({ page, wvw 
     const objectives = b.maps.find(m => m.type === type).objectives.filter(o => ['Camp', 'Tower', 'Keep'].includes(o.type) && o.owner !== 'Red');
     for (const o of objectives.slice(0, flips)) o.owner = 'Red';
     b.scores.red += flips;
+    // The bar is the map's points in the skirmish under way: what the flips earned goes there.
+    const sk = b.skirmishes[b.skirmishes.length - 1];
+    sk.scores.red += flips;
+    sk.map_scores.find(x => x.type === type).scores.red += flips;
     b.flipped = objectives.slice(0, flips).map(o => o.id);
     return b;
   };
@@ -719,5 +724,103 @@ test.describe('a skirmish ends while the tab is away', () => {
     for (const c of ['red', 'blue', 'green']) {
       expect(await vp(c), `${c} VP after the return`).toBe(newest.victory_points[c].toLocaleString('en-US'));
     }
+  });
+});
+
+// ---- what a map's objectives are worth, as the War Score pays it -------------------------------
+// The score bar over a map is that map's points in the skirmish under way, drawn from the
+// body's `skirmishes`; an objective's panel says "Per tick" only when it ticks (a Keep, Tower or
+// Castle at T3); the board's PPT is every tick of a team added up, the game's own "+N".
+const served = wvw => wvw.timeline.body(FOCUS, wvw.timeline.end);
+const objectivesOf = (b, type) => b.maps.find(m => m.type === type).objectives;
+const TEAM_OF = { red: 0, blue: 1, green: 2 };
+
+test.describe('the score bar of a borderland', () => {
+  // Blue BL: green takes most of what is given; EBG's points go the other way, so a bar
+  // drawn from anything but this map's points in this skirmish is another shape.
+  test.use({ timeline: gw2.match(FOCUS).advance(12)
+    .advance(10, { score: { BlueHome: { red: 0, blue: 20, green: 80 }, Center: { red: 100, blue: 10, green: 10 } } }).pageOpens() });
+  test('each side is as wide as its share of the map\'s points in the skirmish under way', async ({ page, wvw }) => {
+    await load(page, wvw);
+    const tier = await firstTier(page);
+    await openMap(page, wvw, tier.button);
+    await page.locator(`${POP} .wvw-tab[data-type="BlueHome"]`).click();
+    await expect(page.locator(`${POP} .wvw-tab.is-active[data-type="BlueHome"]`)).toBeAttached();
+    await wvw.settle();
+    const skirmishes = served(wvw).skirmishes;
+    const mine = skirmishes[skirmishes.length - 1].map_scores.find(x => x.type === 'BlueHome').scores;
+    const total = mine.red + mine.blue + mine.green;
+    expect(total, 'points the map gave in the skirmish').toBeGreaterThan(0);
+    const widths = await page.$$eval(`${POP} .wvw-scorebar-seg`, segs => Object.fromEntries(segs.map(s =>
+      [['red', 'blue', 'green'].find(c => s.classList.contains('own-' + c)), parseFloat(s.style.width)])));
+    for (const c of ['red', 'blue', 'green']) {
+      expect(widths[c] ?? 0, `the ${c} segment of the bar, in percent`).toBeCloseTo(mine[c] / total * 100, 1);
+    }
+  });
+});
+
+test.describe('a skirmish after another', () => {
+  // The first skirmish's points go to green, the one under way's to red.
+  test.use({ timeline: gw2.match(FOCUS).advance(12)
+    .advance(10, { score: { Center: { red: 0, blue: 0, green: 50 } } })
+    .advance(120, { score: { Center: { red: 0, blue: 0, green: 0 } } })
+    .advance(10, { score: { Center: { red: 50, blue: 0, green: 0 } } }).pageOpens() });
+  test('the bar follows the skirmish under way, not the first or the week', async ({ page, wvw }) => {
+    const b = served(wvw);
+    expect(b.skirmishes.length, 'skirmishes in the body').toBeGreaterThan(1);
+    expect(b.maps.find(m => m.type === 'Center').scores.green, 'the week\'s points for green on EBG').toBeGreaterThan(0);
+    await load(page, wvw);
+    const tier = await firstTier(page);
+    await openMap(page, wvw, tier.button);
+    await page.locator(`${POP} .wvw-tab[data-type="Center"]`).click();
+    await wvw.settle();
+    await expect(page.locator(`${POP} .wvw-scorebar-seg`), 'segments of the bar').toHaveCount(1);
+    await expect(page.locator(`${POP} .wvw-scorebar-seg`), 'the one side scoring in this skirmish').toHaveClass(/own-red/);
+  });
+});
+
+test.describe('the worth of an objective and the board', () => {
+  test.use({ timeline: gw2.match(FOCUS).advance(12).advance(6, { flips: 4 }).pageOpens() });
+  test('Per tick only where it ticks, and PPT is the sum of the ticks', async ({ page, wvw }) => {
+    await load(page, wvw);
+    const tier = await firstTier(page);
+    await openMap(page, wvw, tier.button);
+    const type = await page.locator(`${POP} .wvw-tab.is-active`).getAttribute('data-type');
+    const body = served(wvw);
+    const list = objectivesOf(body, type);
+    const camp = list.find(o => o.type === 'Camp' && o.points_tick === 0);
+    const keep = list.find(o => o.type === 'Keep' && o.points_tick === 10);
+    expect(camp && keep, 'a camp at T0 and a keep at T3 on the map').toBeTruthy();
+    const detail = page.locator(`${POP} .wvw-detail`);
+    await page.locator(`${POP} .wvw-marker[data-obj="${camp.id}"]`).dispatchEvent('click');
+    await expect(detail.locator('.wvw-row dt', { hasText: 'On capture' }), 'the camp\'s capture row').toBeVisible();
+    await expect(detail.locator('.wvw-row dt', { hasText: 'Per tick' }), 'the camp\'s Per tick row').toHaveCount(0);
+    await page.locator(`${POP} .wvw-marker[data-obj="${keep.id}"]`).dispatchEvent('click');
+    await expect(detail.locator('.wvw-row:has(dt:text-is("Per tick")) dd'), 'the keep\'s Per tick').toHaveText('+10');
+
+    for (const c of ['red', 'blue', 'green']) {
+      const ticks = body.maps.flatMap(m => m.objectives).filter(o => String(o.owner).toLowerCase() === c)
+        .reduce((n, o) => n + o.points_tick, 0);
+      await expect(page.locator(`${POP} .wvw-board-row[data-focus-color="${c}"] .wvw-board-ppt`), `${c}'s PPT`).toHaveText(`+${ticks}`);
+    }
+  });
+});
+
+// A keep recorded at T3 that changes hands goes back to T0, as in the game: its capture is the T0 one and it ticks no more.
+const BEFORE = gw2.match(FOCUS).advance(1);
+const t3Keep = BEFORE.body(FOCUS, BEFORE.end).maps.flatMap(m => m.objectives.filter(o => o.type === 'Keep' && o.points_tick > 0).map(o => ({ id: o.id, map: m.type })))[0];
+test.describe('a T3 keep that changed hands', () => {
+  test.use({ timeline: gw2.match(FOCUS).advance(12).advance(4, { flips: [t3Keep.id] }).pageOpens() });
+  test('is worth its T0 capture and shows no Per tick', async ({ page, wvw }) => {
+    await load(page, wvw);
+    const tier = await firstTier(page);
+    await openMap(page, wvw, tier.button);
+    await page.locator(`${POP} .wvw-tab[data-type="${t3Keep.map}"]`).click();
+    await wvw.settle();
+    const keep = objectivesOf(served(wvw), t3Keep.map).find(o => o.id === t3Keep.id);
+    expect(keep.points_capture, 'the keep\'s capture as served').toBe(100);
+    await page.locator(`${POP} .wvw-marker[data-obj="${t3Keep.id}"]`).dispatchEvent('click');
+    await expect(page.locator(`${POP} .wvw-detail .wvw-row:has(dt:text-is("On capture")) dd`), 'the keep\'s capture on the panel').toHaveText('100');
+    await expect(page.locator(`${POP} .wvw-detail .wvw-row dt`, { hasText: 'Per tick' }), 'its Per tick row').toHaveCount(0);
   });
 });

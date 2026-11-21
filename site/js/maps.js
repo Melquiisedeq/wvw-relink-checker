@@ -1663,11 +1663,15 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
 
 
 // ---- the score bar --------------------------------------------------
-// One segment per side, as wide as that side's share of THIS map's tick, not the match total (identical
-// on all four tabs): whoever is running the map fills the bar, and a side that stopped scoring shrinks out.
-function buildScoreBar(mapData, isLive) {
-  const { by } = mapTally(mapData, isLive);
-  const vals = COLORS.map((c) => Math.max(0, Number((by.get(c) || {}).ppt || 0)));
+// One segment per side, as wide as that side's share of the points THIS map gave in the skirmish under way
+// (the last of the match's skirmishes), not the match total (identical on all four tabs): whoever is
+// scoring on the map fills the bar, and a side that stopped scoring shrinks out.
+function buildScoreBar(match, mapData, isLive) {
+  if (!isLive || !mapData) return null;
+  const skirmishes = (match && match.skirmishes) || [];
+  const last = skirmishes[skirmishes.length - 1];
+  const mine = ((last && last.map_scores) || []).find((x) => x && x.type === mapData.type);
+  const vals = COLORS.map((c) => Math.max(0, Number(((mine && mine.scores) || {})[c] || 0)));
   const total = vals.reduce((a, b) => a + b, 0);
   if (!total) return null;
 
@@ -1688,7 +1692,7 @@ function buildScoreBar(mapData, isLive) {
 }
 
 // ---- the map scoreboard ---------------------------------------------
-// The four types that pay (Ruins and Mercenary tick zero), smallest first, the order of the game's panel.
+// The four types the game's panel counts, smallest first, in its order.
 const SCORE_TYPES = ['Camp', 'Tower', 'Keep', 'Castle'];
 
 // What each side holds across the maps it is handed: the tick they add up to, and how many of each
@@ -1711,10 +1715,6 @@ function tallyMaps(maps, isLive) {
     }
   }
   return { by, types: SCORE_TYPES.filter((t) => present.has(t)) };
-}
-
-function mapTally(mapData, isLive) {
-  return tallyMaps(mapData ? [mapData] : [], isLive);
 }
 
 // ---- the focus: a team, a type, or a few objectives lit on the map ----
@@ -2078,7 +2078,7 @@ function renderObjectiveDetail(panel, p, match) {
   row(dl, 'Guild', claimCell);
 
   group(dl, 'Worth');
-  row(dl, 'Per tick', `+${ob.points_tick ?? 0}`, ownCls);
+  if (ob.points_tick > 0) row(dl, 'Per tick', `+${ob.points_tick}`, ownCls);
   row(dl, 'On capture', String(ob.points_capture ?? 0));
 
   group(dl, 'Upgrade');
@@ -2819,7 +2819,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     if (plotWrap) {
       // Over the plot, not inside the SVG: the SVG is the camera and
       // everything in it pans and zooms with the terrain.
-      const sb = buildScoreBar(byType.get(type), matchIsLive(liveMatch));
+      const sb = buildScoreBar(liveMatch, byType.get(type), matchIsLive(liveMatch));
       if (sb) plotWrap.appendChild(sb);
       corners = buildMapCorners(plotWrap, match.id);
       paintCorners();
@@ -3079,7 +3079,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     if (selected) renderObjectiveDetail(detail, selected, fresh);
     if (plotWrap) {
       const old = plotWrap.querySelector('.wvw-scorebar');
-      const sb = buildScoreBar(now, live);
+      const sb = buildScoreBar(fresh, now, live);
       if (old) old.remove();
       if (sb) plotWrap.appendChild(sb);
     }

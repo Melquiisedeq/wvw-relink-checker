@@ -436,8 +436,10 @@ test.describe('week memory', () => {
 // not yet opened have owners to draw.
 const homeObjectives = recordedJson(GAME + 'wvw/matches?id=' + FOCUS).maps
   .filter(m => m.type.endsWith('Home')).map(m => m.objectives.find(o => ['Camp', 'Tower', 'Keep'].includes(o.type)).id);
+// Every map scores in the new week: the bar over a map is drawn from the points the map gave in the skirmish under way.
+const PLAYED = Object.fromEntries(['Center', 'RedHome', 'BlueHome', 'GreenHome'].map(t => [t, { red: 12, blue: 8, green: 4 }]));
 test.describe('a map opened before the week turned', () => {
-  test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().newWeek({ relink: true }).advance(8, { flips: homeObjectives }) });
+  test.use({ timeline: gw2.match(FOCUS).advance(12).pageOpens().newWeek({ relink: true }).advance(8, { flips: homeObjectives, score: PLAYED }) });
   test('the tab clicked after the first read is drawn with the new week', async ({ page, wvw }) => {
     await load(page, wvw);
     const tier = await firstTier(page);

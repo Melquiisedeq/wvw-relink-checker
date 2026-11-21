@@ -9,6 +9,7 @@
 //     .advance(12, { kills: { Center: 30 } })   // 12 min of play, one state a minute
 //     .advance(6, { kills: {} })          // the score rises, the kills stand still
 //     .advance(6, { every: 0.5 })         // a state each 30 s
+//     .advance(10, { score: { BlueHome: { red: 40, blue: 90, green: 10 } } })   // points on one map
 //     .pageOpens()                        // the page's clock starts here
 //     .olderPool(10).advance(20).olderPool(0)   // a server group 10 min behind
 //     .olderPool(30, { every: true })     // the visitor's whole group 30 min behind
@@ -45,6 +46,15 @@
 //   sums over maps[] (js/maps-early.js, fightTotals and missedKillTotal, read
 //   the maps; js/api.js, matchActivity, the totals).
 //   The skirmishes add up to the scores too.
+// - An objective is worth what the War Score says (js/maps.js: the objective's
+//   "Per tick" row, shown only when it ticks, and the board's PPT, the ticks
+//   added up; the score bar reads the skirmish's map_scores, not these):
+//   points_capture by tier, T0 to T3, Camp 2/10/15/25, Tower 25/125/200/250,
+//   Keep 100/200/400/500, Castle 200/250/300/400; points_tick
+//   only at T3, Keep 10, Tower 7, Castle 20, every other type 0. The recorded
+//   tick (the old rule: Camp 2/3/4/5, Tower 4/6/8/10, Keep 8/12/16/20, Castle
+//   12/16/20/24) names the recorded tier. A flip, and a week begun, take the
+//   objective back to T0, as in the game.
 // The server checks the bodies it serves against these (served() below) and
 // reports a break as a problem of the test.
 import { createHmac } from 'node:crypto';
@@ -64,6 +74,12 @@ const API = 'https://api.guildwars2.com/v2/wvw/matches?';
 const TACTICS = 'https://api.guildwars2.com/v2/guild/upgrades?ids=';
 const DEFAULT_SCORE = Object.freeze({ red: 120, blue: 80, green: 60 });   // per minute
 const DEFAULT_KILLS = Object.freeze({ Center: 30 });                     // per minute: a fight on EBG
+
+// The old rule's tick by tier, to read the tier a recorded objective had; the War Score's
+// points by tier.
+const OLD_TICK = Object.freeze({ Camp: [2, 3, 4, 5], Tower: [4, 6, 8, 10], Keep: [8, 12, 16, 20], Castle: [12, 16, 20, 24] });
+const WAR_CAPTURE = Object.freeze({ Camp: [2, 10, 15, 25], Tower: [25, 125, 200, 250], Keep: [100, 200, 400, 500], Castle: [200, 250, 300, 400] });
+const WAR_TICK = Object.freeze({ Tower: 7, Keep: 10, Castle: 20 });   // at T3 only
 
 const iso = ms => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
 const sum = o => COLORS.reduce((n, c) => n + (Number(o && o[c]) || 0), 0);
@@ -166,15 +182,20 @@ class Timeline {
   // `min` minutes of play on the focus match, one state a minute. kills: per
   // map type and minute, split over the colours, each kill a death of the next
   // colour. flips: how many objectives change hands, spread over the span, or
-  // the objective ids. score: per colour and minute, on EBG and the skirmish.
+  // the objective ids.
   // `every`: minutes between states (0.5: one each 30 s, kills and score split
   // between them); it must divide 1 and leave whole kills and points.
+  // score: per colour and minute, in the running skirmish: { red, blue, green } goes to EBG;
+  // { BlueHome: { red, blue, green }, ... } gives points to the maps named (Center, RedHome, BlueHome, GreenHome) and to no other.
   advance(min, { kills = DEFAULT_KILLS, flips = 0, score = DEFAULT_SCORE, every = 1 } = {}) {
+    const perMap = Object.keys(score).some(k => MAPS.includes(k)) ? score : { Center: score };
+    score = perMap;
     if (!(min > 0)) throw new Error('gw2: advance needs minutes');
     const steps = Math.round(min / every);
     const part = o => Object.fromEntries(Object.entries(o).map(([k, n]) => [k, n * every]));
+    const partScore = o => Object.fromEntries(Object.entries(o).map(([type, v]) => [type, part(v)]));
     if (!(every > 0 && every <= 1) || !Number.isInteger(1 / every) || Math.abs(steps * every - min) > 1e-9
-      || ![...Object.values(kills), ...Object.values(score)].every(n => Number.isInteger(n * every))) {
+      || ![...Object.values(kills), ...Object.values(score).flatMap(o => Object.values(o))].every(n => Number.isInteger(n * every))) {
       throw new Error('gw2: advance needs `every` to split the minutes, kills and score whole');
     }
     const list = typeof flips === 'number' ? Array.from({ length: flips }, () => null) : [...flips];
@@ -182,7 +203,7 @@ class Timeline {
     const ops = [];
     let weekEnd = this.#weekEnd;
     const stepKills = every === 1 ? kills : part(kills);
-    const stepScore = every === 1 ? score : part(score);
+    const stepScore = every === 1 ? score : partScore(score);
     for (let i = 1; i <= steps; i++) {
       const at = this.#cursor + i * every * MIN;
       while (recording().recordedAt + at >= weekEnd) weekEnd += WEEK_MS;
@@ -313,9 +334,11 @@ class Timeline {
           s.deaths[type] ||= [0, 0, 0];
           for (let c = 0; c < 3; c++) { s.kills[type][c] += k[c]; s.deaths[type][(c + 1) % 3] += k[c]; }
         }
-        const key = `${sk.last}:Center`;
-        s.score[key] ||= [0, 0, 0];
-        COLORS.forEach((c, i) => { s.score[key][i] += Number(op.score[c]) || 0; });
+        for (const [type, by] of Object.entries(op.score)) {
+          const key = `${sk.last}:${type}`;
+          s.score[key] ||= [0, 0, 0];
+          COLORS.forEach((c, i) => { s.score[key][i] += Number(by[c]) || 0; });
+        }
         if (op.flip) {
           const obj = op.flip === true ? pickObjective(body, flipped) : op.flip;
           if (!obj) throw new Error('gw2: no objective left to flip');
@@ -494,6 +517,7 @@ function pickObjective(body, flipped) {
 function materialise(recorded, state) {
   const w = state.week;
   const b = structuredClone(recorded);
+  const reset = new Set();   // the objectives taken back to T0
   if (w.zero) {
     b.start_time = iso(w.start);
     b.end_time = iso(w.end);
@@ -506,7 +530,7 @@ function materialise(recorded, state) {
       m.deaths = { red: 0, blue: 0, green: 0 };
       m.scores = { red: 0, blue: 0, green: 0 };
       for (const o of m.objectives) {
-        if (o.type !== 'Spawn') { o.owner = 'Neutral'; unclaim(o); }
+        if (o.type !== 'Spawn') { o.owner = 'Neutral'; unclaim(o, reset); }
         o.last_flipped = iso(w.start);
       }
     }
@@ -524,7 +548,7 @@ function materialise(recorded, state) {
     });
     for (const o of m.objectives) {
       const f = state.flips.get(o.id);
-      if (f) { o.owner = f.owner; o.last_flipped = iso(f.at); unclaim(o); }
+      if (f) { o.owner = f.owner; o.last_flipped = iso(f.at); unclaim(o, reset); }
     }
   }
   for (const [key, add] of Object.entries(state.score)) {
@@ -535,6 +559,7 @@ function materialise(recorded, state) {
     const ms = sk.map_scores.find(x => x.type === type);
     COLORS.forEach((c, i) => { sk.scores[c] += add[i]; ms.scores[c] += add[i]; map.scores[c] += add[i]; });
   }
+  for (const m of b.maps) for (const o of m.objectives) if (!reset.has(o)) warScore(o, tierOf(o));
   for (const f of ['kills', 'deaths', 'scores']) {
     b[f] = Object.fromEntries(COLORS.map(c => [c, b.maps.reduce((n, m) => n + m[f][c], 0)]));
   }
@@ -545,8 +570,26 @@ function materialise(recorded, state) {
   return b;
 }
 
-// Taken, an objective loses its guild, its tactics and its yaks.
-function unclaim(o) {
+// The tier a recorded objective had; T0 when it has no owner. A recording of the War Score names it by its
+// capture (no old-rule capture equals one of those); an older one, by its tick.
+function tierOf(o) {
+  const war = WAR_CAPTURE[o.type] ? WAR_CAPTURE[o.type].indexOf(o.points_capture) : -1;
+  if (war >= 0) return o.owner === 'Neutral' ? 0 : war;
+  const at = OLD_TICK[o.type] ? OLD_TICK[o.type].indexOf(o.points_tick) : -1;
+  return o.owner === 'Neutral' || at < 0 ? 0 : at;
+}
+
+// What the War Score pays for an objective at a tier. Types without a table keep their recorded capture.
+function warScore(o, tier) {
+  if (!WAR_CAPTURE[o.type]) { o.points_tick = 0; return; }
+  o.points_tick = tier === 3 ? WAR_TICK[o.type] ?? 0 : 0;
+  o.points_capture = WAR_CAPTURE[o.type][tier];
+}
+
+// Taken, an objective loses its guild, its tactics and its yaks, and goes back to T0.
+function unclaim(o, reset) {
+  reset.add(o);
+  warScore(o, 0);
   if ('claimed_by' in o) { o.claimed_by = null; o.claimed_at = null; }
   if ('guild_upgrades' in o) o.guild_upgrades = [];
   if ('yaks_delivered' in o) o.yaks_delivered = 0;
