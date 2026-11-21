@@ -6,7 +6,7 @@
 //   ... await hidden(page, wvw, 2 * HOUR); await visible(page);
 import { gw2 } from './gw2.mjs';
 import { recording } from './recordings.mjs';
-import { fail } from './faults.mjs';
+import { answer, fail } from './faults.mjs';
 import { recordedJson } from './steps.mjs';
 
 export const MIN = 60 * 1000;
@@ -62,10 +62,12 @@ export const weekTurnBehind = (lag = 10, min = 6, id) =>
 
 // The week turns with the push live: /api/latest up with the new week's bodies
 // (the readers are on the group that has it) while the visitor's own group, `lag`
-// minutes behind in every second minute, still serves the week that ended. For
-// a page opened on the site's own address with `livePush`.
-export const pushWeekTurn = (lag = 10, min = 6, id) =>
-  opened(id).newWeek().olderPool(lag).advance(min);
+// minutes behind in every second minute, still serves the week that ended. The week
+// starts on the reset the page keeps (resetOnTime): inside the reset window the page
+// takes the copy's new week only on that start, and only on a plain reset (plainReset,
+// before the page opens). For a page opened on the site's own address with `livePush`.
+export const pushWeekTurn = (lag = 10, min = 6, id = FOCUS) =>
+  gw2.match(id).resetOnTime().advance(12).pageOpens().newWeek().olderPool(lag).advance(min);
 
 // Our copy ahead of the visitor's group, and old: 40 min of play, then our
 // readers stop (/api/latest keeps that moment's bodies, /api/kills its lines)
@@ -76,6 +78,14 @@ export const copyAheadOld = (age = 20, lag = 30, min = 8, id) => {
   if (!(age + min < lag)) throw new Error('scenarios: copyAheadOld needs age + min < lag');
   return gw2.match(id ?? FOCUS).advance(40).latestHeld(true).olderPool(lag, { every: true }).advance(age).pageOpens().advance(min);
 };
+
+// The NA week turns with our copy ahead: /api/latest holds every tier's new week (counters at
+// zero; `moves`: the red teams one tier down, as a reset's moves) while every read of the
+// visitor's lands on a group `lag` minutes behind, still on the week that ended. The weeks end
+// on the reset the page keeps (resetOnTime), so the copy's start is the reset's own. The
+// recording's assignment timer names that reset a relink; plainReset (below) makes it a weekly one.
+export const copyAheadAtTurn = ({ lag = 10, min = 6, moves = true } = {}) =>
+  gw2.match(FOCUS).resetOnTime().advance(12).pageOpens().newWeek({ relink: moves }).olderPool(lag, { every: true }).advance(min);
 
 // A skirmish ends while the tab is away: `min` minutes of play from the opening
 // carry the match past its next two-hour mark (the recording's is 105 min
@@ -317,4 +327,35 @@ export async function thirdInTierTwoStandingsOut(page, wvw, { world = 11011, reg
     status: 200, body: JSON.stringify(match),
     headers: { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } }));
   return match.id;
+}
+
+// ---- the reset ---------------------------------------------------------
+// The reset a timeline reaches is a plain weekly one: the game's assignment timer and
+// /api/relink name the relink four weeks on. Set before the page opens. `ownRelink`: /api/relink
+// names the recording's relink instead (read during the rebuild the timer leaves open); `wvw` with
+// `timer: false`: the assignment timer answers 503.
+export async function plainReset(page, { ownRelink = false, timer = true, wvw } = {}) {
+  const url = 'https://api.guildwars2.com/v2/wvw/timers/teamAssignment';
+  const was = recordedJson(url);
+  const on = t => new Date(Date.parse(t) + 28 * 24 * HOUR).toISOString().replace('.000Z', 'Z');
+  const at = { na: on(was.na), eu: on(was.eu) };
+  if (timer) await answer(page, url, at);
+  else await fail(page, wvw, new RegExp('^' + url.replace(/[.?]/g, '\\$&') + '$'));
+  await answer(page, /\/api\/relink$/, { window: Date.parse(ownRelink ? was.na : at.na) / 1000, published: 0 });
+}
+
+// Our copy (/api/latest, any version) as `alter(answer, now)` leaves it: the Worker's answer
+// from the same timeline as the fixture's, parsed ({ at, matches: [{ id, start, score, at, by,
+// v, body }] }), at the page's time; the summary stays the timeline's.
+export async function copyAltered(page, wvw, alter) {
+  const own = wvw.timeline.serve();
+  await page.route(/\/api\/latest(\?|$)/, async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const now = await wvw.now();
+    const hit = own.answer(route.request().url(), now);
+    if (!hit || hit === 'hang' || hit.status !== 200) return route.fallback();
+    await route.fulfill({ status: 200, body: JSON.stringify(alter(JSON.parse(hit.body.toString('utf8')), now)),
+      headers: { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store',
+        Date: new Date(Math.floor(now / 1000) * 1000).toUTCString() } });
+  });
 }

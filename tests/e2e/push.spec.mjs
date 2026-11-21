@@ -6,7 +6,7 @@
 // no socket, a page anywhere else opens none, and a message that is not the
 // Worker's changes nothing.
 import { test, expect } from './support/fixtures.mjs';
-import { FOCUS, MIN, connectionDrops, hidden, livePush, playing, playingHalfMinutes, pushWeekTurn, visible } from './support/scenarios.mjs';
+import { FOCUS, MIN, connectionDrops, hidden, livePush, plainReset, playing, playingHalfMinutes, pushWeekTurn, visible } from './support/scenarios.mjs';
 import { versionName } from './support/gw2.mjs';
 import { firstTier, load, openMap, play, scoreOf } from './support/steps.mjs';
 
@@ -478,10 +478,13 @@ test.describe('the week turns with the push live', () => {
   test.use({ timeline: pushWeekTurn(10, 8) });
 
   test('the list and the map stay on the new week through each push and peek', async ({ page, wvw }) => {
+    await plainReset(page);
     const push = await live(page, wvw);
     await wvw.settle();
     const oldStart = await page.evaluate(id => matchDataCache.get(id).start_time, FOCUS);
-    let turn = Math.ceil((wvw.recordedAt + wvw.timeline.end - 6 * MIN) / MIN) * MIN;
+    // The week's first minutes: only the focus plays here, so the copy's other tiers keep the `at` of
+    // the week's start, and inside the reset window the page takes the copy's week only within LATEST_SUMMARY_FRESH_MS of it.
+    let turn = Math.ceil((wvw.recordedAt + wvw.timeline.end - 8 * MIN) / MIN) * MIN;
     if (Math.floor((turn - wvw.recordedAt) / MIN) % 2) turn += MIN;   // an even minute: the newest body
     const start = wvw.timeline.body(FOCUS, turn - wvw.recordedAt + 5000).start_time;
     expect(start, 'the week turned').not.toBe(oldStart);
