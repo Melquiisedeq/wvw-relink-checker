@@ -614,12 +614,12 @@ function missedView(note) {
     && missedKillTotal(kept.match) > missedKillTotal(after) ? kept.match : after;
   const corner = killView(body);
   const start = period.start;
-  const end = Math.max(corner.clock || period.end, start,
+  const end = Math.max(corner.clock, start,
     ...listed.map((c) => (c.flipped <= endAt ? c.flipped : -Infinity)));
 
   const list = fightSamples(after);
   const base = killHighs(fightTotals(before), list.filter((s) => s.at <= start));
-  const high = corner.high || killHighs(fightTotals(body), list);
+  const high = { ...corner.high };   // a week that has just ended gives clock 0 and no high: no kills, the end at the start
   const order = Object.keys(MAP_TAB_NAME);
   const perMap = Object.keys(high)
     .map((type) => ({ type, n: Math.max(0, high[type] - (Number(base[type]) || 0)) }))
