@@ -340,7 +340,7 @@ export async function plainReset(page, { ownRelink = false, timer = true, wvw } 
   const on = t => new Date(Date.parse(t) + 28 * 24 * HOUR).toISOString().replace('.000Z', 'Z');
   const at = { na: on(was.na), eu: on(was.eu) };
   if (timer) await answer(page, url, at);
-  else await fail(page, wvw, new RegExp('^' + url.replace(/[.?]/g, '\\$&') + '$'));
+  else await fail(page, wvw, /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/timers\/teamAssignment$/);
   await answer(page, /\/api\/relink$/, { window: Date.parse(ownRelink ? was.na : at.na) / 1000, published: 0 });
 }
 
