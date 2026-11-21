@@ -1,8 +1,7 @@
 // /api/latest, the second read of the matches: bodies of the live matches as JSON with
 // only the running skirmish, the finished ones at /api/history, read once per version.
-// A newer one wins; one offered under another match's id, one under an id the
-// game never gave, one over the size cap, and garbage in any field the page
-// checks change nothing and say nothing; a 503 or a hung answer costs nothing.
+// A newer one wins; a 503 or a hung answer costs nothing. (Which bodies pass the
+// page's checks is tests/unit/page-rules.test.mjs.)
 import { test, expect } from './support/fixtures.mjs';
 import { answer, fail } from './support/faults.mjs';
 import { gw2, historyOf, liveOf } from './support/gw2.mjs';
@@ -69,41 +68,6 @@ const bump = (m, n) => ({ ...m, scores: { ...m.scores, red: m.scores.red + n } }
 const entry = (id, m, start = Date.parse(m.start_time)) => ({ id, start, score: sum(m), at: 0, by: 'check-page', v: 2, body: m });
 // A body padded with whitespace past LATEST_BODY_MAX (256 KiB, js/api.js), still valid JSON.
 const PAD = 300 * 1024;
-
-// The recording as the world: one match is made newer (score up), one is
-// offered under another match's id, one under an id the game never gave.
-test.describe('bodies offered by /api/latest', () => {
-  test('only the newer body of a known id reaches the page', async ({ page, wvw }) => {
-    const latest = await serve(page, { at: 0, matches: [
-      entry(a.id, bump(a, 5000)),        // newer: must show
-      entry(b.id, bump(a, 99999)),       // the body says another id: must not
-      entry('1-9', bump(a, 99999)),      // an id the game never gave: must not
-    ] });
-    await load(page, wvw);
-    expect(latest.reads, 'reads of /api/latest').toBeGreaterThan(0);
-    expect(await settledScore(page, a.id, sum(a) + 5000), `${a.id}, the newer body`).toBe(sum(a) + 5000);
-    expect(await scoreOf(page, b.id), `${b.id}, offered another match's body`).toBe(sum(b));
-    expect(await page.evaluate(() => matchDataCache.has('1-9')), 'an id the game never gave').toBe(false);
-  });
-
-  test('garbage in every field the page checks changes nothing', async ({ page, wvw }) => {
-    const at = Date.parse(a.start_time);
-    const garbage = [{ id: a.id, start: at, v: 2, body: 'not a body' }, { id: a.id, start: at, v: 2, body: { ...bump(a, 5000), maps: null } },
-      { id: a.id, start: at, v: 2 }];
-    await serve(page, { at: 0, matches: [...garbage, entry(a.id, bump(a, 5000), at + 1)] });
-    await load(page, wvw);
-    expect(await scoreOf(page, a.id), `${a.id} after bad entries`).toBe(sum(a));
-  });
-
-  // The cap alone stands between a newer body and the page.
-  test('a newer body over the size cap does not reach the page', async ({ page, wvw }) => {
-    const big = entry(a.id, { ...bump(a, 5000), pad: ' '.repeat(PAD) });
-    const latest = await serve(page, { at: 0, matches: [big] });
-    await load(page, wvw);
-    expect(latest.reads, 'reads of /api/latest').toBeGreaterThan(0);
-    expect(await settledScore(page, a.id, sum(a) + 5000), `${a.id}, a body over 256 KiB`).toBe(sum(a));
-  });
-});
 
 // Format 2 as the readers send it: the live part, its finished skirmishes apart.
 test.describe('the history of format 2', () => {
