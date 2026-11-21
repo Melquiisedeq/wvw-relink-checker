@@ -504,6 +504,63 @@ function retryStandingsNow() {
   loadStandings(standingsRetry ? 'retry' : 'manual');
 }
 
+// ---- Our copy inside the reset window ---------------------------------
+// The game serves partial lists, both weeks' tiers and, on a relink, a new week published then
+// taken back; our copy keeps a newer week once written. A copy body of a later week than the one
+// kept turns a region inside its window only with the whole region (copyTurnsWeek).
+const REGION_CODE = { NA: '1', EU: '2' };
+
+// The reset that began at `last` rebuilds the teams: the game's assignment timer, or for NA the
+// /api/relink window kept from the rebuild, names it; an unknown timer counts as one.
+function relinkReset(region, last) {
+  const at = region === 'NA' ? assignNA : assignEU;
+  const own = region === 'NA' && relinkState ? relinkState.window * 1000 : null;
+  return at === null || [at, own].some((t) => t !== null && Math.abs(t - last) < RESET_ARRIVAL_MS);
+}
+
+// True when the copy's `bodies` may draw `region` on its new week: every tier the page holds is
+// in them on the week that began at the reset (never two weeks at once); outside a relink, the
+// same teams as the week that ended (no tier short, ?world= finds every team; a relink's teams
+// are the game's to tell); every one written within LATEST_SUMMARY_FRESH_MS (the readers going).
+function copyTurnsWeek(region, bodies) {
+  const last = lastResetOf(region, steadyNow());
+  const code = REGION_CODE[region];
+  const held = [...newestMatches.keys()].filter((id) => id[0] === code);
+  const copy = new Map(bodies.filter((b) => b.id[0] === code).map((b) => [b.id, b]));
+  const turned = held.map((id) => copy.get(id));
+  if (!turned.every((b) => b && Date.parse(b.start_time) === last)) return false;
+  if (relinkReset(region, last)) return false;
+  const teamsOf = (list) => new Set(list.flatMap((m) => COLORS.map((c) => matchTeamId(m, c))));
+  const fresh = teamsOf(turned);
+  const was = teamsOf(held.map((id) => newestMatches.get(id).match));
+  if (fresh.size !== 3 * turned.length || [...fresh].some((t) => !was.has(t))) return false;
+  const now = Date.now() - ownClockLead;
+  return turned.every((b) => now - (latestBodyAt.get(b) || 0) <= LATEST_SUMMARY_FRESH_MS);
+}
+
+// For offerLatest (js/api.js): a copy body of a later week than the one kept, its region inside
+// the reset window, is held back unless copyTurnsWeek lets the region turn.
+function copyWeekHeldBack(body, bodies) {
+  const region = body.id[0] === '1' ? 'NA' : 'EU';
+  const kept = newestMatches.get(body.id);
+  return !!kept && regionResetting(region, steadyNow())
+    && Date.parse(body.start_time) > Date.parse(kept.match.start_time) && !copyTurnsWeek(region, bodies);
+}
+
+// For the peek: a region inside its reset window, outside a relink, whose summary holds every
+// tier on show on a later week, written within LATEST_SUMMARY_FRESH_MS. The load it asks reads
+// the copy, which copyWeekHeldBack still judges.
+function summaryTurned(region) {
+  const now = steadyNow();
+  if (!regionResetting(region, now) || relinkReset(region, lastResetOf(region, now))) return false;
+  const served = Date.now() - ownClockLead;
+  const shown = [...matchDataCache.values()].filter((m) => m.id[0] === REGION_CODE[region]);
+  return shown.length > 0 && shown.every((m) => {
+    const e = latestSummary.get(m.id);
+    return !!e && e.start > Date.parse(m.start_time) && served - (e.at || 0) <= LATEST_SUMMARY_FRESH_MS;
+  });
+}
+
 // Loads every active match (NA + EU) and powers the standings rails.
 // Results are cached, so a later guild check reuses them.
 async function loadStandings(origin = 'cycle') {
@@ -740,10 +797,11 @@ async function peekLatest() {
   for (const [id, k] of newestMatches) if (matchIsLive(k.match) && summaryAhead(k.match)) copied.add(id);
   if (copied.size && mapAhead) mapAhead(copied);
   const behind = [...copied].some((id) => now - steadyClockLead - newestMatches.get(id).at >= PEEK_BEHIND_MS);
-  if (!inHand && !behind) return;
+  const turned = summaryTurned('NA') || summaryTurned('EU');
+  if (!inHand && !behind && !turned) return;
   if (activeTrigger || standingsInFlight || standingsFailed.length || now - peekLoadedAt < PEEK_BEHIND_MS) return;
   peekLoadedAt = now;
-  peekCopy = behind;
+  peekCopy = behind || turned;
   await loadStandings('peek');
 }
 

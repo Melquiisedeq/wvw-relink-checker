@@ -815,20 +815,25 @@ async function latestRead(url = LATEST_URL) {
 }
 
 // The version of the history a body needs: its skirmishes from n + 1 on, n > 0, or
-// null when it holds them all from the first.
+// null when it holds them all from the first. `old`: the match began before the region's
+// last reset less RESET_ARRIVAL_MS (the slack regionResetting allows), whose history the
+// Worker, counting the week by the clock, never serves.
 function latestNeeds(body) {
   const first = Array.isArray(body.skirmishes) ? body.skirmishes[0] : null;
   const n = first && Number.isInteger(first.id) ? first.id - 1 : 0;
-  return n > 0 && n < WEEK_SKIRMISHES ? { region: body.id[0], start: Date.parse(body.start_time), n } : null;
+  if (!(n > 0 && n < WEEK_SKIRMISHES)) return null;
+  const start = Date.parse(body.start_time);
+  return { region: body.id[0], start, n, old: start < lastResetOf(REGION_NAMES[body.id[0]], steadyNow()) - RESET_ARRIVAL_MS };
 }
 
 // Puts each body's finished skirmishes back in front of its own, from the history
 // read once per version; a body whose history is not there is left out.
 async function latestJoin(bodies) {
   const want = new Map();
+  const needs = new Map(bodies.map((b) => [b, latestNeeds(b)]));
   for (const b of bodies) {
-    const v = latestNeeds(b);
-    if (!v) continue;
+    const v = needs.get(b);
+    if (!v || v.old) continue;
     const key = v.region + ':' + v.start + ':' + v.n;
     if (!want.has(key)) want.set(key, { ...v, ids: [] });
     want.get(key).ids.push(b.id);
@@ -843,8 +848,9 @@ async function latestJoin(bodies) {
   }));
   latestHistory = kept;
   return bodies.filter((b) => {
-    const v = latestNeeds(b);
+    const v = needs.get(b);
     if (!v) return true;
+    if (v.old) return false;
     const list = kept.get(v.region + ':' + v.start + ':' + v.n).lists.get(b.id);
     if (list) b.skirmishes = list.concat(b.skirmishes);
     return !!list;
@@ -948,11 +954,12 @@ function latestWanted(ids, behind = false) {
   });
 }
 
-// Offers the bodies of ids this visit already read from the game; returns
-// id -> the body kept.
+// Offers the bodies of ids this visit already read from the game, but a new week inside the reset
+// window that copyWeekHeldBack (js/standings.js) holds back; returns id -> the body kept.
 function offerLatest(bodies) {
   const out = new Map();
-  for (const body of bodies) if (newestMatches.has(body.id)) out.set(body.id, keepNewestMatch(body));
+  const offered = bodies.filter((b) => newestMatches.has(b.id) && !copyWeekHeldBack(b, bodies));
+  for (const body of offered) out.set(body.id, keepNewestMatch(body));
   return out;
 }
 

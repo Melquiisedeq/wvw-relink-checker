@@ -163,6 +163,40 @@ test.describe('the history of format 2', () => {
     expect(sum(await kept(page, a.id)), `${a.id}, its history there`).toBe(sum(a) + 5000);
   });
 
+  // A copy of `m` that began at `start`, its end moved with it, the running skirmish still in it.
+  const began = (m, start) => {
+    const shift = start - Date.parse(m.start_time);
+    return { ...liveOf(bump(m, 5000)), start_time: new Date(start).toISOString(), end_time: new Date(Date.parse(m.end_time) + shift).toISOString() };
+  };
+
+  test('a body that began before its region\'s last reset asks no history and is left out; one that began at it does', async ({ page, wvw }) => {
+    const pick = region => all.find(m => m.id[0] === region && historyOf(m).length > 0);
+    const [na, eu] = [pick('1'), pick('2')];
+    // A whole body beside them: the one that is left out takes no other with it.
+    const whole = all.find(m => ![na.id, eu.id].includes(m.id) && Date.parse(m.end_time) > recording().recordedAt);
+    let ids = [];
+    let starts = {};
+    let rise = 0;
+    await serve(page, { at: 0, get matches() { return [...ids.map(id => { const m = id === na.id ? na : eu; return entry(id, began(m, starts[id])); }), entry(whole.id, bump(whole, rise))]; } });
+    const asked = await serveHistory(page, wvw, () => null);
+    await load(page, wvw);
+    const resets = await page.evaluate(() => ({ 1: lastResetOf('NA', steadyNow()) - RESET_ARRIVAL_MS, 2: lastResetOf('EU', steadyNow()) - RESET_ARRIVAL_MS }));
+    expect(resets[1], 'the two regions reset at different times').not.toBe(resets[2]);
+    await wvw.skew(61 * 1000);
+    asked.length = 0;
+    for (const [m, before] of [[na, 1], [eu, 1], [na, 0], [eu, 0]]) {
+      ids = [m.id];
+      rise += 1000;
+      starts = { [m.id]: resets[m.id[0]] - before };
+      await wvw.skew(61 * 1000);
+      await read(page);
+      expect(asked, `${m.id}, began ${before} ms before the reset`).toEqual(before ? [] : [m.id[0] + '?' + historyOf(m).length]);
+      asked.length = 0;
+      expect(await scoreOf(page, m.id), `${m.id}, its history a 404: left out`).toBe(sum(m));
+      expect(sum(await kept(page, whole.id)), `${whole.id}, whole and newer at each read, beside ${m.id}`).toBe(sum(whole) + rise);
+    }
+  });
+
   test('a history that is not the version asked, or not the match\'s list, is not joined', async ({ page, wvw }) => {
     await serve(page, { at: 0, matches: [live(a)] });
     const n = historyOf(a).length;
