@@ -46,7 +46,7 @@ const countEmberFrames = page => page.addInitScript(() => {
   };
 });
 
-test('standing still and watched, the page draws only when the embers do', async ({ page, wvw }) => {
+test('standing still and watched, the page draws only when the embers do', { tag: '@timing' }, async ({ page, wvw }) => {
   await countEmberFrames(page);
   await load(page, wvw);
   await page.waitForTimeout(1500);
@@ -68,7 +68,7 @@ test('standing still and watched, the page draws only when the embers do', async
   expect(still.drawn, 'frames drawn in 2 s with the clock stopped').toBeLessThan(20);
 });
 
-test('a click draws only when the embers do: switching a map, opening and closing a popover', async ({ page, wvw }) => {
+test('a click draws only when the embers do: switching a map, opening and closing a popover', { tag: '@timing' }, async ({ page, wvw }) => {
   await countEmberFrames(page);
   await load(page, wvw);
   await page.waitForTimeout(1500);
