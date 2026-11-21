@@ -99,7 +99,7 @@ Then open `http://localhost:8000`. No API key, no account, nothing to set up.
 
 The Worker behind `wvwrelink.com/api` has tests, and so do the page's rules
 (its scripts loaded into a `node:vm`, no browser), with nothing to install
-(Node 22.13 or later, and `python3` for the six tests that run the checks):
+(Node 22.13 or later, and `python3` for the 37 tests in six files that run the checks):
 
     node --test "tests/unit/*.test.mjs"
 
@@ -143,12 +143,15 @@ commands above; `structure` runs without a network or an install:
 the page fetches and every key it stores must be listed there.
 
 `page` also fails if the page goes over its budget (`tests/e2e/data/budget.json`)
-or a file's test coverage falls (`tests/e2e/data/coverage.json`); the message says
+or a file's coverage under `node --test` falls (`tests/e2e/data/coverage.json`); the message says
 which measure and which file. The browser tests run on two machines, `e2e (1/2)` and `e2e (2/2)`. Another job,
 `warn`, is not required: it runs the tests tagged `@timing` (they count frames, which a busy runner
 moves) and `@quarantine` (one that fails for the machine, not the page, until it is fixed); red there
-blocks nothing, and its summary says what failed. `npm run coverage` in `tests/e2e` measures
-it locally, running both test suites and comparing with `data/coverage.json`.
+blocks nothing, and its summary says what failed. The coverage job's summary has the table per
+file with both suites joined, but only the `node --test` numbers have a floor: the browser's move a
+little between runs of one commit, the node tests' do not. `npm run coverage` in `tests/e2e` measures
+it locally, running both test suites and comparing with `data/coverage.json`; `npm run coverage:write`
+runs only the node tests and rewrites that file with their numbers.
 
 ## Words used in the code
 
