@@ -1664,8 +1664,9 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
 
 // ---- the score bar --------------------------------------------------
 // One segment per side, as wide as that side's share of THIS map, not the match total (identical on all four
-// tabs). The game's tick exists only at T3, so each objective is counted by what it paid before: its type and
-// tier (read from points_capture), which sums up who holds the map. A side that holds nothing shrinks out.
+// tabs). The game's tick exists only at T3, so each objective counts the tick its type and tier paid before the
+// War Score (BAR_TICK), the tier read from points_capture by BAR_CAPTURE (a value outside it counts as T0): it
+// sums up who holds the map. A side that holds nothing shrinks out.
 const BAR_TICK = Object.freeze({ Camp: [2, 3, 4, 5], Tower: [4, 6, 8, 10], Keep: [8, 12, 16, 20], Castle: [12, 16, 20, 24] });
 const BAR_CAPTURE = Object.freeze({ Camp: [2, 10, 15, 25], Tower: [25, 125, 200, 250], Keep: [100, 200, 400, 500], Castle: [200, 250, 300, 400] });
 function buildScoreBar(mapData, isLive) {

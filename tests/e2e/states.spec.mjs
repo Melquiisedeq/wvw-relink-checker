@@ -727,7 +727,6 @@ test.describe('a skirmish ends while the tab is away', () => {
 // panel says "Per tick" only when it ticks (a Keep, Tower or Castle at T3); the board's PPT is every tick of a team added up, the game's own "+N".
 const served = wvw => wvw.timeline.body(FOCUS, wvw.timeline.end);
 const objectivesOf = (b, type) => b.maps.find(m => m.type === type).objectives;
-const TEAM_OF = { red: 0, blue: 1, green: 2 };
 
 test.describe('the score bar of a borderland', () => {
   test.use({ timeline: gw2.match(FOCUS).advance(12).advance(6, { flips: 6 }).pageOpens() });
