@@ -199,6 +199,52 @@ for (const width of [1280, 360]) {
       }
     });
 
+    if (!stacked) test('the opening stamp the game puts on a whole map is no capture, per map; an empty body lists none and logs nothing', async ({ page, wvw }) => {
+      const tier = await opened(page, wvw);
+      const kept = await keptMatch(page, tier.id);
+      const route = await answer(page, tier.url, kept);
+      const CAP = ['Camp', 'Tower', 'Keep', 'Castle'];
+      const base = await page.evaluate(() => Date.now()) - 60000;
+      const at = ms => new Date(base - ms).toISOString();
+      const [m0, m1, m2, m3] = kept.maps;
+      expect(kept.maps.length, 'maps in the body').toBeGreaterThanOrEqual(4);
+      const split = m => ({ cap: m.objectives.filter(o => CAP.includes(o.type)), non: m.objectives.filter(o => !CAP.includes(o.type)) });
+      const S = [m0, m1, m2, m3].map(split);
+      for (const g of S) { expect(g.cap.length, 'capturable').toBeGreaterThanOrEqual(6); expect(g.non.length, 'the rest').toBeGreaterThanOrEqual(3); }
+      const H = 3600000, M = 60000;
+      const want = [];
+      // Every objective of the map on one second, the newest of all: the opening, nothing to list.
+      for (const o of m0.objectives) { o.last_flipped = at(M); if (CAP.includes(o.type)) o.owner = 'Red'; }
+      // The stamp older than the newest capture and inside its 30 min: the rest of the map's
+      // objectives, and two owned capturables, carry it; five real captures come after it.
+      S[1].non.forEach(o => { o.last_flipped = at(2 * H + 20 * M); });
+      S[1].cap.forEach((o, k) => {
+        o.owner = k < 7 ? 'Red' : 'Neutral';
+        o.last_flipped = at(k < 5 ? 2 * H - k * 20000 : k < 7 ? 2 * H + 20 * M : 2 * H - 100000 - k * 1000);
+        if (k < 5) want.push(o.id);
+      });
+      // Two captures on the oldest second are real: under three they are no stamp.
+      S[2].non.forEach((o, j) => { o.last_flipped = at(2 * H - 120000 - j * 1000); });
+      S[2].cap.forEach((o, k) => { o.owner = k < 3 ? 'Red' : 'Neutral'; o.last_flipped = at(k < 2 ? 2 * H + 10 * M : k === 2 ? 2 * H + 5 * M : 2 * H - 130000 - k * 1000); if (k < 3) want.push(o.id); });
+      // The map's stamp on its other objectives is older than three captures that share a second: those are captures.
+      S[3].non.forEach(o => { o.last_flipped = at(2 * H + 20 * M); });
+      S[3].cap.forEach((o, k) => { o.owner = k < 3 ? 'Red' : 'Neutral'; o.last_flipped = at(k < 3 ? 2 * H + 9 * M : 2 * H + 5 * M - k * 1000); if (k < 3) want.push(o.id); });
+      for (const m of kept.maps.slice(4)) for (const o of m.objectives) o.last_flipped = at(9 * H);
+      await wvw.skew(31000);
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await tab(page, 'captures').click();
+      await expect(tab(page, 'captures')).toHaveText(`Captures (${want.length})`);
+      expect(want.length).toBe(11);
+      expect((await state(page)).caps.slice().sort(), 'only the real captures').toEqual(want.slice().sort());
+      // The same match with no objectives yet.
+      for (const m of kept.maps) m.objectives = [];
+      await wvw.skew(31000);
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await expect(tab(page, 'captures')).toHaveText('Captures (0)');
+      await expect(page.locator(`${POP} .wvw-caps .wvw-caps-none`)).toHaveText('No recent captures.');
+      expect(route, 'the route is still ours').toBeTruthy();
+    });
+
     test('over 40 captures the list ends with how many older ones it leaves out, and no line at 40 or fewer', async ({ page, wvw }) => {
       const tier = await opened(page, wvw);
       const kept = await keptMatch(page, tier.id);

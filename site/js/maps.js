@@ -2418,6 +2418,9 @@ function paintMissedNow(view) {
 const CAPTURES_WINDOW_MS = 30 * 60 * 1000;
 const CAPTURES_MAX = 40;
 const CAPTURE_TYPES = new Set(['Camp', 'Tower', 'Keep', 'Castle']);
+// The game stamps every objective of a map with the second the map opened, with
+// no capture; that stamp is the map's oldest last_flipped, shared by at least this many.
+const OPENING_STAMP_MIN = 3;
 // The tabs' pane (renderTierMapsContent). MAP_STACKED is css/maps.css's
 // breakpoint, where the column goes under the map.
 const MAP_STACKED = '(max-width: 760px)';
@@ -2425,23 +2428,35 @@ const PANE_ROOM = 80;    // px left under the board, stacked: room for charts la
 const PANE_MIN = 210;    // px, stacked
 const PANE_FLOOR = 150;  // px, beside the map: under this the column outgrows the map
 
+// The opening stamp of one map's objectives, or NaN.
+function openingStamp(map) {
+  let min = Infinity, n = 0;
+  for (const o of missedObjectives(map)) {
+    const at = Date.parse(o && o.last_flipped);
+    if (!Number.isFinite(at)) continue;
+    if (at < min) { min = at; n = 1; } else if (at === min) n++;
+  }
+  return n >= OPENING_STAMP_MIN ? min : NaN;
+}
+
 function recentCaptures(match) {
   // A clock running ahead on the API's side must not set the window.
   const ceiling = steadyNow() + 60000;
   let newest = 0;
-  for (const map of missedMaps(match)) {
+  const maps = missedMaps(match).map(map => ({ map, stamp: openingStamp(map) }));
+  for (const { map, stamp } of maps) {
     for (const o of missedObjectives(map)) {
       const at = Date.parse(o && o.last_flipped);
-      if (Number.isFinite(at) && at <= ceiling) newest = Math.max(newest, at);
+      if (Number.isFinite(at) && at <= ceiling && at !== stamp) newest = Math.max(newest, at);
     }
   }
   const out = [];
-  for (const map of missedMaps(match)) {
+  for (const { map, stamp } of maps) {
     for (const o of missedObjectives(map)) {
       if (!o || typeof o.id !== 'string' || !CAPTURE_TYPES.has(o.type)) continue;
       const owner = missedOwner(o.owner);
       const at = Date.parse(o.last_flipped);
-      if (owner === 'neutral' || !Number.isFinite(at) || at > newest || newest - at > CAPTURES_WINDOW_MS) continue;
+      if (owner === 'neutral' || !Number.isFinite(at) || at === stamp || at > newest || newest - at > CAPTURES_WINDOW_MS) continue;
       out.push({ at, id: o.id, type: o.type, owner, map: map.type });
     }
   }
