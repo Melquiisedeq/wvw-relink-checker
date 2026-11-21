@@ -234,12 +234,7 @@ test('the teams notice goes up once the sheet says the new table is out', async 
   await expect(notice(page).locator('.teams-notice-spoken')).toHaveText('guild list shield');
 });
 
-test('the teams notice stays down while nothing is published', async ({ page, wvw }) => {
-  await open(page, wvw, { ...rebuilding, published: 0 });
-  await expect(banner(page)).toHaveClass(/is-rebuild/);
-  await expect(notice(page)).toBeHidden();
-});
-
+// Nothing published stays down too: notice.spec.mjs's relinkWindow asserts the notice hidden in the rebuild before any count.
 test('the teams notice stays down for another window\'s count', async ({ page, wvw }) => {
   const last = Math.floor((wvw.opensAt + rebuilding.assign.na) / 1000) - 30 * 24 * 3600;
   await open(page, wvw, { ...rebuilding, published: 7, window: last });

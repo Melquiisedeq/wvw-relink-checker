@@ -36,8 +36,8 @@ test('guild found: the card blinks, the strip names the guild and leaves', async
 });
 
 // A guild lookup answered 429 (after its retries) says nothing about the guild:
-// the next Check asks again. A 404 is a definite answer and is kept.
-test('a 429 is not kept against a guild, a 404 is', async ({ page, wvw }) => {
+// the next Check asks again. (That a 404 is kept is guild-errors.spec.mjs.)
+test('a 429 is not kept against a guild', async ({ page, wvw }) => {
   await load(page, wvw);
   const id = 'ZZZZ-CHECK-PAGE-GUILD';
   const url = `https://api.guildwars2.com/v2/guild/${id}`;
@@ -50,13 +50,6 @@ test('a 429 is not kept against a guild, a 404 is', async ({ page, wvw }) => {
   const found = await answer(page, url, { id, name: 'Check Page Guild', tag: 'CPG', emblem: null });
   expect(await page.evaluate(ask, id), 'the lookup after the 429').toBe('ok Check Page Guild');
   found.off();
-  await page.evaluate(id => guildNameCache.delete(id), id);
-
-  const gone = await fail(page, wvw, url, 404);
-  await page.evaluate(ask, id);
-  await page.evaluate(ask, id);
-  expect(gone.reads, 'times a 404 was asked in two lookups (kept: 1)').toBe(1);
-  gone.off();
   await wvw.settle();
 });
 
