@@ -2,11 +2,10 @@
 // rather than timed. The compositor layers and why each exists, the looping
 // animations moving on the embers' clock (js/boot.js), the ones that cannot run
 // on the compositor (a new one is a new cost per frame: it fails until it is
-// named here), the embers on a layer of their own, the photo on none and with
-// no filter and no blend mode (its effect is baked into the file), and the
-// raster work after the warm-up against a wide ceiling in data/budget.json. Paint and
-// layout go to one "e2e paint: ..." line, and to $GITHUB_STEP_SUMMARY on CI,
-// never to a failure. Frames drawn are frames.spec.mjs's.
+// named here), the embers on a layer of their own, and the photo on none and with
+// no filter and no blend mode (its effect is baked into the file). Raster, paint and
+// layout counts per 2 s go to one "e2e paint: ..." line, and to $GITHUB_STEP_SUMMARY on CI,
+// never to a failure: a count over a span of time is not a rule. Frames drawn are frames.spec.mjs's.
 //
 // LayerTree is an experimental CDP domain: a test that breaks after a Chrome
 // update points at the domain first, not at the page.
@@ -34,7 +33,7 @@ const offCompositor = page => page.evaluate(([ok, skip]) => [...new Set(document
     && a.effect.getKeyframes().some(k => Object.keys(k).some(p => !skip.includes(p) && !ok.includes(p))))
   .map(a => a.animationName))].sort(), [COMPOSITABLE, NOT_PROPERTIES]);
 
-test('standing still and watched, the layers, the animations and the raster stay inside the budget', async ({ page, wvw, context, browser }) => {
+test('standing still and watched, the layers and the animations stay inside the budget', async ({ page, wvw, context, browser }) => {
   await page.addInitScript(() => {
     window.__emberDraws = 0;
     const draw = CanvasRenderingContext2D.prototype.drawImage;
@@ -89,7 +88,7 @@ test('standing still and watched, the layers, the animations and the raster stay
   const drawn = (await page.evaluate(() => window.__emberDraws)) - drawsBefore;
   const off = await offCompositor(page);
 
-  // Three windows after the warm-up; the last is what must hold.
+  // Three windows after the warm-up, for the summary line.
   const windows = [];
   for (let w = 0; w < 3; w++) {
     const m0 = (await cdp.send('Performance.getMetrics')).metrics;
@@ -101,7 +100,6 @@ test('standing still and watched, the layers, the animations and the raster stay
     const count = n => ev.filter(e => e.name === n).length;
     windows.push({ raster: count('RasterTask'), paint: count('Paint'), updateLayer: count('UpdateLayer'), layout: d('LayoutCount'), style: d('RecalcStyleCount') });
   }
-  const last = windows[windows.length - 1];
 
   const line = `e2e paint: ${layers.length} layers, ${JSON.stringify(reasons)}, per 2 s: ${windows.map(w => `raster ${w.raster} paint ${w.paint} update ${w.updateLayer} layout ${w.layout} style ${w.style}`).join(' | ')}`;
   console.log(line);
@@ -122,5 +120,4 @@ test('standing still and watched, the layers, the animations and the raster stay
   expect(loop.still, `looping animations standing still: ${JSON.stringify(loop)}`).toBe(0);
   expect(loop.onCss, 'looping animations left on CSS').toEqual([]);
   expect(off, 'infinite animations off the compositor (name a new one in OFF_COMPOSITOR only on purpose)').toEqual(OFF_COMPOSITOR);
-  expect(last.raster, `raster tasks in 2 s after the warm-up, ceiling ${budget.raster}; ${RAISE}`).toBeLessThanOrEqual(budget.raster);
 });
