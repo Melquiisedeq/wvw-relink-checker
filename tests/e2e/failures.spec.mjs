@@ -3,7 +3,7 @@
 // and /api down so that the page falls back to the sheets. Then the game's API
 // and ours failing in each way a player can meet: what is on screen in each.
 import { test, expect } from './support/fixtures.mjs';
-import { abort, answer, fail, hold, holdSummary } from './support/faults.mjs';
+import { abort, answer, fail, hold, holdSummary, stall } from './support/faults.mjs';
 import { firstTier, later, load, openMap } from './support/steps.mjs';
 import { recording } from './support/recordings.mjs';
 import { MIN, killRows, killsGap, playing } from './support/scenarios.mjs';
@@ -419,4 +419,49 @@ test('a guild emblem asked while the emblem catalogue was down is drawn on the n
   await answer(page, /\/v2\/emblem\/backgrounds/, [{ id: 1, layers: ['https://render.guildwars2.com/b.png'] }]);
   await answer(page, /\/v2\/emblem\/foregrounds/, [{ id: 2, layers: ['https://render.guildwars2.com/f0.png', 'https://render.guildwars2.com/f1.png'] }]);
   expect(await layers(), 'layers of the same guild once the catalogue is back').toBe(2);
+});
+
+// A sheet that never answers: the page ends the read itself at REQUEST_TIMEOUT_MS (js/config.js) and
+// carries on as it does when the read fails, and the next ask reads again.
+test.describe('a sheet that never answers', () => {
+  test.use({ clock: 'playwright' });
+  const KILLS = /^https:\/\/docs\.google\.com\/spreadsheets\/.*sheet=kills/;
+  const pastDeadline = (page) => page.clock.runFor(11 * 1000);
+
+  test('the kill history: the first read ends empty at the deadline, the next ask reads the sheet again', async ({ page, wvw }) => {
+    let target;
+    const sheet = await answer(page, KILLS, async () => (await killRows(page, target, 7 * MIN)).map(r => r.join(',')).join('\n'),
+      { contentType: 'text/csv', noStore: false });
+    const silent = await stall(page, KILLS);
+    await load(page, wvw);
+    target = (await firstTier(page)).id;
+    await fail(page, wvw, /^http:\/\/127\.0\.0\.1:\d+\/api\/kills$/);
+    await page.evaluate(() => {
+      killSheet = null; killSheetAt = 0;
+      window.__kills = null;
+      getKillSheet().then(m => { window.__kills = m.size; });
+    });
+    await expect.poll(() => silent.reads, { message: 'the read went out and got no answer' }).toBe(1);
+    await pastDeadline(page);
+    await expect.poll(() => page.evaluate(() => window.__kills), { message: 'getKillSheet settled once the deadline passed' }).toBe(0);
+    expect(sheet.reads, 'the stalled read never reached the recording').toBe(0);
+    expect(await page.evaluate(async () => (await getKillSheet()).size), 'the next ask reads the sheet again').toBeGreaterThan(0);
+    expect(sheet.reads).toBe(1);
+  });
+
+  test('the community guild list: the popover says it could not load, and opens with the list the next time', async ({ page, wvw }) => {
+    const silent = await stall(page, /^https:\/\/docs\.google\.com\/spreadsheets\/.*sheet=SoloGuilds/);
+    await load(page, wvw);
+    await page.evaluate(() => { communityGuildsCache = null; });
+    const btn = page.locator('.server-guilds-btn').locator('visible=true').first();
+    const body = page.locator('.info-popover--guilds');
+    await btn.click();
+    await expect(body).toContainText('Loading community list');
+    await expect.poll(() => silent.reads, { message: 'the read went out and got no answer' }).toBe(1);
+    await pastDeadline(page);
+    await expect(body, 'the message once the deadline passed').toContainText("Couldn't load the community guild list right now.");
+    await btn.click();
+    await btn.click();
+    await expect(page.locator('.info-popover--guilds .guild-line').first(), 'the next opening reads again and lists').toBeVisible();
+  });
 });

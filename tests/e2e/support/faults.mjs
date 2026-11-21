@@ -48,6 +48,19 @@ export async function abort(page, wvw, re, { first = Infinity } = {}) {
   return state;
 }
 
+// A reply that never comes: the first `first` GETs whose address matches are left
+// open (no answer, no cut), whatever the page's clock does, so only the page's own
+// deadline ends them; later ones go to the route registered before this one. The
+// address is the test's own RegExp.
+export async function stall(page, re, { first = 1 } = {}) {
+  const state = { reads: 0, on: true, off() { state.on = false; } };
+  await page.route(re, async route => {
+    if (!state.on || route.request().method() !== 'GET' || state.reads >= first) return route.fallback();
+    state.reads++;
+  });
+  return state;
+}
+
 // Holds every read of one address until the returned function is called, then the
 // recording answers. release.reads counts the reads that reached it.
 export async function hold(page, url) {
