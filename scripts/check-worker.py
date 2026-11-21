@@ -120,6 +120,8 @@ LATEST_WORKER_STALE = worker_seconds(WORKER, 'STALE_LATEST_S')
 # When a region's week starts, UTC (day 0 = Sunday).
 RESET = worker_reset(WORKER)
 SKIRMISH_SECONDS = worker_seconds(WORKER, 'SKIRMISH_MS')
+# The history read takes versions up to the one the ingest takes this much early.
+SKEW_SECONDS = worker_seconds(WORKER, 'MAX_SKEW_S')
 # A match whose summary is newer than this is live, and its kills must follow.
 KILLS_LIVE_SUMMARY_S = 5 * 60
 # How far its newest kills line may trail the summary's `at` (seconds there,
@@ -289,7 +291,10 @@ def check_copy(age, now, problems, notes):
             notes.append('%-34s skipped, week just begun' % ('/api/history/%d' % region))
             continue
         why = None
-        for v in (n, n - 1):
+        # The readers keep one history row per match: in the last SKEW_SECONDS of a block
+        # it may already be the next version's.
+        ceiling = (now - week_start(region, now) + SKEW_SECONDS) // SKIRMISH_SECONDS
+        for v in dict.fromkeys((n, ceiling, n - 1)):
             data, why = get_json('%shistory/%d?v=%d' % (API, region, v))
             if why is None and isinstance(data, dict) and data.get('matches'):
                 notes.append('%-34s v=%d, %d matches' % (

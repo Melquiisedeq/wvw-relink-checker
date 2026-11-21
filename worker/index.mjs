@@ -952,7 +952,9 @@ function sameBytes(a, b) {
 
 // GET /api/history/<region>?v=<n>: the region's finished skirmishes of this week. n is how
 // many have finished by the clock, or one fewer (a reader sends them a little after the
-// turn); anything else is a miss before D1 is read, so a parameter costs no row.
+// turn), up to the version the ingest takes (the game turns a skirmish before the hour);
+// anything else is a 404 before D1 is read, so a parameter costs no row. A valid version D1
+// does not hold yet is a 200 with no matches, for the short miss time.
 // {v, start, matches: {id: [skirmish 1, ..., skirmish n]}}, only the matches at n.
 async function readHistory(env, ctx, url) {
   const region = /^\/api\/history\/([12])$/.exec(url.pathname);
@@ -962,7 +964,8 @@ async function readHistory(env, ctx, url) {
   const start = weekStart(region[1], nowMs);
   const n = Math.floor((nowMs - start) / SKIRMISH_MS);
   const want = Number(v[1]);
-  if (want !== n && want !== n - 1) return miss();
+  const ceiling = Math.floor((nowMs - start + MAX_SKEW_S * 1000) / SKIRMISH_MS);
+  if (want < n - 1 || want > ceiling) return miss();
   const ids = MATCHES.filter((id) => id[0] === region[1]);
   const key = HISTORY_KEY + region[1] + '?v=' + want + '&start=' + start;
   // Every answer is kept for as long as it says: a stranger repeating a valid version costs
@@ -974,11 +977,10 @@ async function readHistory(env, ctx, url) {
       'LEFT JOIN history h ON h.match = l.id WHERE l.start = ?1 AND l.id IN (' + ids.map((_, i) => '?' + (i + 3)).join(', ') + ')'
     ).bind(start, want, ...ids).all();
     const at = results.filter((r) => r.body !== null).sort((a, b) => (a.match < b.match ? -1 : 1));
-    if (!at.length) return miss();
     const whole = at.length === results.length;
     const body = '{"v":' + want + ',"start":' + start + ',"matches":{' +
       at.map((r) => JSON.stringify(r.match) + ':' + r.body).join(',') + '}}';
-    return json(body, whole ? HISTORY_MAX_AGE : HISTORY_PARTIAL_MAX_AGE);
+    return json(body, !at.length ? HISTORY_MISS_MAX_AGE : whole ? HISTORY_MAX_AGE : HISTORY_PARTIAL_MAX_AGE);
   });
 }
 

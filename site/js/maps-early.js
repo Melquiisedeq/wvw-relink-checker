@@ -614,12 +614,12 @@ function missedView(note) {
     && missedKillTotal(kept.match) > missedKillTotal(after) ? kept.match : after;
   const corner = killView(body);
   const start = period.start;
-  const end = Math.max(corner.clock || period.end, start,
+  const end = Math.max(corner.clock, start,
     ...listed.map((c) => (c.flipped <= endAt ? c.flipped : -Infinity)));
 
   const list = fightSamples(after);
   const base = killHighs(fightTotals(before), list.filter((s) => s.at <= start));
-  const high = corner.high || killHighs(fightTotals(body), list);
+  const high = { ...corner.high };   // a week that has just ended gives clock 0 and no high: no kills, the end at the start
   const order = Object.keys(MAP_TAB_NAME);
   const perMap = Object.keys(high)
     .map((type) => ({ type, n: Math.max(0, high[type] - (Number(base[type]) || 0)) }))
@@ -691,13 +691,15 @@ function missedFold(matchId) {
 
 // `note.held` (set by each paint of the box): the reader has the mouse over it
 // or the focus in it, so the ten minutes wait. A turned week never waits, its
-// summary would be wrong. Every body offered asks too (missedRefreshNote), so
+// summary would be wrong, and neither does one whose week has ended (the next
+// is not published yet). Every body offered asks too (missedRefreshNote), so
 // the flag lives on the note, not in the caller.
 function missedNoteFor(matchId) {
   const note = missedNotes.get(matchId);
   const kept = newestMatches.get(matchId);
   const turned = note && kept && kept.match.start_time !== note.after.start_time;
-  if (note && (turned || (!note.held && steadyNow() > note.until))) { missedNotes.delete(matchId); return null; }
+  const over = note && !matchIsLive(note.after);
+  if (note && (turned || over || (!note.held && steadyNow() > note.until))) { missedNotes.delete(matchId); return null; }
   return note || null;
 }
 
