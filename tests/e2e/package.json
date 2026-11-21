@@ -6,8 +6,7 @@
     "test": "playwright test",
     "test:10x": "playwright test --repeat-each=10",
     "coverage": "node support/coverage.mjs run",
-    "coverage:write": "node support/coverage.mjs run-write",
-    "coverage:sweep": "node support/coverage.mjs sweep-run"
+    "coverage:write": "node support/coverage.mjs run-write"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",
