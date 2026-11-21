@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { workerHarness } from './worker-harness.mjs';
-import { signHeaders } from './signed.mjs';
+import { signHeaders, defineSignatureTests } from './signed.mjs';
 
 const SOURCES = {
   'latest-supa-us': 'INGEST_LATEST_SUPA_US', 'latest-supa-eu': 'INGEST_LATEST_SUPA_EU'
@@ -93,16 +93,20 @@ test('a source dropped from the Worker stays refused even with its secret in the
   assert.equal(await w.post('latest-vercel-eu', body([match('1-1')]), { key: 'c'.repeat(128) }), 404);
 });
 
-test('the entrance refuses what is not a signed, fresh, small message', async (t) => {
+defineSignatureTests(test, [{
+  name: 'latest', source: US, envName: 'INGEST_LATEST_SUPA_US', make: (env) => setup({ env }),
+  body: () => body([match('1-1')]), otherKey: KEYS[EU], otherPath: '/api/ingest/' + EU,
+  untouched: (w) => {
+    assert.equal(w.count('latest'), 0);
+    assert.equal(w.sql.prepare('SELECT t FROM source WHERE name = ?').get(US).t, 0, 'no claim either');
+  }
+}]);
+
+test('the entrance refuses what is not a small message to a reader that exists', async (t) => {
   const w = setup();
   const good = body([match('1-1')]);
   const t0 = Math.floor(w.now / 1000);
   const cases = [
-    ['no signature headers', () => w.post(US, good, { headers: {} }), 401],
-    ['signed with another reader\'s secret', () => w.post(US, good, { key: KEYS[EU] }), 401],
-    ['signed for another reader\'s path', () => w.post(US, good, { sigPath: '/api/ingest/' + EU }), 401],
-    ['six minutes in the future', () => w.post(US, good, { t: t0 + 360 }), 401],
-    ['six minutes old', () => w.post(US, good, { t: t0 - 360 }), 401],
     ['over 256 KB, declared', () => w.post(US, good, { extra: { 'content-length': String(257 * 1024) } }), 413],
     ['over 256 KB, streamed with no length', async () => {
       const big = new ReadableStream({
@@ -114,11 +118,6 @@ test('the entrance refuses what is not a signed, fresh, small message', async (t
       });
       return (await w.call(req)).status;
     }, 413],
-    ['a reader with no secret', async () => (await setup({ env: { INGEST_LATEST_SUPA_US: undefined } }).post(US, good)), 404],
-    ['a reader with a 63 character secret', async () => {
-      const k = 'a'.repeat(63);
-      return setup({ env: { INGEST_LATEST_SUPA_US: k } }).post(US, good, { key: k });
-    }, 404],
     ['a reader that does not exist', () => w.post('latest-nope', good), 404],
     ['GET on the entrance', async () => (await w.get('/api/ingest/' + US)).status, 405]
   ];
@@ -129,14 +128,11 @@ test('the entrance refuses what is not a signed, fresh, small message', async (t
   assert.equal(w.sql.prepare("SELECT t FROM source WHERE name = ?").get(US).t, 0, 'no claim either');
 });
 
-test('replay: the same time twice, an earlier one; one reader does not block another', async () => {
+test('replay: one reader does not block another', async () => {
   const w = setup();
   const t = Math.floor(w.now / 1000);
-  const b = body([match('1-1')]);
-  assert.equal(await w.post(US, b, { t }), 200);
-  assert.equal(await w.post(US, b, { t }), 409);
-  assert.equal(await w.post(US, b, { t: t - 1 }), 409);
-  assert.equal(await w.post(EU, b, { t: t - 1 }), 200);
+  assert.equal(await w.post(US, body([match('1-1')]), { t }), 200);
+  assert.equal(await w.post(EU, body([match('1-1')]), { t: t - 1 }), 200);
 });
 
 test('a bad summary refuses the whole message, and not even the claim is written', async (t) => {

@@ -4,7 +4,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../../worker/index.mjs';
-import { RELINK_KEY, NA_WEEK, EU_WEEK, setup } from './worker-harness.mjs';
+import { KILLS_KEY, RELINK_KEY, NA_WEEK, EU_WEEK, setup } from './worker-harness.mjs';
+import { defineSignatureTests } from './signed.mjs';
 
 test('the entrance takes a signed message from each source', async () => {
   const w = setup();
@@ -15,17 +16,23 @@ test('the entrance takes a signed message from each source', async () => {
     { window_at: 1790992800, published: 0 });
 });
 
-test('the entrance refuses what is not a signed, fresh, well-formed message', async (t) => {
+defineSignatureTests(test, [
+  {
+    name: 'kills', source: 'kills', envName: 'INGEST_KILLS', make: (env) => setup({ env }),
+    body: (w) => ({ rows: w.rows(w.now) }), otherKey: RELINK_KEY, otherPath: '/api/ingest/relink',
+    untouched: (w) => assert.equal(w.sql.prepare('SELECT count(*) n FROM kills').get().n, 0)
+  },
+  {
+    name: 'relink', source: 'relink', envName: 'INGEST_RELINK', make: (env) => setup({ env }),
+    body: (w) => w.relink(), otherKey: KILLS_KEY, otherPath: '/api/ingest/kills',
+    untouched: (w) => assert.equal(w.sql.prepare('SELECT count(*) n FROM relink').get().n, 0)
+  }
+]);
+
+test('the entrance refuses what is not a well-formed message', async (t) => {
   const w = setup();
   const good = JSON.stringify({ rows: w.rows(w.now) });
   const cases = [
-    ['no signature headers', () => w.post('kills', good, { headers: {} }), 401],
-    ['signed with the other source\'s secret', () => w.post('kills', good, { key: RELINK_KEY }), 401],
-    // The right key and body, signed for the kills path: only the path in the
-    // signature can refuse it.
-    ['signed for the other path', () => w.post('relink', w.relink(), { sigPath: '/api/ingest/kills' }), 401],
-    ['six minutes in the future', () => w.post('kills', good, { t: Math.floor(w.now / 1000) + 360 }), 401],
-    ['six minutes old', () => w.post('kills', good, { t: Math.floor(w.now / 1000) - 360 }), 401],
     ['over 64 KB', () => w.post('kills', JSON.stringify({ rows: [], pad: 'x'.repeat(65 * 1024) })), 413],
     ['not JSON', () => w.post('kills', '{rows:'), 400],
     ['a match id that cannot exist', () => w.post('kills', { rows: [[w.now, '9-9', 1, 2, 3, 4, NA_WEEK, 100]] }), 422],
@@ -40,15 +47,6 @@ test('the entrance refuses what is not a signed, fresh, well-formed message', as
     await t.test(name, async () => assert.equal(await send(), want));
   }
   assert.equal(w.sql.prepare('SELECT count(*) n FROM kills').get().n, 0, 'nothing refused was written');
-});
-
-test('a message signed at or before the last accepted one is a replay', async () => {
-  const w = setup();
-  const body = { rows: w.rows(w.now) };
-  const t = Math.floor(w.now / 1000);
-  assert.equal(await w.post('kills', body, { t }), 200);
-  assert.equal(await w.post('kills', body, { t }), 409);
-  assert.equal(await w.post('kills', body, { t: t - 1 }), 409);
 });
 
 // killsInsert lets the row furthest along win, so a row ahead of the truth would keep every honest
@@ -105,13 +103,6 @@ test('a chunked body with no length is cut off, not held', async () => {
   } finally {
     Date.now = real;
   }
-});
-
-test('a missing or short secret closes the source rather than weakening it', async () => {
-  const none = setup({ env: { INGEST_KILLS: undefined } });
-  assert.equal(await none.post('kills', { rows: none.rows(none.now) }), 404);
-  const half = setup({ env: { INGEST_KILLS: 'k'.repeat(63) } });
-  assert.equal(await half.post('kills', { rows: half.rows(half.now) }, { key: 'k'.repeat(63) }), 404);
 });
 
 test('only the three entrance paths and three reads exist', async () => {
