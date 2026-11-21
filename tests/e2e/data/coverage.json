@@ -1,7 +1,7 @@
 {
   "site/js/api.js": {
-    "lines": 57.2,
-    "branches": 58.7
+    "lines": 59.6,
+    "branches": 63.4
   },
   "site/js/config.js": {
     "lines": 97.5,
@@ -16,8 +16,8 @@
     "branches": 0
   },
   "site/js/maps-early.js": {
-    "lines": 59.9,
-    "branches": 64.5
+    "lines": 68.8,
+    "branches": 73.1
   },
   "site/js/maps.js": {
     "lines": 19,
@@ -53,7 +53,7 @@
   },
   "site/js/standings.js": {
     "lines": 33.1,
-    "branches": 33.7
+    "branches": 34.1
   },
   "site/js/stat-popovers.js": {
     "lines": 43.6,
