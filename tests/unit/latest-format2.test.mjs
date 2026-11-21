@@ -134,7 +134,7 @@ test('format 2 without the history table: the live parts go in, the summary has 
   assert.equal((await quiet(() => w.get('/api/history/1?v=' + NA_DONE))).r.status, 503);
 });
 
-test('/api/history: a version that is not the current one is a short 404 that never reads D1', async () => {
+test('/api/history: a version outside the window is a short 404 that never reads D1', async () => {
   const w = setup({ env: SUPA_ENV });
   assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', hist: { n: NA_DONE } }, { id: '2-1', start: EU_WEEK, hist: { n: 57 } }]), 200);
   const n = countQueries(w);
@@ -151,19 +151,57 @@ test('/api/history: a version that is not the current one is a short 404 that ne
   assert.equal(n.q, 0, 'no statement prepared');
   assert.equal((await w.get('/api/history/1?v=' + NA_DONE, 'POST')).status, 405);
   assert.equal(n.q, 0);
-  // Valid: one read each. The version before is valid too, and the D1 does not hold it: a short 404.
+  // Valid: one read each. The version before is valid too, and the D1 does not hold it: a 200 with no matches.
   assert.equal((await w.get('/api/history/1?v=' + NA_DONE)).status, 200);
   assert.equal((await w.get('/api/history/2?v=57')).status, 200);
   const before = await w.get('/api/history/1?v=' + (NA_DONE - 1));
-  assert.equal(before.status, 404);
+  assert.equal(before.status, 200);
+  assert.deepEqual(JSON.parse(before.body), { v: NA_DONE - 1, start: NA_WEEK, matches: {} });
   assert.equal(before.headers.get('cache-control'), 'public, max-age=10');
   assert.equal(n.q, 3);
   // On the turn the clock moves the window: 54 is now current and 53 the one before.
   w.advance(2 * 3600e3);
   assert.equal((await w.get('/api/history/1?v=' + NA_DONE)).status, 200);
-  assert.equal((await w.get('/api/history/1?v=' + (NA_DONE + 1))).status, 404);
+  assert.equal((await w.get('/api/history/1?v=' + (NA_DONE + 1))).status, 200);
+  assert.equal((await w.get('/api/history/1?v=' + (NA_DONE + 2))).status, 404);
   assert.equal((await w.get('/api/history/1?v=' + (NA_DONE - 1))).status, 404);
   assert.equal(n.q, 5);
+});
+
+test('/api/history: the ceiling is the ingest one, MAX_SKEW_S before the hour', async () => {
+  const w = setup({ env: SUPA_ENV });
+  w.advance(2 * 3600e3 - 240e3);
+  assert.equal((await w.get('/api/history/1?v=' + (NA_DONE + 1))).status, 200, '4 min before the hour');
+  w.advance(-120e3);
+  assert.equal((await w.get('/api/history/1?v=' + (NA_DONE + 1))).status, 404, '6 min before the hour');
+});
+
+test('/api/history: the version the game turns to before the hour is read, the others are not', async () => {
+  const w = setup({ env: SUPA_ENV });
+  w.advance(2 * 3600e3 - 50e3);
+  assert.equal(await pushV2(w, 'latest-supa-us', [{ id: '1-1', hist: { n: NA_DONE + 1 } }]), 200);
+  const n = countQueries(w);
+  const ahead = await w.get('/api/history/1?v=' + (NA_DONE + 1));
+  assert.equal(ahead.status, 200, '50 s before the hour the history of the turned skirmish is there');
+  assert.deepEqual(Object.keys(JSON.parse(ahead.body).matches), ['1-1']);
+  assert.equal(ahead.headers.get('cache-control'), 'public, max-age=14400');
+  assert.equal(n.q, 1);
+  // A valid version not written yet: 200 with no matches and the miss time, never a 404.
+  const unwritten = await w.get('/api/history/2?v=' + 58);
+  assert.equal(unwritten.status, 200);
+  assert.deepEqual(JSON.parse(unwritten.body), { v: 58, start: EU_WEEK, matches: {} });
+  assert.equal(unwritten.headers.get('cache-control'), 'public, max-age=10');
+  assert.equal(n.q, 2);
+  // The attacks: each a 404 with no statement prepared.
+  const top = Math.floor((w.now - NA_WEEK + 300e3) / (2 * 3600e3));
+  assert.equal(top, NA_DONE + 1, 'the ceiling is the ingest one');
+  for (const v of [top + 1, NA_DONE - 2, '0', '100', 'abc', '1e1', '-1', '%204', '+4', '4.0']) {
+    const r = await w.get('/api/history/1?v=' + v);
+    assert.equal(r.status, 404, 'v=' + v);
+    assert.equal(r.headers.get('cache-control'), 'public, max-age=10', 'v=' + v);
+  }
+  assert.equal((await w.get('/api/history/1?v= 4')).status, 404, 'v= 4');
+  assert.equal(n.q, 2, 'none of them reached D1');
 });
 
 test('/api/history: a whole version is kept long under its own key; one with a match behind only a minute', async () => {
@@ -218,7 +256,8 @@ test('/api/history: a valid version not there yet, and one with a match behind, 
     const m = countQueries(fresh);
     for (let i = 0; i < 2; i++) {
       const r = await fresh.get(path);
-      assert.equal(r.status, 404);
+      assert.equal(r.status, 200);
+      assert.deepEqual(JSON.parse(r.body).matches, {});
       assert.equal(r.headers.get('cache-control'), 'public, max-age=10');
     }
     assert.equal(m.q, 1, 'two reads of a version D1 does not hold yet: one query');
