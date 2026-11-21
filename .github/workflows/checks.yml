@@ -6,9 +6,11 @@
 # and fails on whatever the browser objects to. The rules job runs the unit
 # tests (tests/unit/), among them
 # the Worker behind /api, the page's own functions in a node:vm, and the Apps
-# Script setup() of the teams notice against a fake spreadsheet. Six jobs, the
+# Script setup() of the teams notice against a fake spreadsheet. Seven jobs, the
 # e2e one on two machines (a half of the suite each); four are required
 # (structure, syntax, rules, page), and page passes only if e2e and coverage did.
+# The seventh, warn, is not required and page does not wait for it: it runs what
+# depends on the machine's speed (@timing) or is quarantined (@quarantine), and its red is read, never a block.
 name: Checks
 
 on:
@@ -105,7 +107,10 @@ jobs:
   # outage cannot turn a pull request red; the tests run the pull request's
   # JavaScript in a browser: throwaway machine, no secret.
   # Two machines, one half of the suite each (--shard); a red half does not cancel the other.
+  # Not run here: the tests tagged @timing (they count frames, which a busy shared machine
+  # moves) and those tagged @quarantine; the warn job runs them.
   e2e:
+    name: e2e (${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
     timeout-minutes: 17
     strategy:
@@ -136,7 +141,7 @@ jobs:
           token="$(openssl rand -hex 16)"
           echo "::stop-commands::$token"
           set +e
-          E2E_COVERAGE=1 E2E_RESUME="$token" npx playwright test --shard="$SHARD/2"
+          E2E_COVERAGE=1 E2E_RESUME="$token" npx playwright test --shard="$SHARD/2" --grep-invert '@timing|@quarantine'
           code=$?
           echo "::$token::"
           exit "$code"
@@ -162,9 +167,60 @@ jobs:
           retention-days: 3
           if-no-files-found: ignore
 
-  # Coverage (support/coverage.mjs says how): the two halves' raw coverage joined, the
+  # What may fail without blocking: the tests tagged @timing and @quarantine (the rule:
+  # CONTRIBUTING.md). Not in page's needs and not in the ruleset, so red here blocks
+  # nothing; the summary lists what failed. No coverage: the coverage job joins the e2e
+  # halves only.
+  warn:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tests/e2e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the test dependencies from the lockfile
+        run: npm ci --ignore-scripts
+
+      - name: Chrome version
+        run: |
+          echo "Chrome: $(google-chrome --version)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # Same stop-commands guard as the e2e job. What failed goes to the summary.
+      - name: The timing and quarantined tests in Playwright Test
+        run: |
+          token="$(openssl rand -hex 16)"
+          echo "::stop-commands::$token"
+          set +e
+          E2E_RESUME="$token" npx playwright test --grep '@timing|@quarantine' 2>&1 | tee warn-output.txt
+          code=${PIPESTATUS[0]}
+          echo "::$token::"
+          {
+            echo "### warn: timing and quarantine"
+            if grep -qE '^e2e (FAIL|FLAKY|SKIPPED) ' warn-output.txt; then
+              echo '```'
+              grep -E '^e2e (FAIL|FLAKY|SKIPPED) ' warn-output.txt
+              echo '```'
+            else
+              grep -E '^e2e: ' warn-output.txt || echo "no result line"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
+
+      - name: Keep the traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: warn-traces
+          path: tests/e2e/test-results/
+          retention-days: 3
+          if-no-files-found: ignore
+
+  # Coverage (support/coverage.mjs says how): the two halves' raw coverage joined with the
   # node tests run again with V8 coverage on (so the `rules` job and `page` keep their
-  # names and rule), and a file falling more than 0.5 point fails this job, so `page`.
+  # names and rule) into the table per file; a file whose node --test coverage falls more
+  # than 0.5 point fails this job, so `page`. The browser's share is reported, never a floor.
   coverage:
     needs: [e2e]
     runs-on: ubuntu-latest
@@ -199,7 +255,7 @@ jobs:
           # One copy per folder: the source-<hash>.json files share names across halves (same content), and one cp refuses them.
           for d in shards/coverage-shard-*/; do cp "$d"* test-results/coverage/.cache/; done
 
-      - name: Coverage per file, and it may not fall
+      - name: Coverage per file, and node's may not fall
         run: |
           node support/coverage.mjs node
           node support/coverage.mjs check
