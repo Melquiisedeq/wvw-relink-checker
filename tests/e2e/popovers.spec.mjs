@@ -127,3 +127,23 @@ test('a keyboard click outside closes a popover after a mouse click on its camer
   await page.keyboard.press('Enter');
   await expect(popover, 'the popover after a keyboard click outside').toHaveCount(0);
 });
+
+// The recorded week has finished blocks, so the trend note carries the chart sentence.
+test('popover notes: the skirmish score comes from objectives and kills, Activity is fighting', async ({ page, wvw }) => {
+  await page.goto(wvw.url);
+  await expect(page.locator('#standingsGridNA > .standing-match').first()).toBeVisible();
+  await wvw.settle();
+  const noteOf = async kind => {
+    await page.locator(`.icon-btn.${kind}`).first().click();
+    const note = page.locator('.info-popover .activity-note');
+    await expect(note).toHaveCount(1);
+    const text = await note.textContent();
+    await page.locator('.info-popover .info-popover-close').click();
+    await expect(page.locator('.info-popover')).toHaveCount(0);
+    return text;
+  };
+  expect(await noteOf('activity-btn'), 'skirmish trend note, with the chart').toBe(
+    'Skirmish score is the war score earned in a 2-hour block, from objectives taken, upgraded and defended, and from kills. The chart shows finished blocks only.');
+  expect(await noteOf('activity-info-btn'), 'Activity note').toBe(
+    'Activity is kills + deaths this week — how much fighting there was, not who won it; the K/D beside it says that.');
+});

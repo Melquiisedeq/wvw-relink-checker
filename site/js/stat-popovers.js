@@ -375,9 +375,8 @@ function renderSkirmishTrendPopoverContent(popover, serverName, match, color) {
   }
 
   // The last sentence is about the chart, so it goes only where the chart went.
-  const note = 'A skirmish is a 2-hour block — 84 of them in a week. Most of the score '
-    + 'comes from holding objectives, not from kills, so a big number usually means '
-    + 'map control.';
+  const note = 'Skirmish score is the war score earned in a 2-hour block, from objectives '
+    + 'taken, upgraded and defended, and from kills.';
   popover.appendChild(popNote(
     finished >= 2 ? `${note} The chart shows finished blocks only.` : note));
 }
@@ -437,9 +436,8 @@ function renderActivityInfoPopoverContent(popover, serverName, match, color) {
   popover.appendChild(popBarTotal('Tier total', 'pop-bar-label--wide',
     all.toLocaleString()));
 
-  popover.appendChild(popNote('Activity is kills + deaths this week — a straightforward measure '
-    + 'of combat, with none of the PPT ambiguity skirmish score has. It counts fights, not '
-    + 'whether they were won; the K/D beside it says that.'));
+  popover.appendChild(popNote('Activity is kills + deaths this week — how much fighting there '
+    + 'was, not who won it; the K/D beside it says that.'));
 }
 
 
