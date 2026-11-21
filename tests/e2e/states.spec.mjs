@@ -1,6 +1,5 @@
 // States otherwise reached by the luck of a timer, taken here on purpose so
-// that the branch behind each runs every time (the coverage sweep,
-// support/coverage.mjs, lists the places that oscillated). Each test drives the
+// that the branch behind each runs every time. Each test drives the
 // page there with the clock (page.clock) or with a read it holds, and asserts
 // what a visitor sees at the end, not that the code was passed.
 import { test, expect } from './support/fixtures.mjs';

@@ -1,55 +1,46 @@
-// Measured coverage that may not fall. V8's own counts, from the
-// browser (every spec, through the `wvw` fixture) and from `node --test` (the
-// page's scripts in a node:vm and the /api Worker), joined by monocart-coverage-
-// reports into lines and branches per file: site/js, worker/index.mjs and supabase/reader.mjs.
-// data/coverage.json holds the committed numbers; a file that falls more than
-// TOLERANCE points, in lines or branches, fails the job. There is no absolute
-// target on purpose: a number to reach is met with a test that asserts nothing.
-// Two runs of one commit differ a little in a few files: page timers that do
-// or do not fire before a test ends; a new timer brings it back unless
-// states.spec.mjs takes it to each state. So the committed number is the
-// minimum per file over several runs, never below the committed number (`sweep --write`), a fall is only reported past
-// TOLERANCE and a rise only past it too.
-// CI is the referee: its Google Chrome measures some files lower than a local
-// Chromium, so CI's runs are among them.
+// Coverage per file, and a floor on the part that does not move. V8's own counts,
+// from the browser (every spec, through the `wvw` fixture) and from `node --test`
+// (the page's scripts in a node:vm, the /api Worker, the Supabase reader), joined by
+// monocart-coverage-reports into lines and branches per file: site/js,
+// worker/index.mjs and supabase/reader.mjs. The joined numbers are a report only.
+// The floor is on node --test's numbers alone: data/coverage.json holds them, and a
+// file that falls more than TOLERANCE points, in lines or branches, fails `check`.
+// The browser's share stays out of it: two runs of one commit differ there (a page
+// timer fires before a test ends or does not); node's are the same every run.
+// There is no absolute target on purpose: a number to reach is met with a test that asserts nothing.
 //
-//   npm run coverage            everything, locally (node, then the browser), prints the table
-//   npm run coverage:write      the same, then rewrites data/coverage.json from one run (not what a PR commits: see sweep)
+//   npm run coverage            everything, locally (the browser, then node), prints the table
+//   npm run coverage:write      node --test, then rewrites data/coverage.json with its numbers (no browser run)
 //   node support/coverage.mjs node    node --test with V8 coverage kept in test-results/coverage-node
 //                                     (after the browser's run: Playwright empties test-results when it starts)
-//   node support/coverage.mjs check   join what the two runs left, table, compare (CI)
-//   node support/coverage.mjs write   join and rewrite data/coverage.json
-//   npm run coverage:sweep [-- N]     N runs (3), one at a time, kept in sweep-results/run-<i>, then the sweep report
-//   node support/coverage.mjs save <dir>    join what the two runs left, keep istanbul.json and measured.json in <dir>
-//   node support/coverage.mjs sweep <dir> [--write]   the lines and branches covered in some runs and not in others, and
-//                                     those in none, over the runs saved under <dir> (one folder each); exit 1 if any
-//                                     oscillates; --write rewrites data/coverage.json with the minimum per file and metric,
-//                                     never below the committed number (needs no node_modules: the CI sweep reads artifacts with it)
+//   node support/coverage.mjs check   the table of the joined runs, and node's numbers compared with data/coverage.json
+//   node support/coverage.mjs write   rewrite data/coverage.json from what `node` left
+//   node support/coverage.mjs save <dir>    keep node --test's istanbul.json and its numbers (measured.json) in <dir>
 //   node support/coverage.mjs untested <base>   after `check`: the lines `git diff <base> HEAD` added in site/js, worker and
 //                                     supabase that no test ran, to the job summary; never fails (what a line asks is judgement)
 //
 // The browser side only measures with E2E_COVERAGE=1: the page is slower under it.
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { compareRuns, floorOf, minimumOf, sweepText, untestedLines, untestedText } from './sweep.mjs';
+import { untestedLines, untestedText } from './untested.mjs';
 
-// Loaded when needed: the sweep's report reads JSON only and runs without node_modules.
 const monocart = async () => (await import('monocart-coverage-reports')).CoverageReport;
 
 const E2E = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = resolve(E2E, '..', '..');
 const OUT = join(E2E, 'test-results', 'coverage');
 const NODE_DIR = join(E2E, 'test-results', 'coverage-node');
+// node's report alone: in OUT it would take in the browser's raw coverage too.
+const NODE_OUT = join(E2E, 'test-results', 'coverage-node-report');
 const COVERAGE_ON = !!process.env.E2E_COVERAGE;
 export const TOLERANCE = 0.5;
 const COMMITTED = join(E2E, 'data', 'coverage.json');
-const SWEEP_DIR = join(E2E, 'sweep-results');
 
-const options = () => ({
+const options = (outputDir = OUT) => ({
   name: 'wvwrelink',
-  outputDir: OUT,
+  outputDir,
   reports: [['json-summary', { file: 'summary.json' }], ['json', { file: 'istanbul.json' }]],
   // Only the page's scripts and the Worker; every other file the runs touched stays out.
   entryFilter: entry => /\/site\/js\/.+\.js$|\/(worker\/index|supabase\/reader)\.mjs$/.test(entry.url),
@@ -86,8 +77,8 @@ export async function addCoverage(started) {
 
 const round = n => Math.round(n * 10) / 10;
 
-async function measure() {
-  const report = new (await monocart())(options());
+async function measure(nodeOnly) {
+  const report = new (await monocart())(options(nodeOnly ? NODE_OUT : OUT));
   if (existsSync(NODE_DIR)) await report.addFromDir(NODE_DIR);
   const results = await report.generate();
   const out = {};
@@ -114,12 +105,10 @@ function compare(measured, committed) {
   return { fell, rose };
 }
 
-function table(measured, committed) {
-  const rows = ['| File | Lines | Branches | Committed (lines / branches) |', '|---|---:|---:|---:|'];
-  for (const [file, now] of Object.entries(measured)) {
-    const was = committed[file];
-    rows.push(`| ${file} | ${now.lines} % | ${now.branches} % | ${was ? `${was.lines} % / ${was.branches} %` : '-'} |`);
-  }
+function table(joined, node, committed) {
+  const pair = v => (v ? `${v.lines} % / ${v.branches} %` : '-');
+  const rows = ['| File | Lines | Branches | node --test (lines / branches) | Floor (lines / branches) |', '|---|---:|---:|---:|---:|'];
+  for (const [file, now] of Object.entries(joined)) rows.push(`| ${file} | ${now.lines} % | ${now.branches} % | ${pair(node[file])} | ${pair(committed[file])} |`);
   return rows.join('\n');
 }
 
@@ -128,36 +117,6 @@ function nodeTests() {
   execFileSync('node', ['--test', '--test-reporter=dot', 'tests/unit/*.test.mjs'], {
     cwd: ROOT, stdio: 'inherit', env: { ...process.env, NODE_V8_COVERAGE: NODE_DIR },
   });
-}
-
-// Each run's folder under dir: its istanbul report and its measured numbers.
-function sweepRuns(dir) {
-  const folders = readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory() && existsSync(join(dir, d.name, 'istanbul.json'))).map(d => join(dir, d.name)).sort();
-  if (folders.length < 2) throw new Error(`coverage.mjs: ${folders.length} run(s) in ${dir}, a sweep needs at least 2`);
-  return folders.map(f => ({ istanbul: JSON.parse(readFileSync(join(f, 'istanbul.json'), 'utf8')), measured: JSON.parse(readFileSync(join(f, 'measured.json'), 'utf8')) }));
-}
-
-// The source line of a file istanbul names (an absolute path, or relative to the repository).
-const sourceLine = (file, line) => {
-  const path = resolve(ROOT, file);
-  try { return readFileSync(path, 'utf8').split('\n')[line - 1] || ''; } catch { return ''; }
-};
-
-async function sweep(dir, write) {
-  const runs = sweepRuns(dir);
-  const result = compareRuns(runs.map(r => r.istanbul), sourceLine);
-  const lines = [sweepText(result), '', 'Lines are statements, by the line they start on; a branch is one arm of an if, ternary, `||`, `??` or default.'];
-  const flaky = Object.values(result.files).reduce((n, f) => n + f.flaky.length, 0);
-  const minimum = minimumOf(runs.map(r => r.measured));
-  if (write) {
-    const { floor, kept } = floorOf(JSON.parse(readFileSync(COMMITTED, 'utf8')), minimum);
-    writeFileSync(COMMITTED, text(floor));
-    lines.push('', `data/coverage.json rewritten with the minimum of ${runs.length} runs, ${Object.keys(floor).length} files, none lower than the committed number.`);
-    for (const k of kept) lines.push(`- ${k.file} ${k.metric}: kept ${k.committed} (measured minimum ${k.measured})`);
-  }
-  console.log(lines.join('\n'));
-  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, '### Coverage sweep\n\n' + lines.join('\n') + '\n');
-  if (flaky) process.exitCode = 1;
 }
 
 // Not a check: whether a new line asks for a test is judgement (a guard against the impossible does not), so it only lists.
@@ -176,49 +135,39 @@ function untested(base) {
 async function main(command, ...args) {
   if (command === 'untested') return untested(args[0]);
   if (command === 'node') return nodeTests();
-  if (command === 'sweep') return sweep(resolve(args.find(a => !a.startsWith('--')) || SWEEP_DIR), args.includes('--write'));
   if (command === 'save') {
     const dir = resolve(args[0] || '');
     if (!args[0]) throw new Error('coverage.mjs: save needs a folder');
-    const measured = await measure();
+    const node = await measure(true);
     mkdirSync(dir, { recursive: true });
-    copyFileSync(join(OUT, 'istanbul.json'), join(dir, 'istanbul.json'));
-    writeFileSync(join(dir, 'measured.json'), text(measured));
+    copyFileSync(join(NODE_OUT, 'istanbul.json'), join(dir, 'istanbul.json'));
+    writeFileSync(join(dir, 'measured.json'), text(node));
     return;
   }
-  if (command === 'sweep-run') {
-    const n = Number(args[0] || 3);
-    if (!Number.isInteger(n) || n < 2) throw new Error('coverage.mjs: sweep-run wants a number of runs, 2 or more');
-    rmSync(SWEEP_DIR, { recursive: true, force: true });
-    for (let i = 1; i <= n; i++) {
-      console.log(`sweep: run ${i} of ${n}`);
-      execFileSync('npx', ['playwright', 'test', '--reporter=dot'], { cwd: E2E, stdio: 'inherit', env: { ...process.env, E2E_COVERAGE: '1' } });
-      nodeTests();
-      await main('save', join(SWEEP_DIR, `run-${i}`));
-    }
-    return sweep(SWEEP_DIR, false);
-  }
-  if (command === 'run' || command === 'run-write') {
+  if (command === 'run') {
     // Playwright empties test-results when it starts, so the browser's run goes first.
     execFileSync('npx', ['playwright', 'test'], { cwd: E2E, stdio: 'inherit', env: { ...process.env, E2E_COVERAGE: '1' } });
     nodeTests();
-    command = command === 'run' ? 'check' : 'write';
+    command = 'check';
+  } else if (command === 'run-write') {
+    nodeTests();
+    command = 'write';
   }
-  if (command !== 'check' && command !== 'write') throw new Error(`coverage.mjs: '${command}', wanted node, run, run-write, check, write, save, sweep or sweep-run`);
-  const measured = await measure();
+  if (command !== 'check' && command !== 'write') throw new Error(`coverage.mjs: '${command}', wanted node, run, run-write, check, write, save or untested`);
+  const node = await measure(true);
   if (command === 'write') {
-    writeFileSync(COMMITTED, text(measured));
-    console.log(`coverage: ${COMMITTED} written, ${Object.keys(measured).length} files`);
+    writeFileSync(COMMITTED, text(node));
+    console.log(`coverage: ${COMMITTED} written, node --test's numbers, ${Object.keys(node).length} files`);
     return;
   }
+  const joined = await measure(false);
   const committed = JSON.parse(readFileSync(COMMITTED, 'utf8'));
-  const { fell, rose } = compare(measured, committed);
-  const lines = [table(measured, committed)];
-  if (fell.length) lines.push('', `**Coverage fell by more than ${TOLERANCE} points:**`, ...fell.map(l => `- ${l}`),
-    '', 'Two causes, and this check cannot tell which (it does not see the diff):',
-    '- The pull request added code no test runs: write the test.',
-    '- The file is not one the pull request touched: it is oscillation. Run the sweep (Actions > Coverage sweep), then cover what it lists with a test. The committed number never goes down.');
-  if (rose.length && !fell.length) lines.push('', 'Coverage rose: run the "Coverage sweep" workflow on this commit, download its `coverage-<i>` artifacts into one folder (one subfolder each), run `node support/coverage.mjs sweep <folder> --write` in `tests/e2e` and commit `data/coverage.json` (local runs from `npm run coverage:sweep` add to the folder as `run-<i>`, but CI\'s alone can serve).', ...rose.map(l => `- ${l}`));
+  const { fell, rose } = compare(node, committed);
+  const lines = [table(joined, node, committed), '', 'Lines and Branches: every run joined, a report only. The floor is on node --test\'s numbers, which do not move between runs.'];
+  if (fell.length) lines.push('', `**node --test coverage fell by more than ${TOLERANCE} points:**`, ...fell.map(l => `- ${l}`),
+    '', 'A node test no longer runs what it ran, or the pull request added code to a file node measures and no node test runs it.',
+    'Write the node test. If the new code is one only the browser can run, `npm run coverage:write` in tests/e2e lowers the floor, and the pull request says why.');
+  if (rose.length && !fell.length) lines.push('', 'node --test coverage rose: run `npm run coverage:write` in tests/e2e and commit data/coverage.json.', ...rose.map(l => `- ${l}`));
   console.log(lines.join('\n'));
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, '### Coverage\n\n' + lines.join('\n') + '\n');
   if (fell.length) process.exitCode = 1;
