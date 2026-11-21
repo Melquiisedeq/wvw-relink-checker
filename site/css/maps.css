@@ -357,7 +357,15 @@
 .wvw-cap img{display:block;flex-shrink:0;}
 .wvw-cap-time{color:#8d97a6;font-variant-numeric:tabular-nums;min-width:52px;white-space:nowrap;}
 .wvw-cap-name{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.wvw-cap-map{color:#8d97a6;margin-left:auto;white-space:nowrap;}
+/* EBG neutral; the borderlands are --red, --blue and --green (css/base.css) at low alpha. */
+.wvw-cap{--map-soft:rgba(195,204,215,.14);}
+.wvw-cap[data-map=RedHome]{--map-soft:rgba(225,92,92,.2);}
+.wvw-cap[data-map=BlueHome]{--map-soft:rgba(91,143,240,.22);}
+.wvw-cap[data-map=GreenHome]{--map-soft:rgba(76,175,125,.22);}
+.wvw-cap-map{
+  margin-left:auto;white-space:nowrap;padding:0 6px;border-radius:3px;background:var(--map-soft);color:#dbe3ec;
+  font-size:.62rem;font-weight:700;line-height:1.5;
+}
 /* The site's thin scrollbar (css/base.css), on the list. */
 .wvw-caps::-webkit-scrollbar{width:9px;}
 .wvw-caps::-webkit-scrollbar-track,
