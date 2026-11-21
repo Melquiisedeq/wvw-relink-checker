@@ -54,7 +54,7 @@ async function listRefs(repo) {
   return refs;
 }
 
-async function main() {
+export async function main() {
   const repo = process.env.GITHUB_REPOSITORY || 'Melquiisedeq/wvw-relink-checker';
   const owner = repo.split('/')[0];
   const dryRun = process.env.DRY_RUN !== 'false';
