@@ -316,14 +316,11 @@ test.describe('one region of the fallback', () => {
 // Only our /api/kills out, /api/relink answering: the kill history comes from the sheet,
 // and a map shows its age from it, amber, as with /api/kills.
 test('only /api/kills down: the sheet still gives the history, and the map its age', async ({ page, wvw }) => {
-  const sheet = [];
   let target;
-  await page.route(/^https:\/\/docs\.google\.com\/spreadsheets\/.*sheet=kills/, async route => {
-    sheet.push(route.request().url());
+  const sheet = await answer(page, /^https:\/\/docs\.google\.com\/spreadsheets\/.*sheet=kills/, async () => {
     const rows = await killRows(page, target, 7 * 60000);
-    await route.fulfill({ status: 200, contentType: 'text/csv', body: rows.map(r => r.join(',')).join('\n'),
-      headers: { 'Access-Control-Allow-Origin': '*' } });
-  });
+    return rows.map(r => r.join(',')).join('\n');
+  }, { contentType: 'text/csv', noStore: false });
   const relink = [];
   page.on('response', r => { if (/^http:\/\/127\.0\.0\.1:\d+\/api\/relink$/.test(r.url())) relink.push(r.status()); });
   await load(page, wvw);
@@ -337,7 +334,7 @@ test('only /api/kills down: the sheet still gives the history, and the map its a
   });
   expect(relink, 'answers of /api/relink, which stayed up').toContain(200);
   expect(down.reads, 'reads of /api/kills that failed').toBeGreaterThan(0);
-  expect(sheet.length, 'reads of the sheet instead').toBeGreaterThan(0);
+  expect(sheet.reads, 'reads of the sheet instead').toBeGreaterThan(0);
   expect(await page.evaluate(id => Date.now() - newestMatches.get(id).at, tier.id), 'the match backdated by the sheet\'s history')
     .toBeGreaterThanOrEqual(6 * 60000);
   await openMap(page, wvw, tier.button);

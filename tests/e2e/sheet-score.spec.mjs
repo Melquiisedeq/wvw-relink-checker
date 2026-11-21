@@ -2,7 +2,7 @@
 // score sum of each line. A body whose time is only a first sight is dated by the
 // oldest line of its week with the same sum; with no such line it keeps its time.
 import { test, expect } from './support/fixtures.mjs';
-import { fail } from './support/faults.mjs';
+import { answer, fail } from './support/faults.mjs';
 import { firstTier, load } from './support/steps.mjs';
 import { MIN, killRows } from './support/scenarios.mjs';
 
@@ -12,13 +12,12 @@ test.use({ viewport: { width: 1280, height: 800 } });
 async function sheetAge(page, wvw, lines, bodyAge = 0) {
   let target;
   let sum;
-  await page.route(/^https:\/\/docs\.google\.com\/spreadsheets\/.*sheet=kills/, async route => {
+  await answer(page, /^https:\/\/docs\.google\.com\/spreadsheets\/.*sheet=kills/, async () => {
     const row = (await killRows(page, target, 0)).find(r => r[1] === target);
     const start = await page.evaluate(id => Date.parse(newestMatches.get(id).match.start_time), target);
     const now = await page.evaluate(() => Date.now());
-    const body = lines.map(([age, delta]) => [now - age * MIN, ...row.slice(1), start, sum + delta].join(',')).join('\n');
-    await route.fulfill({ status: 200, contentType: 'text/csv', body, headers: { 'Access-Control-Allow-Origin': '*' } });
-  });
+    return lines.map(([age, delta]) => [now - age * MIN, ...row.slice(1), start, sum + delta].join(',')).join('\n');
+  }, { contentType: 'text/csv', noStore: false });
   await load(page, wvw);
   const tier = await firstTier(page);
   target = tier.id;
