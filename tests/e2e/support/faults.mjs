@@ -81,8 +81,9 @@ export async function holdSummary(page) {
 // Answers `body` to one address instead of the recording, counting the reads.
 // `body` may be a function, called with the request's address at each read.
 // With `contentType` given, a string body goes as it is and the header is exactly
-// that; without it, the body is JSON with a charset.
-export async function answer(page, url, body, { contentType } = {}) {
+// that; without it, the body is JSON with a charset. `noStore: false` leaves out the
+// Cache-Control: no-store the answer carries otherwise.
+export async function answer(page, url, body, { contentType, noStore = true } = {}) {
   const state = { reads: 0, on: true, off() { state.on = false; } };
   await page.route(url, async route => {
     if (!state.on || route.request().method() !== 'GET') return route.fallback();
@@ -90,7 +91,7 @@ export async function answer(page, url, body, { contentType } = {}) {
     const out = typeof body === 'function' ? await body(route.request().url()) : body;
     await route.fulfill({
       status: 200, body: typeof out === 'string' && contentType ? out : JSON.stringify(out),
-      headers: { 'Content-Type': contentType || 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' },
+      headers: { 'Content-Type': contentType || 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', ...(noStore && { 'Cache-Control': 'no-store' }) },
     });
   });
   return state;

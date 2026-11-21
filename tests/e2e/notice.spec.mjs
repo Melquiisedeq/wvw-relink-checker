@@ -120,12 +120,11 @@ test.describe('the notice on the one-minute tick', () => {
     const cell = await relinkWindow(page, wvw);
     await answer(page, '**/api/relink', { window: cell.windowId, published: 5 });
     const down = await fail(page, wvw, /\/api\/relink$/);
-    let sheetReads = 0;
-    await page.route(/^https:\/\/docs\.google\.com\/spreadsheets\//, route => { sheetReads++; return route.fulfill({
-      status: 200, contentType: 'text/csv', headers: { 'Access-Control-Allow-Origin': '*' }, body: `"${cell.windowId}:0"` }); });
+    const sheet = await answer(page, /^https:\/\/docs\.google\.com\/spreadsheets\//, `"${cell.windowId}:0"`,
+      { contentType: 'text/csv', noStore: false });
     for (let m = 0; m < 5; m++) { await page.clock.fastForward(MIN); await quiet(); }
     expect(down.reads, '/api/relink asked again while down').toBeGreaterThanOrEqual(2);
-    expect(sheetReads, 'the sheet read once in ten minutes').toBe(1);
+    expect(sheet.reads, 'the sheet read once in ten minutes').toBe(1);
     await expect(page.locator('#teamsNotice')).toBeHidden();
     down.off();
     for (let m = 0; m < 2; m++) { await page.clock.fastForward(MIN); await quiet(); }
