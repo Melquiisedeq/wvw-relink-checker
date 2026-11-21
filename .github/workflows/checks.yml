@@ -217,9 +217,10 @@ jobs:
           retention-days: 3
           if-no-files-found: ignore
 
-  # Coverage (support/coverage.mjs says how): the two halves' raw coverage joined, the
+  # Coverage (support/coverage.mjs says how): the two halves' raw coverage joined with the
   # node tests run again with V8 coverage on (so the `rules` job and `page` keep their
-  # names and rule), and a file falling more than 0.5 point fails this job, so `page`.
+  # names and rule) into the table per file; a file whose node --test coverage falls more
+  # than 0.5 point fails this job, so `page`. The browser's share is reported, never a floor.
   coverage:
     needs: [e2e]
     runs-on: ubuntu-latest
@@ -254,7 +255,7 @@ jobs:
           # One copy per folder: the source-<hash>.json files share names across halves (same content), and one cp refuses them.
           for d in shards/coverage-shard-*/; do cp "$d"* test-results/coverage/.cache/; done
 
-      - name: Coverage per file, and it may not fall
+      - name: Coverage per file, and node's may not fall
         run: |
           node support/coverage.mjs node
           node support/coverage.mjs check
