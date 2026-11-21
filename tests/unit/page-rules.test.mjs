@@ -1040,6 +1040,22 @@ test('missedSpan: a suffix shared by both times is written once, different ones 
   assert.equal(span(at(17, 3), at(17, 33)), '17:03–17:33', '24 h, no suffix');
 });
 
+test('missedSpan: the start after "yesterday" keeps both suffixes, and within a day they merge (js/maps.js)', () => {
+  const page = fresh();
+  // The calendar is UTC and the clock face the test's, so the machine's zone and locale decide nothing.
+  page.run(`Object.assign(Date.prototype, {
+    getFullYear() { return this.getUTCFullYear(); }, getMonth() { return this.getUTCMonth(); }, getDate() { return this.getUTCDate(); },
+    toLocaleTimeString() {
+      const h = this.getUTCHours(), mm = String(this.getUTCMinutes()).padStart(2, '0');
+      return String(h % 12 || 12).padStart(2, '0') + ':' + mm + (h < 12 ? ' AM' : ' PM');
+    } })`);
+  const span = (a, b) => page.call('missedSpan', Date.parse(a), Date.parse(b));
+  assert.equal(span('2026-12-06T15:00:00Z', '2026-12-07T12:00:00Z'), '03:00 PM yesterday\u201312:00 PM');
+  assert.equal(span('2026-12-06T11:00:00Z', '2026-12-06T14:00:00Z'), '11:00 AM\u201302:00 PM');
+  assert.equal(span('2026-12-06T23:30:00Z', '2026-12-07T00:30:00Z'), '11:30 PM yesterday\u201312:30 AM');
+  assert.equal(span('2026-12-06T15:00:00Z', '2026-12-06T17:30:00Z'), '03:00\u201305:30 PM');
+});
+
 test('missedShortName: the chip name of an objective (js/maps.js)', () => {
   const page = fresh();
   const named = (name) => {
@@ -2269,3 +2285,330 @@ for (const lead of [5 * MIN, -5 * MIN]) {
     assert.notEqual(c.view.box.dataset.key, before);
   });
 }
+
+// ---- What happened while the data was away (js/maps-early.js) --------------
+// The open match kept, then bodies offered to missedMatchOffered.
+const FLIP_TO = { Red: 'Blue', Blue: 'Green', Green: 'Red' };
+function happened() {
+  const p = fresh();
+  const id = OPEN_ID;
+  p.call('keepNewestMatch', clone(openMatch));
+  const now = p.clock.now;
+  const reset = () => p.run('missedNotes.clear(); missedLastOffer.clear(); missedRings.clear(); missedReturn = null; missedHidden = null;');
+  const after = (base) => {
+    const m = clone(base || openMatch);
+    const taken = [];
+    for (const map of m.maps) {
+      const o = map.objectives.find((x) => ['Camp', 'Tower', 'Keep'].includes(x.type));
+      if (o && taken.length < 2) { o.owner = FLIP_TO[o.owner] || 'Red'; o.last_flipped = new Date(now).toISOString(); taken.push(o.id); }
+    }
+    m.maps[0].kills.red += 30; m.maps[0].kills.blue += 20; m.scores.red += 10;
+    return { m, taken };
+  };
+  const offer = (body, keptAt, lastOfferAgo) => {
+    reset();
+    if (lastOfferAgo != null) p.run(`missedLastOffer.set('${id}', ${now - lastOfferAgo})`);
+    p.ctx.__kept = { match: clone(openMatch), at: now - keptAt };
+    p.call('missedMatchOffered', body, p.ctx.__kept);
+    return p.run(`missedNotes.get('${id}') || null`);
+  };
+  const sample = (at, body) => ({ at, n: JSON.parse(JSON.stringify(p.call('fightTotals', body))) });
+  const history = (...rows) => p.set('killSheet', new Map(rows.length ? [[id, rows]] : []));
+  const lastOffer = (agoMs) => p.run(`missedLastOffer.set('${id}', ${now - agoMs})`);
+  return { p, id, now, reset, after, offer, sample, history, lastOffer, M0: openMatch };
+}
+const base24h = 24 * 60 * MIN;
+
+test('missedMatchOffered: a summary only for a real gap, with its changes and kills (js/maps-early.js)', () => {
+  const { after, offer } = happened();
+  const a = after();
+  const n = offer(a.m, 12 * MIN, 30000);
+  assert.ok(n && n.kind === 'pause', 'a real gap raises a summary');
+  assert.equal(n.changes.length, 2);
+  assert.ok(a.taken.every((x) => Array.from(n.changes).some((c) => c.id === x)), 'the changes listed are the objectives taken');
+  assert.equal(n.kills, 50, 'the kills other than after minus before');
+  const edge = after();
+  assert.equal(offer(edge.m, base24h - 1000, 30000).kind, 'pause', '1 s under 24 h still raises one');
+});
+
+test('missedMatchOffered: never for the same body, a body behind, a new week, a laptop asleep, a 7-minute stop, a gap with no read, or over 24 h (js/maps-early.js)', () => {
+  const { after, offer, M0 } = happened();
+  assert.equal(offer(clone(M0), 12 * MIN, 30000), null, 'the same body');
+  assert.equal(offer(after().m, base24h + 1000, 30000), null, 'a pause over 24 h');
+  const behind = clone(M0); behind.scores.red -= 50; behind.maps[0].kills.red += 5;
+  assert.equal(offer(behind, 12 * MIN, 30000), null, 'a body behind');
+  const week = after().m; week.start_time = new Date(Date.parse(M0.start_time) + 7 * 86400000).toISOString();
+  assert.equal(offer(week, 12 * MIN, 30000), null, 'a new week');
+  assert.equal(offer(after().m, 20 * MIN, 5 * MIN), null, 'a laptop asleep');
+  assert.equal(offer(after().m, 7 * MIN, 30000), null, 'a 7-minute stop');
+  assert.equal(offer(after().m, 12 * MIN, 13 * MIN), null, 'a gap with no read in it');
+});
+
+test('missedMatchOffered: a stop of exactly 10 min raises none, 10 min and 1 s does (js/maps-early.js)', () => {
+  const { after, offer } = happened();
+  assert.equal(offer(after().m, 10 * MIN, 30000), null);
+  assert.equal(offer(after().m, 10 * MIN + 1000, 30000).kind, 'pause');
+});
+
+test('missedOnVisibility: a tab hidden exactly 10 min is not away, 10 min and 1 s is (js/maps-early.js)', () => {
+  const { p, id, now, reset } = happened();
+  const back = (ms) => {
+    reset();
+    p.ctx.__bodies = new Map([[id, clone(openMatch)]]);
+    p.run(`missedHidden = { at: ${now - ms}, bodies: __bodies }`);
+    p.run('missedOnVisibility()');
+    return p.run('missedReturn');
+  };
+  assert.equal(back(10 * MIN), null);
+  assert.ok(back(10 * MIN + 1000));
+});
+
+test('missedMatchOffered: a return to the tab raises one when something changed, follows a newer body, none when nothing changed (js/maps-early.js)', () => {
+  const { p, id, now, reset, after } = happened();
+  const arm = () => {
+    reset();
+    p.ctx.__bodies = new Map([[id, clone(openMatch)]]);
+    p.run(`missedReturn = { since: ${now - 5 * MIN}, back: ${now}, bodies: __bodies }`);
+  };
+  const offerNow = (body) => { p.ctx.__kept = { match: body, at: now }; p.call('missedMatchOffered', body, p.ctx.__kept); return p.run(`missedNotes.get('${id}')`); };
+  arm();
+  const r = after();
+  let n = offerNow(r.m);
+  assert.ok(n && n.kind === 'return' && n.kills === 50);
+  n.open = true; n.wideOpen = false;
+  const newer = clone(r.m); newer.maps[0].kills.red += 9; newer.scores.red += 20;
+  n = offerNow(newer);
+  assert.equal(n.kills, 59, 'the summary follows the newer body');
+  assert.equal(Array.from(n.perMap).reduce((t, m) => t + m.n, 0), 59);
+  assert.equal(n.open, true, 'what the reader had opened stays');
+  assert.equal(n.wideOpen, false);
+  arm();
+  p.ctx.__kept = { match: clone(openMatch), at: now };
+  p.call('missedMatchOffered', clone(openMatch), p.ctx.__kept);
+  assert.equal(p.run(`missedNotes.get('${id}')`), undefined, 'nothing changed, no summary');
+});
+
+test('missedPeriod: the period is the data\'s: the history says when the total before first appeared (js/maps-early.js)', () => {
+  const { p, id, now, reset, after, sample, history, lastOffer, M0 } = happened();
+  const stalled = clone(M0); stalled.maps[0].kills.red += 200;
+  const longer = after(stalled);
+  longer.m.maps[1].kills.green += 7;
+  for (const map of longer.m.maps) for (const o of map.objectives) if (longer.taken.includes(o.id)) o.last_flipped = new Date(now - 3 * MIN).toISOString();
+  const pause = (kept, at) => { p.ctx.__kept = { match: kept, at: now - at }; p.call('missedMatchOffered', longer.m, p.ctx.__kept); return p.run(`missedNotes.get('${id}')`); };
+  history(sample(now - 40 * MIN, M0), sample(now - 36 * MIN, stalled));
+  reset(); lastOffer(30000);
+  let n = pause(stalled, 12 * MIN);
+  assert.equal(n.since, now - 36 * MIN, 'a body stopped 36 min does not start the period at the stop');
+  assert.equal(n.sure, true);
+  assert.ok(n.end >= n.since && n.end <= now + 1000, 'the period ended before the page read the new body');
+  const diff = p.call('missedKillTotal', longer.m) - p.call('missedKillTotal', stalled);
+  assert.equal(n.kills, diff);
+  assert.equal(Array.from(n.perMap).reduce((t, m) => t + m.n, 0), diff);
+  assert.equal(n.perMap.length, 2, 'only the maps that moved are listed');
+  assert.ok(Array.from(n.perMap).some((m) => m.type === stalled.maps[0].type && m.n === 50));
+  assert.ok(Array.from(n.perMap).some((m) => m.type === stalled.maps[1].type && m.n === 7));
+  // The new body already in the history: the period ends where it first showed.
+  history(sample(now - 40 * MIN, M0), sample(now - 36 * MIN, stalled), sample(now - 2 * MIN, longer.m));
+  reset(); lastOffer(30000);
+  n = pause(stalled, 12 * MIN);
+  assert.ok(n.sure);
+  assert.equal(n.end, now - 2 * MIN);
+  // A return: the body before is older than the tab's hiding.
+  history(sample(now - 50 * MIN, M0), sample(now - 30 * MIN, stalled));
+  reset();
+  p.ctx.__bodies = new Map([[id, clone(stalled)]]);
+  p.run(`missedReturn = { since: ${now - 5 * MIN}, back: ${now}, bodies: __bodies }`);
+  p.ctx.__kept = { match: longer.m, at: now };
+  p.call('missedMatchOffered', longer.m, p.ctx.__kept);
+  n = p.run(`missedNotes.get('${id}')`);
+  assert.equal(n.kind, 'return');
+  assert.equal(n.since, now - 30 * MIN, 'a return starts at the hiding, not where the body before began');
+  assert.equal(n.sure, true);
+  // A normal return: a row a minute, none with the total of the body before.
+  const lower = clone(M0); lower.maps[0].kills.red += 190;
+  const upper = clone(M0); upper.maps[0].kills.red += 210;
+  history(sample(now - 14 * MIN, lower), sample(now - 13 * MIN, lower), sample(now - 12 * MIN + 30000, upper), sample(now - 11 * MIN, upper));
+  reset(); lastOffer(30000);
+  n = pause(stalled, 12 * MIN);
+  assert.equal(n.sure, true, 'a normal return between rows is sure');
+  assert.equal(n.since, now - 12 * MIN);
+  // The oldest reading there is only bounds the start: not sure, never later.
+  history(sample(now - 36 * MIN, stalled));
+  reset(); lastOffer(30000);
+  n = pause(stalled, 12 * MIN);
+  assert.equal(n.sure, false, 'the oldest reading is not taken as the exact start');
+  assert.equal(n.since, now - 36 * MIN);
+  // No reading of that total at all: the page's own time, not sure.
+  history();
+  reset(); lastOffer(30000);
+  n = pause(stalled, 12 * MIN);
+  assert.equal(n.sure, false);
+  assert.ok(n.since <= now - 12 * MIN);
+});
+
+test('missedMatchOffered: a listed flip older than the period starts it, a future one is skipped, a recent one is reached (js/maps-early.js)', () => {
+  const { p, id, now, reset, after, sample, history, lastOffer, M0 } = happened();
+  const old = after();
+  const flips = (k) => [].concat(...old.m.maps.map((x) => x.objectives)).find((x) => x.id === old.taken[k]);
+  flips(0).last_flipped = new Date(now - 120 * MIN).toISOString();
+  flips(1).last_flipped = new Date(now + 60 * MIN).toISOString();
+  history();
+  reset();
+  p.ctx.__bodies = new Map([[id, clone(M0)]]);
+  p.run(`missedReturn = { since: ${now - 5 * MIN}, back: ${now}, bodies: __bodies }`);
+  p.ctx.__kept = { match: old.m, at: now };
+  p.call('missedMatchOffered', old.m, p.ctx.__kept);
+  let n = p.run(`missedNotes.get('${id}')`);
+  assert.equal(n.kind, 'return');
+  assert.equal(n.since, now - 120 * MIN, 'a return with a flip 2 h old starts at the flip');
+  assert.equal(n.sure, true);
+  const pause = () => { reset(); lastOffer(30000); p.ctx.__kept = { match: clone(M0), at: now - 12 * MIN }; p.call('missedMatchOffered', old.m, p.ctx.__kept); return p.run(`missedNotes.get('${id}')`); };
+  n = pause();
+  assert.equal(n.kind, 'pause');
+  assert.equal(n.since, now - 120 * MIN, 'a pause with a flip 2 h old starts at the flip');
+  assert.equal(n.sure, true);
+  flips(0).last_flipped = new Date(now - MIN).toISOString();
+  history(sample(now - 40 * MIN, M0), sample(now - 5 * MIN, old.m));
+  n = pause();
+  assert.ok(n.end >= now - MIN, 'the period reaches a flip it lists');
+});
+
+test('missedMatchOffered: over 40 objectives taken, the newest 40 by their flip are listed (js/maps-early.js)', () => {
+  const { now, offer, M0 } = happened();
+  const m = clone(M0); const order = [];
+  for (const map of m.maps) for (const o of map.objectives) if (['Camp', 'Tower', 'Keep'].includes(o.type)) { o.owner = FLIP_TO[o.owner] || 'Red'; order.push(o); }
+  order.forEach((o, i) => { o.last_flipped = new Date(now - (order.length - i) * MIN).toISOString(); });
+  m.maps[0].kills.red += 5;
+  assert.ok(order.length > 40, 'the state: over 40 objectives to take');
+  const n = offer(m, 12 * MIN, 30000);
+  assert.deepEqual(Array.from(n.changes, (c) => c.id), order.slice(-40).map((o) => o.id));
+});
+
+test('missedMatchOffered: Ruins and Spawn never chips, kills never below 0, a summary gone after 10 min (js/maps-early.js)', () => {
+  const { p, id, now, offer, after, M0 } = happened();
+  const ruins = clone(M0);
+  for (const map of ruins.maps) for (const o of map.objectives) if (o.type === 'Ruins' || o.type === 'Spawn') o.owner = FLIP_TO[o.owner] || 'Red';
+  ruins.maps[0].kills.red += 5;
+  assert.equal(offer(ruins, 12 * MIN, 30000).changes.length, 0, 'Ruins or Spawn became chips');
+  const fewer = after().m; fewer.maps[0].kills.red -= 500;
+  const low = offer(fewer, 12 * MIN, 30000);
+  assert.ok(!low || low.kills >= 0, 'kills went below 0');
+  const n = offer(after().m, 12 * MIN, 30000);
+  assert.equal(p.run(`missedNoteFor('${id}') !== null`), true, 'control: the summary is up');
+  n.until = now - 1;
+  assert.equal(p.run(`missedNoteFor('${id}')`), null, 'a summary outlived its 10 minutes');
+});
+
+test('keepNewestMatch: a fault in the summary hook never costs it its body (js/api.js)', () => {
+  const { p, id, now } = happened();
+  p.run(`missedMatchOffered = () => { throw new Error('on purpose'); }`);
+  const up = clone(openMatch); up.scores.red += 100;
+  let got;
+  assert.doesNotThrow(() => { got = p.call('keepNewestMatch', up); });
+  assert.equal(p.run(`newestMatches.get('${id}').match.scores.red`), up.scores.red);
+  assert.equal(got.scores.red, up.scores.red);
+});
+
+// ---- A body dated by the sheet's score sum, /api/kills down (js/maps-early.js) ----
+function sheetDated(lines, bodyAge = 0) {
+  const p = fresh();
+  p.call('keepNewestMatch', stepOf(1));
+  const sum = p.call('colorSum', stepOf(1).scores);
+  const week = Date.parse(stepOf(1).start_time);
+  p.run(`newestMatches.get('${OPEN_ID}').rose = false; newestMatches.get('${OPEN_ID}').at = ${p.clock.now - bodyAge * MIN}`);
+  // The sheet as the Apps Script writes it: at, match, four maps, the week's start, the score sum.
+  const csv = lines.map(([age, delta]) => [p.clock.now - age * MIN, OPEN_ID, 0, 0, 0, 0, week, sum + delta].join(',')).join('\n');
+  p.ctx.AbortController = AbortController;
+  p.ctx.fetch = async () => ({ ok: true, text: async () => csv });
+  p.run('readOwnKills = async () => { throw new Error("down"); }');
+  p.run('killSheet = null; killSheetAt = 0');
+  return p.run('getKillSheet()').then(() => p.clock.now - p.run(`newestMatches.get('${OPEN_ID}').at`));
+}
+
+test('getKillSheet: with /api/kills down the body takes the time of the oldest sheet line with its score sum, not a newer equal one or one behind it (js/maps-early.js)', async () => {
+  const age = await sheetDated([[30, -5], [20, 0], [10, 0], [1, 0]]);
+  assert.equal(age, 20 * MIN);
+});
+
+test('getKillSheet: with /api/kills down no sheet line with the body\'s score sum leaves its time as it was (js/maps-early.js)', async () => {
+  const age = await sheetDated([[30, -5], [20, -3], [1, -1]]);
+  assert.equal(age, 0);
+});
+
+test('getKillSheet: with /api/kills down a body already dated before the equal sheet line does not move to it (js/maps-early.js)', async () => {
+  const age = await sheetDated([[30, -5], [20, 0], [1, 0]], 25);
+  assert.equal(age, 25 * MIN);
+});
+
+// ---- The bodies /api/latest offers (js/api.js) ---------------------------------
+const liveTwo = matches.filter((m) => Date.parse(m.end_time) > recordedAt).slice(0, 2);
+const scoreSum = (m) => m.scores.red + m.scores.blue + m.scores.green;
+const bumped = (m, n) => ({ ...clone(m), scores: { ...m.scores, red: m.scores.red + n } });
+const latestEntry = (m, over = {}) => ({ id: m.id, start: Date.parse(m.start_time), score: scoreSum(m), at: 0, by: 'check-page', v: 2, body: m, ...over });
+function readLatest(p, answer) {
+  p.ctx.__text = JSON.stringify(answer);
+  p.run('fetchOwnApi = async () => __text');
+  return p.run('latestRead()');
+}
+
+test('latestRead: only the newer body of a known id passes; another match\'s body, or an id the game never gave, does not (js/api.js)', async () => {
+  const [a, b] = liveTwo;
+  const p = fresh();
+  for (const m of liveTwo) p.call('keepNewestMatch', clone(m));
+  const got = await readLatest(p, { at: 0, matches: [
+    latestEntry(bumped(a, 5000)),
+    latestEntry(bumped(a, 99999), { id: b.id }),
+    latestEntry(bumped(a, 99999), { id: '1-9' }),
+  ] });
+  assert.deepEqual(Array.from(got, (x) => x.id), [a.id], 'only the body whose own id is the entry\'s');
+  p.ctx.__got = got;
+  p.run('offerLatest(__got)');
+  assert.equal(p.run(`colorSum(newestMatches.get('${a.id}').match.scores)`), scoreSum(a) + 5000);
+  assert.equal(p.run(`colorSum(newestMatches.get('${b.id}').match.scores)`), scoreSum(b), 'the other match is untouched');
+  assert.equal(p.run(`newestMatches.has('1-9')`), false);
+});
+
+test('latestRead: garbage in any field the page checks passes nothing (js/api.js)', async () => {
+  const a = liveTwo[0];
+  const at = Date.parse(a.start_time);
+  const p = fresh();
+  const garbage = [
+    { id: a.id, start: at, v: 2, body: 'not a body' },
+    { id: a.id, start: at, v: 2, body: { ...bumped(a, 5000), maps: null } },
+    { id: a.id, start: at, v: 2 },
+  ];
+  assert.deepEqual(Array.from(await readLatest(p, { at: 0, matches: garbage })), []);
+  assert.equal((await readLatest(p, { at: 0, matches: [latestEntry(bumped(a, 5000), { start: at + 1 })] })).length, 0, 'a start that is not the body\'s');
+  assert.equal((await readLatest(p, { at: 0, matches: [latestEntry(bumped(a, 5000))] })).length, 1, 'control: the same body, well formed');
+});
+
+test('latestRead: a newer body over the size cap does not pass (js/api.js)', async () => {
+  const a = liveTwo[0];
+  const pad = 300 * 1024;
+  const p = fresh();
+  assert.equal((await readLatest(p, { at: 0, matches: [latestEntry({ ...bumped(a, 5000), pad: ' '.repeat(pad) })] })).length, 0);
+  assert.equal((await readLatest(p, { at: 0, matches: [latestEntry({ ...bumped(a, 5000), pad: ' '.repeat(1000) })] })).length, 1, 'control: the body under the cap');
+});
+
+// ---- The copy that draws the list when the game's reads fail (js/standings.js) --
+test('copyBoard: a body of the copy is drawn up to 6 min after its `at` by the servers\' clock, and not 1 s more (js/standings.js)', async () => {
+  const p = fresh();
+  const lead = 7 * MIN;
+  const at = p.clock.now;
+  p.ctx.__body = { id: '1-1' };
+  p.run(`latestBodyAt.set(__body, ${at}); readCopyBodies = async () => [__body]`);
+  p.run(`ownClockLead = ${lead}`);
+  const tryAt = async (ms) => {
+    p.clock.now = at + lead + ms;
+    try { await p.run("copyBoard(new Error('refused'))"); return 'drawn'; } catch (e) { return e.message; }
+  };
+  assert.equal(await tryAt(6 * MIN - 1000), 'drawn');
+  assert.equal(await tryAt(6 * MIN), 'drawn', 'at 6 min');
+  assert.equal(await tryAt(6 * MIN + 1000), 'refused', 'at 6 min and 1 s');
+  p.run('ownClockLead = 0');
+  p.clock.now = at + 7 * MIN;
+  await assert.rejects(p.run("copyBoard(new Error('refused'))"), /refused/, 'the device\'s clock is not the servers\'');
+  p.run(`ownClockLead = ${lead}`);
+  p.clock.now = at + lead + MIN;
+  await p.run("copyBoard(new Error('refused'))");
+});
