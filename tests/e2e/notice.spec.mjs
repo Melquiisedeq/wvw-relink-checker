@@ -4,7 +4,7 @@
 // once in ten minutes; a notice that goes up in a hidden tab marks its title and
 // icon until the tab is seen or the notice goes.
 import { test, expect } from './support/fixtures.mjs';
-import { answer, fail } from './support/faults.mjs';
+import { answer, fail, stall } from './support/faults.mjs';
 import { hidden, visible } from './support/scenarios.mjs';
 import { check, raiseNotice, recordedJson } from './support/steps.mjs';
 
@@ -120,17 +120,29 @@ test.describe('the notice on the one-minute tick', () => {
     const cell = await relinkWindow(page, wvw);
     await answer(page, '**/api/relink', { window: cell.windowId, published: 5 });
     const down = await fail(page, wvw, /\/api\/relink$/);
-    let sheetReads = 0;
-    await page.route(/^https:\/\/docs\.google\.com\/spreadsheets\//, route => { sheetReads++; return route.fulfill({
-      status: 200, contentType: 'text/csv', headers: { 'Access-Control-Allow-Origin': '*' }, body: `"${cell.windowId}:0"` }); });
+    const sheet = await answer(page, /^https:\/\/docs\.google\.com\/spreadsheets\//, `"${cell.windowId}:0"`,
+      { contentType: 'text/csv', noStore: false });
     for (let m = 0; m < 5; m++) { await page.clock.fastForward(MIN); await quiet(); }
     expect(down.reads, '/api/relink asked again while down').toBeGreaterThanOrEqual(2);
-    expect(sheetReads, 'the sheet read once in ten minutes').toBe(1);
+    expect(sheet.reads, 'the sheet read once in ten minutes').toBe(1);
     await expect(page.locator('#teamsNotice')).toBeHidden();
     down.off();
     for (let m = 0; m < 2; m++) { await page.clock.fastForward(MIN); await quiet(); }
     await expect(page.locator('#teamsNotice'), 'two minutes after /api/relink answers')
       .toHaveAttribute('data-window', String(cell.windowId));
+  });
+
+  test('a sheet read that never answers ends at the deadline, and the next ask raises the notice', async ({ page, wvw }) => {
+    const cell = await relinkWindow(page, wvw);
+    await fail(page, wvw, /\/api\/relink$/);
+    const sheet = await answer(page, /^https:\/\/docs\.google\.com\/spreadsheets\//, `"${cell.windowId}:5"`,
+      { contentType: 'text/csv', noStore: false });
+    const silent = await stall(page, /^https:\/\/docs\.google\.com\/spreadsheets\//);
+    for (let m = 0; m < 8; m++) { await page.clock.fastForward(MIN); await quiet(); }
+    expect(silent.reads, 'the sheet was asked and left without an answer').toBe(1);
+    await expect(page.locator('#teamsNotice'), 'the notice from the read after the failed one')
+      .toHaveAttribute('data-window', String(cell.windowId));
+    expect(sheet.reads, 'the second read reached the sheet').toBe(1);
   });
 
   test('a tab shown again asks and draws at once, and flicking it does not multiply the reads', async ({ page, wvw }) => {
