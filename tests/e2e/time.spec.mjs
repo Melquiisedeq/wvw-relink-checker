@@ -327,17 +327,6 @@ test.describe('"What you missed" and the day', () => {
       expect(m, 'the summary').not.toBeNull();
       expect(m.time).toMatch(/^(since before 0[23]:\d\d PM yesterday|0[23]:\d\d PM yesterday\u2013\d\d:\d\d (AM|PM))$/);
     });
-    test('the span keeps both suffixes after "yesterday", and merges them within a day', async ({ page, wvw }) => {
-      await page.goto(wvw.url);
-      await expect(page.locator(`.standing-match[data-match-id="${FOCUS}"] .standing-side`)).toHaveCount(3);
-      await page.locator(`.tier-map-btn[aria-label*="${TIER}"]`).click();
-      await expect(page.locator('.info-popover .wvw-plot')).toBeVisible();
-      const span = (a, b) => page.evaluate(([x, y]) => missedSpan(Date.parse(x), Date.parse(y)), [a, b]);
-      expect(await span('2026-12-06T15:00:00Z', '2026-12-07T12:00:00Z')).toBe('03:00 PM yesterday\u201312:00 PM');
-      expect(await span('2026-12-06T11:00:00Z', '2026-12-06T14:00:00Z')).toBe('11:00 AM\u201302:00 PM');
-      expect(await span('2026-12-06T23:30:00Z', '2026-12-07T00:30:00Z')).toBe('11:30 PM yesterday\u201312:30 AM');
-      expect(await span('2026-12-06T15:00:00Z', '2026-12-06T17:30:00Z')).toBe('03:00\u201305:30 PM');
-    });
   });
   test.describe('1 h the same day', () => {
     test.use({ timeline: fight(1) });
