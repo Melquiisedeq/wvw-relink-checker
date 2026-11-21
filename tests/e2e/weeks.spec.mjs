@@ -8,8 +8,8 @@
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
-import { check, firstTier, iso, later, load, openMap, recordedJson, matchReads, serveList } from './support/steps.mjs';
-import { MIN, FOCUS, searedWeekTurn } from './support/scenarios.mjs';
+import { check, firstTier, iso, later, load, openMap, play, recordedJson, matchReads, serveList } from './support/steps.mjs';
+import { MIN, FOCUS, copyAheadAtTurn, copyAltered, hidden, plainReset, searedWeekTurn, visible } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, timezoneId: 'UTC', locale: 'en-US' });
 
@@ -558,3 +558,154 @@ test.describe('a map open when the week turns its borderlands', () => {
       .toEqual(['function', 'function']);
   });
 });
+
+// ---- our copy ahead at the turn ---------------------------------------------
+// The NA week turns; every read of the visitor's lands on a group 10 min behind, still on the
+// week that ended, and our copy holds the new week of every tier (copyAheadAtTurn). Inside the
+// reset window the board takes the copy's week only for the whole region: every tier on the
+// reset's own start, outside a relink the same teams, each body written within
+// LATEST_SUMMARY_FRESH_MS. Otherwise it
+// stays on what the game gives, as before: last week's line-up, waiting on the game.
+test.describe('our copy ahead at the turn', () => {
+  test.use({ clock: 'playwright', timeline: copyAheadAtTurn() });
+  const NA_IDS = ['1-1', '1-2', '1-3', '1-4'];
+  const turnOf = wvw => wvw.recordedAt + wvw.timeline.end - 6 * MIN;
+  // Each NA card: its team names (sorted), its VP figures, whether it waits on the game.
+  const naBoard = page => page.evaluate(sel => Object.fromEntries([...document.querySelectorAll(sel)].map(b => [b.dataset.matchId, {
+    names: [...b.querySelectorAll('.standing-side-name')].map(e => e.textContent).sort(),
+    vp: [...b.querySelectorAll('.standing-vp .stat-value')].map(e => e.textContent),
+    waiting: b.querySelectorAll('.standings-waiting').length,
+  }])), NA);
+  // The team names of each NA tier in the week the timeline serves at `t` (page time).
+  const namesAt = async (page, wvw, t) => Object.fromEntries(await Promise.all(NA_IDS.map(async id =>
+    [id, (await names(page, wvw.timeline.body(id, t - wvw.recordedAt))).sort()])));
+  // Each NA card's team names and the week of the body it draws.
+  const shown = async page => {
+    const board = await naBoard(page);
+    const weeks = await page.evaluate(list => list.map(id => matchDataCache.get(id)?.start_time), NA_IDS);
+    return Object.fromEntries(NA_IDS.map((id, i) => [id, { names: board[id]?.names, week: weeks[i] }]));
+  };
+  const lastWeek = async (page, wvw) => {
+    const was = await namesAt(page, wvw, turnOf(wvw) - MIN);
+    return Object.fromEntries(NA_IDS.map(id => [id, { names: was[id], week: wvw.timeline.body(id, turnOf(wvw) - MIN - wvw.recordedAt).start_time }]));
+  };
+  // The page open before the turn, then `ms` past it with the visitor at the page (the peek's pace).
+  const pastTurn = async (page, wvw, ms) => {
+    await load(page, wvw);
+    await page.clock.setSystemTime(turnOf(wvw) + 15 * 1000);
+    await play(page, ms, { using: true });
+    await wvw.settle();
+  };
+  // From the turn on, the copy's body of `id` as the week that ended left it, every skirmish in it.
+  const lastWeekIn = (wvw, id) => (data, now) => {
+    if (now < turnOf(wvw)) return data;
+    const old = wvw.timeline.body(id, turnOf(wvw) - MIN - wvw.recordedAt);
+    const e = data.matches.find(m => m.id === id);
+    Object.assign(e, { start: Date.parse(old.start_time), at: Math.floor(now / 1000) - 5, body: old });
+    return data;
+  };
+
+  test('a plain reset: the board takes the new week from the copy, and keeps it', async ({ page, wvw }) => {
+    await plainReset(page);
+    await pastTurn(page, wvw, 45 * 1000);
+    const now = await wvw.now();
+    const fresh = await namesAt(page, wvw, now);
+    const was = await lastWeek(page, wvw);
+    expect(NA_IDS.some(id => fresh[id].join() !== was[id].names.join()), 'the reset moved teams').toBe(true);
+    const want = Object.fromEntries(NA_IDS.map(id => [id, { names: fresh[id], vp: ['0', '0', '0'], waiting: 0 }]));
+    expect(await naBoard(page), 'the NA board, 60 s past the reset').toEqual(want);
+    // The game's own reads, still on the week that ended, leave the new week up.
+    await page.evaluate('loadStandings()');
+    await wvw.settle();
+    await play(page, 60 * 1000, { using: true });
+    expect(await naBoard(page), 'the NA board after a read of the game').toEqual(want);
+    // Each team found by ?world= is in its new tier.
+    const team = wvw.timeline.body('1-2', now - wvw.recordedAt).all_worlds.red.find(n => n >= 10000);
+    expect(await page.evaluate(t => getMatchForTeam(String(t)).then(m => m.id), team), "a moved team's match").toBe('1-2');
+  });
+
+  test.describe('a tier the copy holds on the week that ended', () => {
+    test.use({ timeline: copyAheadAtTurn({ moves: false }) });
+    test('the board stays on what the game gives', async ({ page, wvw }) => {
+      await plainReset(page);
+      await copyAltered(page, wvw, lastWeekIn(wvw, '1-4'));
+      await pastTurn(page, wvw, 45 * 1000);
+      expect(await shown(page), 'the NA board').toEqual(await lastWeek(page, wvw));
+    });
+  });
+
+  test('a team from outside the region in the copy: the board stays on what the game gives', async ({ page, wvw }) => {
+    await plainReset(page);
+    await copyAltered(page, wvw, (data, now) => {
+      if (now < turnOf(wvw)) return data;
+      const four = data.matches.find(m => m.id === '1-4').body;
+      four.all_worlds = { ...four.all_worlds, red: [12001] };
+      return data;
+    });
+    await pastTurn(page, wvw, 45 * 1000);
+    expect(await shown(page), 'the NA board').toEqual(await lastWeek(page, wvw));
+  });
+
+  test('a tier missing from the copy: the board stays on what the game gives', async ({ page, wvw }) => {
+    await plainReset(page);
+    await copyAltered(page, wvw, (data, now) => {
+      if (now >= turnOf(wvw)) data.matches = data.matches.filter(m => m.id !== '1-4');
+      return data;
+    });
+    // A load that fails is tried again within seconds: each failure is counted as it is planned.
+    await page.addInitScript(() => addEventListener('DOMContentLoaded', () => {
+      const plan = planStandingsRetry;
+      window.__failedLoads = 0;
+      window.planStandingsRetry = () => { window.__failedLoads++; plan(); };
+    }));
+    await pastTurn(page, wvw, 45 * 1000);
+    expect(await shown(page), 'the NA board').toEqual(await lastWeek(page, wvw));
+    expect(await page.evaluate(() => window.__failedLoads), 'failed loads').toBe(0);
+  });
+
+  test('a team short in the copy: the board stays on what the game gives', async ({ page, wvw }) => {
+    await plainReset(page);
+    await copyAltered(page, wvw, (data, now) => {
+      if (now < turnOf(wvw)) return data;
+      const [one, four] = ['1-1', '1-4'].map(id => data.matches.find(m => m.id === id).body);
+      four.all_worlds = { ...four.all_worlds, red: one.all_worlds.red };
+      return data;
+    });
+    await pastTurn(page, wvw, 45 * 1000);
+    expect(await shown(page), 'the NA board').toEqual(await lastWeek(page, wvw));
+  });
+
+  // Away over the turn, back 30 s past it: the read on its return asks the copy.
+  const awayOverTurn = async (page, wvw, back) => {
+    await load(page, wvw);
+    await hidden(page, wvw, turnOf(wvw) + back - await wvw.now());
+    const copies = [];
+    page.on('request', r => { if (/\/api\/latest(\?|$)/.test(r.url())) copies.push(r.url()); });
+    await visible(page);
+    await wvw.settle();
+    await play(page, 60 * 1000, { using: true });
+    await wvw.settle();
+    expect(await shown(page), 'the NA board').toEqual(await lastWeek(page, wvw));
+    expect(copies.length, 'reads of the copy after the return').toBe(1);
+  };
+
+  test('a relink: the board stays on what the game gives, and the peek reads no copy', async ({ page, wvw }) => {
+    await awayOverTurn(page, wvw, 30 * 1000);
+  });
+
+  test('a relink named only by /api/relink: the board stays on what the game gives', async ({ page, wvw }) => {
+    await plainReset(page, { ownRelink: true });
+    await awayOverTurn(page, wvw, 30 * 1000);
+  });
+
+  test('the assignment timer unread: the board stays on what the game gives', async ({ page, wvw }) => {
+    await plainReset(page, { timer: false, wvw });
+    await awayOverTurn(page, wvw, 30 * 1000);
+  });
+
+  test('a copy 3 min old: the board stays on what the game gives, and the peek reads no copy', async ({ page, wvw }) => {
+    await plainReset(page);
+    await awayOverTurn(page, wvw, 3 * MIN);
+  });
+});
+

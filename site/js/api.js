@@ -954,11 +954,12 @@ function latestWanted(ids, behind = false) {
   });
 }
 
-// Offers the bodies of ids this visit already read from the game; returns
-// id -> the body kept.
+// Offers the bodies of ids this visit already read from the game, but a new week inside the reset
+// window that copyWeekHeldBack (js/standings.js) holds back; returns id -> the body kept.
 function offerLatest(bodies) {
   const out = new Map();
-  for (const body of bodies) if (newestMatches.has(body.id)) out.set(body.id, keepNewestMatch(body));
+  const offered = bodies.filter((b) => newestMatches.has(b.id) && !copyWeekHeldBack(b, bodies));
+  for (const body of offered) out.set(body.id, keepNewestMatch(body));
   return out;
 }
 
