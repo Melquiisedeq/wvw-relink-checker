@@ -16,8 +16,8 @@ function formatCountdown(msRemaining) {
 }
 
 // Each region's weekly reset, in UTC: [day of week, hour]. The same hours
-// as RESET in worker/index.mjs and supabase/reader.mjs: change all three
-// (tests/unit/reset-schedule.test.mjs fails if they disagree).
+// as RESET in worker/index.mjs and supabase/reader.mjs and the corners spec's
+// rows: change every copy (tests/unit/reset-schedule.test.mjs fails if they disagree).
 const RESET_SCHEDULE = { NA: [6, 2], EU: [5, 18] };
 const RESET_ARRIVAL_MS = 15 * 60 * 1000;
 
