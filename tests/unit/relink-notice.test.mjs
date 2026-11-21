@@ -2,30 +2,27 @@
 // the state tab must come first, because the CSV export serves the first sheet when the named one is missing.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import vm from 'node:vm';
-import fs from 'node:fs';
+import { readScript, loadScript, fakeProps, fakeLogger, fakeUtilities, httpResponse } from './apps-script-harness.mjs';
 
-const src = fs.readFileSync(new URL('../../apps-script/relink-notice/relink-notice.gs', import.meta.url), 'utf8');
+const src = readScript('relink-notice/relink-notice.gs');
 
 const range = () => ({ setNumberFormat() { return this; }, setValues() { return this; }, setValue() { return this; }, getDisplayValues: () => [['', ''], ['', '']] });
 const sheet = (name, rows = 0) => ({ name, rows, setName(n) { this.name = n; return this; }, getLastRow() { return this.rows; }, getMaxRows: () => 1000,
   insertRowsAfter() {}, clear() {}, getRange() { this.rows = Math.max(this.rows, 1); return range(); } });
 
 const table = JSON.stringify(Object.fromEntries(Array.from({ length: 120 }, (_, i) => [`${String(i).padStart(8, '0')}-AAAA-BBBB-CCCC-DDDDDDDDDDDD`, '11005'])));
-const res = body => ({ getResponseCode: () => 200, getContentText: () => body });
+const res = body => httpResponse(200, body);
 
 function tabsAfterSetup(sheets) {
   const doc = { getSheetByName: n => sheets.find(s => s.name === n) || null, getSheets: () => sheets.slice(), getNumSheets: () => sheets.length,
     insertSheet(n, i) { const s = sheet(n); sheets.splice(i, 0, s); return s; } };
-  const ctx = {
+  const ctx = loadScript(src, {
     SpreadsheetApp: { getActiveSpreadsheet: () => doc },
     UrlFetchApp: { fetchAll: reqs => reqs.map(r => res(/timers/.test(r.url) ? JSON.stringify({ na: '2026-11-03T07:59:00Z', eu: '2026-11-03T07:59:00Z' }) : table)) },
-    Utilities: { sleep() {} }, Logger: { log() {} },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, deleteProperty() {}, setProperty() {} }) },
-  };
-  vm.createContext(ctx);
-  vm.runInContext(src + '\n;this.RN = RelinkNotice_;', ctx);
-  ctx.RN.setup();
+    Utilities: fakeUtilities(), Logger: fakeLogger(),
+    PropertiesService: { getScriptProperties: () => fakeProps() },
+  }, 'RelinkNotice_');
+  ctx.out.setup();
   return sheets.map(s => s.name);
 }
 
