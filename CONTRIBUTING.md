@@ -144,7 +144,10 @@ the page fetches and every key it stores must be listed there.
 
 `page` also fails if the page goes over its budget (`tests/e2e/data/budget.json`)
 or a file's test coverage falls (`tests/e2e/data/coverage.json`); the message says
-which measure and which file. `npm run coverage` in `tests/e2e` measures
+which measure and which file. The browser tests run on two machines, `e2e (1/2)` and `e2e (2/2)`. Another job,
+`warn`, is not required: it runs the tests tagged `@timing` (they count frames, which a busy runner
+moves) and `@quarantine` (one that fails for the machine, not the page, until it is fixed); red there
+blocks nothing, and its summary says what failed. `npm run coverage` in `tests/e2e` measures
 it locally, running both test suites and comparing with `data/coverage.json`.
 
 ## Words used in the code
