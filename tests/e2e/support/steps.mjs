@@ -92,6 +92,7 @@ export async function check(page, wvw, names) {
 
 // The page opened with every tier of both regions up and nothing in flight.
 export async function load(page, wvw) {
+  expect(wvw.tiers.NA * wvw.tiers.EU, 'tiers in the recording, both regions').toBeGreaterThan(0);
   await page.goto(wvw.url);
   await expect(page.locator('#standingsGridNA > .standing-match')).toHaveCount(wvw.tiers.NA);
   await expect(page.locator('#standingsGridEU > .standing-match')).toHaveCount(wvw.tiers.EU);
