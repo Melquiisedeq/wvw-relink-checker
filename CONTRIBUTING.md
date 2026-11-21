@@ -121,6 +121,17 @@ console error, a Content Security Policy violation, or a URL that was not
 recorded (the message names it). A skipped test fails the run; on CI a test
 that passes only on its retry is a warning.
 
+A new or changed test goes through the screen, the network and the clock: it
+finds an element by its role and its text (`getByRole`, `getByText`; a class
+only where neither names it), counts requests (`page.on('request')`) rather
+than calls, and waits on what is drawn or on the clock. What none of those
+shows is asked of the page through one file, `tests/e2e/support/page.mjs`, a
+function there for each thing read or done; `tests/unit/spec-port.test.mjs`
+fails on a name from `site/js/` anywhere else under `tests/e2e/` (its
+`WAITING` list holds the older specs that still use some; a review takes no
+name added there). A test added in place of an older one says so in its pull
+request, and the older one goes, or the pull request says why it stays.
+
 After a change that makes the page fetch something new, record again from the
 real hosts and commit the file. The run is live, one worker; what decides is the
 replay of the whole suite against the new file at the end, and the old

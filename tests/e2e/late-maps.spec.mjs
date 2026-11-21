@@ -7,6 +7,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { abort, fail, hold } from './support/faults.mjs';
 import { load, firstTier, recordedJson, serveList } from './support/steps.mjs';
+import { LOG_SCRIPT_FILLS, holdCatalogueAndLogFills, scriptFills, keepNewest, keptScore, logOpeningScores, mapsScriptIn, readMatchList, recalledScore, refreshBoard } from './support/page.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 const PLOT = ".info-popover .wvw-plot g[role='button']";
@@ -42,7 +43,7 @@ test('a refresh or a click while maps.js is still downloading asks for nothing m
   await expect(page.locator('#standingsGridNA > .standing-match')).toHaveCount(wvw.tiers.NA);
   await expect(page.locator('#standingsGridEU > .standing-match')).toHaveCount(wvw.tiers.EU);
   await expect.poll(() => release.reads, { message: 'the board asked for maps.js' }).toBe(1);
-  expect(await page.evaluate(() => refreshStandings()), 'the standings redrawn, not skipped').not.toBe(false);
+  expect(await refreshBoard(page), 'the standings redrawn, not skipped').not.toBe(false);
   await page.locator('.tier-map-btn').first().click();
   await expect(page.locator('.info-popover'), 'the popover opens at once, loading').toContainText('Loading maps');
   expect(release.reads, 'the refresh and the click joined the request in flight').toBe(1);
@@ -68,15 +69,13 @@ test('a failed download of maps.js says so, and "Try again" opens the map', asyn
 });
 
 test('closed and opened again while maps.js downloads: one fill, into the open popover', async ({ page, wvw }) => {
-  // maps.js served held, with fillTierMaps wrapped to log each popover it fills.
+  // maps.js served held, logging each popover it fills.
   let go;
   const gate = new Promise(ok => { go = ok; });
   await page.route(wvw.url + 'js/maps.js', async route => {
     await gate;
     const res = await route.fetch();
-    const spy = '\n;(() => { const fill = fillTierMaps; window.__fills = [];' +
-      ' fillTierMaps = function (p, ...rest) { window.__fills.push(p === activePopover); return fill.call(this, p, ...rest); }; })();\n';
-    await route.fulfill({ response: res, body: (await res.text()) + spy });
+    await route.fulfill({ response: res, body: (await res.text()) + LOG_SCRIPT_FILLS });
   });
   await page.goto(wvw.url, { waitUntil: 'commit' });
   const btn = page.locator('.tier-map-btn').first();
@@ -89,23 +88,14 @@ test('closed and opened again while maps.js downloads: one fill, into the open p
   go();
   await expect(page.locator(PLOT).first(), 'the map drawn once maps.js landed').toBeAttached();
   await wvw.settle();
-  expect(await page.evaluate(() => window.__fills), 'fills, each true if into the open popover').toEqual([true]);
+  expect(await scriptFills(page), 'fills, each true if into the open popover').toEqual([true]);
 });
 
 test('closed and opened again while the catalogue downloads: only the open popover is filled', async ({ page, wvw }) => {
   await load(page, wvw);
-  await expect.poll(() => page.evaluate(() => typeof fillTierMaps === 'function'), { message: 'maps.js in' }).toBe(true);
+  await expect.poll(() => mapsScriptIn(page), { message: 'maps.js in' }).toBe(true);
   // The catalogue held, and each popover that is filled logged.
-  await page.evaluate(() => {
-    let go;
-    const gate = new Promise(ok => { go = ok; });
-    window.__release = go;
-    window.__fills = [];
-    const catalogue = getObjectiveCatalogue;
-    getObjectiveCatalogue = async () => { await gate; return catalogue(); };
-    const fill = renderTierMapsContent;
-    renderTierMapsContent = function (p, ...rest) { window.__fills.push(p === activePopover); return fill.call(this, p, ...rest); };
-  });
+  const catalogue = await holdCatalogueAndLogFills(page);
   const btn = page.locator('.tier-map-btn').first();
   await btn.click();
   await expect(page.locator('.info-popover')).toContainText('Loading maps');
@@ -113,10 +103,10 @@ test('closed and opened again while the catalogue downloads: only the open popov
   await expect(page.locator('.info-popover')).toHaveCount(0);
   await btn.click();
   await expect(page.locator('.info-popover')).toContainText('Loading maps');
-  await page.evaluate(() => window.__release());
+  await catalogue.release();
   await expect(page.locator(PLOT).first(), 'the map drawn').toBeAttached();
   await wvw.settle();
-  expect(await page.evaluate(() => window.__fills), 'fills, each true if into the open popover').toEqual([true]);
+  expect(await catalogue.fills(), 'fills, each true if into the open popover').toEqual([true]);
 });
 
 test('a late answer of a map closed and reopened by the same button does not take the reopening back', async ({ page, wvw }) => {
@@ -146,15 +136,11 @@ test('a late answer of a map closed and reopened by the same button does not tak
     await route.fulfill({ status: 200, body: '{"at":0,"matches":[]}',
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } });
   });
-  await expect.poll(() => page.evaluate(() => typeof fillTierMaps === 'function'), { message: 'maps.js in' }).toBe(true);
-  await page.evaluate(() => {
-    window.__opened = [];
-    const fill = renderTierMapsContent;
-    renderTierMapsContent = function (p, m, ...rest) { window.__opened.push(colorSum(m.scores)); return fill.call(this, p, m, ...rest); };
-  });
+  await expect.poll(() => mapsScriptIn(page), { message: 'maps.js in' }).toBe(true);
+  const opened = await logOpeningScores(page);
   // The match quiet long enough that the opening's read asks /api/latest beside it.
   await wvw.skew(100000);
-  const kept = () => page.evaluate(id => colorSum(newestMatches.get(id).match.scores), t.id);
+  const kept = () => keptScore(page, t.id);
 
   await t.button.click();
   await expect(page.locator(PLOT).first()).toBeAttached();
@@ -171,18 +157,18 @@ test('a late answer of a map closed and reopened by the same button does not tak
   await expect.poll(kept).toBe(sum(rec) + 1);
   gates[1].go();
   await expect.poll(kept).toBe(sum(rec) + 5);
-  await expect.poll(() => page.evaluate(() => freshRecall.data && colorSum(freshRecall.data.scores)),
+  await expect.poll(() => recalledScore(page),
     { message: 'the reopening\'s answer recalled' }).toBe(sum(rec) + 5);
   // Past the 1.2 s the first opening's read waits for /api/latest.
   await page.waitForTimeout(2000);
   latestGo();
   await wvw.settle();
-  expect.soft(await page.evaluate(() => colorSum(freshRecall.data.scores)), 'the recall after the late answer').toBe(sum(rec) + 5);
+  expect.soft(await recalledScore(page), 'the recall after the late answer').toBe(sum(rec) + 5);
   await page.keyboard.press('Escape');
   await t.button.click();
   await expect(page.locator(PLOT).first()).toBeAttached();
   await wvw.settle();
-  expect(await page.evaluate(() => window.__opened), 'the score each opening painted from').toEqual([sum(rec), sum(rec), sum(rec) + 5]);
+  expect(await opened(), 'the score each opening painted from').toEqual([sum(rec), sum(rec), sum(rec) + 5]);
 });
 
 test('a list read waiting on /api/latest hands out the newer body that landed meanwhile', async ({ page, wvw }) => {
@@ -203,11 +189,10 @@ test('a list read waiting on /api/latest hands out the newer body that landed me
   // The game's list answers with the older body.
   await serveList(page, [rec]);
   await wvw.skew(100000);
-  const list = page.evaluate(({ id }) => fetchMatches(`${API_BASE}/wvw/matches?ids=${id}`, 8000, ['1'])
-    .then(l => l.map(m => colorSum(m.scores))), { id: t.id });
+  const list = readMatchList(page, t.id);
   await expect.poll(() => latestReads, { message: 'the list read asked /api/latest' }).toBe(1);
   // A newer body of the same match lands inside the wait.
-  await page.evaluate(m => { keepNewestMatch(m); }, newer);
+  await keepNewest(page, newer);
   const scores = await list;
   latestGo();
   expect(scores, 'the score the list hands out').toEqual([sum(rec) + 5]);

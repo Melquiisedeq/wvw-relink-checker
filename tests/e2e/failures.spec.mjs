@@ -6,6 +6,7 @@ import { test, expect } from './support/fixtures.mjs';
 import { abort, answer, fail, hold, holdSummary, stall } from './support/faults.mjs';
 import { firstTier, later, load, openMap } from './support/steps.mjs';
 import { recording } from './support/recordings.mjs';
+import { allQuietNow, askKills, emblemLayerCount, forgetCommunityGuilds, forgetEmblems, liveOnBoard, loadNow, quietFor, retryWaiting, upgradeLines } from './support/page.mjs';
 import { MIN, killRows, killsGap, playing } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
@@ -230,26 +231,22 @@ test.describe('a load fails while a peek waits for the summary', () => {
     await page.goto(wvw.url);
     await expect(page.locator(TIERS)).toHaveCount(wvw.tiers.NA);
     await wvw.settle();
-    await holdSummary(page);
-    await page.evaluate(() => {
-      window.__peekLoads = 0;
-      const load = loadStandings;
-      loadStandings = function (...a) { if (a[0] === 'peek') window.__peekLoads++; return load.apply(this, a); };
-    });
-    await expect.poll(async () => { await page.clock.fastForward(31 * 1000); return page.evaluate(() => window.__summaryHeld); },
+    const summary = await holdSummary(page);
+    await expect.poll(async () => { await page.clock.fastForward(31 * 1000); return summary.held(); },
       'the peek is out and held').toBe(1);
     await fail(page, wvw, GAME);
-    await page.evaluate(() => { loadStandings('manual'); });
+    await loadNow(page, 'manual');
     await expect.poll(async () => { await page.clock.runFor(2000); return alertOf(page, 'NA').textContent(); },
       { message: 'the failed load marks a new try', timeout: 40000, intervals: [100] }).toMatch(/Trying again in \d+ s/);
-    await page.evaluate(() => {
-      const m = [...matchDataCache.values()].find(x => matchIsLive(x));
-      window.__releaseSummary({ [m.id]: { start: Date.parse(m.start_time), score: colorSum(m.scores) + 1000, at: 0, by: 'a' } });
-    });
+    // A load the peek asked for reads the copy: nothing may read it, nor the game, counted at the network.
+    const reads = [];
+    page.on('request', r => { if (/\/api\/latest$/.test(r.url()) || GAME.test(r.url())) reads.push(r.url()); });
+    const m = await liveOnBoard(page);
+    await summary.release({ [m.id]: { start: m.start, score: m.score + 1000, at: 0, by: 'a' } });
     await page.clock.runFor(1000);
     await wvw.settle();
-    expect(await page.evaluate(() => window.__peekLoads), 'loads the peek asked for').toBe(0);
-    expect(await page.evaluate(() => !!standingsRetry), 'the new try is still marked').toBe(true);
+    expect(reads, 'reads of the copy and the game after the summary said the match is ahead').toEqual([]);
+    expect(await retryWaiting(page), 'the new try is still marked').toBe(true);
     await expect(alertOf(page, 'NA')).toContainText(/Trying again in \d+ s/);
     expect(await alertOf(page, 'NA').locator('.spinner').evaluate(e => getComputedStyle(e).display), 'the indicator').toBe('none');
   });
@@ -269,7 +266,7 @@ test('a refresh that fails keeps the tiers on screen and only says so', async ({
   await load(page, wvw);
   const names = await page.locator(TIERS).allInnerTexts();
   const down = await fail(page, wvw, BY_ID);
-  await page.evaluate(() => loadStandings());
+  await loadNow(page);
   await expect(alertOf(page, 'NA'), 'the message').toContainText(/Trying again in \d+ s/);
   await expect(alertOf(page, 'EU')).toContainText(/Trying again in \d+ s/);
   expect(down.reads, 'refresh reads that failed').toBeGreaterThan(0);
@@ -327,15 +324,12 @@ test('only /api/kills down: the sheet still gives the history, and the map its a
   const tier = await firstTier(page);
   target = tier.id;
   const down = await fail(page, wvw, /^http:\/\/127\.0\.0\.1:\d+\/api\/kills$/);
-  await page.evaluate(async () => {
-    for (const k of newestMatches.values()) { k.rose = false; k.at = Date.now(); }
-    killSheetAt = 0;
-    await getKillSheet();
-  });
+  await allQuietNow(page);
+  await askKills(page, { stale: true });
   expect(relink, 'answers of /api/relink, which stayed up').toContain(200);
   expect(down.reads, 'reads of /api/kills that failed').toBeGreaterThan(0);
   expect(sheet.reads, 'reads of the sheet instead').toBeGreaterThan(0);
-  expect(await page.evaluate(id => Date.now() - newestMatches.get(id).at, tier.id), 'the match backdated by the sheet\'s history')
+  expect(await quietFor(page, tier.id), 'the match backdated by the sheet\'s history')
     .toBeGreaterThanOrEqual(6 * 60000);
   await openMap(page, wvw, tier.button);
   await expect(page.locator('.info-popover .wvw-plot-wrap .wvw-hud-ago'), 'the map opens amber, from the sheet').toHaveText(/^⚠ data from /);
@@ -378,7 +372,7 @@ test('a failed upgrade catalogue is asked for again on the next opening', async 
   await openMap(page, wvw, tier.button);
   await expect.poll(() => down.reads, 'the first opening tried the catalogue and its retries').toBe(3);
   await wvw.settle();
-  expect(await page.evaluate(() => upgradeCatalogue?.size ?? 0), 'the failed opening has no upgrade lines').toBe(0);
+  expect(await upgradeLines(page), 'the failed opening has no upgrade lines').toBe(0);
   await page.locator('.info-popover .info-popover-close').click();
   await expect(page.locator('.info-popover')).toHaveCount(0);
   down.off();
@@ -411,9 +405,9 @@ test('a guild emblem asked while the emblem catalogue was down is drawn on the n
   const id = 'ZZZZ-EMBLEM-GUILD';
   const emblem = { background: { id: 1, colors: [1] }, foreground: { id: 2, colors: [1, 1] }, flags: [] };
   await answer(page, `https://api.guildwars2.com/v2/guild/${id}`, { id, name: 'Emblem Guild', tag: 'EMB', emblem });
-  await page.evaluate(() => { emblemPieces = null; emblemPiecesPromise = null; });
+  await forgetEmblems(page);
   const down = await abort(page, wvw, /\/v2\/emblem\//);
-  const layers = () => page.evaluate(id => guildEmblem(id).then(e => e.layers.length), id);
+  const layers = () => emblemLayerCount(page, id);
   expect(await layers(), 'layers while the catalogue is down').toBe(0);
   down.off();
   await answer(page, /\/v2\/emblem\/backgrounds/, [{ id: 1, layers: ['https://render.guildwars2.com/b.png'] }]);
@@ -436,23 +430,20 @@ test.describe('a sheet that never answers', () => {
     await load(page, wvw);
     target = (await firstTier(page)).id;
     await fail(page, wvw, /^http:\/\/127\.0\.0\.1:\d+\/api\/kills$/);
-    await page.evaluate(() => {
-      killSheet = null; killSheetAt = 0;
-      window.__kills = null;
-      getKillSheet().then(m => { window.__kills = m.size; });
-    });
+    let first = null;
+    askKills(page, { forget: true }).then(n => { first = n; });
     await expect.poll(() => silent.reads, { message: 'the read went out and got no answer' }).toBe(1);
     await pastDeadline(page);
-    await expect.poll(() => page.evaluate(() => window.__kills), { message: 'getKillSheet settled once the deadline passed' }).toBe(0);
+    await expect.poll(() => first, { message: 'the ask of the history settled once the deadline passed' }).toBe(0);
     expect(sheet.reads, 'the stalled read never reached the recording').toBe(0);
-    expect(await page.evaluate(async () => (await getKillSheet()).size), 'the next ask reads the sheet again').toBeGreaterThan(0);
+    expect(await askKills(page), 'the next ask reads the sheet again').toBeGreaterThan(0);
     expect(sheet.reads).toBe(1);
   });
 
   test('the community guild list: the popover says it could not load, and opens with the list the next time', async ({ page, wvw }) => {
     const silent = await stall(page, /^https:\/\/docs\.google\.com\/spreadsheets\/.*sheet=SoloGuilds/);
     await load(page, wvw);
-    await page.evaluate(() => { communityGuildsCache = null; });
+    await forgetCommunityGuilds(page);
     const btn = page.locator('.server-guilds-btn').locator('visible=true').first();
     const body = page.locator('.info-popover--guilds');
     await btn.click();
