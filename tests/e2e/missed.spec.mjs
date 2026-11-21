@@ -512,6 +512,26 @@ test.describe('what happened', () => {
     await later(page, wvw, 2000);
     await expect(page.locator(BLOCK), 'the block of an older week, the mouse on it').toHaveCount(0);
   });
+
+  // The week of the summary ends minutes after it came, well inside the ten: the game has not published the next one,
+  // so no body turns it, and the Captures tab is already empty. The block goes with the week, held or not.
+  for (const mouse of [false, true]) {
+    test(`a week that ended takes the block, no new week up${mouse ? ', the mouse on it' : ''}`, async ({ page, wvw }) => {
+      const g = await gap(page, wvw);
+      g.after.end_time = iso(await wvw.now() + 3 * MIN);
+      await g.afterTheGap();
+      await expect(page.locator(BLOCK), 'the summary at the return').toBeAttached();
+      if (mouse) {
+        await page.locator(BLOCK).hover();
+        await isHeld(page, g.tier.id, true);
+      }
+      await later(page, wvw, 100000);
+      expect(await page.evaluate(i => missedNotes.has(i) && matchIsLive(missedNotes.get(i).after), g.tier.id), 'the state: the week still runs, the block stays').toBe(true);
+      await later(page, wvw, 100000);
+      expect(await page.evaluate(i => matchIsLive(newestMatches.get(i).match), g.tier.id), 'the state: the week is over').toBe(false);
+      await expect(page.locator(BLOCK), 'the block of a week that ended').toHaveCount(0);
+    });
+  }
 });
 
 // ---- The block, other shapes ------------------------------------------------
