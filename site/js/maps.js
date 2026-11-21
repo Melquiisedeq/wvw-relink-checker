@@ -2464,19 +2464,19 @@ function recentCaptures(match) {
 }
 
 // The list, rebuilt only when what it shows moved. view: { box, match, goTo,
-// spot }. A row lights its objective while pointed at; pressed, it opens the
+// spot, over }. A row lights its objective while pointed at; pressed, it opens the
 // objective's map and lights it a moment, without selecting it - the list
 // stays on screen.
 function paintCaptures(view, items) { keepFocus(view.box, () => paintCapturesNow(view, items)); }
 function paintCapturesNow(view, items) {
   const shown = items.slice(0, CAPTURES_MAX);
   const unlisted = items.length - shown.length;
-  const key = JSON.stringify([shown, unlisted, new Date(steadyNow()).toDateString()]);
+  const key = JSON.stringify([shown, unlisted, view.over, new Date(steadyNow()).toDateString()]);
   if (view.box.dataset.key === key) return;
   view.box.dataset.key = key;
   view.box.textContent = '';
   if (!shown.length) {
-    view.box.appendChild(missedEl('p', 'wvw-caps-none', 'No recent captures.'));
+    view.box.appendChild(missedEl('p', 'wvw-caps-none', view.over ? 'No captures yet this week.' : 'No recent captures.'));
     return;
   }
   for (const it of shown) {
@@ -2933,7 +2933,9 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   const paintPane = () => {
     // Nothing picked (a map tab change throws the pick away): back to the board.
     if (paneOn === 'objective' && !selected) paneOn = 'board';
-    const items = recentCaptures(liveMatch);
+    // A finished week lists nothing: the game has not published the next one, and the old lines would read as now.
+    const over = !matchIsLive(liveMatch);
+    const items = over ? [] : recentCaptures(liveMatch);
     for (const [key, b] of paneTab) {
       const on = key === paneOn;
       b.classList.toggle('is-active', on);
@@ -2945,7 +2947,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     board.classList.toggle('is-off', paneOn !== 'board');
     caps.classList.toggle('is-off', paneOn !== 'captures');
     detail.classList.toggle('is-off', paneOn !== 'objective');
-    paintCaptures({ box: caps, match: liveMatch, goTo, spot: spotlight }, items);
+    paintCaptures({ box: caps, match: liveMatch, goTo, spot: spotlight, over }, items);
     sizePane();
   };
   const showPane = (key) => {
