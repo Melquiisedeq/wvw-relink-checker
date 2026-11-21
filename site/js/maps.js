@@ -2581,7 +2581,12 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     b.textContent = text;
     b.title = tip;
     b.setAttribute('role', 'tab');
-    b.addEventListener('click', (e) => { e.stopPropagation(); showPane(key); });
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Not in paintPane: the one-second repaint and a map change run it too, and would fold the summary each time.
+      if (key === 'captures') { missedFold(match.id); paintNote(); }
+      showPane(key);
+    });
     paneTabs.appendChild(b);
     paneTab.set(key, b);
   }

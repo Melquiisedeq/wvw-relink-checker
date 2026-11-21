@@ -397,6 +397,45 @@ test.describe('what happened', () => {
     await expect(block.locator('.wvw-chip')).toHaveCount(0);
   });
 
+  for (const width of [1280, 390]) {
+    test(`the Captures tab folds the summary only when the reader opens it, at ${width} px`, async ({ page, wvw }) => {
+      const g = await gap(page, wvw);
+      await g.afterTheGap();
+      const block = page.locator(BLOCK);
+      if (width < 700) {
+        await phone(page, width);
+        // The box repaints as a phone's folded one on the next second; until then it is still the wide one.
+        await expect(block).not.toHaveClass(/is-open/);
+      }
+      const head = block.locator('.wvw-missed-head');
+      const tab = name => page.locator(`.info-popover .wvw-subtab[data-pane="${name}"]`);
+      const reopen = async () => {
+        if (!await block.evaluate(b => b.classList.contains('is-open'))) await head.click();
+        await expect(block).toHaveClass(/is-open/);
+      };
+      await reopen();
+      await tab('board').click();
+      await expect(block, 'Board leaves it open').toHaveClass(/is-open/);
+      await tab('captures').click();
+      await expect(block, 'folded by the click on Captures').not.toHaveClass(/is-open/);
+      await expect(page.locator('.info-popover .wvw-caps .wvw-cap').first(), 'the list in view').toBeVisible();
+      await reopen();
+      // Two repaints of the page's own one-second timer, counted at the summary's painter.
+      await page.evaluate(() => {
+        const paint = paintMissed;
+        window.__missedPaints = 0;
+        paintMissed = (...a) => { window.__missedPaints++; return paint(...a); };
+      });
+      await expect.poll(() => page.evaluate(() => window.__missedPaints), { timeout: 10000 }).toBeGreaterThanOrEqual(2);
+      await expect(block, 'open through the repaints').toHaveClass(/is-open/);
+      await page.locator(`.info-popover .wvw-tab:not(.is-active)`).first().click();
+      await expect(tab('captures')).toHaveClass(/is-active/);
+      await expect(block, 'open after a map change').toHaveClass(/is-open/);
+      await tab('captures').click();
+      await expect(block, 'folded by a click on the tab already shown').not.toHaveClass(/is-open/);
+    });
+  }
+
   test('on a phone it starts folded, the title alone, and opens on a tap', async ({ page, wvw }) => {
     const g = await gap(page, wvw);
     await g.afterTheGap();
