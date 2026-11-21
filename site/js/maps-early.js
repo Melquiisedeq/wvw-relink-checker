@@ -691,13 +691,15 @@ function missedFold(matchId) {
 
 // `note.held` (set by each paint of the box): the reader has the mouse over it
 // or the focus in it, so the ten minutes wait. A turned week never waits, its
-// summary would be wrong. Every body offered asks too (missedRefreshNote), so
+// summary would be wrong, and neither does one whose week has ended (the next
+// is not published yet). Every body offered asks too (missedRefreshNote), so
 // the flag lives on the note, not in the caller.
 function missedNoteFor(matchId) {
   const note = missedNotes.get(matchId);
   const kept = newestMatches.get(matchId);
   const turned = note && kept && kept.match.start_time !== note.after.start_time;
-  if (note && (turned || (!note.held && steadyNow() > note.until))) { missedNotes.delete(matchId); return null; }
+  const over = note && !matchIsLive(note.after);
+  if (note && (turned || over || (!note.held && steadyNow() > note.until))) { missedNotes.delete(matchId); return null; }
   return note || null;
 }
 
