@@ -4,7 +4,7 @@
 // Run: node --test "tests/unit/*.test.mjs"
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readScript, loadScript, fakeClock, fakeProps, fakeLogger, fakeUtilities, fakeLock, fakeSheet, fakeSpreadsheetApp, httpResponse } from './apps-script-harness.mjs';
+import { readScript, loadScript, fakeClock, fakeProps, fakeLogger, fakeUtilities, fakeLock, fakeSheet, fakeSpreadsheetApp, deliverer, httpResponse } from './apps-script-harness.mjs';
 import { KILLS_KEY, NA_WEEK, setup } from './worker-harness.mjs';
 import { signHeaders } from './signed.mjs';
 
@@ -64,17 +64,7 @@ function rig({ props = { ingest: KILLS_KEY }, sheet = fakeSheet('kills'), lockFr
     }
   }, '({ snapshot, killsSecret })');
   r.tick = (...bodies) => { if (bodies.length) r.serve(...bodies); r.ctx.out.snapshot(); };
-  // Hands the pushes the script made, and the Worker's answer was not forced, to the Worker at their own time.
-  r.deliver = async () => {
-    const out = [];
-    for (const push of r.pushes.filter((x) => x.code === null && !x.delivered)) {
-      push.delivered = true;
-      w.advance(push.at - w.now);
-      const res = await w.fetch(new Request(push.url, { method: 'POST', body: push.opt.payload, headers: push.opt.headers }));
-      out.push(res.status);
-    }
-    return out;
-  };
+  r.deliver = deliverer(w, r.pushes);
   r.sent = (i) => JSON.parse(r.pushes[i].opt.payload).rows;
   r.saved = () => JSON.parse(p.getProperty('scores') || '{}');
   return r;
