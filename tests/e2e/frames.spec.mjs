@@ -47,6 +47,7 @@ const countEmberFrames = page => page.addInitScript(() => {
 });
 
 test('standing still and watched, the page draws only when the embers do', { tag: '@timing' }, async ({ page, wvw }) => {
+  expect(1, 'proof branch: a forced failure in the warn job').toBe(2);
   await countEmberFrames(page);
   await load(page, wvw);
   await page.waitForTimeout(1500);
