@@ -1663,15 +1663,21 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
 
 
 // ---- the score bar --------------------------------------------------
-// One segment per side, as wide as that side's share of the points THIS map gave in the skirmish under way
-// (the last of the match's skirmishes), not the match total (identical on all four tabs): whoever is
-// scoring on the map fills the bar, and a side that stopped scoring shrinks out.
-function buildScoreBar(match, mapData, isLive) {
+// One segment per side, as wide as that side's share of THIS map, not the match total (identical on all four
+// tabs). The game's tick exists only at T3, so each objective is counted by what it paid before: its type and
+// tier (read from points_capture), which sums up who holds the map. A side that holds nothing shrinks out.
+const BAR_TICK = Object.freeze({ Camp: [2, 3, 4, 5], Tower: [4, 6, 8, 10], Keep: [8, 12, 16, 20], Castle: [12, 16, 20, 24] });
+const BAR_CAPTURE = Object.freeze({ Camp: [2, 10, 15, 25], Tower: [25, 125, 200, 250], Keep: [100, 200, 400, 500], Castle: [200, 250, 300, 400] });
+function buildScoreBar(mapData, isLive) {
   if (!isLive || !mapData) return null;
-  const skirmishes = (match && match.skirmishes) || [];
-  const last = skirmishes[skirmishes.length - 1];
-  const mine = ((last && last.map_scores) || []).find((x) => x && x.type === mapData.type);
-  const vals = COLORS.map((c) => Math.max(0, Number(((mine && mine.scores) || {})[c] || 0)));
+  const sums = new Map(COLORS.map((c) => [c, 0]));
+  for (const ob of mapData.objectives || []) {
+    const ticks = BAR_TICK[ob.type];
+    const key = String(ob.owner || '').toLowerCase();
+    if (!ticks || !sums.has(key)) continue;
+    sums.set(key, sums.get(key) + ticks[Math.max(0, BAR_CAPTURE[ob.type].indexOf(Number(ob.points_capture)))]);
+  }
+  const vals = COLORS.map((c) => sums.get(c));
   const total = vals.reduce((a, b) => a + b, 0);
   if (!total) return null;
 
@@ -2819,7 +2825,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     if (plotWrap) {
       // Over the plot, not inside the SVG: the SVG is the camera and
       // everything in it pans and zooms with the terrain.
-      const sb = buildScoreBar(liveMatch, byType.get(type), matchIsLive(liveMatch));
+      const sb = buildScoreBar(byType.get(type), matchIsLive(liveMatch));
       if (sb) plotWrap.appendChild(sb);
       corners = buildMapCorners(plotWrap, match.id);
       paintCorners();
@@ -3079,7 +3085,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     if (selected) renderObjectiveDetail(detail, selected, fresh);
     if (plotWrap) {
       const old = plotWrap.querySelector('.wvw-scorebar');
-      const sb = buildScoreBar(fresh, now, live);
+      const sb = buildScoreBar(now, live);
       if (old) old.remove();
       if (sb) plotWrap.appendChild(sb);
     }

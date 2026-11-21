@@ -429,8 +429,8 @@ test('a capture row rebuilt under the pointer takes its light with it', async ({
 // way (a slow line) is overtaken by the next one; when it lands at last, the
 // map keeps what the newer read painted. The held read's body is the further
 // along one (a server ahead of the others) and hands Red every camp, tower and
-// keep of the map in view, and the points they earn in the skirmish, so a map that
-// painted it would show Red's share of the bar over the map grow past what the newer read drew.
+// keep of the map in view, so a map that painted it would show Red's share of
+// the bar over the map grow past what the newer read drew.
 test('a read overtaken on the way is dropped when it lands', async ({ page, wvw }) => {
   await load(page, wvw);
   const tier = await firstTier(page);
@@ -442,10 +442,6 @@ test('a read overtaken on the way is dropped when it lands', async ({ page, wvw 
     const objectives = b.maps.find(m => m.type === type).objectives.filter(o => ['Camp', 'Tower', 'Keep'].includes(o.type) && o.owner !== 'Red');
     for (const o of objectives.slice(0, flips)) o.owner = 'Red';
     b.scores.red += flips;
-    // The bar is the map's points in the skirmish under way: what the flips earned goes there.
-    const sk = b.skirmishes[b.skirmishes.length - 1];
-    sk.scores.red += flips;
-    sk.map_scores.find(x => x.type === type).scores.red += flips;
     b.flipped = objectives.slice(0, flips).map(o => o.id);
     return b;
   };
@@ -727,54 +723,35 @@ test.describe('a skirmish ends while the tab is away', () => {
 });
 
 // ---- what a map's objectives are worth, as the War Score pays it -------------------------------
-// The score bar over a map is that map's points in the skirmish under way, drawn from the
-// body's `skirmishes`; an objective's panel says "Per tick" only when it ticks (a Keep, Tower or
-// Castle at T3); the board's PPT is every tick of a team added up, the game's own "+N".
+// The score bar over a map sums what each side's objectives paid before the War Score; an objective's
+// panel says "Per tick" only when it ticks (a Keep, Tower or Castle at T3); the board's PPT is every tick of a team added up, the game's own "+N".
 const served = wvw => wvw.timeline.body(FOCUS, wvw.timeline.end);
 const objectivesOf = (b, type) => b.maps.find(m => m.type === type).objectives;
 const TEAM_OF = { red: 0, blue: 1, green: 2 };
 
 test.describe('the score bar of a borderland', () => {
-  // Blue BL: green takes most of what is given; EBG's points go the other way, so a bar
-  // drawn from anything but this map's points in this skirmish is another shape.
-  test.use({ timeline: gw2.match(FOCUS).advance(12)
-    .advance(10, { score: { BlueHome: { red: 0, blue: 20, green: 80 }, Center: { red: 100, blue: 10, green: 10 } } }).pageOpens() });
-  test('each side is as wide as its share of the map\'s points in the skirmish under way', async ({ page, wvw }) => {
+  test.use({ timeline: gw2.match(FOCUS).advance(12).advance(6, { flips: 6 }).pageOpens() });
+  test('each side is as wide as its share of what its objectives paid before the War Score', async ({ page, wvw }) => {
     await load(page, wvw);
     const tier = await firstTier(page);
     await openMap(page, wvw, tier.button);
     await page.locator(`${POP} .wvw-tab[data-type="BlueHome"]`).click();
     await expect(page.locator(`${POP} .wvw-tab.is-active[data-type="BlueHome"]`)).toBeAttached();
     await wvw.settle();
-    const skirmishes = served(wvw).skirmishes;
-    const mine = skirmishes[skirmishes.length - 1].map_scores.find(x => x.type === 'BlueHome').scores;
+    // The tick that tier paid before the War Score; the tier is read from the capture the body serves.
+    const TICK = { Camp: [2, 3, 4, 5], Tower: [4, 6, 8, 10], Keep: [8, 12, 16, 20], Castle: [12, 16, 20, 24] };
+    const CAPTURE = { Camp: [2, 10, 15, 25], Tower: [25, 125, 200, 250], Keep: [100, 200, 400, 500], Castle: [200, 250, 300, 400] };
+    const mine = { red: 0, blue: 0, green: 0 };
+    for (const o of objectivesOf(served(wvw), 'BlueHome')) {
+      if (TICK[o.type]) mine[String(o.owner).toLowerCase()] += TICK[o.type][Math.max(0, CAPTURE[o.type].indexOf(o.points_capture))];
+    }
     const total = mine.red + mine.blue + mine.green;
-    expect(total, 'points the map gave in the skirmish').toBeGreaterThan(0);
+    expect(total, 'what the map\'s objectives paid').toBeGreaterThan(0);
     const widths = await page.$$eval(`${POP} .wvw-scorebar-seg`, segs => Object.fromEntries(segs.map(s =>
       [['red', 'blue', 'green'].find(c => s.classList.contains('own-' + c)), parseFloat(s.style.width)])));
     for (const c of ['red', 'blue', 'green']) {
       expect(widths[c] ?? 0, `the ${c} segment of the bar, in percent`).toBeCloseTo(mine[c] / total * 100, 1);
     }
-  });
-});
-
-test.describe('a skirmish after another', () => {
-  // The first skirmish's points go to green, the one under way's to red.
-  test.use({ timeline: gw2.match(FOCUS).advance(12)
-    .advance(10, { score: { Center: { red: 0, blue: 0, green: 50 } } })
-    .advance(120, { score: { Center: { red: 0, blue: 0, green: 0 } } })
-    .advance(10, { score: { Center: { red: 50, blue: 0, green: 0 } } }).pageOpens() });
-  test('the bar follows the skirmish under way, not the first or the week', async ({ page, wvw }) => {
-    const b = served(wvw);
-    expect(b.skirmishes.length, 'skirmishes in the body').toBeGreaterThan(1);
-    expect(b.maps.find(m => m.type === 'Center').scores.green, 'the week\'s points for green on EBG').toBeGreaterThan(0);
-    await load(page, wvw);
-    const tier = await firstTier(page);
-    await openMap(page, wvw, tier.button);
-    await page.locator(`${POP} .wvw-tab[data-type="Center"]`).click();
-    await wvw.settle();
-    await expect(page.locator(`${POP} .wvw-scorebar-seg`), 'segments of the bar').toHaveCount(1);
-    await expect(page.locator(`${POP} .wvw-scorebar-seg`), 'the one side scoring in this skirmish').toHaveClass(/own-red/);
   });
 });
 

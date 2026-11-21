@@ -9,7 +9,6 @@
 //     .advance(12, { kills: { Center: 30 } })   // 12 min of play, one state a minute
 //     .advance(6, { kills: {} })          // the score rises, the kills stand still
 //     .advance(6, { every: 0.5 })         // a state each 30 s
-//     .advance(10, { score: { BlueHome: { red: 40, blue: 90, green: 10 } } })   // points on one map
 //     .pageOpens()                        // the page's clock starts here
 //     .olderPool(10).advance(20).olderPool(0)   // a server group 10 min behind
 //     .olderPool(30, { every: true })     // the visitor's whole group 30 min behind
@@ -48,7 +47,7 @@
 //   The skirmishes add up to the scores too.
 // - An objective is worth what the War Score says (js/maps.js: the objective's
 //   "Per tick" row, shown only when it ticks, and the board's PPT, the ticks
-//   added up; the score bar reads the skirmish's map_scores, not these):
+//   added up; the score bar counts each objective by its type and tier, not by these ticks):
 //   points_capture by tier, T0 to T3, Camp 2/10/15/25, Tower 25/125/200/250,
 //   Keep 100/200/400/500, Castle 200/250/300/400; points_tick
 //   only at T3, Keep 10, Tower 7, Castle 20, every other type 0. The recorded
@@ -182,20 +181,15 @@ class Timeline {
   // `min` minutes of play on the focus match, one state a minute. kills: per
   // map type and minute, split over the colours, each kill a death of the next
   // colour. flips: how many objectives change hands, spread over the span, or
-  // the objective ids.
+  // the objective ids. score: per colour and minute, on EBG and the skirmish.
   // `every`: minutes between states (0.5: one each 30 s, kills and score split
   // between them); it must divide 1 and leave whole kills and points.
-  // score: per colour and minute, in the running skirmish: { red, blue, green } goes to EBG;
-  // { BlueHome: { red, blue, green }, ... } gives points to the maps named (Center, RedHome, BlueHome, GreenHome) and to no other.
   advance(min, { kills = DEFAULT_KILLS, flips = 0, score = DEFAULT_SCORE, every = 1 } = {}) {
-    const perMap = Object.keys(score).some(k => MAPS.includes(k)) ? score : { Center: score };
-    score = perMap;
     if (!(min > 0)) throw new Error('gw2: advance needs minutes');
     const steps = Math.round(min / every);
     const part = o => Object.fromEntries(Object.entries(o).map(([k, n]) => [k, n * every]));
-    const partScore = o => Object.fromEntries(Object.entries(o).map(([type, v]) => [type, part(v)]));
     if (!(every > 0 && every <= 1) || !Number.isInteger(1 / every) || Math.abs(steps * every - min) > 1e-9
-      || ![...Object.values(kills), ...Object.values(score).flatMap(o => Object.values(o))].every(n => Number.isInteger(n * every))) {
+      || ![...Object.values(kills), ...Object.values(score)].every(n => Number.isInteger(n * every))) {
       throw new Error('gw2: advance needs `every` to split the minutes, kills and score whole');
     }
     const list = typeof flips === 'number' ? Array.from({ length: flips }, () => null) : [...flips];
@@ -203,7 +197,7 @@ class Timeline {
     const ops = [];
     let weekEnd = this.#weekEnd;
     const stepKills = every === 1 ? kills : part(kills);
-    const stepScore = every === 1 ? score : partScore(score);
+    const stepScore = every === 1 ? score : part(score);
     for (let i = 1; i <= steps; i++) {
       const at = this.#cursor + i * every * MIN;
       while (recording().recordedAt + at >= weekEnd) weekEnd += WEEK_MS;
@@ -334,11 +328,9 @@ class Timeline {
           s.deaths[type] ||= [0, 0, 0];
           for (let c = 0; c < 3; c++) { s.kills[type][c] += k[c]; s.deaths[type][(c + 1) % 3] += k[c]; }
         }
-        for (const [type, by] of Object.entries(op.score)) {
-          const key = `${sk.last}:${type}`;
-          s.score[key] ||= [0, 0, 0];
-          COLORS.forEach((c, i) => { s.score[key][i] += Number(by[c]) || 0; });
-        }
+        const key = `${sk.last}:Center`;
+        s.score[key] ||= [0, 0, 0];
+        COLORS.forEach((c, i) => { s.score[key][i] += Number(op.score[c]) || 0; });
         if (op.flip) {
           const obj = op.flip === true ? pickObjective(body, flipped) : op.flip;
           if (!obj) throw new Error('gw2: no objective left to flip');
