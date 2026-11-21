@@ -9,7 +9,7 @@
 // body. At 1280 and 360 px.
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
-import { phone, frame, load, firstTier, openMap, keptMatch } from './support/steps.mjs';
+import { phone, frame, load, firstTier, openMap, keptMatch, later } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
 test.describe.configure({ timeout: 90 * 1000 });
@@ -243,6 +243,50 @@ for (const width of [1280, 360]) {
       await expect(tab(page, 'captures')).toHaveText('Captures (0)');
       await expect(page.locator(`${POP} .wvw-caps .wvw-caps-none`)).toHaveText('No recent captures.');
       expect(route, 'the route is still ours').toBeTruthy();
+    });
+
+    test('the week over: the tab counts none and the list holds no old line, and the new week brings its captures back', async ({ page, wvw }) => {
+      const tier = await opened(page, wvw);
+      const kept = await keptMatch(page, tier.id);
+      const route = await answer(page, tier.url, kept);
+      const CAP = ['Camp', 'Tower', 'Keep', 'Castle'];
+      const WEEK = 7 * 24 * 3600000;
+      // Captures inside the 30 min before the week's end, so the live week lists them.
+      const end = Date.parse(kept.end_time);
+      let k = 0;
+      for (const o of kept.maps.flatMap(m => m.objectives)) if (CAP.includes(o.type) && OWNERS.includes(o.owner) && k < 5) o.last_flipped = new Date(end - 60000 - 1000 * k++).toISOString();
+      await wvw.skew(31000);
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await tab(page, 'captures').click();
+      await expect(tab(page, 'captures')).toHaveText(/^Captures \([1-9]\d*\)$/);
+      await expect(page.locator(`${POP} .wvw-caps .wvw-cap`).first()).toBeVisible();
+      // The week ends and the game has not published the next one: the old week's lines are gone.
+      // By the clock alone, no focus pull: only the map's own 1 s tick can turn the tab.
+      await wvw.skew(end - await wvw.now() + 60000);
+      await expect(tab(page, 'captures')).toHaveText('Captures (0)');
+      await expect(page.locator(`${POP} .wvw-caps .wvw-cap`)).toHaveCount(0);
+      await expect(page.locator(`${POP} .wvw-caps .wvw-caps-none`)).toHaveText('No captures yet this week.');
+      // The new week's body comes with no objectives yet: the plain empty line, not the ended week's.
+      const bare = JSON.parse(JSON.stringify(kept));
+      bare.start_time = new Date(end).toISOString();
+      bare.end_time = new Date(end + WEEK).toISOString();
+      for (const m of bare.maps) m.objectives = [];
+      route.off();
+      const bareRoute = await answer(page, tier.url, bare);
+      await later(page, wvw, 31000);
+      await expect(page.locator(`${POP} .wvw-caps .wvw-caps-none`)).toHaveText('No recent captures.');
+      // Then its first captures.
+      const now = await wvw.now();
+      const next = JSON.parse(JSON.stringify(kept));
+      next.start_time = new Date(end).toISOString();
+      next.end_time = new Date(end + WEEK).toISOString();
+      let j = 0;
+      for (const o of next.maps.flatMap(m => m.objectives)) { if (CAP.includes(o.type) && OWNERS.includes(o.owner) && j < 3) o.last_flipped = new Date(now - 30000 - 1000 * j++).toISOString(); else o.last_flipped = new Date(now - 9 * 3600000).toISOString(); }
+      bareRoute.off();
+      await answer(page, tier.url, next);
+      await later(page, wvw, 31000);
+      await expect(tab(page, 'captures')).toHaveText('Captures (3)');
+      await expect(page.locator(`${POP} .wvw-caps .wvw-cap`)).toHaveCount(3);
     });
 
     test('over 40 captures the list ends with how many older ones it leaves out, and no line at 40 or fewer', async ({ page, wvw }) => {
