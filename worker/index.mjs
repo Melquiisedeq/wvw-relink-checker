@@ -45,8 +45,9 @@ const RESET = { 1: { day: 6, hour: 2 }, 2: { day: 5, hour: 18 } };
 const LATEST_KEEP_S = 2 * 3600;
 // The newest body older than this and /api/latest answers 503.
 const STALE_LATEST_S = 10 * 60;
-// A match's score cannot rise faster than this a minute (PPT tops out far below),
-// with room on top. A message past it is a damaged read or a stolen secret.
+// A match's score, its three teams together, cannot rise faster than this a minute on average
+// (the war score's busiest skirmish stays far below); one minute can pass it, and SCORE_SLACK
+// is the room for that. A message past both is a damaged read or a stolen secret.
 const MAX_SCORE_PER_MIN = 1000;
 const SCORE_SLACK = 2000;
 // A week is 84 skirmishes of 2 hours.

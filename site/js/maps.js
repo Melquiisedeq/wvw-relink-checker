@@ -1663,11 +1663,22 @@ function buildMapStage(matchOpened, mapData, sectors, catalogue, onSelect) {
 
 
 // ---- the score bar --------------------------------------------------
-// One segment per side, as wide as that side's share of THIS map's tick, not the match total (identical
-// on all four tabs): whoever is running the map fills the bar, and a side that stopped scoring shrinks out.
+// One segment per side, as wide as that side's share of THIS map, not the match total (identical on all four
+// tabs). The game's tick exists only at T3, so each objective counts the tick its type and tier paid before the
+// War Score (BAR_TICK), the tier read from points_capture by BAR_CAPTURE (a value outside it counts as T0): it
+// sums up who holds the map. A side that holds nothing shrinks out.
+const BAR_TICK = Object.freeze({ Camp: [2, 3, 4, 5], Tower: [4, 6, 8, 10], Keep: [8, 12, 16, 20], Castle: [12, 16, 20, 24] });
+const BAR_CAPTURE = Object.freeze({ Camp: [2, 10, 15, 25], Tower: [25, 125, 200, 250], Keep: [100, 200, 400, 500], Castle: [200, 250, 300, 400] });
 function buildScoreBar(mapData, isLive) {
-  const { by } = mapTally(mapData, isLive);
-  const vals = COLORS.map((c) => Math.max(0, Number((by.get(c) || {}).ppt || 0)));
+  if (!isLive || !mapData) return null;
+  const sums = new Map(COLORS.map((c) => [c, 0]));
+  for (const ob of mapData.objectives || []) {
+    const ticks = BAR_TICK[ob.type];
+    const key = String(ob.owner || '').toLowerCase();
+    if (!ticks || !sums.has(key)) continue;
+    sums.set(key, sums.get(key) + ticks[Math.max(0, BAR_CAPTURE[ob.type].indexOf(Number(ob.points_capture)))]);
+  }
+  const vals = COLORS.map((c) => sums.get(c));
   const total = vals.reduce((a, b) => a + b, 0);
   if (!total) return null;
 
@@ -1688,7 +1699,7 @@ function buildScoreBar(mapData, isLive) {
 }
 
 // ---- the map scoreboard ---------------------------------------------
-// The four types that pay (Ruins and Mercenary tick zero), smallest first, the order of the game's panel.
+// The four types the game's panel counts, smallest first, in its order.
 const SCORE_TYPES = ['Camp', 'Tower', 'Keep', 'Castle'];
 
 // What each side holds across the maps it is handed: the tick they add up to, and how many of each
@@ -1711,10 +1722,6 @@ function tallyMaps(maps, isLive) {
     }
   }
   return { by, types: SCORE_TYPES.filter((t) => present.has(t)) };
-}
-
-function mapTally(mapData, isLive) {
-  return tallyMaps(mapData ? [mapData] : [], isLive);
 }
 
 // ---- the focus: a team, a type, or a few objectives lit on the map ----
@@ -2078,7 +2085,7 @@ function renderObjectiveDetail(panel, p, match) {
   row(dl, 'Guild', claimCell);
 
   group(dl, 'Worth');
-  row(dl, 'Per tick', `+${ob.points_tick ?? 0}`, ownCls);
+  if (ob.points_tick > 0) row(dl, 'Per tick', `+${ob.points_tick}`, ownCls);
   row(dl, 'On capture', String(ob.points_capture ?? 0));
 
   group(dl, 'Upgrade');
