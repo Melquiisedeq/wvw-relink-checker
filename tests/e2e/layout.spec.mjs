@@ -11,7 +11,8 @@
 // One page per width and font goes through the states, so a failure names the one it was in.
 import { test, expect } from './support/fixtures.mjs';
 import { pastEdge } from './support/edge.mjs';
-import { openMap, raiseNotice, search } from './support/steps.mjs';
+import { openMap, search } from './support/steps.mjs';
+import { raiseNotice } from './support/page.mjs';
 
 const WIDTHS = [320, 360, 390];
 const FONTS = [

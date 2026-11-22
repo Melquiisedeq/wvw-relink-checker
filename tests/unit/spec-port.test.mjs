@@ -3,8 +3,7 @@
 // requests and its clock. A name is one declared at the top of a site/js script
 // (camelCase, or UPPER_CASE with an underscore), read from the scripts at each run,
 // that is not an id in index.html and that the file neither declares nor imports.
-// A file that still uses some is listed in WAITING with exactly those names; a review
-// takes no name added there.
+// No spec or support file is let off: one that needs a name asks the port for a function.
 // Not seen, so a review has to: a name built as a string, reached as `globalThis.x`,
 // `self.x`, `window?.x` or `{ x: f } = window`; text after a `/*` or `//` inside a
 // string; names outside NAMED (`COLORS`, `run`); ids of index.html, which are globals too.
@@ -16,12 +15,6 @@ import path from 'node:path';
 const ROOT = new URL('../../', import.meta.url).pathname;
 const E2E = path.join(ROOT, 'tests/e2e');
 const PORT = 'support/page.mjs';
-
-const WAITING = {
-  'notice.spec.mjs': ['assignNA', 'getTeamName', 'relinkStateAt', 'updateRelinkBanner', 'wvwMapCache'],
-  'popovers.spec.mjs': ['OBJ_SIZE', 'WVW_STATIC'],
-  'relink.spec.mjs': ['WVW_STATIC'],
-};
 
 const TOP = /^(?:async\s+)?(?:function\*?\s+|const\s+|let\s+|var\s+|class\s+)([A-Za-z_$][\w$]*)/;
 const NAMED = n => /[a-z][A-Z]/.test(n) || /^[A-Z][A-Z0-9]*_[A-Z0-9_]+$/.test(n);
@@ -67,15 +60,13 @@ test('the names come from the site: a few the specs lean on are there, ids are n
   assert.ok(!names.has('guildInput'), 'an id of index.html');
 });
 
-test('outside the port, a spec or support file uses no name of site/js but those WAITING lists for it', () => {
+test('outside the port, a spec or support file uses no name of site/js', () => {
   const names = pageNames();
   const wrong = [];
   for (const f of testFiles()) {
     const got = namesIn(fs.readFileSync(path.join(E2E, f), 'utf8'), names);
-    const want = [...(WAITING[f] || [])].sort();
-    if (got.join() !== want.join()) wrong.push(`${f}: uses [${got.join(' ')}], WAITING lists [${want.join(' ')}]`);
+    if (got.length) wrong.push(`${f}: uses [${got.join(' ')}]`);
   }
-  for (const f of Object.keys(WAITING)) if (!fs.existsSync(path.join(E2E, f))) wrong.push(`${f}: in WAITING, not a file`);
   assert.deepEqual(wrong, [], 'reach the page through tests/e2e/support/page.mjs, or by its roles, text, requests and clock');
 });
 

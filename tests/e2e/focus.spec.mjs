@@ -12,8 +12,8 @@
 // so. At 1280 and 360 px.
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
-import { phone, frame, load, firstTier, openMap, keptMatch, recordedJson, boardOpen as opened } from './support/steps.mjs';
-import { keptBody } from './support/page.mjs';
+import { phone, frame, load, firstTier, openMap, recordedJson, boardOpen as opened } from './support/steps.mjs';
+import { keptBody, keptMatch } from './support/page.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
 test.describe.configure({ timeout: 60 * 1000 });
