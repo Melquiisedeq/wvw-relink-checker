@@ -1,6 +1,7 @@
 // The page's first screen: the NA/EU swap, and the tiers' marks of age.
 import { test, expect } from './support/fixtures.mjs';
 import { phone } from './support/steps.mjs';
+import { awayAndBack } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 
@@ -62,11 +63,11 @@ test('no tier wears a mark after 1600 s of the same body, and at 320 px no title
   await expect(page.locator('#standingsGridNA > .standing-match').first()).toBeVisible();
   await wvw.settle();
   expect(await page.locator('.tier-map-badge').count(), 'tiers wearing the swords badge before the gap').toBeGreaterThan(0);
-  await wvw.skew(1600000);
-  await page.evaluate(() => { localStorage.removeItem('wvw-fight-v1'); return loadStandings(); });
+  await page.evaluate(() => localStorage.removeItem('wvw-fight-v1'));
+  await awayAndBack(page, wvw, 1600000);
+  await expect(page.locator('.tier-map-badge'), 'tiers wearing a mark after 1600 s of the same body').toHaveCount(0);
   await wvw.settle();
   expect(await page.locator('.standing-match').count(), 'tiers in the standings').toBeGreaterThan(0);
-  expect(await page.locator('.tier-map-badge').count(), 'tiers wearing a mark after 1600 s of the same body').toBe(0);
   await phone(page, 320, { exact: false });
   await wvw.settle();
   const spill = await page.evaluate(() => ({
