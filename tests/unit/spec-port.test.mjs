@@ -20,19 +20,13 @@ const PORT = 'support/page.mjs';
 const WAITING = {
   'a11y.spec.mjs': ['paintRetryStatus', 'setStandingsStatus'],
   'budget.spec.mjs': ['fillTierMaps'],
-  'copy.spec.mjs': ['colorSum', 'copyBoard', 'freshRecall', 'latestSummaryAt', 'mapAhead', 'newestMatches', 'peekAnchor'],
-  'corners.spec.mjs': ['KILLS_MAP_ORDER', 'fightTotals', 'getKillSheet', 'killSheet', 'killSheetAt', 'killView', 'matchScoreRoseAt', 'newestMatches', 'renderSkirmishTrendPopoverContent'],
-  'cycle.spec.mjs': ['LATEST_SUMMARY_URL', 'fetchOwnApi', 'keepNewestMatch', 'latestAskedAt', 'latestSummary', 'latestSummaryAt', 'loadStandings', 'matchDataCache', 'standingsFailed'],
   'effects.spec.mjs': ['chargeBall', 'loadStandings', 'matchDataCache', 'matchTeamId', 'showGuildFound', 'startCharge', 'stopFollowing'],
   'embers.spec.mjs': ['emberField', 'spawnEmberBlast', 'updateRelinkBanner'],
   'focus.spec.mjs': ['newestMatches', 'objectiveCatalogue'],
   'frames.spec.mjs': ['emberField'],
-  'frozen.spec.mjs': ['LATEST_GAP_MS', 'loadStandings', 'matchDataCache', 'newestMatches'],
-  'keys.spec.mjs': ['WAYPOINT_AT'],
   'load.spec.mjs': ['loadStandings'],
   'notice.spec.mjs': ['assignNA', 'getTeamName', 'relinkStateAt', 'updateRelinkBanner', 'wvwMapCache'],
   'popovers.spec.mjs': ['OBJ_SIZE', 'WVW_STATIC'],
-  'push.spec.mjs': ['latestHeldAt', 'loadStandings', 'matchDataCache', 'newestMatches', 'offerLate', 'ownClockLead', 'pushHeard', 'pushLive', 'pushSocket', 'runPeek', 'startLatest'],
   'reach.spec.mjs': ['activeTrigger'],
   'relink.spec.mjs': ['WVW_STATIC'],
   'rings.spec.mjs': ['missedOpen', 'missedRings'],
@@ -40,9 +34,6 @@ const WAITING = {
   'search.spec.mjs': ['MAX_ENTRIES', 'activeTrigger', 'getGuildInfo', 'guildNameCache', 'refreshStandings', 'schedulePeriodicRefresh'],
   'shot.spec.mjs': ['guildsShotCanvas', 'renderGuildsPopoverContent'],
   'slide.spec.mjs': ['SWAP_MS', 'loadStandings', 'matchDataCache', 'matchTeamId', 'showGuildFound'],
-  'states.spec.mjs': ['loadStandings', 'newestMatches', 'slingTip'],
-  'time.spec.mjs': ['gameAnsweredAt', 'killView', 'loadStandings', 'newestMatches', 'schedulePeriodicRefresh'],
-  'weeks.spec.mjs': ['TEAM_NAMES', 'deduceLineup', 'getMatchForTeam', 'getTeamName', 'loadStandings', 'mapAhead', 'mapCatchUp', 'matchDataCache', 'matchTeamId', 'newestMatches', 'planStandingsRetry', 'teamToMatchId', 'wvwMapCache'],
 };
 
 const TOP = /^(?:async\s+)?(?:function\*?\s+|const\s+|let\s+|var\s+|class\s+)([A-Za-z_$][\w$]*)/;

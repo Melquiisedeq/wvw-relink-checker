@@ -27,6 +27,7 @@ import { fail } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { recording } from './support/recordings.mjs';
 import { FOCUS, HOUR, MIN, apiDown, at, copyAheadOld, copyBehindAll, fightStops, frozen, hidden, killSteps, missed, playing, twoPools, visible, visitorDown, wake } from './support/scenarios.mjs';
+import { gameAnsweredNow, keptBodyCopied, killViewOf, loadNow, loadSettled, periodicRefreshReady, seedPeriodicRefresh } from './support/page.mjs';
 
 const STALE_MS = 6 * MIN;
 // How long the page may take to read the API again: the open map asks every
@@ -429,10 +430,7 @@ test.describe("the visitor's server group down, our copy current", () => {
     expect(tip).toContain(`Score last changed at ${want}, read by our server.`);
     // The wording follows the body on show, not the game's last answer: an answer just now
     // changes nothing while the copy's body stands, and the game's own body gets the plain line.
-    const body = (mode) => page.evaluate(([id, how]) => {
-      if (how === 'answered') gameAnsweredAt.set(id, Date.now());
-      else { const k = newestMatches.get(id); k.match = { ...k.match }; }
-    }, [FOCUS, mode]);
+    const body = mode => (mode === 'answered' ? gameAnsweredNow(page, FOCUS) : keptBodyCopied(page, FOCUS));
     await body('answered');
     tip = await said();
     expect(tip, 'the game answered just now, the copy\'s body on show').toMatch(/read by our server\. The game last answered this page \d+ s ago\.$/);
@@ -449,7 +447,10 @@ test.describe("the visitor's server group down, our copy current", () => {
     expect(activity(seen), 'the list drew the copy\'s body').toBeGreaterThan(drawn);
     await expect(page.locator('.standings-alert .retry-btn'), 'no "Trying again" while the copy draws the list').toHaveCount(0);
     // A 5 min load right after one drawn from the copy, before the copy moves.
-    await page.evaluate(async () => { await loadStandings(); await loadStandings(); });
+    await loadNow(page);
+    await loadSettled(page);
+    await loadNow(page);
+    await loadSettled(page);
     await wvw.settle();
     await expect(page.locator('.standings-alert .retry-btn'), 'no "Trying again" on a copy that has not moved since the last load').toHaveCount(0);
   });
@@ -532,14 +533,14 @@ test.describe('no copy, the game\'s body as far along as the summary', () => {
 // rises every minute: a silence that long is the API's rhythm, not a quiet map
 // nor the API behind. Up to the step the corner may say only how far the kill
 // data goes; kills that truly stop still read as a quiet map, then as late.
-const killCorner = page => page.evaluate(id => {
-  const q = s => document.querySelector('.info-popover .wvw-plot-wrap ' + s);
-  const s2 = q('.wvw-hud-small2');
-  const kept = newestMatches.get(id);
-  const view = kept ? killView(kept.match, null) : null;
-  return { line2: s2 && !s2.hidden ? s2.textContent.replace(/\s+/g, ' ') : '', dim: !!q('.wvw-hud-l.is-dim'),
-    silence: view ? view.silence : 0, ebg: view && view.rates ? Math.round(view.rates.per.get('Center')) : 0 };
-}, FOCUS);
+const killCorner = async page => ({
+  ...await page.evaluate(() => {
+    const q = s => document.querySelector('.info-popover .wvw-plot-wrap ' + s);
+    const s2 = q('.wvw-hud-small2');
+    return { line2: s2 && !s2.hidden ? s2.textContent.replace(/\s+/g, ' ') : '', dim: !!q('.wvw-hud-l.is-dim') };
+  }),
+  ...await killViewOf(page, FOCUS),
+});
 
 test.describe('kills in steps, the score rising', () => {
   for (const lag of [0, 10]) {
@@ -746,66 +747,60 @@ test.describe('the periodic refresh guard, two clocks', () => {
   const STEP = 5 * MIN;
   const arm = async (page, wvw) => {
     await page.goto(wvw.url);
-    await page.waitForFunction(() => typeof schedulePeriodicRefresh === 'function');
+    await periodicRefreshReady(page);
     // Paused before the seed: no real time slips between the looks into the margins below.
     await page.clock.pauseAt(await wvw.now() + 1000);
-    await page.evaluate(step => {
-      globalThis.__reads = 0;
-      globalThis.__answer = undefined;
-      globalThis.__run = schedulePeriodicRefresh(() => { globalThis.__reads++; return globalThis.__answer; }, step);
-    }, STEP);
+    return seedPeriodicRefresh(page, STEP);
   };
-  const reads = page => page.evaluate(() => globalThis.__reads);
-  const back = async page => { await page.evaluate(() => globalThis.__run()); return reads(page); };
 
   test('the device asleep: the date jumps, performance.now() stands still, the return reads', async ({ page, wvw }) => {
-    await arm(page, wvw);
+    const guard = await arm(page, wvw);
     await hidden(page, wvw, 2 * HOUR);
     await visible(page);
-    await expect.poll(() => reads(page), { message: 'a read on the return after a 2 h sleep' }).toBe(1);
+    await expect.poll(() => guard.reads(), { message: 'a read on the return after a 2 h sleep' }).toBe(1);
   });
 
   test('the slack: 1 s short of the interval is enough, 1.5 s short is not', async ({ page, wvw }) => {
-    await arm(page, wvw);
+    const guard = await arm(page, wvw);
     await wvw.skew(STEP - 1500);
-    expect(await back(page), 'the date 298.5 s on, none on performance.now()').toBe(0);
+    expect(await guard.back(), 'the date 298.5 s on, none on performance.now()').toBe(0);
     await wvw.skew(1000);
-    expect(await back(page), 'the date 299.5 s on').toBe(1);
+    expect(await guard.back(), 'the date 299.5 s on').toBe(1);
   });
 
   test('performance.now() alone is enough with the date set back', async ({ page, wvw }) => {
-    await arm(page, wvw);
+    const guard = await arm(page, wvw);
     await page.clock.fastForward(STEP - 1500);
     await wvw.skew(-2 * HOUR);
-    expect(await back(page), 'performance.now() 298.5 s on, the date 2 h behind').toBe(0);
+    expect(await guard.back(), 'performance.now() 298.5 s on, the date 2 h behind').toBe(0);
     await page.clock.fastForward(1000);
-    expect(await back(page), 'performance.now() 299.5 s on, the date 2 h behind').toBe(1);
+    expect(await guard.back(), 'performance.now() 299.5 s on, the date 2 h behind').toBe(1);
   });
 
   test('a date set back alone never reads', async ({ page, wvw }) => {
-    await arm(page, wvw);
+    const guard = await arm(page, wvw);
     await hidden(page, wvw, -2 * HOUR);
     await visible(page);
-    expect(await reads(page), 'a negative elapsed on the date, none on performance.now()').toBe(0);
+    expect(await guard.reads(), 'a negative elapsed on the date, none on performance.now()').toBe(0);
   });
 
   test('a skipped run hands back both clocks', async ({ page, wvw }) => {
-    await arm(page, wvw);
+    const guard = await arm(page, wvw);
     await wvw.skew(2 * HOUR);
-    await page.evaluate(() => { globalThis.__answer = false; });
-    expect(await back(page), 'the sleep return, the work skipped').toBe(1);
-    expect(await back(page), 'tried again at once: the date stamp went back').toBe(2);
-    await page.evaluate(() => { globalThis.__answer = undefined; });
-    expect(await back(page), 'the work done this time').toBe(3);
-    expect(await back(page), 'and counted: nothing more at once').toBe(3);
+    await guard.answer(false);
+    expect(await guard.back(), 'the sleep return, the work skipped').toBe(1);
+    expect(await guard.back(), 'tried again at once: the date stamp went back').toBe(2);
+    await guard.answer(undefined);
+    expect(await guard.back(), 'the work done this time').toBe(3);
+    expect(await guard.back(), 'and counted: nothing more at once').toBe(3);
   });
 
   test('a skipped run on performance.now() alone hands back its clock', async ({ page, wvw }) => {
-    await arm(page, wvw);
+    const guard = await arm(page, wvw);
     await page.clock.fastForward(STEP - 500);
     await wvw.skew(-2 * HOUR);
-    await page.evaluate(() => { globalThis.__answer = false; });
-    expect(await back(page), 'performance.now() past the interval, the work skipped').toBe(1);
-    expect(await back(page), 'tried again at once: the performance.now() stamp went back').toBe(2);
+    await guard.answer(false);
+    expect(await guard.back(), 'performance.now() past the interval, the work skipped').toBe(1);
+    expect(await guard.back(), 'tried again at once: the performance.now() stamp went back').toBe(2);
   });
 });

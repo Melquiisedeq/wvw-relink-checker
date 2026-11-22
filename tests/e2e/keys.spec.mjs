@@ -4,6 +4,7 @@
 // runs the search; the saved list comes back whole.
 import { test, expect } from './support/fixtures.mjs';
 import { boardOpen, load, openMap, tabTo, search } from './support/steps.mjs';
+import { refuseStorage, waypointIdOf } from './support/page.mjs';
 import { FOCUS, MIN, hidden, missed, visible } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
@@ -190,7 +191,7 @@ async function badge(page, wvw) {
   const target = page.locator(BADGE).first();
   await expect(target, 'a map with a waypoint to copy').toBeAttached();
   const obj = await target.evaluate(g => g.closest('[data-obj]').dataset.obj);
-  const want = await page.evaluate(o => WAYPOINT_AT[o][2], obj);
+  const want = await waypointIdOf(page, obj);
   return { target, want: code(want), obj };
 }
 
@@ -293,9 +294,10 @@ test.describe('Ctrl+Enter and the saved list', () => {
     await page.locator('#guildInput').focus();
     await page.keyboard.insertText(wvw.guilds.join('\n'));
     await page.keyboard.press('Enter');
-    await page.waitForTimeout(300);
+    await expect(page.locator('#guildInput')).toHaveValue(wvw.guilds.join('\n') + '\n');
+    await wvw.settle();
     await expect(page.locator('#statusMsg'), 'Enter alone does not run').not.toHaveText(/Asking|Done/);
-    expect(await page.locator('#guildInput').inputValue()).toBe(wvw.guilds.join('\n') + '\n');
+    expect(searches, 'Enter alone asks nothing').toEqual([]);
     await page.keyboard.press('Control+Enter');
     await expect(page.locator('#runBtn')).toBeDisabled();
     await page.keyboard.press('Control+Enter');
@@ -324,15 +326,12 @@ test.describe('Ctrl+Enter and the saved list', () => {
   });
 
   test('storage that refuses: the box stays empty, what is typed stays typed, no error', async ({ page, wvw }) => {
-    await page.addInitScript(() => {
-      Storage.prototype.getItem = () => { throw new DOMException('blocked', 'SecurityError'); };
-      Storage.prototype.setItem = () => { throw new DOMException('blocked', 'SecurityError'); };
-    });
+    const saveTries = await refuseStorage(page);
     await page.goto(wvw.url);
     await expect(page.locator('#standingsGridNA > .standing-match').first()).toBeVisible();
     await page.locator('#guildInput').focus();
     await page.keyboard.insertText('Some Guild');
-    await page.waitForTimeout(600);
+    await expect.poll(saveTries, { message: 'the page tried to save the typed list' }).toBeGreaterThan(0);
     await expect(page.locator('#guildInput')).toHaveValue('Some Guild');
     await wvw.settle();
   });

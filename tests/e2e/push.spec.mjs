@@ -8,7 +8,9 @@
 import { test, expect } from './support/fixtures.mjs';
 import { FOCUS, MIN, connectionDrops, hidden, livePush, plainReset, playing, playingHalfMinutes, pushWeekTurn, visible } from './support/scenarios.mjs';
 import { versionName } from './support/gw2.mjs';
-import { firstTier, load, openMap, play, scoreOf } from './support/steps.mjs';
+import { firstTier, load, openMap, play } from './support/steps.mjs';
+import { LIVE_EARLY_SCRIPT, liveEarly, loadNow, loadSettled, newestVersionKnown, pushHeardAt, pushIsLive,
+  readLatestNow, latestHeldVersion, runPeekNow, scoreOf, serverSecondsNow, weekOf } from './support/page.mjs';
 
 const SITE = 'https://wvwrelink.com';
 const SUMMARY = /\/api\/latest\/summary$/;
@@ -18,17 +20,6 @@ const COPY = /\/api\/latest$/;
 const READ_BY = 3 * 1000;
 // Math.random() at its middle: every wait the page draws is half its ceiling.
 const HALF = 'Math.random = () => 0.5;';
-// Whether the push was live within a second of the first version the page heard (pushHeard): the
-// read waits 1.5 s (HALF), so on the page's clock it cannot be.
-const EARLY = `globalThis.liveEarly = false;
-(() => {
-  let heardAt = 0;
-  setInterval(() => {
-    if (typeof pushHeard === 'undefined' || !pushHeard) return;
-    heardAt ||= Date.now();
-    if (Date.now() - heardAt < 1000 && pushLive()) liveEarly = true;
-  }, 100);
-})();`;
 
 // Reduced motion: the ember field stands still, so the minutes of clock below run fast.
 test.use({ viewport: { width: 1280, height: 800 }, timeline: playing(), clock: 'playwright', origin: SITE, reducedMotion: 'reduce' });
@@ -51,7 +42,7 @@ function reads(page) {
 // version no longer the newest (the Worker's 404).
 async function relive(page, wvw, push) {
   // On to a version this page holds neither by a push nor by another read.
-  const known = await page.evaluate(() => Math.max(pushHeard, latestHeldAt));
+  const known = await newestVersionKnown(page);
   const newestOf = msg => Math.max(...msg.matches.map(m => m.at));
   let at = 0;
   for (let i = 0; i < 3 && at <= known; i++) {
@@ -62,20 +53,21 @@ async function relive(page, wvw, push) {
   }
   await push.sync();
   // The message on the page before the clock runs its wait.
-  await expect.poll(() => page.evaluate(() => pushHeard), 'the version heard').toBe(at);
+  await expect.poll(() => pushHeardAt(page), 'the version heard').toBe(at);
   await page.clock.runFor(1600);
-  await expect.poll(() => page.evaluate(() => pushLive()), 'the push is live').toBe(true);
+  await expect.poll(() => pushIsLive(page), 'the push is live').toBe(true);
 }
 
 // The page loaded with its socket open, and live: a minute on, a version pushed and read.
 async function live(page, wvw) {
   await page.addInitScript(HALF);
-  await page.addInitScript(EARLY);
+  await page.addInitScript(LIVE_EARLY_SCRIPT);
   const push = await livePush(page, wvw);
   await load(page, wvw);
   await expect.poll(() => push.open, 'the socket is open').toBe(1);
   await relive(page, wvw, push);
-  expect(await page.evaluate(() => liveEarly), 'live on the connection\'s own message').toBe(false);
+  // The read waits 1.5 s (HALF), so the push cannot be live within a second of the first version heard.
+  expect(await liveEarly(page), 'live on the connection\'s own message').toBe(false);
   return push;
 }
 
@@ -150,7 +142,7 @@ test('with the socket live the peek reads one summary in two minutes; without, i
   push.refuse = true;
   await connectionDrops(push);
   // The page has seen the close before the clock runs: a late close would leave the peek too little of the 31 s.
-  await expect.poll(() => page.evaluate(() => pushLive()), 'the drop reached the page').toBe(false);
+  await expect.poll(() => pushIsLive(page), 'the drop reached the page').toBe(false);
   // No input meanwhile: only the drop itself can bring the peek forward.
   await play(page, 31 * 1000);
   // The clock holds here: a read the 31 s brought is only waiting for its request to reach the counter.
@@ -173,7 +165,7 @@ test('a version that is not there gives the peek back its pace until the next pu
   await push.tell({ matches: ahead, version: versionName(Math.max(...ahead.map(m => m.at))) });
   await play(page, READ_BY);
   await expect.poll(() => n.versions, 'the version asked').toHaveLength(1);
-  expect(await page.evaluate(() => pushLive()), 'live after a failed read').toBe(false);
+  expect(await pushIsLive(page), 'live after a failed read').toBe(false);
   // The peek's own 30 s from the last one, not the 2 min of a live push.
   await play(page, 70 * 1000, { using: true });
   expect(n.summary, 'summary reads in the 70 s after').toBeGreaterThanOrEqual(2);
@@ -296,7 +288,7 @@ test('hiding and showing a tab with its socket open, before any pong, is not a f
     await hidden(page, wvw, 0);
     await expect.poll(() => push.open, 'closed when hidden').toBe(0);
     await visible(page);
-    await expect.poll(() => page.evaluate(() => pushSocket && pushSocket.readyState), 'open at once when shown').toBe(1);
+    await expect.poll(() => push.open, 'open at once when shown').toBe(1);
   }
   expect(push.opened - before, 'tries on six shows').toBe(6);
 });
@@ -345,7 +337,7 @@ test('a message that is not the Worker\'s asks nothing and changes nothing', asy
   // The clock held, so the page's server time is what it was when `past` was named:
   // the first whole second over the page's 70 s past it.
   await page.clock.pauseAt(await wvw.now() + 1000);
-  const past = await page.evaluate(() => Math.floor((Date.now() - ownClockLead) / 1000) + 71);
+  const past = await serverSecondsNow(page) + 71;
   for (const bad of [
     'not json', '[]', '{"matches":{}}', JSON.stringify({ matches: [{ ...m, id: '9-9' }] }),
     JSON.stringify({ matches: [{ ...m, at: String(m.at) }] }), JSON.stringify({ matches: [{ ...m, at: m.at + 0.5 }] }),
@@ -380,7 +372,7 @@ test.describe('a game that moves each 30 s', () => {
     // Each version the peek sees is under 30 s old; the next peek (2 min at most)
     // sees one over 30 s past the last the push named.
     await play(page, 3 * MIN, { using: true, push });
-    expect(await page.evaluate(() => pushLive()), 'live with versions missed').toBe(false);
+    expect(await pushIsLive(page), 'live with versions missed').toBe(false);
     const before = n.summary;
     await play(page, 3 * MIN, { using: true, push });
     expect(n.summary - before, 'summary reads in 3 min after').toBeGreaterThanOrEqual(5);
@@ -393,23 +385,23 @@ test.describe('a game that moves each 30 s', () => {
   test('one write the push missed is 30 s of silence and keeps it live; two give the peek its pace back', async ({ page, wvw }) => {
     const push = await live(page, wvw);
     const n = reads(page);
-    const heard = await page.evaluate(() => pushHeard);
+    const heard = await pushHeardAt(page);
     await connectionDrops(push, { quiet: true });
     // Past the next write, 10 s on from the one read, and before the one after.
     // The peek runs here, and its next is due a minute and more later.
     await play(page, 22 * 1000);
-    await page.evaluate(() => { runPeek(); });
+    await runPeekNow(page);
     await play(page, 3000);
-    expect(await page.evaluate(() => pushLive()), 'live with one write missed').toBe(true);
+    expect(await pushIsLive(page), 'live with one write missed').toBe(true);
     expect(n.versions, 'versions read').toEqual([]);
     // The peek read the copy that write made: that is the newest version known now.
-    const known = await page.evaluate(() => Math.max(pushHeard, latestHeldAt));
+    const known = await newestVersionKnown(page);
     expect(known, 'the version the peek\'s copy brought').toBe(heard + 30);
     // Two writes more, neither pushed: 60 s past it.
     await play(page, 60 * 1000);
-    await page.evaluate(() => { runPeek(); });
+    await runPeekNow(page);
     await play(page, 3000);
-    expect(await page.evaluate(() => pushLive()), 'live with two writes missed').toBe(false);
+    expect(await pushIsLive(page), 'live with two writes missed').toBe(false);
   });
 });
 
@@ -420,15 +412,15 @@ test('a version another read brought before its push is known: the peek leaves t
   // Past the next write (a minute on), and before its push.
   await play(page, 55 * 1000);
   const next = Math.max(...(await wvw.told()).matches.map(m => m.at));
-  await page.evaluate(() => startLatest().then(offerLate));
-  expect(await page.evaluate(() => latestHeldAt), 'the version read').toBe(next);
+  await readLatestNow(page);
+  expect(await latestHeldVersion(page), 'the version read').toBe(next);
   push.quiet = false;
   await push.sync();
   await play(page, READ_BY);
   expect(n.versions, 'versions read for a push of one already read').toEqual([]);
-  await page.evaluate(() => { runPeek(); });
+  await runPeekNow(page);
   await play(page, 3000);
-  expect(await page.evaluate(() => pushLive()), 'live after the summary shows that version').toBe(true);
+  expect(await pushIsLive(page), 'live after the summary shows that version').toBe(true);
 });
 
 test('a server that says hello and hangs up is tried on a doubling wait, not every second', async ({ page, wvw }) => {
@@ -481,7 +473,7 @@ test.describe('the week turns with the push live', () => {
     await plainReset(page);
     const push = await live(page, wvw);
     await wvw.settle();
-    const oldStart = await page.evaluate(id => matchDataCache.get(id).start_time, FOCUS);
+    const oldStart = (await weekOf(page, FOCUS)).list;
     // The week's first minutes: only the focus plays here, so the copy's other tiers keep the `at` of
     // the week's start, and inside the reset window the page takes the copy's week only within LATEST_SUMMARY_FRESH_MS of it.
     let turn = Math.ceil((wvw.recordedAt + wvw.timeline.end - 8 * MIN) / MIN) * MIN;
@@ -490,10 +482,8 @@ test.describe('the week turns with the push live', () => {
     expect(start, 'the week turned').not.toBe(oldStart);
     await page.clock.setSystemTime(turn + 5000);
     await wvw.settle();
-    const weeks = () => page.evaluate(id => ({
-      list: matchDataCache.get(id)?.start_time, map: newestMatches.get(id)?.match.start_time,
-      grid: [...document.querySelectorAll('#standingsGridNA .standing-match')].length,
-    }), FOCUS);
+    const weeks = async () => ({ ...await weekOf(page, FOCUS),
+      grid: await page.locator('#standingsGridNA .standing-match').count() });
     let drawn = false;
     for (let i = 0; i < 12; i++) {
       await play(page, 30 * 1000, { using: true, push });
@@ -517,7 +507,8 @@ test.describe('the week turns with the push live', () => {
     let odd = await wvw.now() + 5000;
     while (Math.floor((odd - wvw.recordedAt) / MIN) % 2 === 0) odd += MIN;
     await page.clock.setSystemTime(Math.floor((odd - wvw.recordedAt) / MIN) * MIN + wvw.recordedAt + 5000);
-    await page.evaluate('loadStandings()');
+    await loadNow(page);
+    await loadSettled(page);
     await wvw.settle();
     const { button } = await firstTier(page);
     await openMap(page, wvw, button);

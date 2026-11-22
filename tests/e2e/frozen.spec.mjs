@@ -7,6 +7,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { matchReads } from './support/steps.mjs';
+import { loadNow, loadSettled, weekOf } from './support/page.mjs';
 import { FOCUS, MIN, weekTurnBehind } from './support/scenarios.mjs';
 
 test.use({
@@ -48,7 +49,8 @@ test('a body behind the kept one changes nothing, and the next week replaces it'
   await openMap();
   const mapBefore = await mapState();
   await closeMap();
-  await page.evaluate('loadStandings()');
+  await loadNow(page);
+  await loadSettled(page);
   await wvw.settle();
   const gridBefore = await grid();
   // Older than the log's one-minute gap, so a behind reading would be kept.
@@ -70,7 +72,8 @@ test('a body behind the kept one changes nothing, and the next week replaces it'
   await closeMap();
 
   const idsBefore = asked.length;
-  await page.evaluate('loadStandings()');
+  await loadNow(page);
+  await loadSettled(page);
   await wvw.settle();
   expect(await grid(), 'the standings repainted from the older answer').toBe(gridBefore);
   const logAfter = await fightLog();
@@ -79,16 +82,17 @@ test('a body behind the kept one changes nothing, and the next week replaces it'
   const reread = urls.filter(u => u.startsWith(GAME + 'ids=') && u !== GAME + 'ids=all');
   expect(urls.filter(u => u === GAME + 'ids=all'), 'reads of ids=all').toHaveLength(1);
   expect(reread, 're-reads by id').toEqual([]);
-  expect(copyReads.length - copyBefore, 'reads of /api/latest since minute 13: the map asked, the standings within LATEST_GAP_MS did not').toBe(1);
+  expect(copyReads.length - copyBefore, 'reads of /api/latest since minute 13: the map asked, the standings, so soon after, did not').toBe(1);
 
   // The next week: a body with every counter at zero must still replace it.
   let turn = Math.ceil((wvw.recordedAt + wvw.timeline.end + MIN) / MIN) * MIN;
   if (Math.floor((turn - wvw.recordedAt) / MIN) % 2) turn += MIN;   // an even minute: the newest body
   await wvw.skew(turn - await wvw.now() + 5000);
-  await page.evaluate('loadStandings()');
+  await loadNow(page);
+  await loadSettled(page);
   await wvw.settle();
   const start = wvw.timeline.body(FOCUS, turn - wvw.recordedAt + 5000).start_time;
-  expect(await page.evaluate(id => matchDataCache.get(id)?.start_time, FOCUS), 'the kept body after the week turned').toBe(start);
+  expect((await weekOf(page, FOCUS)).list, 'the kept body after the week turned').toBe(start);
 });
 
 // The week turned and the page read it in an even minute; in the next, odd,
@@ -105,10 +109,11 @@ test.describe('the older group serves last week after the turn', () => {
     let turn = Math.ceil((wvw.recordedAt + wvw.timeline.end - 6 * MIN) / MIN) * MIN;
     if (Math.floor((turn - wvw.recordedAt) / MIN) % 2) turn += MIN;   // an even minute: the newest body
     await wvw.skew(turn - await wvw.now() + 5000);
-    await page.evaluate('loadStandings()');
+    await loadNow(page);
+    await loadSettled(page);
     await wvw.settle();
     const start = wvw.timeline.body(FOCUS, turn - wvw.recordedAt + 5000).start_time;
-    expect(await page.evaluate(id => matchDataCache.get(id)?.start_time, FOCUS), 'the new week is kept').toBe(start);
+    expect((await weekOf(page, FOCUS)).list, 'the new week is kept').toBe(start);
 
     await wvw.skew(MIN);   // an odd minute: the older group, last week's body
     const before = asked.length;
@@ -117,6 +122,6 @@ test.describe('the older group serves last week after the turn', () => {
     await wvw.settle();
     const mapReads = asked.slice(before).filter(u => u === GAME + 'id=' + FOCUS);
     expect(mapReads.length, 'the pull and its two re-reads').toBe(3);
-    expect(await page.evaluate(id => newestMatches.get(id)?.match.start_time, FOCUS), 'what the map pull kept is the new week').toBe(start);
+    expect((await weekOf(page, FOCUS)).map, 'what the map pull kept is the new week').toBe(start);
   });
 });

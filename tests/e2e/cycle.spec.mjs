@@ -6,7 +6,8 @@ import { test, expect } from './support/fixtures.mjs';
 import { answer, fail } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { FOCUS, MIN, copyAheadOld, livePush, playingHalfMinutes } from './support/scenarios.mjs';
-import { load, matchReads, play, scoreOf } from './support/steps.mjs';
+import { load, matchReads, play } from './support/steps.mjs';
+import { aheadOfGameAndSummary, boardBodies, loadNow, loadSettled, markNaStandingsFailed, readSummaryNow, scoreOf, weekOf } from './support/page.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, clock: 'playwright', reducedMotion: 'reduce' });
 test.describe.configure({ timeout: 120 * 1000 });
@@ -51,7 +52,7 @@ test.describe('one match standing still in the copy', () => {
   test('the cycle asks the game for the stalled matches only, in one read', async ({ page, wvw }) => {
     await load(page, wvw);
     const asked = matchReads(page);
-    const all = await page.evaluate(() => [...matchDataCache.keys()].sort());
+    const all = (await boardBodies(page)).map(m => m.id).sort();
     const before = await scoreOf(page, FOCUS);
     await play(page, 6 * MIN);
     await wvw.settle();
@@ -67,19 +68,11 @@ test.describe('one match standing still in the copy', () => {
     await play(page, 3 * MIN);
     await wvw.settle();
     // A kept body further along than the game's own: its answer is behind, which asks the copy by itself.
-    await page.evaluate(focus => {
-      const m = JSON.parse(JSON.stringify([...matchDataCache.values()].find(x => x.id !== focus)));
-      for (const k of Object.keys(m.scores)) m.scores[k] += 5000;
-      for (const k of Object.keys(m.kills)) m.kills[k] += 5000;
-      keepNewestMatch(m);
-      // ... and the summary ahead of what is on show, which asks the copy at the end of the cycle.
-      latestSummary.get(focus).score += 5000;
-      latestAskedAt = 0;
-      latestSummaryAt = 0;
-    }, FOCUS);
+    await aheadOfGameAndSummary(page, FOCUS);
     const copies = [];
     page.on('request', r => { if (/\/api\/latest$/.test(r.url())) copies.push(r.url()); });
-    await page.evaluate(() => loadStandings());
+    await loadNow(page);
+    await loadSettled(page);
     await wvw.settle();
     expect(copies.length, 'reads of the copy in one cycle').toBe(1);
   });
@@ -99,18 +92,16 @@ test.describe('one match standing still in the copy', () => {
 
   test('a stalled match that moves in the game reaches the board, without the list', async ({ page, wvw }) => {
     await load(page, wvw);
-    const moved = await page.evaluate(focus => [...matchDataCache.keys()].find(id => id !== focus), FOCUS);
-    await answer(page, OTHERS, async url => {
-      const ids = idsOf(url);
-      return page.evaluate(([want, up]) => want.map(id => {
-        const m = JSON.parse(JSON.stringify(matchDataCache.get(id)));
-        if (id === up) {
-          for (const k of Object.keys(m.scores)) m.scores[k] += 5000;
-          for (const k of Object.keys(m.kills)) m.kills[k] += 5000;
-        }
-        return m;
-      }), [ids, moved]);
-    }, { contentType: 'application/json' });
+    const bodies = await boardBodies(page);
+    const moved = bodies.find(m => m.id !== FOCUS).id;
+    await answer(page, OTHERS, url => idsOf(url).map(id => {
+      const m = structuredClone(bodies.find(b => b.id === id));
+      if (id === moved) {
+        for (const k of Object.keys(m.scores)) m.scores[k] += 5000;
+        for (const k of Object.keys(m.kills)) m.kills[k] += 5000;
+      }
+      return m;
+    }), { contentType: 'application/json' });
     const asked = matchReads(page);
     const before = await scoreOf(page, moved);
     await play(page, 6 * MIN);
@@ -138,7 +129,8 @@ test.describe('fresh summary, the copy not behind it', () => {
     const sum = await summaryNow(wvw, 500);
     await answer(page, SUMMARY, sum);
     await fail(page, wvw, /\/api\/latest$/);
-    await page.evaluate(() => loadStandings());
+    await loadNow(page);
+    await loadSettled(page);
     await wvw.settle();
     expect(asked.filter(u => LIST.test(u)).length, 'reads of ids=all').toBeGreaterThanOrEqual(1);
   });
@@ -152,15 +144,16 @@ test.describe('the week turns', () => {
   test('a recent summary of the old week does not hold the cycle back', async ({ page, wvw }) => {
     await load(page, wvw);
     const asked = matchReads(page);
-    const was = await page.evaluate(id => matchDataCache.get(id).start_time, FOCUS);
+    const was = (await weekOf(page, FOCUS)).list;
     const turn = wvw.recordedAt + wvw.timeline.end + 3 * MIN;   // just past the NA reset, which the timeline ends a minute or two before
     const sum = await summaryNow(wvw, 0, turn);
     await wvw.skew(turn - await wvw.now());
     await answer(page, SUMMARY, sum);
-    await page.evaluate(() => loadStandings());
+    await loadNow(page);
+    await loadSettled(page);
     await wvw.settle();
     expect(asked.filter(u => LIST.test(u)).length, 'reads of ids=all').toBeGreaterThanOrEqual(1);
-    await expect.poll(() => page.evaluate(id => matchDataCache.get(id).start_time, FOCUS), 'the week on show').not.toBe(was);
+    await expect.poll(async () => (await weekOf(page, FOCUS)).list, 'the week on show').not.toBe(was);
   });
 });
 
@@ -199,7 +192,7 @@ test.describe('copy old, the clock behind', () => {
     await load(page, wvw);
     await wvw.ahead(-3 * MIN);
     // The answer's Date header tells the page how far behind its clock is.
-    await page.evaluate(() => fetchOwnApi(LATEST_SUMMARY_URL, 'no-store'));
+    await readSummaryNow(page);
     const asked = matchReads(page);
     await play(page, 5.5 * MIN);
     await wvw.settle();
@@ -214,11 +207,13 @@ test.describe('a tier that failed', () => {
   test('the cycle reads the game though the copy is fresh', async ({ page, wvw }) => {
     await load(page, wvw);
     const asked = matchReads(page);
-    await page.evaluate(() => loadStandings());
+    await loadNow(page);
+    await loadSettled(page);
     await wvw.settle();
     expect(asked.filter(u => LIST.test(u)), 'reads of ids=all with every tier loaded').toEqual([]);
-    await page.evaluate(() => { standingsFailed = [{ el: standingsStatusNA, label: 'live standings', region: 'NA' }]; });
-    await page.evaluate(() => loadStandings());
+    await markNaStandingsFailed(page);
+    await loadNow(page);
+    await loadSettled(page);
     await wvw.settle();
     expect(asked.filter(u => LIST.test(u)).length, 'reads of ids=all with a tier failed').toBeGreaterThanOrEqual(1);
   });
@@ -254,17 +249,18 @@ test.describe('the week turned, the copy held', () => {
 
   test('the cycle reads the game and the list shows the new week', async ({ page, wvw }) => {
     await load(page, wvw);
-    const was = await page.evaluate(id => matchDataCache.get(id).start_time, FOCUS);
+    const was = (await weekOf(page, FOCUS)).list;
     const turn = wvw.recordedAt + wvw.timeline.end - 2 * MIN;
     const now = turn + 30 * 1000;
     expect(wvw.timeline.body(FOCUS, now - wvw.recordedAt).start_time, 'the game has the new week').not.toBe(was);
     await wvw.skew(now - await wvw.now());
     await wvw.ahead(-10 * MIN);
-    await page.evaluate(() => fetchOwnApi(LATEST_SUMMARY_URL, 'no-store'));
+    await readSummaryNow(page);
     const asked = matchReads(page);
-    await page.evaluate(() => loadStandings());
+    await loadNow(page);
+    await loadSettled(page);
     await wvw.settle();
     expect(asked.filter(u => LIST.test(u)).length, 'reads of ids=all').toBeGreaterThanOrEqual(1);
-    expect(await page.evaluate(id => matchDataCache.get(id).start_time, FOCUS), 'the week on show').not.toBe(was);
+    expect((await weekOf(page, FOCUS)).list, 'the week on show').not.toBe(was);
   });
 });

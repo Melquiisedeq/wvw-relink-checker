@@ -10,7 +10,7 @@ import { test, expect } from './support/fixtures.mjs';
 import { fail } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { FOCUS, MIN, copyBehindAll, playing, visitorDown } from './support/scenarios.mjs';
-import { scoreOf } from './support/steps.mjs';
+import { copyBoardRefusal, doubleMapReads, keptScore, recalledMatchId, recalledScore, scoreOf, summaryAnchor, summaryReadAt } from './support/page.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, clock: 'playwright' });
 const PLOT = ".info-popover .wvw-plot g[role='button']";
@@ -27,7 +27,7 @@ async function mapOpen(page, wvw) {
   await page.locator('.tier-map-btn').first().click();
   await expect(page.locator(PLOT).first()).toBeAttached();
   await wvw.settle();
-  expect(await page.evaluate(() => freshRecall && freshRecall.data && freshRecall.data.id), 'the map open is the match that plays').toBe(FOCUS);
+  expect(await recalledMatchId(page), 'the map open is the match that plays').toBe(FOCUS);
 }
 
 // `minutes` of the page's clock in STEP jumps, each let settle: the page time
@@ -39,7 +39,7 @@ async function watch(page, wvw, minutes, step = () => page.clock.fastForward(STE
   for (let i = 0; i < minutes * MIN / STEP; i++) {
     await step();
     await wvw.settle();
-    const [shown, held] = await page.evaluate(id => [colorSum(freshRecall.data.scores), colorSum(newestMatches.get(id).match.scores)], FOCUS);
+    const [shown, held] = [await recalledScore(page), await keptScore(page, FOCUS)];
     samples.push({ t: await wvw.now(), shown, held, copies: copies.length });
   }
   return { samples, copies };
@@ -73,7 +73,7 @@ async function behindWatched(page, wvw, { refused = false, within = 22 * 1000, c
   // Before the first summary the map's read behind the kept body asks the
   // copy by the rule without one (js/api.js, latestWanted), under a minute
   // before the first minute mark's: the watch starts after it.
-  await expect.poll(async () => { await step(); await wvw.settle(); return page.evaluate(() => latestSummaryAt); },
+  await expect.poll(async () => { await step(); await wvw.settle(); return summaryReadAt(page); },
     { message: 'the first summary read', timeout: 30 * 1000 }).toBeGreaterThan(0);
   const t0 = await wvw.now();
   const minutes = 5;
@@ -117,13 +117,13 @@ async function twoReads(page, wvw, { refused }) {
   test.setTimeout(150 * 1000);
   await mapOpen(page, wvw);
   if (refused) await fail(page, wvw, GAME, 429);
-  await expect.poll(async () => { await page.clock.fastForward(STEP); await wvw.settle(); return page.evaluate(() => latestSummaryAt); },
+  await expect.poll(async () => { await page.clock.fastForward(STEP); await wvw.settle(); return summaryReadAt(page); },
     { message: 'the first summary read', timeout: 30 * 1000 }).toBeGreaterThan(0);
-  await page.evaluate(() => { const read = mapAhead; mapAhead = ids => { read(ids); read(ids); }; });
+  await doubleMapReads(page);
   // Real time, not the page's: the second read ends in this gap.
   await page.route(COPY, async route => { await new Promise(r => setTimeout(r, 150)); return route.fallback(); });
-  const held = () => page.evaluate(id => colorSum(newestMatches.get(id).match.scores), FOCUS);
-  const shown = () => page.evaluate(id => colorSum(freshRecall.data.scores), FOCUS);
+  const held = () => keptScore(page, FOCUS);
+  const shown = () => recalledScore(page);
   const before = await shown();
   await expect.poll(async () => { await page.clock.fastForward(100); await wvw.settle(); return held(); },
     { message: 'the copy kept', intervals: [20], timeout: 90 * 1000 }).toBeGreaterThan(before);
@@ -186,9 +186,7 @@ test.describe("the visitor's group in step", () => {
 // (the Date of the copy's answer, whole seconds), whatever the device's clock says.
 test.describe('the list drawn from the copy, by the servers\' clock', () => {
   const RETRY = '.standings-alert .retry-btn';
-  const refusal = page => page.evaluate(async () => {
-    try { await copyBoard(new Error('refused')); return 'drawn'; } catch (e) { return e.message; }
-  });
+  const refusal = copyBoardRefusal;
 
   test.describe('the device 7 min ahead, our copy current', () => {
     test.use({ timeline: visitorDown(20) });
@@ -206,7 +204,7 @@ test.describe('the list drawn from the copy, by the servers\' clock', () => {
         if (i === 3) first = await scoreOf(page, FOCUS);
       }
       await wvw.settle();
-      expect(await page.evaluate(() => peekAnchor), 'the summary was read').toBeGreaterThan(0);
+      expect(await summaryAnchor(page), 'the summary was read').toBeGreaterThan(0);
       expect(await scoreOf(page, FOCUS), 'the list drew a body newer than the 8 min mark').toBeGreaterThan(first);
       await expect(page.locator(RETRY), 'no "Trying again"').toHaveCount(0);
     });
@@ -240,7 +238,7 @@ test.describe('the list drawn from the copy, by the servers\' clock', () => {
         await page.clock.fastForward(2 * MIN);
       }
       await wvw.settle();
-      const anchor = await page.evaluate(() => peekAnchor);
+      const anchor = await summaryAnchor(page);
       expect(anchor, 'the summary was read').toBeGreaterThan(0);
       await page.clock.setFixedTime(anchor + 7 * MIN + 6 * MIN + 999);
       expect(await refusal(page), 'at 6 min and 999 ms, the same second of the Date').toBe('drawn');

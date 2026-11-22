@@ -12,6 +12,7 @@ import { pastEdge } from './support/edge.mjs';
 import { answer, fail } from './support/faults.mjs';
 import { phone, recordedJson, load, firstTier, openMap, later } from './support/steps.mjs';
 import { gw2 } from './support/gw2.mjs';
+import { agedKeptMatch, allQuietNow, askKills, clockOfKillsAndScore, keptBody, plantKillHistory, quietFor, trendTexts } from './support/page.mjs';
 import { FOCUS, killRows } from './support/scenarios.mjs';
 import { signHeaders, postSigned } from '../unit/signed.mjs';
 import worker from '../../worker/index.mjs';
@@ -156,13 +157,10 @@ test.describe('history ages first sight', () => {
   const reset = async (page, wvw, id, ageOfTarget, ageOfOthers) => {
     const rows = await killRows(page, id, ageOfTarget, ageOfOthers);
     await answer(page, wvw.url + 'api/kills', { rows });
-    await page.evaluate(async () => {
-      for (const k of newestMatches.values()) { k.rose = false; k.at = Date.now(); }
-      killSheetAt = 0;
-      await getKillSheet();
-    });
+    await allQuietNow(page);
+    await askKills(page, { stale: true });
   };
-  const kept = (page, id) => page.evaluate(k => Date.now() - newestMatches.get(k).at, id);
+  const kept = quietFor;
 
   test('a newest line 7 min old opens amber with a dash; a score up clears it', async ({ page, wvw }) => {
     await load(page, wvw);
@@ -174,8 +172,8 @@ test.describe('history ages first sight', () => {
     await expect(page.locator(hud('.wvw-hud-ago.is-stale'))).toBeAttached();
     await expect(page.locator(hud('.wvw-hud-big')), 'the kills corner is a dash on opening').toHaveText('–');
     // The score up, on the kept body: back to a plain "data from".
-    const bumped = await page.evaluate(id => { const m = JSON.parse(JSON.stringify(newestMatches.get(id).match));
-      m.scores.red = (Number(m.scores.red) || 0) + 1; return m; }, tier.id);
+    const bumped = await keptBody(page, tier.id);
+    bumped.scores.red = (Number(bumped.scores.red) || 0) + 1;
     await answer(page, GAME + tier.id, bumped);
     await later(page, wvw, 31000);
     await expect(page.locator(hud('.wvw-hud-ago'))).toHaveText(/^data from \d/);
@@ -230,30 +228,17 @@ test.describe('corners by the data clock', () => {
   };
 
   // The history and the score time planted in the page, the kept body served back.
-  const plant = async (page, id, sc) => {
-    const body = await page.evaluate(([id, sc]) => {
-      localStorage.removeItem('wvw-fight-v1');
-      const now = Date.now();
-      const k = newestMatches.get(id);
-      const T = fightTotals(k.match);
-      const row = (age, bonus) => ({ at: now - age, n: Object.fromEntries(KILLS_MAP_ORDER.map(ty => [ty, (T[ty] || 0) + (ty === 'Center' ? bonus : 0)])) });
-      const list = [];
-      if (sc.rows) {
-        // A fight of 30 kills a minute with the API silent for the stretch between two rows: [minutes before the newest reading, kills added].
-        for (const [mins, bonus] of sc.rows) list.push(row(sc.top + mins * 60e3, bonus));
-      } else if (!sc.none) {
-        list.push(row(sc.top + sc.base, 0));
-        if (sc.still) list.push(row(sc.top + sc.still, 0));
-        list.push(row(sc.top, sc.add));
-      }
-      killSheet = new Map([[id, list]]);
-      killSheetAt = now;
-      k.rose = true;
-      k.at = now - (sc.rose || 0);
-      k.match.start_time = new Date(now - (sc.startAgo || 4 * 86400e3)).toISOString();
-      return k.match;
-    }, [id, sc]);
-    return body;
+  const plant = (page, id, sc) => {
+    // A fight of 30 kills a minute with the API silent for the stretch between two rows: [minutes before the newest reading, kills added].
+    const rows = [];
+    if (sc.rows) {
+      for (const [mins, bonus] of sc.rows) rows.push([sc.top + mins * 60e3, bonus]);
+    } else if (!sc.none) {
+      rows.push([sc.top + sc.base, 0]);
+      if (sc.still) rows.push([sc.top + sc.still, 0]);
+      rows.push([sc.top, sc.add]);
+    }
+    return plantKillHistory(page, id, { rows, roseAgo: sc.rose || 0, startAgo: sc.startAgo || 4 * 86400e3 });
   };
   const corner = page => page.evaluate(() => {
     const q = s => document.querySelector('.info-popover .wvw-plot-wrap ' + s);
@@ -326,10 +311,7 @@ test.describe('corners by the data clock', () => {
       }
       if (name === 'behind') {
         // "Behind since" the score's last rise, where the API stopped; "up to" the kills' own clock.
-        const [kills, score] = await page.evaluate(id => {
-          const hh = t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          return [hh(killView(newestMatches.get(id).match, null).clock), hh(matchScoreRoseAt(id))];
-        }, tier.id);
+        const [kills, score] = await clockOfKillsAndScore(page, tier.id);
         bad(kills !== score, 'the state: the kills\' clock and the score\'s in different minutes');
         bad(c.dim && c.line2 === `\u26a0\u00a0data up to ${kills}`, `a stalled match should say "⚠ data up to ${kills}", dimmed`);
         expect(await balloon(page, 'l'), 'the balloon of a stalled match')
@@ -433,20 +415,11 @@ test.describe('kills that stood still, through the Worker', () => {
   const open = async (page, wvw, ages, bonus, rose = 0) => {
     await load(page, wvw);
     const tier = await firstTier(page);
-    const { now, T, match } = await page.evaluate(([id, rose]) => {
-      localStorage.removeItem('wvw-fight-v1');
-      const now = Date.now();
-      const k = newestMatches.get(id);
-      k.rose = true;
-      k.at = now - rose;
-      k.match.start_time = new Date(now - 4 * 86400e3).toISOString();
-      const T = fightTotals(k.match);
-      return { now, T: KILLS_MAP_ORDER.map(ty => T[ty] || 0), match: k.match };
-    }, [tier.id, rose]);
+    const { now, T, match } = await agedKeptMatch(page, tier.id, rose);
     const kills = ago => T.map((n, i) => (i === 0 ? n - bonus(ago) : n));
     await answer(page, wvw.url + 'api/kills', await workerKills(tier.id, now, ages, kills, rose));
     await answer(page, GAME + tier.id, match);
-    await page.evaluate(async () => { killSheetAt = 0; await getKillSheet(); });
+    await askKills(page, { stale: true });
     await openMap(page, wvw, tier.button);
     await page.locator('.info-popover .wvw-tab[data-type="Center"]').click();
     await expect(page.locator(hud('.wvw-hud-l'))).toBeVisible();
@@ -547,24 +520,14 @@ test.describe('no kill history mid-week', () => {
 // says the data stopped. Body time after it: 400 is a finished block, as before.
 test('skirmish trend stalled: a block cut off midway is not the last block', async ({ page, wvw }) => {
   await load(page, wvw);
-  const out = await page.evaluate(() => {
-    const id = [...newestMatches.keys()][0];
-    const kept = newestMatches.get(id);
-    const keptAt = kept.at;
-    const H = 3600000;
-    const start = Date.now() - (128 * H + 0.5 * H);
-    const lastEnd = start + 128 * H;
-    const sk = n => ({ scores: { red: n, blue: n, green: n } });
-    const match = { id, start_time: new Date(start).toISOString(), end_time: new Date(start + 168 * H).toISOString(),
-      skirmishes: [...Array(63).fill(1000), 400].map(sk) };
-    const render = at => {
-      kept.at = at;
-      const el = document.createElement('div');
-      renderSkirmishTrendPopoverContent(el, 'X', match, 'red');
-      return el.textContent;
-    };
-    try { return { stalled: render(lastEnd - 40 * 60000), current: render(lastEnd + 5 * 60000) }; } finally { kept.at = keptAt; }
-  });
+  const id = (await firstTier(page)).id;
+  const H = 3600000;
+  const start = await wvw.now() - (128 * H + 0.5 * H);
+  const lastEnd = start + 128 * H;
+  const sk = n => ({ scores: { red: n, blue: n, green: n } });
+  const match = { id, start_time: new Date(start).toISOString(), end_time: new Date(start + 168 * H).toISOString(),
+    skirmishes: [...Array(63).fill(1000), 400].map(sk) };
+  const out = await trendTexts(page, { stalled: { match, at: lastEnd - 40 * 60000 }, current: { match, at: lastEnd + 5 * 60000 } });
   expect(out.stalled, 'a block cut off midway').not.toMatch(/Last block\s*400/);
   expect(out.stalled).toMatch(/Last block\s*1,000/);
   expect(out.stalled, 'the finished count').toMatch(/63 of 84 finished/);
@@ -580,24 +543,14 @@ test('skirmish trend stalled: a block cut off midway is not the last block', asy
 // closed counts and the text does not say the data stopped.
 test('skirmish trend: a body that rose minutes ago, just after the turn, is not stalled', async ({ page, wvw }) => {
   await load(page, wvw);
-  const out = await page.evaluate(() => {
-    const id = [...newestMatches.keys()][0];
-    const kept = newestMatches.get(id);
-    const keptAt = kept.at;
-    const H = 3600000;
-    const start = Date.now() - (128 * H + 2 * 60000);
-    const lastEnd = start + 128 * H;
-    const sk = n => ({ scores: { red: n, blue: n, green: n } });
-    const match = { id, start_time: new Date(start).toISOString(), end_time: new Date(start + 168 * H).toISOString(),
-      skirmishes: [...Array(63).fill(1000), 400].map(sk) };
-    const render = at => {
-      kept.at = at;
-      const el = document.createElement('div');
-      renderSkirmishTrendPopoverContent(el, 'X', match, 'red');
-      return el.textContent;
-    };
-    try { return { fresh: render(lastEnd - 60000), old: render(lastEnd - 20 * 60000) }; } finally { kept.at = keptAt; }
-  });
+  const id = (await firstTier(page)).id;
+  const H = 3600000;
+  const start = await wvw.now() - (128 * H + 2 * 60000);
+  const lastEnd = start + 128 * H;
+  const sk = n => ({ scores: { red: n, blue: n, green: n } });
+  const match = { id, start_time: new Date(start).toISOString(), end_time: new Date(start + 168 * H).toISOString(),
+    skirmishes: [...Array(63).fill(1000), 400].map(sk) };
+  const out = await trendTexts(page, { fresh: { match, at: lastEnd - 60000 }, old: { match, at: lastEnd - 20 * 60000 } });
   expect(out.fresh, 'no stop right after the turn').not.toMatch(/stopped partway/);
   expect(out.fresh).toMatch(/ArenaNet hasn't published this block yet/);
   expect(out.fresh, 'the block that closed counts').toMatch(/Last block\s*400/);
@@ -609,40 +562,26 @@ test('skirmish trend: a body that rose minutes ago, just after the turn, is not 
 // not by the clock: a body 6 min behind at 60 min into the block, 500 points.
 test('skirmish trend pace: the fraction of the body\'s instant, not the clock\'s', async ({ page, wvw }) => {
   await load(page, wvw);
-  const out = await page.evaluate(() => {
-    const id = [...newestMatches.keys()][0];
-    const kept = newestMatches.get(id);
-    const keptAt = kept.at;
-    const H = 3600000;
-    const start = Date.now() - (128 * H + 1 * H);
-    const blockStart = start + 128 * H;
-    const sk = n => ({ scores: { red: n, blue: n, green: n } });
-    const match = { id, start_time: new Date(start).toISOString(), end_time: new Date(start + 168 * H).toISOString(),
-      skirmishes: [...Array(64).fill(1000), 500].map(sk) };
-    const opening = { ...match, skirmishes: [...Array(64).fill(1000), 20].map(sk) };
-    const render = (at, m = match) => {
-      kept.at = at;
-      const el = document.createElement('div');
-      renderSkirmishTrendPopoverContent(el, 'X', m, 'red');
-      return el.textContent;
-    };
-    const RealDate = Date;
-    const fixed = blockStart + 60 * 60000;
-    globalThis.Date = new Proxy(RealDate, { get: (t, p) => (p === 'now' ? () => fixed : Reflect.get(t, p, t)) });
-    try {
-      return {
-        edgeOver: render(fixed - 6 * 60000 - 1000),
-        lateEarly: render(blockStart + 40 * 60000),
-        odd: render(blockStart + 48.4 * 60000),
-        behind: render(blockStart + 54 * 60000),
-        frozen: render(blockStart + 50 * 60000),
-        early: render(blockStart + 10 * 60000),
-        before: render(blockStart - 30 * 60000, opening),
-        ahead: render(Date.now() + 30 * 60000),
-        unknown: render(0),
-      };
-    } finally { kept.at = keptAt; globalThis.Date = RealDate; }
-  });
+  const id = (await firstTier(page)).id;
+  const H = 3600000;
+  const start = await wvw.now() - (128 * H + 1 * H);
+  const blockStart = start + 128 * H;
+  const sk = n => ({ scores: { red: n, blue: n, green: n } });
+  const match = { id, start_time: new Date(start).toISOString(), end_time: new Date(start + 168 * H).toISOString(),
+    skirmishes: [...Array(64).fill(1000), 500].map(sk) };
+  const opening = { ...match, skirmishes: [...Array(64).fill(1000), 20].map(sk) };
+  const fixed = blockStart + 60 * 60000;
+  const out = await trendTexts(page, {
+    edgeOver: { match, at: fixed - 6 * 60000 - 1000 },
+    lateEarly: { match, at: blockStart + 40 * 60000 },
+    odd: { match, at: blockStart + 48.4 * 60000 },
+    behind: { match, at: blockStart + 54 * 60000 },
+    frozen: { match, at: blockStart + 50 * 60000 },
+    early: { match, at: blockStart + 10 * 60000 },
+    before: { match: opening, at: blockStart - 30 * 60000 },
+    ahead: { match, at: fixed + 30 * 60000 },
+    unknown: { match, at: 0 },
+  }, fixed);
   expect(out.behind, 'body 6 min behind: 500 at 54 of 120').toMatch(/on pace for\s*1,111/);
   expect(out.behind, 'exactly the margin behind: still "so far"').toMatch(/500 so far · on pace/);
   expect(out.frozen, 'body 10 min behind').toMatch(/on pace for\s*1,200/);
