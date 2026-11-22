@@ -9,7 +9,7 @@ import { test, expect } from './support/fixtures.mjs';
 import { FOCUS, MIN, connectionDrops, hidden, livePush, plainReset, playing, playingHalfMinutes, pushWeekTurn, visible } from './support/scenarios.mjs';
 import { versionName } from './support/gw2.mjs';
 import { firstTier, load, openMap, play } from './support/steps.mjs';
-import { LIVE_EARLY_SCRIPT, liveEarly, loadNow, loadSettled, newestVersionKnown, pushHeardAt, pushIsLive,
+import { loadNow, loadSettled, newestVersionKnown, pushHeardAt, pushIsLive,
   readLatestNow, latestHeldVersion, runPeekNow, scoreOf, serverSecondsNow, weekOf } from './support/page.mjs';
 
 const SITE = 'https://wvwrelink.com';
@@ -40,7 +40,7 @@ function reads(page) {
 // the push live (again). A fixed place in the minute: a jump that lands just
 // before a write sees that write while its read waits, and the read asks for a
 // version no longer the newest (the Worker's 404).
-async function relive(page, wvw, push) {
+async function relive(page, wvw, push, { early = false } = {}) {
   // On to a version this page holds neither by a push nor by another read.
   const known = await newestVersionKnown(page);
   const newestOf = msg => Math.max(...msg.matches.map(m => m.at));
@@ -54,20 +54,22 @@ async function relive(page, wvw, push) {
   await push.sync();
   // The message on the page before the clock runs its wait.
   await expect.poll(() => pushHeardAt(page), 'the version heard').toBe(at);
-  await page.clock.runFor(1600);
+  // `early`: the read waits 1.5 s (HALF), so the push is not live within a second of the version heard.
+  for (let t = 0; early && t < 1000; t += 250) {
+    expect(await pushIsLive(page), `live ${t} ms after the version heard, on the connection's own message`).toBe(false);
+    await page.clock.runFor(250);
+  }
+  await page.clock.runFor(early ? 600 : 1600);
   await expect.poll(() => pushIsLive(page), 'the push is live').toBe(true);
 }
 
 // The page loaded with its socket open, and live: a minute on, a version pushed and read.
 async function live(page, wvw) {
   await page.addInitScript(HALF);
-  await page.addInitScript(LIVE_EARLY_SCRIPT);
   const push = await livePush(page, wvw);
   await load(page, wvw);
   await expect.poll(() => push.open, 'the socket is open').toBe(1);
-  await relive(page, wvw, push);
-  // The read waits 1.5 s (HALF), so the push cannot be live within a second of the first version heard.
-  expect(await liveEarly(page), 'live on the connection\'s own message').toBe(false);
+  await relive(page, wvw, push, { early: true });
   return push;
 }
 

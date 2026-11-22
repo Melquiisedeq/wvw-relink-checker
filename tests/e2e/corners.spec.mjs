@@ -12,7 +12,7 @@ import { pastEdge } from './support/edge.mjs';
 import { answer, fail } from './support/faults.mjs';
 import { phone, recordedJson, load, firstTier, openMap, later } from './support/steps.mjs';
 import { gw2 } from './support/gw2.mjs';
-import { agedKeptMatch, allQuietNow, askKills, clockOfKillsAndScore, keptBody, plantKillHistory, quietFor, trendTexts } from './support/page.mjs';
+import { allQuietNow, askKills, forgetKillHistory, clockOfKillsAndScore, keptBody, loadNow, loadSettled, quietFor, trendTexts } from './support/page.mjs';
 import { FOCUS, killRows } from './support/scenarios.mjs';
 import { signHeaders, postSigned } from '../unit/signed.mjs';
 import worker from '../../worker/index.mjs';
@@ -21,7 +21,25 @@ import { fakeD1 } from '../unit/fake-d1.mjs';
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
 
 const GAME = 'https://api.guildwars2.com/v2/wvw/matches?id=';
+const ALL = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
 const hud = sel => `.info-popover .wvw-plot-wrap ${sel}`;
+
+// The body of `id` one point up in the board's next read (its week begun at `start`, if given), then
+// still for `rose` ms; returns it, and its kills by map in the order of the map's tabs.
+async function roseAgo(page, wvw, id, rose, start) {
+  const match = structuredClone(await keptBody(page, id));
+  match.scores.red += 1;
+  if (start) match.start_time = new Date(start).toISOString().replace('.000Z', 'Z');
+  await answer(page, ALL, recordedJson(ALL).map(m => (m.id === id ? match : m)));
+  await loadNow(page);
+  await loadSettled(page);
+  if (rose) await later(page, wvw, rose);
+  const T = ['Center', 'RedHome', 'BlueHome', 'GreenHome'].map(t => {
+    const k = match.maps.find(m => m.type === t)?.kills || {};
+    return (k.red || 0) + (k.blue || 0) + (k.green || 0);
+  });
+  return { match, T };
+}
 
 // The balloon of a corner, opened by a tap and closed again.
 const balloon = async (page, side) => {
@@ -227,18 +245,26 @@ test.describe('corners by the data clock', () => {
     nodata: { none: true },
   };
 
-  // The history and the score time planted in the page, the kept body served back.
-  const plant = (page, id, sc) => {
-    // A fight of 30 kills a minute with the API silent for the stretch between two rows: [minutes before the newest reading, kills added].
-    const rows = [];
+  // The score one point up in the board's next read (on a week begun `startAgo` back), still for `rose` ms
+  // after; then the kill history forgotten and served, rows of [age, kills added on Center] on top of the
+  // body's; returns the body, to serve back.
+  const plant = async (page, wvw, id, sc) => {
+    const start = sc.startAgo && await wvw.now() + (sc.rose || 0) - sc.startAgo;
+    const { match, T } = await roseAgo(page, wvw, id, sc.rose || 0, start);
+    await forgetKillHistory(page);
+    const now = await wvw.now();
+    const ages = [];
     if (sc.rows) {
-      for (const [mins, bonus] of sc.rows) rows.push([sc.top + mins * 60e3, bonus]);
+      for (const [mins, bonus] of sc.rows) ages.push([sc.top + mins * 60e3, bonus]);
     } else if (!sc.none) {
-      rows.push([sc.top + sc.base, 0]);
-      if (sc.still) rows.push([sc.top + sc.still, 0]);
-      rows.push([sc.top, sc.add]);
+      ages.push([sc.top + sc.base, 0]);
+      if (sc.still) ages.push([sc.top + sc.still, 0]);
+      ages.push([sc.top, sc.add]);
     }
-    return plantKillHistory(page, id, { rows, roseAgo: sc.rose || 0, startAgo: sc.startAgo || 4 * 86400e3 });
+    const rows = ages.map(([age, bonus]) => [now - age, id, ...T.map((n, k) => (k === 0 ? n + bonus : n))]);
+    await answer(page, wvw.url + 'api/kills', { rows });
+    await askKills(page, { stale: true });
+    return match;
   };
   const corner = page => page.evaluate(() => {
     const q = s => document.querySelector('.info-popover .wvw-plot-wrap ' + s);
@@ -252,9 +278,14 @@ test.describe('corners by the data clock', () => {
 
   for (const name of Object.keys(scenarios)) {
     test(name, async ({ page, wvw }) => {
+      // No history for this match from the first read on: ours holds another one only, the sheet none.
+      if (scenarios[name].none) {
+        await answer(page, wvw.url + 'api/kills', { rows: [[await wvw.now(), recordedJson(ALL).at(-1).id, 0, 0, 0, 0]] });
+        await fail(page, wvw, /^https:\/\/docs\.google\.com\/spreadsheets\/d\/[^/]+\/gviz\/tq\?tqx=out:csv&sheet=kills$/);
+      }
       await load(page, wvw);
       const tier = await firstTier(page);
-      await answer(page, GAME + tier.id, await plant(page, tier.id, scenarios[name]));
+      await answer(page, GAME + tier.id, await plant(page, wvw, tier.id, scenarios[name]));
       await openMap(page, wvw, tier.button);
       await page.locator('.info-popover .wvw-tab[data-type="Center"]').click();
       await expect(page.locator(hud('.wvw-hud-l'))).toBeVisible();
@@ -410,12 +441,13 @@ test.describe('kills that stood still, through the Worker', () => {
       console.log = log;
     }
   };
-  // The match's score fresh and its week four days old; the kept body served back.
+  // The match's score fresh (its week began days back); the kept body served back.
   // `rose`: how long ago the score last rose, and the newest row with it.
   const open = async (page, wvw, ages, bonus, rose = 0) => {
     await load(page, wvw);
     const tier = await firstTier(page);
-    const { now, T, match } = await agedKeptMatch(page, tier.id, rose);
+    const { match, T } = await roseAgo(page, wvw, tier.id, rose);
+    const now = await wvw.now();
     const kills = ago => T.map((n, i) => (i === 0 ? n - bonus(ago) : n));
     await answer(page, wvw.url + 'api/kills', await workerKills(tier.id, now, ages, kills, rose));
     await answer(page, GAME + tier.id, match);
