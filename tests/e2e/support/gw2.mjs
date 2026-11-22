@@ -35,10 +35,14 @@
 // - The page reads only the last skirmish (js/panels.js, getSkirmishScore):
 //   a new one is appended at each two-hour mark after the recording, and the
 //   score of the minute goes into the last one.
-// - A skirmish that ends gives its colours 5, 4 and 3 victory points by its
-//   score, in the same body as the skirmish after it (js/standings.js,
-//   sideFigures; js/panels.js, rankMatchByVictoryPoints). A tie goes to the
-//   first of red, blue, green: this world's rule, not the game's.
+// - A skirmish that ends gives its colours victory points by its score, in the
+//   same body as the skirmish after it (js/standings.js, sideFigures; js/panels.js,
+//   rankMatchByVictoryPoints). The points are the game's table for the region
+//   (the id: 1-x NA, 2-x EU) and the UTC hour the skirmish starts, the week's
+//   start hour plus two per skirmish (WAR_VP, skirmishPoints; source
+//   https://wiki.guildwars2.com/wiki/World_versus_World, "Skirmishes"). Colours
+//   that tie take the points of the highest place among them. The recorded
+//   bodies are checked against the table once (baseBodies): a mismatch throws.
 // - A flip changes `owner` and `last_flipped` together (js/maps-early.js,
 //   missedOwnerChanges and missedBodyChanged; js/maps.js, riLeft).
 // - The maps add up to the match: kills, deaths and scores per colour are the
@@ -79,6 +83,22 @@ const DEFAULT_KILLS = Object.freeze({ Center: 30 });                     // per 
 const OLD_TICK = Object.freeze({ Camp: [2, 3, 4, 5], Tower: [4, 6, 8, 10], Keep: [8, 12, 16, 20], Castle: [12, 16, 20, 24] });
 const WAR_CAPTURE = Object.freeze({ Camp: [2, 10, 15, 25], Tower: [25, 125, 200, 250], Keep: [100, 200, 400, 500], Castle: [200, 250, 300, 400] });
 const WAR_TICK = Object.freeze({ Tower: 7, Keep: 10, Castle: 20 });   // at T3 only
+// Victory points of a skirmish [1st, 2nd, 3rd], by region and the UTC hour it starts.
+const VP_TIERS = { a: [15, 14, 12], b: [22, 18, 14], c: [31, 24, 17], d: [51, 37, 24], e: [43, 32, 21], f: [23, 18, 14], g: [19, 16, 13] };
+const WAR_VP = Object.freeze({
+  1: 'eecfgggffffc'.split('').map(k => VP_TIERS[k]),   // NA, hours 0, 2, ... 22
+  2: 'aaaabbbccddc'.split('').map(k => VP_TIERS[k]),   // EU
+});
+// The victory points a finished skirmish gives each colour. `startMs` is its week's start,
+// `skirmish` its body ({ id, scores }); an odd start hour is a break of the test.
+function skirmishPoints(matchId, startMs, skirmish) {
+  const table = WAR_VP[matchId.split('-')[0]];
+  if (!table) throw new Error(`gw2: no victory point table for ${matchId}`);
+  const hour = (Math.round(startMs / 3600000) + 2 * (skirmish.id - 1)) % 24;   // a week begun a minute or two off the hour counts as on it
+  if (hour % 2) throw new Error(`gw2: skirmish ${skirmish.id} of ${matchId} starts at an odd hour (${hour})`);
+  const sc = skirmish.scores;
+  return Object.fromEntries(COLORS.map(c => [c, table[hour / 2][COLORS.filter(o => sc[o] > sc[c]).length]]));
+}
 
 const iso = ms => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
 const sum = o => COLORS.reduce((n, c) => n + (Number(o && o[c]) || 0), 0);
@@ -100,6 +120,16 @@ function baseBodies() {
     const one = read(API + 'id=' + m.id);
     const act = x => sum(x.kills) + sum(x.deaths);
     based.set(m.id, one && (act(one) > act(m) || (act(one) === act(m) && sum(one.scores) > sum(m.scores))) ? one : m);
+  }
+  for (const [id, b] of based) {
+    const got = { red: 0, blue: 0, green: 0 };
+    for (const sk of b.skirmishes.slice(0, -1)) {
+      const vp = skirmishPoints(id, Date.parse(b.start_time), sk);
+      for (const c of COLORS) got[c] += vp[c];
+    }
+    for (const c of COLORS) {
+      if (got[c] !== b.victory_points[c]) throw new Error(`gw2: the victory point table gives ${id} ${c} ${got[c]}, the recording has ${b.victory_points[c]}`);
+    }
   }
   const kills = read('https://wvwrelink.com/api/kills');
   based.rows = kills && Array.isArray(kills.rows) ? kills.rows : [];
@@ -556,8 +586,8 @@ function materialise(recorded, state) {
     b[f] = Object.fromEntries(COLORS.map(c => [c, b.maps.reduce((n, m) => n + m[f][c], 0)]));
   }
   for (let i = Math.max(0, had - 1); i < b.skirmishes.length - 1; i++) {
-    const sc = b.skirmishes[i].scores;
-    [...COLORS].sort((x, y) => sc[y] - sc[x]).forEach((c, place) => { b.victory_points[c] += 5 - place; });
+    const vp = skirmishPoints(b.id, Date.parse(b.start_time), b.skirmishes[i]);
+    for (const c of COLORS) b.victory_points[c] += vp[c];
   }
   return b;
 }
