@@ -12,7 +12,8 @@
 // so. At 1280 and 360 px.
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
-import { phone, frame, load, firstTier, openMap, keptMatch, boardOpen as opened } from './support/steps.mjs';
+import { phone, frame, load, firstTier, openMap, keptMatch, recordedJson, boardOpen as opened } from './support/steps.mjs';
+import { keptBody } from './support/page.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
 test.describe.configure({ timeout: 60 * 1000 });
@@ -22,7 +23,12 @@ const POP = '.info-popover';
 const ROW = `${POP} .wvw-board-row[data-focus-color]`;
 
 // Everything the focus shows, read at once.
-const state = page => page.evaluate(() => {
+// Each objective as [id, map id, type], from the recorded bodies of the game's matches
+// (each objective once: every match holds the same ones).
+const objectiveRows = () => [...new Map(recordedJson('https://api.guildwars2.com/v2/wvw/matches?ids=all')
+  .flatMap(m => m.maps.flatMap(map => map.objectives.map(o => [o.id, [o.id, map.id, o.type]])))).values()];
+
+const state = async page => page.evaluate(types => {
   const pop = document.querySelector('.info-popover');
   const own = g => ([...g.classList].find(c => c.startsWith('own-')) || '').slice(4);
   const wrap = pop.querySelector('.wvw-plot-wrap');
@@ -31,14 +37,14 @@ const state = page => page.evaluate(() => {
     focused: pop.querySelector('.wvw-plot').classList.contains('is-focused'),
     veil: !!pop.querySelector('.wvw-focus-veil'),
     marks: [...pop.querySelectorAll('.wvw-marker')].map(g => ({ id: g.dataset.obj, own: own(g),
-      type: objectiveCatalogue.get(g.dataset.obj)?.type || '', lit: g.classList.contains('is-lit') })),
+      type: types[g.dataset.obj] || '', lit: g.classList.contains('is-lit') })),
     label: head.querySelector('.wvw-board-team').textContent,
     rows: [...pop.querySelectorAll('.wvw-board-row.is-picked')].map(r => r.dataset.focusColor || 'head'),
     pressed: [...pop.querySelectorAll('.wvw-board [aria-pressed="true"]')].map(e => (e.closest('[data-focus-color]')?.dataset.focusColor || '') + '/' + (e.dataset.focusType || '')),
     cols: [...head.querySelectorAll('.is-picked')].map(e => e.dataset.focusType),
     team: wrap.dataset.focusTeam || '',
     bar: Object.fromEntries([...wrap.querySelectorAll('.wvw-scorebar-seg')].map(s => [own(s), getComputedStyle(s).filter])) };
-});
+}, Object.fromEntries(objectiveRows().map(([id, , type]) => [id, type])));
 
 // Lit exactly where want(marker) holds, the rest not, and at least one lit.
 function litCheck(st, want, what) {
@@ -190,7 +196,7 @@ for (const width of [1280, 360]) {
 
     // The map's tabs, the objectives' catalogue and a way to count the way the page does.
     async function world(page, tier) {
-      const cat = await page.evaluate(() => [...objectiveCatalogue.values()].map(m => [m.id, m.map_id, m.type]));
+      const cat = objectiveRows();
       const tabs = await page.evaluate(() => [...document.querySelectorAll('.info-popover .wvw-tab')].map(b => [b.dataset.type, b.textContent]));
       const order = tabs.map(t => t[0]);
       const tally = (body, spec) => Object.fromEntries(order.map(type => {
@@ -290,7 +296,7 @@ for (const width of [1280, 360]) {
       await answer(page, tier.url, none);
       await openMap(page, wvw, tier.button);
       await expect(page.locator(ROW).first()).toBeAttached();
-      await expect.poll(() => page.evaluate(([id]) => newestMatches.get(id).match.scores.red, [tier.id]), { message: 'the made-up body taken' }).toBeGreaterThanOrEqual(none.scores.red);
+      await expect.poll(async () => (await keptBody(page, tier.id)).scores.red, { message: 'the made-up body taken' }).toBeGreaterThanOrEqual(none.scores.red);
       await page.waitForTimeout(400);
       const start = w.order[w.order.length - 1];
       const v = await pick(page, wvw, start, spec);

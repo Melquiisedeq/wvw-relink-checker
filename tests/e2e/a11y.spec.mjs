@@ -2,10 +2,12 @@
 // no live region that rewrites itself between two good reads, one heading per
 // tier, the side and the arrow in words, and a table that keeps its roles on a phone.
 import { test, expect } from './support/fixtures.mjs';
-import { answer } from './support/faults.mjs';
+import { answer, fail } from './support/faults.mjs';
+import { MIN, awayAndBack } from './support/scenarios.mjs';
 import { check, load, phone } from './support/steps.mjs';
 
 const ALL = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
+const ALL_RE = /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches\?ids=all$/;
 const EU_ONLY = /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches\?ids=2-[1-9](,2-[1-9])*$/;
 
 test.use({ viewport: { width: 1280, height: 800 } });
@@ -38,12 +40,20 @@ test('a region that cannot load says so in its alert', async ({ page, wvw }) => 
 });
 
 test('a failure first quiet, then retried, shows its Try again button', async ({ page, wvw }) => {
-  await load(page, wvw);
-  await page.evaluate(() => {
-    setStandingsStatus(standingsStatusEU, false, "Couldn't load EU standings.");
-    paintRetryStatus(standingsStatusEU, 'Trying again soon.', 'Trying again soon.', false, false);
-  });
+  // EU answers with nothing: the quiet alert, no retry planned. A return of the tab
+  // then meets EU failing: the retry is planned over the quiet alert.
+  const none = [await answer(page, ALL, []), await answer(page, EU_ONLY, [])];
+  await page.goto(wvw.url);
+  await expect(page.locator('#standingsAlertEU')).toHaveText("Couldn't load EU standings.");
+  await expect(page.locator('#standingsAlertEU .retry-btn')).toHaveCount(0);
+  await fail(page, wvw, ALL_RE);
+  await fail(page, wvw, EU_ONLY);
+  for (const n of none) n.off();
+  await awayAndBack(page, wvw, 10 * MIN);
+  await expect(page.locator('#standingsAlertEU'), 'the retry planned').toContainText(/Trying again in \d+ s/);
   await expect(page.locator('#standingsAlertEU .retry-btn'), 'not left clipped by the quiet alert').toBeVisible();
+  // The quiet alert is a 1 px box clipped to nothing: visible only if it is not the quiet one.
+  expect((await page.locator('#standingsAlertEU').boundingBox()).height, 'the alert drawn, not clipped to a pixel').toBeGreaterThan(8);
 });
 
 test('one heading per tier, the side and the arrow in words', async ({ page, wvw }) => {

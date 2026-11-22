@@ -6,7 +6,8 @@
 // again.
 import { test, expect } from './support/fixtures.mjs';
 import { FOCUS } from './support/scenarios.mjs';
-import { board, load, serveList } from './support/steps.mjs';
+import { board, load, search, serveList } from './support/steps.mjs';
+import { loadNow, logOpeningScores, mapsScriptIn } from './support/page.mjs';
 
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
 
@@ -20,7 +21,32 @@ const mark = page => page.evaluate(() => {
   return n;
 });
 
-const look = page => page.evaluate(id => {
+// Every skirmish bar added to the board, with the width it has as it enters (read before
+// the frame that writes the next), and every bar that starts a width transition, each
+// bar as "<match> <colour>".
+async function watchBars(page) {
+  const seen = { added: [], ran: [] };
+  await page.exposeFunction('barAdded', (key, width) => { seen.added.push([key, width]); });
+  await page.exposeFunction('barRan', key => { seen.ran.push(key); });
+  await page.evaluate(() => {
+    const key = el => {
+      const side = el.closest('.standing-side');
+      return `${side.closest('.standing-match').dataset.matchId} ${['red', 'blue', 'green'].find(c => side.classList.contains('side-' + c))}`;
+    };
+    new MutationObserver(records => {
+      for (const r of records) for (const n of r.addedNodes) {
+        if (n.nodeType !== 1) continue;
+        for (const f of n.matches('.skirmish-bar-fill') ? [n] : n.querySelectorAll('.skirmish-bar-fill')) window.barAdded(key(f), f.style.width);
+      }
+    }).observe(document.body, { subtree: true, childList: true });
+    document.addEventListener('transitionrun', e => {
+      if (e.propertyName === 'width' && e.target.matches('.skirmish-bar-fill')) window.barRan(key(e.target));
+    }, true);
+  });
+  return seen;
+}
+
+const look = (page, id) => page.evaluate(id => {
   const all = [...document.querySelectorAll('.standing-side, .rank-badge, .tier-map-btn, .standings-status .live-dot')];
   const card = document.querySelector(`.standing-match[data-match-id="${id}"]`);
   const colorOf = el => ['red', 'blue', 'green'].find(c => el.closest('.standing-side').classList.contains('side-' + c));
@@ -34,17 +60,8 @@ const look = page => page.evaluate(id => {
     flashed: [...document.querySelectorAll('.value-changed')].map(el =>
       `${el.closest('.standing-match').dataset.matchId} ${colorOf(el)} ${el.closest('.standing-vp') ? 'vp' : 'skirmish'}`).sort(),
     pulsed: [...document.querySelectorAll('.standing-side.side-pulse')].map(s => `${s.closest('.standing-match').dataset.matchId} ${colorOf(s)}`).sort(),
-    mapBody: tierMapButtons.get(card.querySelector('.tier-map-btn')).match.victory_points,
   };
-}, FOCUS);
-
-// The width transitions running on a side's skirmish bar, read in the task
-// that repainted the board.
-const repaint = (page, color) => page.evaluate(async ([id, c]) => {
-  await loadStandings();
-  const fill = document.querySelector(`.standing-match[data-match-id="${id}"] .side-${c} .skirmish-bar-fill`);
-  return fill.getAnimations().filter(a => a.transitionProperty === 'width').length;
-}, [FOCUS, color]);
+}, id);
 
 test.describe('a new score on the same board', () => {
   // Without moveBefore (Firefox, Safari) a card moved by insertBefore loses its
@@ -52,8 +69,16 @@ test.describe('a new score on the same board', () => {
   for (const move of ['moveBefore', 'insertBefore']) test(`is written into the cards that are there (${move})`, async ({ page, wvw }) => {
     if (move === 'insertBefore') await page.addInitScript(() => { delete Element.prototype.moveBefore; });
     await load(page, wvw);
-    const { list, byRank: [first, second, third] } = await board(page, FOCUS);
-    const focus = list.find(m => m.id === FOCUS);
+    // The guild-found strip hangs under the side that will move: the first guild of the
+    // recording is the second of the tier it is found in.
+    await search(page, wvw.guilds.slice(0, 1));
+    const strip = page.locator('.guild-found-strip');
+    await expect(strip).toHaveCount(1);
+    const id = await strip.evaluate(s => s.closest('.standing-match').dataset.matchId);
+    const { list, byRank } = await board(page, id);
+    const [first, second, third] = byRank;
+    expect(id, "the recording's first guild is in the last tier of NA (the premise of this test)").toBe(`1-${wvw.tiers.NA}`);
+    const focus = list.find(m => m.id === id);
     const vp = focus.victory_points;
     // The second overtakes the first; the third takes the skirmish lead, so
     // every bar moves; the first fights (Activity moves, and never flashes).
@@ -67,13 +92,14 @@ test.describe('a new score on the same board', () => {
     focus.scores[third] = Number(focus.scores[third]) + lead;
     focus.kills[first] = Number(focus.kills[first]) + 7;
     const kills = focus.kills[first];
+    const total = COLORS.reduce((n, c) => n + Number(focus.scores[c]), 0);
 
-    // The guild-found strip hangs under the side that will move.
-    await page.evaluate(([id, c]) => showGuildFound(matchTeamId(matchDataCache.get(id), c), 'Found Guild'), [FOCUS, second]);
     const before = await mark(page);
+    const bars = await watchBars(page);
     await serveList(page, list);
-    const moving = await repaint(page, second);
-    const after = await look(page);
+    await loadNow(page);
+    await expect(page.locator('.delta'), 'one delta per number that changed').toHaveCount(3);
+    const after = await look(page, id);
 
     expect(after.total, 'as many cards, badges, map buttons and dots as before').toBe(before);
     expect(after.unmarked, 'none of them a new element').toBe(0);
@@ -81,25 +107,35 @@ test.describe('a new score on the same board', () => {
     expect(after.badges).toEqual({ [second]: '1', [first]: '2', [third]: '3' });
     expect(after.badgeClasses, 'each badge is coloured for its new rank').toEqual({
       [second]: 'rank-badge rank-1', [first]: 'rank-badge rank-2', [third]: 'rank-badge rank-3' });
-    expect(after.moves, 'and each says where its rank sends it at the next reset (tier 1)').toEqual({
-      [second]: 'Already the top tier', [first]: 'Stays in this tier next reset', [third]: 'Moves down next reset' });
+    expect(after.moves, 'and each says where its rank sends it at the next reset (the last tier, where a third has nowhere lower to go)').toEqual({
+      [second]: 'Moves up next reset', [first]: 'Stays in this tier next reset', [third]: 'Already the bottom tier' });
     expect(after.flashed, 'only the numbers that changed flash').toEqual(
-      [`${FOCUS} ${first} vp`, `${FOCUS} ${second} vp`, `${FOCUS} ${third} skirmish`].sort());
-    expect(after.pulsed).toEqual(COLORS.map(c => `${FOCUS} ${c}`).sort());
-    await expect(page.locator('.delta'), 'one delta per number that changed').toHaveCount(3);
+      [`${id} ${first} vp`, `${id} ${second} vp`, `${id} ${third} skirmish`].sort());
+    expect(after.pulsed).toEqual(COLORS.map(c => `${id} ${c}`).sort());
     expect((await page.locator('.delta').allTextContents()).sort()).toEqual(['+1', `+${rise.toLocaleString('en-US')}`, `+${lead.toLocaleString('en-US')}`].sort());
-    expect(after.mapBody, 'the map button holds the new body').toEqual(vp);
-    expect(moving, 'the bar of the side that moved travels to its new width').toBe(1);
+    await expect.poll(() => bars.ran.filter(k => k === `${id} ${second}`).length, { message: 'the bar of the side that moved travels to its new width' }).toBe(1);
     expect(await page.evaluate(([id, c]) => {
       const box = document.querySelector(`.standing-match[data-match-id="${id}"]`);
       const strips = box.querySelectorAll('.guild-found-strip');
       return strips.length === 1 && box.querySelector(`.side-${c}`).nextElementSibling === strips[0];
-    }, [FOCUS, second]), 'one guild-found strip, under the side that moved').toBe(true);
+    }, [id, second]), 'one guild-found strip, under the side that moved').toBe(true);
+    await wvw.settle();
+    expect(bars.ran.filter(k => k === `${id} ${second}`), 'and travels once').toHaveLength(1);
 
     // The Activity button of the side that fought opens on the new body.
-    const side = page.locator(`.standing-match[data-match-id="${FOCUS}"] .standing-side.side-${first}`);
+    const side = page.locator(`.standing-match[data-match-id="${id}"] .standing-side.side-${first}`);
     await side.locator('.activity-info-btn').click();
     await expect(page.locator('.info-popover .pop-figure').first()).toContainText(kills.toLocaleString('en-US'));
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.info-popover')).toHaveCount(0);
+
+    // The map button of the tier opens on the new body.
+    await expect.poll(() => mapsScriptIn(page), { message: 'maps.js in' }).toBe(true);
+    const opened = await logOpeningScores(page);
+    await page.locator(`.standing-match[data-match-id="${id}"] .tier-map-btn`).click();
+    await expect.poll(async () => (await opened())[0], { message: 'the map drawn from the new body' }).toBe(total);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.info-popover')).toHaveCount(0);
 
     // The flash ends and takes its class with it: the next score flashes only what moves then.
     await expect(page.locator('.value-changed')).toHaveCount(0, { timeout: 4000 });
@@ -121,8 +157,11 @@ test.describe('a new score on the same board', () => {
     const green = `.standing-match[data-match-id="${FOCUS}"] .side-green .skirmish-bar-fill`;
     const wasWidth = await page.locator(green).evaluate(el => el.style.width);
     await mark(page);
+    const bars = await watchBars(page);
     await serveList(page, list);
-    const startWidth = await page.evaluate(async sel => { await loadStandings(); return document.querySelector(sel).style.width; }, green);
+    await loadNow(page);
+    await expect.poll(() => bars.added.some(([key]) => key === `${FOCUS} green`), { message: 'the bars built again' }).toBe(true);
+    const startWidth = bars.added.find(([key]) => key === `${FOCUS} green`)[1];
     const fresh = await page.evaluate(() => [...document.querySelectorAll('#standingsGridNA .standing-side')].every(el => !el.__mark));
     expect(fresh, 'every NA card built again').toBe(true);
     expect(startWidth, "the bar built again starts at the width it had").toBe(wasWidth);

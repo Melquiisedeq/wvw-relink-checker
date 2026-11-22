@@ -18,12 +18,9 @@ const E2E = path.join(ROOT, 'tests/e2e');
 const PORT = 'support/page.mjs';
 
 const WAITING = {
-  'a11y.spec.mjs': ['paintRetryStatus', 'setStandingsStatus'],
-  'focus.spec.mjs': ['newestMatches', 'objectiveCatalogue'],
   'notice.spec.mjs': ['assignNA', 'getTeamName', 'relinkStateAt', 'updateRelinkBanner', 'wvwMapCache'],
   'popovers.spec.mjs': ['OBJ_SIZE', 'WVW_STATIC'],
   'relink.spec.mjs': ['WVW_STATIC'],
-  'score.spec.mjs': ['loadStandings', 'matchDataCache', 'matchTeamId', 'showGuildFound', 'tierMapButtons'],
 };
 
 const TOP = /^(?:async\s+)?(?:function\*?\s+|const\s+|let\s+|var\s+|class\s+)([A-Za-z_$][\w$]*)/;
