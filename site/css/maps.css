@@ -361,16 +361,19 @@
 .wvw-cap:hover,.wvw-cap:focus-visible{background:rgba(255,255,255,.05);}
 .wvw-cap:focus-visible{outline-offset:-2px;}
 .wvw-cap:active{transform:none;}
-.wvw-cap img{display:block;flex-shrink:0;}
+.wvw-cap img{display:block;flex-shrink:0;margin:-3px 0;}
 .wvw-cap-time{color:#8d97a6;font-variant-numeric:tabular-nums;min-width:52px;white-space:nowrap;}
 .wvw-cap-name{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.wvw-cap-type{flex-shrink:0;margin-left:-2px;color:#8d97a6;white-space:nowrap;}
+.wvw-cap.cap-no-type .wvw-cap-type,.wvw-cap.cap-no-chip .wvw-cap-map{display:none;}
+.wvw-cap.cap-short .wvw-cap-map{padding:0 3px;}
 /* EBG neutral; the borderlands are --red, --blue and --green (css/base.css) at low alpha. */
 .wvw-cap{--map-soft:rgba(195,204,215,.14);}
 .wvw-cap[data-map=RedHome]{--map-soft:rgba(225,92,92,.2);}
 .wvw-cap[data-map=BlueHome]{--map-soft:rgba(91,143,240,.22);}
 .wvw-cap[data-map=GreenHome]{--map-soft:rgba(76,175,125,.22);}
 .wvw-cap-map{
-  margin-left:auto;white-space:nowrap;padding:0 6px;border-radius:3px;background:var(--map-soft);color:#dbe3ec;
+  margin:-1px 0 -1px auto;flex-shrink:0;white-space:nowrap;padding:0 6px;border-radius:3px;background:var(--map-soft);color:#dbe3ec;
   font-size:.62rem;font-weight:700;line-height:1.5;
 }
 /* The site's thin scrollbar (css/base.css), on the list. */

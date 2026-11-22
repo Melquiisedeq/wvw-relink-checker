@@ -2499,11 +2499,17 @@ function paintCapturesNow(view, items) {
     time.dateTime = new Date(it.at).toISOString();
     row.appendChild(time);
     const src = markerIcon(it.type, it.owner);
-    if (src) row.appendChild(missedImg(src, 14));
+    if (src) row.appendChild(missedImg(src, 20));
     row.appendChild(missedEl('span', 'wvw-cap-name', missedShortName(it.id)));
-    row.appendChild(missedEl('span', 'wvw-cap-map', map));
+    row.appendChild(missedEl('span', 'wvw-cap-type', it.type));
+    const chip = missedEl('span', 'wvw-cap-map', map);
+    chip.dataset.full = map;
+    chip.dataset.short = map.replace(/^(\w)\w* /, '$1');
+    row.appendChild(chip);
     const id = matchTeamId(view.match, it.owner);
-    const words = `${missedFullName(it.id)} (${map}): taken by ${id ? getTeamName(id) : FOCUS_COLOR_WORD[it.owner]}`
+    const full = missedFullName(it.id);
+    const kind = full.split(' ').pop() === it.type ? '' : `, ${it.type}`;
+    const words = `${full}${kind} (${map}): taken by ${id ? getTeamName(id) : FOCUS_COLOR_WORD[it.owner]}`
       + ` at ${when}`;
     row.title = words;
     row.setAttribute('aria-label', words);
@@ -2520,6 +2526,38 @@ function paintCapturesNow(view, items) {
     view.box.appendChild(missedEl('p', 'wvw-caps-none wvw-caps-more',
       `${unlisted} older capture${unlisted === 1 ? '' : 's'} not listed.`));
   }
+  watchCaptureFit(view.box);
+}
+
+// A row whose name is cut gives up, in this order and only while it is still cut: the chip's
+// "Blue BL" for "BBL", the chip, the type word.
+function captureNameCut(name) {
+  if (name.scrollWidth > name.clientWidth) return true;
+  const r = document.createRange();
+  r.selectNodeContents(name);
+  return r.getBoundingClientRect().width > name.getBoundingClientRect().width + 0.01;
+}
+function fitCaptureRow(row) {
+  const chip = row.querySelector('.wvw-cap-map');
+  const name = row.querySelector('.wvw-cap-name');
+  row.classList.remove('cap-short', 'cap-no-chip', 'cap-no-type');
+  chip.textContent = chip.dataset.full;
+  for (const step of ['cap-short', 'cap-no-chip', 'cap-no-type']) {
+    if (!captureNameCut(name)) break;
+    row.classList.add(step);
+    if (step === 'cap-short') chip.textContent = chip.dataset.short;
+  }
+}
+// No step changes a row's height (the chip's margin keeps it under the text's) or the list's width, so the
+// observer's own work never resizes the list: no loop.
+const fitCapturesBox = (box) => { if (box.clientWidth) box.querySelectorAll('.wvw-cap').forEach(fitCaptureRow); };
+const capturesWatched = new WeakSet();
+function watchCaptureFit(box) {
+  if (!capturesWatched.has(box) && window.ResizeObserver) {
+    capturesWatched.add(box);
+    new ResizeObserver(() => fitCapturesBox(box)).observe(box);
+  }
+  fitCapturesBox(box);
 }
 
 // ---- the popover -----------------------------------------------------
