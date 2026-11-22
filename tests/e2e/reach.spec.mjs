@@ -4,7 +4,7 @@
 // follows its icon when the page scrolls, and the trebuchet does not aim at
 // a finger; the map zooms and pans by buttons, wheel and drag.
 import { test, expect } from './support/fixtures.mjs';
-import { load, firstTier, openMap, search } from './support/steps.mjs';
+import { load, firstTier, openMap, search, frames } from './support/steps.mjs';
 
 test.describe.configure({ timeout: 60 * 1000 });
 const POP = '.info-popover';
@@ -26,6 +26,7 @@ const state = (page, btn) => btn.evaluate(b => ({
   backdrops: document.querySelectorAll('.info-popover-backdrop').length,
   expanded: !!document.querySelector('.info-popover--expanded'),
   active: b.classList.contains('active'), aria: b.getAttribute('aria-expanded') }));
+
 const CLOSED = { pops: 0, backdrops: 0, expanded: false, active: false, aria: 'false' };
 const OPEN = { pops: 1, backdrops: 0, expanded: false, active: true, aria: 'true' };
 
@@ -150,21 +151,20 @@ test.describe('phone', () => {
     const margin = await page.evaluate(() => { const p = document.querySelector('.info-popover').getBoundingClientRect(); return { x: p.left / 2, y: p.top + p.height / 2 }; });
     await page.touchscreen.tap(margin.x, margin.y);
     expect(await state(page, btn), 'a tap outside').toEqual(CLOSED);
-    // Watched from before the tap to after the round would have landed.
-    const watch = () => page.evaluate(() => {
-      window.__shots = { shot: false, firing: false };
-      new MutationObserver(() => {
-        if (document.querySelector('.siege-shot, .shot-bloom')) window.__shots.shot = true;
-        if (document.getElementById('trebuchet').classList.contains('firing')) window.__shots.firing = true;
-      }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
+    // Watched from before the tap: where each round lands.
+    await page.evaluate(() => {
+      window.__landed = [];
+      new MutationObserver(ms => {
+        for (const m of ms) for (const n of m.addedNodes) {
+          if (n.classList?.contains('shot-bloom')) window.__landed.push(`${parseInt(n.style.left)},${parseInt(n.style.top)}`);
+        }
+      }).observe(document.body, { subtree: true, childList: true });
     });
-    await watch();
     await page.touchscreen.tap(6, 6);
-    await page.waitForTimeout(900);
-    expect(await page.evaluate(() => window.__shots), 'a tap throws no round, at any moment').toEqual({ shot: false, firing: false });
-    // The same watch sees a mouse click throw one.
-    await page.mouse.click(6, 6);
-    await expect.poll(() => page.evaluate(() => window.__shots), { message: 'a click throwing a round' }).toEqual({ shot: true, firing: true });
+    // A mouse click elsewhere after it; once its round lands, a round of the tap's would have.
+    await page.mouse.click(60, 6);
+    await expect.poll(() => page.evaluate(() => window.__landed), { message: 'the click\'s round landing' }).toContain('60,6');
+    expect(await page.evaluate(() => window.__landed), 'a tap throws no round, only the click does').toEqual(['60,6']);
   });
 
   test('scrolling the page, the popover follows its icon; the icon gone, it stays open at the edge', async ({ page, wvw }) => {
@@ -219,8 +219,8 @@ test.describe('phone', () => {
         window.dispatchEvent(new PointerEvent('pointermove', { pointerType: 'touch', clientX: x, clientY: y, bubbles: true }));
       }
     });
-    await page.waitForTimeout(300);
-    expect(await aim(), 'the beam and frame after a finger dragged across the screen').toEqual(rest);
+    await frames(page, 20);
+    expect(await aim(), 'the beam and frame 20 frames after a finger dragged across the screen').toEqual(rest);
     await page.mouse.move(380, 20);
     await page.mouse.move(370, 30);
     await expect.poll(async () => (await aim()).yaw, { message: 'a mouse aiming it' }).not.toBe(rest.yaw);
@@ -566,7 +566,15 @@ test('Ctrl+Enter in the guild box closes a result row\'s popover and leaves no a
   await page.locator('#guildInput').focus();
   await page.keyboard.press('Control+Enter');
   await expect(page.locator(POP)).toHaveCount(0);
-  expect(await page.evaluate(() => activeTrigger), 'activeTrigger').toBeNull();
   await expect(page.locator('#statusMsg')).toHaveText(/^Done/, { timeout: 15000 });
+  // A popover still held as open would keep the trebuchet from throwing.
+  await page.evaluate(() => {
+    window.__thrown = 0;
+    new MutationObserver(ms => {
+      for (const m of ms) for (const n of m.addedNodes) if (n.classList?.contains('siege-shot')) window.__thrown++;
+    }).observe(document.body, { childList: true });
+  });
+  await page.mouse.click(640, 20);
+  await expect.poll(() => page.evaluate(() => window.__thrown), { message: 'a click on an empty spot throwing a round' }).toBe(1);
   await wvw.settle();
 });

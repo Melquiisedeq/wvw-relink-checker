@@ -8,19 +8,39 @@
 // update points at the domain first, not at the page.
 import { test, expect } from './support/fixtures.mjs';
 import { load, firstTier, openMap, frame } from './support/steps.mjs';
+import { FOCUS, MIN, hidden, missed, visible } from './support/scenarios.mjs';
 
 const POP = '.info-popover--maps';
 test.describe.configure({ timeout: 90000 });
 
-// Rings on the first `n` objectives of the open map, for `ms`, as a return after
-// a gap leaves them (missedRingFor in js/maps-early.js).
-const ring = (page, n = 3, ms = 60000) => page.evaluate(([n, ms]) => {
-  const wrap = document.querySelector('.info-popover--maps .wvw-plot-wrap');
-  const ids = [...wrap.querySelectorAll('.wvw-marker[data-obj]')].map(g => g.dataset.obj).slice(0, n);
-  missedRings.set(missedOpen.matchId, { ids: new Set(ids), until: Date.now() + ms });
-  wrap.ringChanged();
-  return ids;
-}, [n, ms]);
+// Objectives change hands while the tab is away for AWAY; the map left open on them
+// rings them at the return, for seconds only: each test reads the rings at once.
+const AWAY = 35 * MIN;
+test.use({ timeline: missed(40, 3) });
+const focusButton = page => page.locator(`.tier-map-btn[aria-label*="NA Tier ${FOCUS.split('-')[1]}"]`);
+
+// FOCUS's map open on the tab that draws what the timeline flips in AWAY, the tab
+// hidden that long and shown again. The ids ringed.
+async function ring(page, wvw) {
+  const from = await wvw.now() - wvw.recordedAt;
+  const ids = wvw.timeline.flipsBetween(FOCUS, from, from + AWAY).map(f => f.id);
+  const marker = id => page.locator(`${POP} .wvw-marker[data-obj="${id}"]`);
+  for (const tab of await page.locator(`${POP} .wvw-tab`).all()) {
+    if (await marker(ids[0]).count()) break;
+    await tab.focus();
+    await page.keyboard.press('Enter');
+    await wvw.settle();
+  }
+  const drawn = [];
+  for (const id of ids) if (await marker(id).count()) drawn.push(id);
+  expect(drawn.length, `objectives flipped while away, drawn on the open map (of ${ids})`).toBeGreaterThanOrEqual(2);
+  await hidden(page, wvw, AWAY);
+  await visible(page);
+  await wvw.settle();
+  await expect(page.locator(`${POP} .wvw-marker .wvw-ring`), 'rings on the objectives that changed hands').toHaveCount(drawn.length);
+  expect(await page.locator(`${POP} .wvw-marker:has(.wvw-ring)`).evaluateAll(gs => gs.map(g => g.dataset.obj)), 'the objectives ringed').toEqual(drawn);
+  return drawn;
+}
 
 // Each ringed marker: how far, in CSS px, its ring's centre is from its icon's.
 const offsets = page => page.evaluate(sel => [...document.querySelectorAll(`${sel} .wvw-marker`)]
@@ -41,7 +61,7 @@ test('the rings pulse without the maps popover being repainted on every frame', 
   await load(page, wvw);
   // From the keyboard: opened with a mouse click, the popover's layers fall out so that a
   // box-shadow costs nothing, and this test would prove nothing.
-  await page.locator('.tier-map-btn').first().focus();
+  await focusButton(page).focus();
   await page.keyboard.press('Enter');
   await expect(page.locator(".info-popover .wvw-plot g[role='button']").first()).toBeAttached();
   await wvw.settle();
@@ -68,10 +88,13 @@ test('the rings pulse without the maps popover being repainted on every frame', 
   let last = -1;
   await expect.poll(() => { const n = paints(); const still = own().length > 0 && n === last; last = n; return still; },
     { message: 'the popover stopped painting after the map was drawn', intervals: [300], timeout: 15000 }).toBe(true);
+  const ids = await ring(page, wvw);
+  // The return's own effects (the summary fading in) played out before the count.
+  await expect.poll(() => page.evaluate(() => document.getAnimations().filter(a => a.animationName !== 'wvw-ring'
+    && a.effect?.getComputedTiming().iterations !== Infinity && a.playState === 'running').length),
+  { message: 'the return\'s run-once effects ended', intervals: [100] }).toBe(0);
   reports = 0;
   const before = new Map(own().map(l => [l.layerId, l.paintCount]));
-  const ids = await ring(page);
-  expect(ids, 'objectives ringed').toHaveLength(3);
   await frame(page);
   const t0 = await ringTimes(page);
   await page.waitForTimeout(1500);
@@ -85,7 +108,7 @@ test('the rings pulse without the maps popover being repainted on every frame', 
   expect(reports, 'layer tree reports with paint counts during the rings').toBeGreaterThan(0);
   expect(after.every(l => typeof l.paintCount === 'number'), 'a paint count on each popover layer').toBe(true);
   // Moved on by the embers' clock (js/boot.js), as every animation on the page.
-  expect(t1.length, 'two circles pulsing on each of three markers').toBe(6);
+  expect(t1.length, `two circles pulsing on each of ${ids.length} markers`).toBe(2 * ids.length);
   expect(t1.every((t, i) => t > t0[i] + 1000), `the rings pulsed on through the 1.5 s (${t0} -> ${t1})`).toBe(true);
   // About 30 frames in 1.5 s; one repaint of the popover per frame is the cost this guards.
   expect(repaints, `the maps popover's busiest layer repainted ${repaints} times in 1.5 s of rings`).toBeLessThanOrEqual(2);
@@ -95,12 +118,12 @@ test('a ring stays on its icon through a zoom, a drag and a scrolled popover', a
   // Narrow enough that the map stacks over the side panel and the popover scrolls.
   await page.setViewportSize({ width: 700, height: 900 });
   await load(page, wvw);
-  await openMap(page, wvw, (await firstTier(page)).button);
-  await ring(page);
+  await openMap(page, wvw, focusButton(page));
+  const ids = await ring(page, wvw);
   await frame(page);
   const check = async (when) => {
     const got = await offsets(page);
-    expect(got, `rings ${when}`).toHaveLength(3);
+    expect(got, `rings ${when}`).toHaveLength(ids.length);
     for (const { obj, off } of got) expect(off, `the ring on ${obj}, px from its icon's centre, ${when}`).toBeLessThanOrEqual(3);
     return got;
   };
@@ -126,7 +149,7 @@ test('a ring stays on its icon through a zoom, a drag and a scrolled popover', a
   const before = await page.evaluate(sel => document.querySelector(`${sel} .wvw-ring-a`).getBoundingClientRect().left, POP);
   await page.mouse.move(...start);
   await page.mouse.down();
-  for (let i = 1; i <= 8; i++) await page.mouse.move(start[0] + i * 6, start[1] + i * 4);
+  for (let i = 1; i <= 16; i++) await page.mouse.move(start[0] + i * 6, start[1] + i * 4);
   await page.mouse.up();
   await frame(page);
   const after = await page.evaluate(sel => document.querySelector(`${sel} .wvw-ring-a`).getBoundingClientRect().left, POP);
@@ -141,18 +164,17 @@ test('a ring stays on its icon through a zoom, a drag and a scrolled popover', a
 
 test('no ring outlives its map: closed, or swapped for another tier\'s', async ({ page, wvw }) => {
   await load(page, wvw);
-  await openMap(page, wvw, (await firstTier(page)).button);
-  await ring(page);
-  await expect(page.locator('.wvw-ring'), 'rings on the open map').toHaveCount(3);
+  await openMap(page, wvw, focusButton(page));
+  const ids = await ring(page, wvw);
   await page.keyboard.press('Escape');
   await expect(page.locator(POP), 'the map closed').toHaveCount(0);
   await expect(page.locator('.wvw-ring'), 'rings once the map is closed').toHaveCount(0);
 
   // Another tier: the maps open over a backdrop, so the way there is through a close.
-  await openMap(page, wvw, (await firstTier(page)).button);
-  await expect(page.locator('.wvw-ring'), 'rings on the map opened again, their time not yet out').toHaveCount(3);
+  await openMap(page, wvw, focusButton(page));
+  await expect(page.locator('.wvw-ring'), 'rings on the map opened again, their time not yet out').toHaveCount(ids.length);
   await page.keyboard.press('Escape');
-  await openMap(page, wvw, (await firstTier(page, page.locator('.tier-map-btn').nth(1))).button);
+  await openMap(page, wvw, (await firstTier(page, page.locator('.tier-map-btn[aria-label*="EU Tier 1"]'))).button);
   await expect(page.locator(POP), 'one map open').toHaveCount(1);
   await expect(page.locator('.wvw-ring'), 'rings once another tier\'s map took its place').toHaveCount(0);
 });

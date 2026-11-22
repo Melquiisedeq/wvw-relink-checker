@@ -6,12 +6,20 @@
 // indicators playing.
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
-import { load, search, recordedJson, serveList, iso, looping, LOADERS } from './support/steps.mjs';
-import { HOUR, MIN } from './support/scenarios.mjs';
+import { load, search, recordedJson, serveList, iso, looping, frames, LOADERS } from './support/steps.mjs';
+import { HOUR, MIN, hidden, visible } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
 
 const DAY = 24 * HOUR;
+
+// The NA and EU columns swapped from the keyboard (a click would throw a round too):
+// the relink bar is drawn again on the spot, its old content taken down.
+async function swapColumns(page) {
+  const drawn = await page.locator('#relinkBanner > *').first().elementHandle();
+  await page.getByRole('button', { name: 'Swap the NA and EU columns' }).first().press('Enter');
+  expect(await drawn.evaluate(e => e.isConnected), 'the relink bar drawn again by the swap').toBe(false);
+}
 
 const allMoving = r => r.moved > 0 && r.still === 0 && r.onCss.length === 0;
 // Until every one of them moves on the clock: a sweep adopts what was rebuilt or resumed.
@@ -50,8 +58,8 @@ test('embers draw with or without focus, stop when the tab is hidden, and resume
   await countEmberDraws(page);
   await load(page, wvw);
   const draws = () => page.evaluate(() => window.__emberDraws);
-  // The count after the page has had time to settle and a frame to land.
-  const quiet = async () => { await page.waitForTimeout(150); const n = await draws(); await page.waitForTimeout(350); return (await draws()) - n; };
+  // The draws over 20 frames, once a few have let the change land.
+  const quiet = async () => { await frames(page, 5); const n = await draws(); await frames(page, 20); return (await draws()) - n; };
 
   await watch(page);
   expect(await quiet(), 'drawing while watched').toBeGreaterThan(5);
@@ -124,7 +132,7 @@ test('reduced motion stops the looping animations and the canvas, and follows th
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await load(page, wvw);
   const draws = () => page.evaluate(() => window.__emberDraws);
-  const quiet = async () => { await page.waitForTimeout(150); const n = await draws(); await page.waitForTimeout(350); return (await draws()) - n; };
+  const quiet = async () => { await frames(page, 5); const n = await draws(); await frames(page, 20); return (await draws()) - n; };
 
   const stopped = await looping(page);
   expect(stopped.still, 'looping animations on the page').toBeGreaterThan(0);
@@ -208,8 +216,9 @@ for (const when of ['before the search', 'during the search']) {
     await expect(page.locator('#runBtn .btn-pips')).toBeAttached();
     await expect(page.locator('#statusMsg .spinner')).toBeAttached();
     if (when === 'during the search') {
-      // Long enough for the clock to have taken them: the stop must hand them back to CSS.
-      await page.waitForTimeout(300);
+      // Once the clock has taken them: the stop must hand them back to CSS.
+      await expect.poll(() => page.evaluate(sel => document.getAnimations().filter(a => a.effect?.target?.closest(sel))
+        .every((a, _, all) => all.length > 0 && a.playState === 'paused'), LOADERS), { message: 'the loading indicators on the clock' }).toBe(true);
       await page.emulateMedia({ reducedMotion: 'reduce' });
     }
     const loaders = await looping(page, { loaders: true });
@@ -234,24 +243,43 @@ function recordEmberFills(page) {
 }
 const BASE_CORES = ['#ffb765', '#9fe6ff'];
 
+// When the embers' surge starts (the crest a Check's round breaks), and the draws by then.
+function recordSurge(page) {
+  return page.addInitScript(() => {
+    window.__surgeAt = null;
+    new MutationObserver(ms => {
+      if (window.__surgeAt === null && ms.some(m => m.target.id === 'fxEmbers' && m.target.classList.contains('surge'))) {
+        window.__surgeAt = performance.now();
+        window.__drawsAtSurge = window.__emberDraws;
+      }
+    }).observe(document, { subtree: true, attributes: true, attributeFilter: ['class'] });
+  });
+}
+// A Check's round breaks the crest: the embers' blast.
+async function blast(page, wvw) {
+  await search(page, wvw.guilds);
+  await page.waitForFunction(() => window.__surgeAt !== null);
+  return page.evaluate(() => window.__surgeAt);
+}
+
 test('reduced motion: a blast plays and leaves the looping animations still, then the field stops once its surge ends', async ({ page, wvw }) => {
   await countEmberDraws(page);
   await recordEmberFills(page);
+  await recordSurge(page);
   await load(page, wvw);
   // Set after the load, so the clock already holds the looping ones.
   await expectAllMoving(page, 'looping animations moving before reduced motion');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const draws = () => page.evaluate(() => window.__emberDraws);
   // Wait for the field to stop: the setting reaches the page on a later frame.
-  await expect.poll(async () => { const n = await draws(); await page.waitForTimeout(200); return (await draws()) - n; },
+  await expect.poll(async () => { const n = await draws(); await frames(page, 10); return (await draws()) - n; },
     { message: 'the field stopping for reduced motion' }).toBe(0);
-  const before = await draws();
-  const t0 = await page.evaluate(() => { const t = performance.now(); emberField.blast(); return t; });
+  const t0 = await blast(page, wvw);
   expect((await looping(page, { ms: 500 })).moved, 'looping animations moving during the blast').toBe(0);
-  expect((await draws()) - before, 'drawing during the blast').toBeGreaterThan(5);
+  expect((await draws()) - await page.evaluate(() => window.__drawsAtSurge), 'drawing during the blast').toBeGreaterThan(5);
   await page.waitForFunction(t => performance.now() - t > 3200, t0);
   const after = await draws();
-  await page.waitForTimeout(400);
+  await frames(page, 20);
   expect((await draws()) - after, 'drawing once the sparks and the surge are gone').toBe(0);
   // The sparks are gone by 2.25 s; the surge, painted into the embers, by 2.8 s.
   const fills = (await page.evaluate(() => window.__emberFills)).filter(([t]) => t > t0);
@@ -261,17 +289,18 @@ test('reduced motion: a blast plays and leaves the looping animations still, the
 test('reduced motion: a tab hidden during the surge comes back to embers in their own colours, standing still', async ({ page, wvw }) => {
   await countEmberDraws(page);
   await recordEmberFills(page);
+  await recordSurge(page);
   await load(page, wvw);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const draws = () => page.evaluate(() => window.__emberDraws);
-  await expect.poll(async () => { const n = await draws(); await page.waitForTimeout(200); return (await draws()) - n; },
+  await expect.poll(async () => { const n = await draws(); await frames(page, 10); return (await draws()) - n; },
     { message: 'the field stopping for reduced motion' }).toBe(0);
-  await page.evaluate(() => emberField.blast());
-  await page.waitForTimeout(400);
+  const t0 = await blast(page, wvw);
+  await page.waitForFunction(t => performance.now() - t > 400, t0);
   await watch(page, { hidden: true });
   await watch(page);
   const after = await draws();
-  await page.waitForTimeout(400);
+  await frames(page, 20);
   expect((await draws()) - after, 'drawing once shown again').toBe(0);
   const fills = await page.evaluate(() => window.__emberFills);
   expect(BASE_CORES, 'the embers left standing painted without the surge').toContain(fills[fills.length - 1][1]);
@@ -279,19 +308,25 @@ test('reduced motion: a tab hidden during the surge comes back to embers in thei
 
 test('the surge brightens the embers as they are painted and only lifts the canvas', async ({ page, wvw }) => {
   await recordEmberFills(page);
+  // The canvas's filter and lift sampled each frame for 3.1 s from the surge's start.
+  await page.addInitScript(() => {
+    window.__surge = null;
+    new MutationObserver(ms => {
+      const host = ms.map(m => m.target).find(t => t.id === 'fxEmbers' && t.classList.contains('surge'));
+      if (window.__surge || !host) return;
+      const s = window.__surge = { t0: performance.now(), samples: [], done: false };
+      const loop = (t) => {
+        const cs = getComputedStyle(host);
+        s.samples.push([t - s.t0, cs.filter, cs.transform === 'none' ? 0 : new DOMMatrix(cs.transform).m42]);
+        if (t - s.t0 < 3100) requestAnimationFrame(loop); else s.done = true;
+      };
+      requestAnimationFrame(loop);
+    }).observe(document, { subtree: true, attributes: true, attributeFilter: ['class'] });
+  });
   await load(page, wvw);
-  const { t0, samples } = await page.evaluate(() => new Promise((done) => {
-    const host = document.getElementById('fxEmbers');
-    const t0 = performance.now();
-    spawnEmberBlast();
-    const samples = [];
-    const loop = (t) => {
-      const cs = getComputedStyle(host);
-      samples.push([t - t0, cs.filter, cs.transform === 'none' ? 0 : new DOMMatrix(cs.transform).m42]);
-      if (t - t0 < 3100) requestAnimationFrame(loop); else done({ t0, samples });
-    };
-    requestAnimationFrame(loop);
-  }));
+  await search(page, wvw.guilds);
+  await page.waitForFunction(() => window.__surge?.done, null, { timeout: 15000 });
+  const { t0, samples } = await page.evaluate(() => window.__surge);
   expect(samples.filter(([, f]) => f !== 'none'), 'a filter on the canvas during the surge').toEqual([]);
   expect(Math.min(...samples.map(([, , y]) => y)), 'the canvas lifting').toBeLessThan(-6);
   const fills = await page.evaluate(() => window.__emberFills);
@@ -319,10 +354,20 @@ test('the relink bar leaving reset night: its pulse, cancelled, does not come ba
   await bar(page, wvw, { lockout: 6 * DAY, assign: { na: 10 * DAY, eu: 10 * DAY }, na: { start: -1 * MIN, end: 7 * DAY - 1 * MIN } });
   await expect(page.locator('#relinkBanner')).toHaveClass(/is-urgent/);
   await expectAllMoving(page, 'looping animations moving on reset night');
-  await wvw.skew(6 * MIN);
-  await page.evaluate(() => updateRelinkBanner());
+  // Away 6 min: shown again, the tab draws the bar at once, the board's read held back
+  // (it would draw the bar too).
+  const drawn = await page.locator('#relinkBanner > *').first().elementHandle();
+  await hidden(page, wvw, 6 * MIN);
+  let release;
+  const held = new Promise(r => { release = r; });
+  const READS = /\/api\/latest|^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches\?ids=/;
+  await page.route(READS, async route => { await held; await route.fallback(); });
+  await visible(page);
+  await expect.poll(() => drawn.evaluate(e => e.isConnected), { message: 'the bar drawn again by the tab shown' }).toBe(false);
+  release();
+  await page.unroute(READS);
   await expect(page.locator('#relinkBanner')).not.toHaveClass(/is-urgent/);
-  await page.waitForTimeout(400);
+  await frames(page, 20);
   const pulses = await page.evaluate(() => document.getAnimations().filter(a => a.animationName === 'urgent-pulse').length);
   expect(pulses, 'the reset night pulse after reset night').toBe(0);
   await expectAllMoving(page, 'looping animations moving after reset night');
@@ -336,13 +381,16 @@ for (const focused of [true, false]) {
     await expectAllMoving(page, 'looping animations moving in the rebuild week');
     // A few frames after the new animations start: every frame sweeps.
     for (let i = 0; i < 5; i++) {
-      const left = await page.evaluate(() => new Promise(done => {
-        const frames = n => (n ? requestAnimationFrame(() => frames(n - 1)) : done(document.getAnimations()
-          .filter(a => a.effect && a.effect.getComputedTiming().iterations === Infinity && a.playState === 'running'
-            && !a.effect.target.closest('.spinner, .btn-pips')).map(a => a.animationName)));
-        document.addEventListener('animationstart', () => frames(3), { capture: true, once: true });
-        updateRelinkBanner();
-      }));
+      await page.evaluate(() => {
+        window.__left = new Promise(done => {
+          const frames = n => (n ? requestAnimationFrame(() => frames(n - 1)) : done(document.getAnimations()
+            .filter(a => a.effect && a.effect.getComputedTiming().iterations === Infinity && a.playState === 'running'
+              && !a.effect.target.closest('.spinner, .btn-pips')).map(a => a.animationName)));
+          document.addEventListener('animationstart', () => frames(3), { capture: true, once: true });
+        });
+      });
+      await swapColumns(page);
+      const left = await page.evaluate(() => window.__left);
       expect(left, `left on CSS just after rebuild ${i + 1}`).toEqual([]);
     }
     await expectAllMoving(page, 'looping animations moving after the bar is rebuilt');
@@ -359,8 +407,8 @@ test('the relink bar rebuilt in a hidden tab leaves no looping animation off the
   await page.evaluate(() => {
     window.addEventListener('animationstart', e => e.stopImmediatePropagation(), true);
     window.__emberDraws = 0;
-    updateRelinkBanner();
   });
+  await swapColumns(page);
   const r = await looping(page);
   expect(r.onCss.length, 'the state: looping animations started on CSS in the hidden tab').toBeGreaterThan(0);
   await watch(page);
@@ -375,10 +423,8 @@ test('without animationstart, the relink bar rebuilt still leaves no looping ani
   await bar(page, wvw, { lockout: -1 * HOUR, assign: { na: 2 * DAY, eu: 2 * DAY - 8 * HOUR }, na: { start: -2 * DAY, end: 5 * DAY } });
   await expect(page.locator('#relinkBanner')).toHaveClass(/is-rebuild/);
   await expectAllMoving(page, 'looping animations moving in the rebuild week');
-  await page.evaluate(() => {
-    window.addEventListener('animationstart', e => e.stopImmediatePropagation(), true);
-    updateRelinkBanner();
-  });
+  await page.evaluate(() => window.addEventListener('animationstart', e => e.stopImmediatePropagation(), true));
+  await swapColumns(page);
   await expectAllMoving(page, 'looping animations moving after the bar is rebuilt');
 });
 

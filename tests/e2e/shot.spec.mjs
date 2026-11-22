@@ -3,22 +3,44 @@
 // the popover, turns the icon into a check and says the word in a bubble and to a screen reader.
 import { test, expect } from './support/fixtures.mjs';
 import { load } from './support/steps.mjs';
+import { answer } from './support/faults.mjs';
+import { recording } from './support/recordings.mjs';
 
 test.describe.configure({ timeout: 60 * 1000 });
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
 const POP = '.info-popover--guilds';
 const SHOT = `${POP} .info-popover-shot`;
 
-// Opens the popover of the nth visible guilds icon, content loaded.
-async function openGuilds(page, wvw, nth = 0) {
+// Opens the popover of the nth visible guilds icon, content loaded. With `sheet`, the
+// community sheet answers what sheet(team) gives for the team of that icon.
+async function openGuilds(page, wvw, nth = 0, sheet = null) {
   await load(page, wvw);
   const btn = page.locator('.server-guilds-btn').locator('visible=true').nth(nth);
   await expect(btn).toBeVisible();
+  if (sheet) {
+    const team = (await btn.getAttribute('aria-label')).replace(/^Show guilds on /, '');
+    for (const [tab, csv] of Object.entries(sheet(team))) await answer(page, sheetTab(tab).url, csv, { contentType: 'text/csv; charset=utf-8' });
+  }
   await btn.click();
   await expect(page.locator(`${POP} .info-popover-body`)).toBeAttached();
   await wvw.settle();
   return btn;
 }
+
+// A tab of the community sheet as recorded: its address and its header row's cells.
+function sheetTab(tab) {
+  const [url, e] = [...recording().entries].find(([u]) => u.endsWith(`&sheet=${tab}`));
+  const text = Buffer.from(e[2], e[3] ? 'base64' : 'utf8').toString('utf8');
+  return { url, head: text.slice(0, text.indexOf('\n')).slice(1, -1).split('","') };
+}
+const csvLine = cells => cells.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',');
+// The sheet with `alliances` ([name, members as lines]) on `team` and no solo guild.
+const sheetWith = (team, alliances) => {
+  const a = sheetTab('Alliances');
+  const world = a.head.indexOf('World ID');
+  const rows = alliances.map(([name, members]) => a.head.map((_, i) => (i === 0 ? name : i === 2 ? members : i === world ? team : '')));
+  return { Alliances: [a.head, ...rows].map(csvLine).join('\n'), SoloGuilds: csvLine(sheetTab('SoloGuilds').head) };
+};
 
 test.describe('the screenshot button', () => {
   test('is in the header, left of expand, named, cyan and at least 24 px', async ({ page, wvw }) => {
@@ -156,30 +178,27 @@ test.describe('the screenshot button', () => {
     });
   });
 
-  test('a guild name with no spaces, wider than the column, is cut inside it', async ({ page, wvw }) => {
-    await openGuilds(page, wvw);
-    const widths = await page.evaluate(() => {
-      const seen = [];
+  test('a guild name with no spaces, wider than the column, is cut inside it', async ({ page, wvw, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.addInitScript(() => {
+      window.__drawn = [];
       const real = CanvasRenderingContext2D.prototype.fillText;
-      CanvasRenderingContext2D.prototype.fillText = function (t, ...rest) { seen.push({ t: String(t), w: this.measureText(String(t)).width }); return real.call(this, t, ...rest); };
-      const name = 'W'.repeat(200);
-      guildsShotCanvas('Team', [{ tag: 'AB', name: 'Alliance', members: [{ tag: 'XY', name, region: 'NA' }] }], []);
-      CanvasRenderingContext2D.prototype.fillText = real;
-      return { seen, name };
+      CanvasRenderingContext2D.prototype.fillText = function (t, ...rest) { window.__drawn.push({ t: String(t), w: this.measureText(String(t)).width }); return real.call(this, t, ...rest); };
     });
-    const pieces = widths.seen.filter(p => /W{5}/.test(p.t));
+    const name = 'W'.repeat(200);
+    await openGuilds(page, wvw, 0, team => sheetWith(team, [['[AB] Alliance', `[XY] - ${name} (NA)`]]));
+    await expect(page.locator(`${POP} .guild-line`)).toHaveCount(1);
+    await page.locator(SHOT).click();
+    await expect(page.locator('.shot-bubble')).toHaveText('Copied');
+    const pieces = (await page.evaluate(() => window.__drawn)).filter(p => /W{5}/.test(p.t));
     expect(pieces.length, 'cut into several lines').toBeGreaterThan(1);
-    expect(pieces.map(p => p.t).join('').replace(/[^W]/g, ''), 'no character lost').toBe(widths.name);
+    expect(pieces.map(p => p.t).join('').replace(/[^W]/g, ''), 'no character lost').toBe(name);
     // One alliance: one column, 836 px wide, the text inset 20 px inside the card.
     for (const p of pieces) expect(p.w, 'inside the column').toBeLessThanOrEqual(836 - 30);
   });
 
   test('a popover with no list has the button disabled', async ({ page, wvw }) => {
-    const trigger = await openGuilds(page, wvw);
-    await page.evaluate(() => {
-      const pop = document.querySelector('.info-popover--guilds');
-      renderGuildsPopoverContent(pop, 'Nowhere', undefined, document.querySelector('.server-guilds-btn.active'));
-    });
+    const trigger = await openGuilds(page, wvw, 0, team => sheetWith(team, []));
     await expect(page.locator('.info-popover-body .hint')).toHaveText(/No guilds listed for this team in the community sheet yet\./);
     await expect(page.locator(SHOT)).toBeDisabled();
     await expect(trigger).toHaveClass(/active/);

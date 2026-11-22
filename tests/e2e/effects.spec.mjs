@@ -7,8 +7,8 @@
 // this one reaches the states it never sees.
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
-import { FOCUS, HOUR, MIN } from './support/scenarios.mjs';
-import { load, recordedJson, serveList, iso } from './support/steps.mjs';
+import { FOCUS, HOUR, MIN, hidden, visible } from './support/scenarios.mjs';
+import { board, load, recordedJson, search, serveList, iso } from './support/steps.mjs';
 
 const GAME = 'https://api.guildwars2.com/v2/';
 const DAY = 24 * HOUR;
@@ -60,17 +60,33 @@ test('the lockout bar beats on the compositor', async ({ page, wvw }) => {
   expect(off).toEqual({});
 });
 
-test('a new score and a guild found flash on the compositor', async ({ page, wvw }) => {
+// The first look in which every name in `want` runs.
+async function lookWith(page, want) {
+  let seen = null;
+  await expect.poll(async () => { seen = await look(page); return want.filter(n => !seen.names.includes(n)); },
+    { message: `${want.join(', ')} running`, intervals: [50] }).toEqual([]);
+  return seen;
+}
+
+test('a new score flashes on the compositor', async ({ page, wvw }) => {
   await load(page, wvw);
-  const list = await page.evaluate(() => [...matchDataCache.values()].map(m => JSON.parse(JSON.stringify(m))));
+  const { list } = await board(page, FOCUS);
   const focus = list.find(m => m.id === FOCUS);
   for (const c of ['red', 'blue', 'green']) focus.victory_points[c] = Number(focus.victory_points[c]) + 1;
-  await page.evaluate(id => showGuildFound(matchTeamId(matchDataCache.get(id), 'red'), 'Found Guild'), FOCUS);
   await serveList(page, list);
-  await page.evaluate(() => loadStandings());
-  const { names, off } = await look(page);
-  for (const n of ['value-flash', 'side-pulse', 'guild-found-flash']) expect(names, `${n} is running`).toContain(n);
+  // Back after 5 min, the tab reads the board again.
+  await hidden(page, wvw, 5 * MIN);
+  await visible(page);
+  const { off } = await lookWith(page, ['value-flash', 'side-pulse']);
   expect(off).toEqual({});
+});
+
+test('a guild found flashes on the compositor', async ({ page, wvw }) => {
+  await load(page, wvw);
+  await search(page, wvw.guilds);
+  const { off } = await lookWith(page, ['guild-found-flash']);
+  // The strip's entrance runs too: its clip-path is the exception, named in its own test.
+  expect(off).toEqual({ 'guild-found-in-clip': ['clipPath'] });
 });
 
 // The strip's clip-path animations, by exact name, are the one thing off the COMPOSITABLE list:
@@ -89,7 +105,7 @@ const offList = samples => {
 // the final one from the first frame and the cards below jump, they do not slide.
 test('the guild strip opens and closes without moving its height', async ({ page, wvw }) => {
   await load(page, wvw);
-  await page.evaluate(id => {
+  await page.evaluate(() => {
     window.__h = [];
     const tick = () => {
       const s = document.querySelector('.guild-found-strip');
@@ -98,10 +114,12 @@ test('the guild strip opens and closes without moving its height', async ({ page
       window.__raf = requestAnimationFrame(tick);
     };
     tick();
-    showGuildFound(matchTeamId(matchDataCache.get(id), 'red'), 'Found Guild');
-  }, FOCUS);
-  await expect(page.locator('.guild-found-strip')).toBeVisible();
-  await page.waitForTimeout(3000);
+  });
+  await search(page, wvw.guilds);
+  const strip = page.locator('.guild-found-strip');
+  await expect(strip).toBeVisible();
+  // It leaves on its own, some seconds on, and is gone once its exit has played.
+  await expect(strip).toHaveCount(0, { timeout: 15000 });
   const open = await page.evaluate(() => window.__h.filter(x => !x.leaving));
   expect(open.length, 'sampled while open').toBeGreaterThan(20);
   expect(open.some(x => x.anim.includes('guild-found-in-clip')), 'the entrance ran').toBe(true);
@@ -109,9 +127,7 @@ test('the guild strip opens and closes without moving its height', async ({ page
   expect(open[0].h).toBeGreaterThan(15);
   expect(offList(open), 'the entrance: only the clip animation is off the list').toEqual({ 'guild-found-in-clip': ['clipPath'] });
   // The exit: the room stays until the strip is removed.
-  await page.evaluate(() => { window.__h = []; document.querySelector('.guild-found-strip').classList.add('is-leaving'); });
-  await page.waitForTimeout(250);
-  const leaving = await page.evaluate(() => window.__h);
+  const leaving = await page.evaluate(() => window.__h.filter(x => x.leaving));
   expect(leaving.some(x => x.anim.includes('guild-found-out-clip')), 'the exit ran').toBe(true);
   expect(new Set(leaving.map(x => x.h)).size, 'the exit keeps its height').toBe(1);
   expect(leaving[0].h).toBe(open[0].h);
@@ -131,29 +147,37 @@ test('the round and the shockwaves are rastered once, not at every size', async 
   await cdp.send('DOM.enable');
   await cdp.send('LayerTree.enable');
   await cdp.send('Tracing.start', { traceConfig: { includedCategories: ['disabled-by-default-devtools.timeline'] } });
-  // Pinned in view: the sling it follows may sit below the fold. Each frame keeps the largest
-  // scale either was shown at.
+  // Each frame keeps the largest scale either was shown at.
   await page.evaluate(() => {
-    startCharge(); stopFollowing(); chargeBall.style.left = '640px'; chargeBall.style.top = '450px';
     window.__scale = { round: 0, rings: 0 };
     const most = (key, els) => { for (const el of els) window.__scale[key] = Math.max(window.__scale[key], new DOMMatrix(getComputedStyle(el).transform).a); };
     const tick = () => { most('round', document.querySelectorAll('.siege-charge b')); most('rings', document.querySelectorAll('.impact-overlay.play .impact-ring')); window.__raf = requestAnimationFrame(tick); };
     tick();
   });
-  await page.waitForTimeout(1500);
-  await page.evaluate(() => impactOverlay.classList.add('play'));
-  await page.waitForTimeout(1300);
-  const done = new Promise(r => cdp.once('Tracing.tracingComplete', r));
-  await cdp.send('Tracing.end');
-  await done;
+  // A Check with the guild lookups held: the round gathers on the sling until they answer,
+  // then flies, and the shockwaves play where it lands.
+  let release;
+  const held = new Promise(r => { release = r; });
+  await page.route(/^https:\/\/api\.guildwars2\.com\/v2\/guild\/search\?/, async route => { await held; await route.fallback(); });
+  await page.locator('#guildInput').focus();
+  await page.keyboard.insertText(wvw.guilds.join('\n'));
+  await page.locator('#runBtn').click();
+  await expect(page.locator('.siege-charge.charging'), 'the round gathering').toBeAttached();
   const root = (await cdp.send('DOM.getDocument', { depth: 0 })).root.nodeId;
   const node = async selector => {
     const { nodeIds } = await cdp.send('DOM.querySelectorAll', { nodeId: root, selector });
     return Promise.all(nodeIds.map(async nodeId => (await cdp.send('DOM.describeNode', { nodeId })).node.backendNodeId));
   };
   const nodes = { round: await node('.siege-charge b'), rings: await node('.impact-ring') };
+  await page.waitForTimeout(1500);
+  release();
+  await expect(page.locator('.impact-overlay.play'), 'the round launched').toBeAttached({ timeout: 15000 });
+  await page.waitForTimeout(1300);
+  const done = new Promise(r => cdp.once('Tracing.tracingComplete', r));
+  await cdp.send('Tracing.end');
+  await done;
   await cdp.send('LayerTree.disable');
-  const scale = await page.evaluate(() => { cancelAnimationFrame(window.__raf); impactOverlay.classList.remove('play'); chargeBall.remove(); return window.__scale; });
+  const scale = await page.evaluate(() => { cancelAnimationFrame(window.__raf); return window.__scale; });
   // The flight's last frame, grown from the most the wind-up reaches: the largest the round gets.
   const flight = await page.evaluate(() => {
     const ball = document.createElement('div');
