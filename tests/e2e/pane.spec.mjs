@@ -406,6 +406,108 @@ for (const width of [1280, 360]) {
   });
 }
 
+// Each Captures row names its objective's type, with the icon at 20 px in today's row height; a row
+// whose name is cut gives up the chip's words, then the chip, then the type word, in that order and
+// only while the name is still cut. The list is narrowed in place to drive every step on real layout.
+for (const width of [1280, 390, 320]) {
+  test.describe(`captures rows, ${width} px`, () => {
+    const TYPES = ['Camp', 'Tower', 'Keep', 'Castle'];
+    // Every row at once: what it says, what shows, and whether its name is cut (its content against its box).
+    const readRows = page => page.locator(`${POP} .wvw-caps .wvw-cap`).evaluateAll(els => els.map(e => {
+      const shown = x => !!x && getComputedStyle(x).display !== 'none';
+      const name = e.querySelector('.wvw-cap-name'), type = e.querySelector('.wvw-cap-type'), chip = e.querySelector('.wvw-cap-map'), img = e.querySelector('img');
+      const r = document.createRange();
+      r.selectNodeContents(name);
+      return {
+        label: e.getAttribute('aria-label'), title: e.title, height: e.getBoundingClientRect().height,
+        icon: img ? [img.getBoundingClientRect().width, img.getBoundingClientRect().height] : null,
+        word: shown(type) ? type.textContent : null, chip: shown(chip) ? chip.textContent : null,
+        short: e.classList.contains('cap-short'), cut: name.scrollWidth > name.clientWidth || r.getBoundingClientRect().width > name.getBoundingClientRect().width + 0.01,
+      };
+    }));
+    const stage = r => (r.word === null ? 3 : r.chip === null ? 2 : r.short ? 1 : 0);
+    const narrow = async (page, w) => {
+      await page.locator(`${POP} .wvw-caps`).evaluate((el, v) => { el.style.width = v; }, w);
+      await frame(page);
+      await frame(page);
+    };
+
+    test('every row says its type, in the row height of today, and a cut name gives way step by step', async ({ page, wvw }) => {
+      await load(page, wvw);
+      if (width < 600) await phone(page, width);
+      await frame(page);
+      const tier = await firstTier(page);
+      await openMap(page, wvw, tier.button);
+      await expect(page.locator(`${POP} .wvw-subtab`).first()).toBeAttached();
+      await wvw.settle();
+      const kept = await keptMatch(page, tier.id);
+      const pool = kept.maps.flatMap(m => m.objectives).filter(o => TYPES.includes(o.type) && OWNERS.includes(o.owner));
+      expect(pool.length, 'the recording has more capturable objectives than the list shows').toBeGreaterThan(40);
+      expect(pool.length, 'two rounds of 40 draw them all').toBeLessThanOrEqual(80);
+      await answer(page, tier.url, kept);
+      let base = null;
+      // The list shows 40: two rounds, so every objective of the match, the longest name among them, is drawn (the pool is at most 80, asserted above).
+      const show = async part => {
+        await wvw.skew(31000);
+        base ??= await page.evaluate(() => Date.now()) - 60000;
+        for (const o of kept.maps.flatMap(m => m.objectives)) o.last_flipped = new Date(base - 5 * 3600000).toISOString();
+        part.forEach((o, i) => { o.last_flipped = new Date(base - i * 30000).toISOString(); });
+        await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+        await expect(tab(page, 'captures')).toHaveText(`Captures (${part.length})`);
+        await tab(page, 'captures').click();
+        await expect(page.locator(`${POP} .wvw-caps .wvw-cap`)).toHaveCount(Math.min(part.length, 40));
+        await frame(page);
+      };
+      const stages = new Set();
+      let worst = '';
+      for (const part of [pool.slice(0, 40), pool.slice(-40)]) {
+        await show(part);
+        await narrow(page, '');
+        const rows = await readRows(page);
+        const first = page.locator(`${POP} .wvw-caps .wvw-cap`).first();
+        for (const r of rows) {
+          const kind = TYPES.find(t => r.label.split(' (')[0].endsWith(t));
+          expect(kind, `the label names a type: ${r.label}`).toBeTruthy();
+          const words = r.label.split(' (')[0].split(/,? /);
+          expect(words.at(-1) === words.at(-2), `the type is not said twice: ${r.label}`).toBe(false);
+          expect(r.title, 'the title says what the label does').toBe(r.label);
+          if (r.word !== null) expect(r.word, `the word shown is the label's type: ${r.label}`).toBe(kind);
+          expect(r.height, `the row keeps today's height: ${r.label}`).toBeLessThan(19.5);
+          expect(r.height).toBeGreaterThan(18);
+          expect(r.icon, `the icon is 20 px: ${r.label}`).toEqual([20, 20]);
+          if (r.cut) expect([r.word, r.chip], `a cut name has given up everything: ${r.label}`).toEqual([null, null]);
+          if (width === 1280) expect(stage(r), `nothing gives way at 1280: ${r.label}`).toBe(0);
+          if (r.label.length > worst.length) worst = r.label;
+        }
+        if (width === 1280) {
+          await expect(first.getByText(TYPES.find(t => rows[0].label.split(' (')[0].endsWith(t)), { exact: true })).toBeVisible();
+          await expect(page.getByRole('button', { name: rows[0].label })).toBeVisible();
+        }
+        // The list narrowed in place, widest first.
+        const before = rows.map(() => 0);
+        const heights = rows.map(r => r.height);
+        for (const w of [300, 260, 230, 200, 180, 160, 140, 120, 100]) {
+          await narrow(page, `${w}px`);
+          (await readRows(page)).forEach((r, i) => {
+            const at = `${w} px, ${r.label}`;
+            expect(r.height, `a step never changes the row's height at ${at}`).toBeCloseTo(heights[i], 2);
+            expect(r.chip === null || r.word !== null || false, `the chip leaves before the word at ${at}`).toBe(true);
+            expect(r.short ? true : r.chip === null || /^(Red |Blue |Green )?(BL|EBG)$/.test(r.chip), `the chip's words at ${at}`).toBe(true);
+            if (r.chip !== null && r.chip !== 'EBG') expect(r.chip.length <= 3, `short chip says ${r.chip}`).toBe(r.short);
+            if (r.cut) expect(stage(r), `a cut name has used every step at ${at}`).toBe(3);
+            expect(stage(r), `a narrower list never gives back a step at ${at}`).toBeGreaterThanOrEqual(before[i]);
+            before[i] = stage(r);
+            stages.add(stage(r));
+          });
+        }
+        await narrow(page, '');
+      }
+      expect([...stages].sort(), 'every step is reached by some row').toEqual([0, 1, 2, 3]);
+      expect(worst.length, 'the longest name was among them').toBeGreaterThan(20);
+    });
+  });
+}
+
 test.describe('objective panel across a refresh', () => {
   async function pick(page, wvw) {
     await load(page, wvw);
