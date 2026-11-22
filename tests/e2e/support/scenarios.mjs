@@ -8,6 +8,7 @@ import { gw2 } from './gw2.mjs';
 import { recording } from './recordings.mjs';
 import { answer, fail } from './faults.mjs';
 import { recordedJson } from './steps.mjs';
+import { killLines, othersRisingNow } from './page.mjs';
 
 export const MIN = 60 * 1000;
 export const HOUR = 60 * MIN;
@@ -200,10 +201,7 @@ export const at = (iso, id = FOCUS) => {
 // ageFirstSightFromHistory). The same lines for /api/kills ({ rows }) and for
 // the kills sheet (as CSV).
 export const killRows = (page, id, age, othersAge = MIN) =>
-  page.evaluate(([target, a, b]) => [...newestMatches.entries()].map(([k, kept]) => {
-    const n = fightTotals(kept.match);
-    return [Date.now() - (k === target ? a : b), k, ...KILLS_MAP_ORDER.map(t => n[t] || 0)];
-  }), [id, age, othersAge]);
+  killLines(page, id, age, othersAge);
 
 // ---- the tab ---------------------------------------------------------
 // A hidden tab cannot be had for real in a test browser (headless, Xvfb,
@@ -240,7 +238,7 @@ export async function visible(page) {
 export async function awayAndBack(page, wvw, ms, { othersSeen = false } = {}) {
   if (await page.evaluate(() => document.hidden)) await wvw.skew(ms);
   else await hidden(page, wvw, ms);
-  if (othersSeen) await page.evaluate(id => { for (const [k, kept] of newestMatches) if (k !== id) kept.at = Date.now(); }, FOCUS);
+  if (othersSeen) await othersRisingNow(page, FOCUS);
   await visible(page);
 }
 

@@ -8,6 +8,7 @@ import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
 import { phone, load, firstTier, openMap, later, keptMatch, iso, play } from './support/steps.mjs';
 import { FOCUS, MIN, hidden, missed, missedBehind, missedFrozenAtTurn, missedStopped, missedWeekTurn, visible } from './support/scenarios.mjs';
+import { countMissedPaints, forgetKillHistory, keptLive, logTitlesAtKillReads, missedAgainstHistory, missedFromOlderWeek, missedHeld, missedNoted, missedOverdue, missedWeekLive, scoreRoseAt, unholdMissed, weekOf } from './support/page.mjs';
 
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
 
@@ -17,6 +18,8 @@ const TABS = ['Center', 'RedHome', 'BlueHome', 'GreenHome'];
 const NAMES = { Center: 'EBG', RedHome: 'Red BL', BlueHome: 'Blue BL', GreenHome: 'Green BL' };
 const OWNERS = ['Red', 'Blue', 'Green'];
 const BLOCK = '.info-popover .wvw-missed:not(.is-leaving)';
+// The block on show, or a note of it the page holds for `id`.
+const blockOrNote = async (page, id) => await page.locator(BLOCK).count() > 0 || missedNoted(page, id);
 const LIT = ".info-popover .wvw-marker.is-lit";
 // The block's title as words, without the count badges riding at its end.
 const titleText = (page, sel = BLOCK) => page.evaluate(s => {
@@ -160,12 +163,8 @@ test.describe('what happened', () => {
       await expect(page.locator('.info-popover .wvw-caps .wvw-cap').first(), 'the list in view').toBeVisible();
       await reopen();
       // Two repaints of the page's own one-second timer, counted at the summary's painter.
-      await page.evaluate(() => {
-        const paint = paintMissed;
-        window.__missedPaints = 0;
-        paintMissed = (...a) => { window.__missedPaints++; return paint(...a); };
-      });
-      await expect.poll(() => page.evaluate(() => window.__missedPaints), { timeout: 10000 }).toBeGreaterThanOrEqual(2);
+      const paints = await countMissedPaints(page);
+      await expect.poll(paints, { timeout: 10000 }).toBeGreaterThanOrEqual(2);
       await expect(block, 'open through the repaints').toHaveClass(/is-open/);
       await page.locator(`.info-popover .wvw-tab:not(.is-active)`).first().click();
       await expect(tab('captures')).toHaveClass(/is-active/);
@@ -200,14 +199,14 @@ test.describe('what happened', () => {
     await g.serve(scoreOnly);
     await later(page, wvw, 31000);
     await page.waitForTimeout(1500); // the popover's one-second repaint
-    expect(await page.evaluate(([sel, id]) => !!document.querySelector(sel) || missedNotes.has(id), [BLOCK, g.tier.id]),
+    expect(await blockOrNote(page, g.tier.id),
       'a body with only the score up raised the block').toBe(false);
   });
 
   // The ten minutes wait for a reader who has the mouse on the block or the keyboard focus in it; a focus left
   // by a mouse click does not hold it.
-  const isHeld = (page, id, want) => page.waitForFunction(([i, w]) => missedNotes.get(i)?.held === w, [id, want]);
-  const overdue = (page, id) => page.evaluate(i => missedNotes.has(i) && steadyNow() > missedNotes.get(i).until, id);
+  const isHeld = missedHeld;
+  const overdue = missedOverdue;
   for (const how of ['mouse', 'keyboard focus']) {
     test(`the ten minutes wait for the ${how}, and the block goes once it leaves`, async ({ page, wvw }) => {
       const g = await gap(page, wvw);
@@ -236,7 +235,7 @@ test.describe('what happened', () => {
     await page.locator(`${BLOCK} .wvw-chip[data-obj]`).first().click();
     await page.mouse.move(2, 2);
     expect(await page.evaluate(() => document.activeElement.matches('.wvw-missed *')), 'the state: the click left the focus in the block').toBe(true);
-    await page.evaluate(id => { missedNotes.get(id).held = null; }, g.tier.id);   // only a repaint writes it again
+    await unholdMissed(page, g.tier.id);   // only a repaint writes it again
     await isHeld(page, g.tier.id, false);
     for (let i = 0; i < 3; i++) await later(page, wvw, 100000);
     await expect(page.locator(BLOCK), 'the block 14 min on, only a click focus in it').toHaveCount(0);
@@ -247,7 +246,7 @@ test.describe('what happened', () => {
     await g.afterTheGap();
     await page.locator(BLOCK).hover();
     await isHeld(page, g.tier.id, true);
-    await page.evaluate(id => { missedNotes.get(id).after = { ...missedNotes.get(id).after, start_time: 'an older week' }; }, g.tier.id);
+    await missedFromOlderWeek(page, g.tier.id);
     await later(page, wvw, 2000);
     await expect(page.locator(BLOCK), 'the block of an older week, the mouse on it').toHaveCount(0);
   });
@@ -265,9 +264,9 @@ test.describe('what happened', () => {
         await isHeld(page, g.tier.id, true);
       }
       await later(page, wvw, 100000);
-      expect(await page.evaluate(i => missedNotes.has(i) && matchIsLive(missedNotes.get(i).after), g.tier.id), 'the state: the week still runs, the block stays').toBe(true);
+      expect(await missedWeekLive(page, g.tier.id), 'the state: the week still runs, the block stays').toBe(true);
       await later(page, wvw, 100000);
-      expect(await page.evaluate(i => matchIsLive(newestMatches.get(i).match), g.tier.id), 'the state: the week is over').toBe(false);
+      expect(await keptLive(page, g.tier.id), 'the state: the week is over').toBe(false);
       await expect(page.locator(BLOCK), 'the block of a week that ended').toHaveCount(0);
     });
   }
@@ -338,7 +337,7 @@ async function scene(page, wvw, { flips = 1, kills = 0, fromNeutral = false, sta
   after.scores.red += 1;
   same.off();
   // No reading of the old total kept: the period's start can only be bounded.
-  if (noHistory) await page.evaluate(() => { localStorage.removeItem(FIGHT_KEY); killSheet = null; });
+  if (noHistory) await forgetKillHistory(page);
   await answer(page, tier.url, after);
   await later(page, wvw, 31000);
   await expect(page.locator(BLOCK)).toBeAttached();
@@ -452,7 +451,7 @@ test.describe('what you missed, the end once the data is dated', () => {
       await expect.poll(() => titleOf(page), { message: 'the title at the return', timeout: 60000 }).toContain(`–${hhmm(openedAt + 67 * MIN)}`);
       await later(page, wvw, 4 * MIN);
       await page.waitForTimeout(1500);
-      expect(await page.evaluate(() => matchScoreRoseAt('1-1')), 'the state: the score rose after the return').toBeGreaterThan(openedAt + 90 * MIN);
+      expect(await scoreRoseAt(page, '1-1'), 'the state: the score rose after the return').toBeGreaterThan(openedAt + 90 * MIN);
       expect(await titleOf(page), 'the title after the score rose').toContain(`–${hhmm(openedAt + 67 * MIN)}`);
     });
   });
@@ -466,23 +465,12 @@ test.describe('what you missed, the end once the data is dated', () => {
       await openMap(page, wvw, TIER_BUTTON(page));
       // Read the title right after the page's own handlers on each kill-history
       // read, whenever the read lands: not a time the test chooses.
-      await page.evaluate(() => {
-        const read = getKillSheet;
-        window.__titles = [];
-        getKillSheet = () => {
-          const p = read().then(v => v);
-          p.then(() => queueMicrotask(() => queueMicrotask(() => {
-            const t = document.querySelector('.info-popover .wvw-missed:not(.is-leaving) .wvw-missed-title');
-            window.__titles.push(t ? [...t.childNodes].filter(n => !(n.classList && n.classList.contains('wvw-missed-counts'))).map(n => n.textContent).join('').trim() : null);
-          })));
-          return p;
-        };
-      });
+      const titlesSoFar = await logTitlesAtKillReads(page);
       await hidden(page, wvw, 90 * MIN);
       await visible(page);
       await later(page, wvw, 0);
-      await page.waitForFunction(() => window.__titles.some(t => t), null, { timeout: 20000 });
-      const titles = (await page.evaluate(() => window.__titles)).filter(Boolean);
+      await expect.poll(async () => (await titlesSoFar()).some(t => t), { message: 'a title after a read of the kill history', timeout: 20000 }).toBe(true);
+      const titles = (await titlesSoFar()).filter(Boolean);
       expect(titles[0], 'the title when the history landed').toContain(`–${hhmm(openedAt + 67 * MIN)}`);
     });
   });
@@ -504,19 +492,13 @@ test.describe('what you missed, the body behind the kill history', () => {
     await expect(page.locator(BLOCK)).toBeAttached();
     await later(page, wvw, 0);
     await page.waitForTimeout(1500); // the popover's one-second repaint
-    const seen = await page.evaluate(([sel, id]) => {
-      const kept = newestMatches.get(id).match;
-      const note = missedNotes.get(id);
-      const box = document.querySelector(sel);
-      const history = Math.max(0, ...fightSamples(kept).map(s => sumKills(s.n)));
-      return {
-        behind: history - missedKillTotal(kept),
-        want: Math.max(history, missedKillTotal(kept)) - missedKillTotal(note.before),
+    const seen = {
+      ...await missedAgainstHistory(page, FOCUS),
+      ...await page.locator(BLOCK).evaluate(box => ({
         kills: [...box.querySelectorAll('.wvw-missed-killn')].reduce((n, b) => n + Number(b.textContent), 0),
         title: [...box.querySelector('.wvw-missed-title').childNodes].filter(n => !(n.classList && n.classList.contains('wvw-missed-counts'))).map(n => n.textContent).join(''),
-        end: missedHhmm(killView(kept).clock),
-      };
-    }, [BLOCK, FOCUS]);
+      })),
+    };
     expect(seen.behind, 'the state: the body kept is behind the kill history').toBeGreaterThan(0);
     expect(seen.kills, 'the kills from the body before up to the newest data').toBe(seen.want);
     expect(seen.title, 'the title ends at the corner\'s time').toContain(`–${seen.end}`);
@@ -542,7 +524,7 @@ test.describe('what you missed, by how long the tab was away', () => {
     await openMap(page, wvw, TIER_BUTTON(page));
     await later(page, wvw, 0);
     await page.waitForTimeout(1500); // the popover's one-second repaint
-    expect(await page.evaluate(([sel, id]) => !!document.querySelector(sel) || missedNotes.has(id), [BLOCK, FOCUS]),
+    expect(await blockOrNote(page, FOCUS),
       'a summary after 9 min away').toBe(false);
   });
 
@@ -597,8 +579,8 @@ test.describe('what you missed, the week turned while the tab was away', () => {
     test.slow();
     await load(page, wvw);
     await openMap(page, wvw, TIER_BUTTON(page));
-    const week = () => page.evaluate(id => ({ list: matchDataCache.get(id)?.start_time, map: newestMatches.get(id)?.match.start_time }), FOCUS);
-    const noted = () => page.evaluate(([sel, id]) => !!document.querySelector(sel) || missedNotes.has(id), [BLOCK, FOCUS]);
+    const week = () => weekOf(page, FOCUS);
+    const noted = () => blockOrNote(page, FOCUS);
     const old = (await week()).map;
     const end = wvw.timeline.end;
     await hidden(page, wvw, wvw.recordedAt + end - 38 * MIN - await wvw.now());
@@ -644,7 +626,7 @@ test.describe('what you missed, the week turned while the tab was away', () => {
 test.describe('what you missed, the summary is gone once the week turns', () => {
   test.use({ clock: 'playwright', reducedMotion: 'reduce' });
   const TIER_BUTTON = page => page.locator(`.tier-map-btn[aria-label*="NA Tier ${FOCUS.split('-')[1]}"]`);
-  const noted = page => page.evaluate(([sel, id]) => ({ block: !!document.querySelector(sel), note: missedNotes.has(id) }), [BLOCK, FOCUS]);
+  const noted = async page => ({ block: await page.locator(BLOCK).count() > 0, note: await missedNoted(page, FOCUS) });
 
   test.describe('a return 3 min before the turn', () => {
     test.use({ timeline: missedWeekTurn(14, 40) });
@@ -656,12 +638,12 @@ test.describe('what you missed, the summary is gone once the week turns', () => 
       await visible(page);
       await later(page, wvw, 0);
       await expect(page.locator(BLOCK), 'the summary at the return').toBeAttached();
-      const old = await page.evaluate(id => newestMatches.get(id).match.start_time, FOCUS);
-      for (let i = 0; i < 10 && (await page.evaluate(id => newestMatches.get(id).match.start_time, FOCUS)) === old; i++) {
+      const old = await weekOf(page, FOCUS).then(w => w.map);
+      for (let i = 0; i < 10 && (await weekOf(page, FOCUS).then(w => w.map)) === old; i++) {
         await play(page, 30 * 1000, { using: true });
         await wvw.settle();
       }
-      expect(await page.evaluate(id => newestMatches.get(id).match.start_time, FOCUS), 'the state: the map is on the new week').not.toBe(old);
+      expect(await weekOf(page, FOCUS).then(w => w.map), 'the state: the map is on the new week').not.toBe(old);
       await play(page, 15 * 1000, { using: true });
       expect(await noted(page), 'a summary of the old week in the new one').toEqual({ block: false, note: false });
     });
@@ -673,7 +655,7 @@ test.describe('what you missed, the summary is gone once the week turns', () => 
       test.slow();
       await load(page, wvw);
       await openMap(page, wvw, TIER_BUTTON(page));
-      const week = () => page.evaluate(id => newestMatches.get(id).match.start_time, FOCUS);
+      const week = () => weekOf(page, FOCUS).then(w => w.map);
       const old = await week();
       for (let i = 0; i < 40 && !(await noted(page)).note; i++) await play(page, 30 * 1000, { using: true });
       expect((await noted(page)).note, 'the state: a summary raised before the turn').toBe(true);

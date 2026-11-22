@@ -2,6 +2,10 @@
 // own beyond "the thing a visitor waits for appeared".
 import { expect } from '@playwright/test';
 import { recording } from './recordings.mjs';
+import { boardBodies } from './page.mjs';
+
+// Read through the port, kept here for the specs that import them from steps.
+export { keptMatch, raiseNotice, scoreOf } from './page.mjs';
 
 // A phone's screen at `width`, with the protocol's device override, mobile on.
 // A page wider than the screen makes the layout widen to fit and innerWidth then differs: `exact` (default) says so, for the steps that
@@ -135,19 +139,11 @@ export async function play(page, ms, { using = false, push = null } = {}) {
   }
 }
 
-// The match a page keeps for a tier, as a copy, its score last rising now.
-export function keptMatch(page, id) {
-  return page.evaluate(i => { const k = newestMatches.get(i); k.at = Date.now(); return JSON.parse(JSON.stringify(k.match)); }, id);
-}
-
-// The score `id` has on the page's board, or -1 while it has no body for it.
-export const scoreOf = (page, id) => page.evaluate(i => { const m = matchDataCache.get(i); return m ? colorSum(m.scores) : -1; }, id);
-
 // Every body on show, as copies, and the colours of `id` by rank: victory points,
 // then score, then red, blue, green. Worked out here, not asked of the page, so
 // a wrong rule on the page cannot agree with itself.
 export const board = async (page, id) => {
-  const list = await page.evaluate(() => [...matchDataCache.values()].map(m => JSON.parse(JSON.stringify(m))));
+  const list = await boardBodies(page);
   const m = list.find(x => x.id === id);
   const n = (o, c) => Number(o?.[c] ?? 0);
   const byRank = ['red', 'blue', 'green']
@@ -205,11 +201,3 @@ export function looping(page, { ms = 400, loaders = false } = {}) {
   }, [ms, loaders, LOADERS]);
 }
 
-// The teams notice raised the way the page raises it: NA's teams assigned, one guild list published.
-export const raiseNotice = page => page.evaluate(() => {
-  const win = 1900000000;
-  lockoutTime = Date.now() - 60000; assignNA = win * 1000;
-  relinkState = { window: win, published: 1 }; relinkStateAt = Date.now();
-  localStorage.removeItem('wvw-relink-checker:teams-notice');
-  updateRelinkBanner();
-});

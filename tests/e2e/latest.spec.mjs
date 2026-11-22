@@ -8,6 +8,7 @@ import { gw2, historyOf, liveOf } from './support/gw2.mjs';
 import { load, recordedJson, scoreOf } from './support/steps.mjs';
 import { recording } from './support/recordings.mjs';
 import { FOCUS, MIN, hidden, playing, visible } from './support/scenarios.mjs';
+import { countPeekTimers, countRegionDraws, forgetSkippedTick, keepNewest, keptBody, lastResets, liveOnBoard, loadNow, loadSettled, nextPeekIn, readCopy, tickSkipped } from './support/page.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 const NA = '#standingsGridNA > .standing-match';
@@ -25,7 +26,7 @@ async function settledScore(page, id, want) {
   for (let i = 0; i < 4; i++) {
     score = await scoreOf(page, id);
     if (score === want) break;
-    await page.evaluate(() => loadStandings());
+    await loadNow(page);
     await page.waitForTimeout(1500);
   }
   return score;
@@ -78,8 +79,8 @@ test.describe('the history of format 2', () => {
     return held.length ? { v, start: Date.parse(held[0].start_time), matches: Object.fromEntries(held.map(x => [x.id, historyOf(x)])) } : null;
   };
   const versionOf = m => m.id[0] + '?' + historyOf(m).length;
-  const kept = (page, id) => page.evaluate(i => newestMatches.get(i).match, id);
-  const read = page => page.evaluate(() => latestRead().then(bodies => { offerLatest(bodies); }));
+  const kept = keptBody;
+  const read = readCopy;
 
   test('is read once per version, not at every read of /api/latest, and joined in front', async ({ page, wvw }) => {
     let matches = [live(a), live(b)];
@@ -144,7 +145,7 @@ test.describe('the history of format 2', () => {
     await serve(page, { at: 0, get matches() { return [...ids.map(id => { const m = id === na.id ? na : eu; return entry(id, began(m, starts[id])); }), entry(whole.id, bump(whole, rise))]; } });
     const asked = await serveHistory(page, wvw, () => null);
     await load(page, wvw);
-    const resets = await page.evaluate(() => ({ 1: lastResetOf('NA', steadyNow()) - RESET_ARRIVAL_MS, 2: lastResetOf('EU', steadyNow()) - RESET_ARRIVAL_MS }));
+    const resets = await lastResets(page);
     expect(resets[1], 'the two regions reset at different times').not.toBe(resets[2]);
     await wvw.skew(61 * 1000);
     asked.length = 0;
@@ -235,7 +236,7 @@ test.describe('/api/latest hung', () => {
 // read was out; the tab coming back arms it. The read is held here until the
 // tab is hidden, so the state is reached every time, not when a timer happens
 // to land there. What the tab leaves behind is watched at the source: no
-// setTimeout of runPeek while it is hidden.
+// peek timer set while it is hidden.
 test.describe('the tab hides during a peek', () => {
   test.use({ timeline: playing(), clock: 'playwright' });
 
@@ -249,15 +250,7 @@ test.describe('the tab hides during a peek', () => {
       answered++;
     });
     await load(page, wvw);
-    await page.evaluate(() => {
-      window.__armed = 0;
-      const set = window.setTimeout;
-      window.setTimeout = function (fn, ...rest) {
-        if (typeof fn === 'function' && fn.name === 'runPeek') window.__armed++;
-        return set.call(this, fn, ...rest);
-      };
-    });
-    const armed = () => page.evaluate(() => window.__armed);
+    const armed = await countPeekTimers(page);
     const before = reads;   // the opening reads, if any, answered already
     holding = true;
     const peek = page.waitForRequest(r => /\/api\/latest\/summary$/.test(r.url()));
@@ -296,19 +289,16 @@ test.describe('a newer body in hand', () => {
       await load(page, wvw);
       let copies = 0;
       page.on('request', r => { if (/\/api\/latest$/.test(r.url())) copies++; });
-      const { id, start } = await page.evaluate(() => {
-        const m = [...matchDataCache.values()].find(x => matchIsLive(x));
-        keepNewestMatch({ ...m, scores: { ...m.scores, red: m.scores.red + 500 } });
-        window.__peekLoads = 0;
-        const load = loadStandings;
-        loadStandings = function (...a) { if (a[0] === 'peek') window.__peekLoads++; return load.apply(this, a); };
-        return { id: m.id, start: Date.parse(m.start_time) };
-      });
+      const { id, start, body } = await liveOnBoard(page);
+      await keepNewest(page, { ...body, scores: { ...body.scores, red: body.scores.red + 500 } });
       const drawn = await scoreOf(page, id);
       if (copyDown) summary = JSON.stringify({ [id]: { start, score: drawn + 1000, at: 0, by: 'a' } });
-      await expect.poll(async () => { await page.clock.fastForward(31 * 1000); return page.evaluate(() => window.__peekLoads); },
-        'the peek reloaded the list').toBeGreaterThan(0);
-      await expect.poll(() => scoreOf(page, id), 'the list draws the newer body').toBe(drawn + 500);
+      // Three peeks' time, well inside the five minutes of the standings' own tick.
+      for (let i = 0; i < 3 && await scoreOf(page, id) !== drawn + 500; i++) {
+        await page.clock.fastForward(31 * 1000);
+        await wvw.settle();
+      }
+      expect(await scoreOf(page, id), 'the peek reloaded the list, which draws the newer body').toBe(drawn + 500);
       if (copyDown) expect(copies, 'reads of /api/latest, the summary ahead').toBeGreaterThan(0);
       else expect(copies, 'reads of /api/latest, the summary saying nothing newer').toBe(0);
     });
@@ -324,28 +314,17 @@ test.describe('a newer body in hand', () => {
       if (/\/api\/latest$/.test(r.url())) copies++;
       if (/\/v2\/wvw\/matches/.test(r.url())) game++;
     });
-    const { id, start } = await page.evaluate(() => {
-      const m = [...matchDataCache.values()].find(x => matchIsLive(x));
-      window.__peekLoads = 0;
-      window.__peekDone = 0;
-      window.__shown = 0;
-      const show = showRegion;
-      showRegion = function (...a) { window.__shown++; return show.apply(this, a); };
-      const load = loadStandings;
-      loadStandings = async function (...a) {
-        if (a[0] !== 'peek') return load.apply(this, a);
-        window.__peekLoads++;
-        try { return await load.apply(this, a); } finally { window.__peekDone++; }
-      };
-      return { id: m.id, start: Date.parse(m.start_time) };
-    });
+    const { id, start } = await liveOnBoard(page);
+    const shown = await countRegionDraws(page);
     const drawn = await scoreOf(page, id);
     summary = JSON.stringify({ [id]: { start, score: drawn + 1000, at: 0, by: 'a' } });
-    await expect.poll(async () => { await page.clock.fastForward(31 * 1000); return page.evaluate(() => window.__peekDone); },
-      'the peek reloaded the list').toBeGreaterThan(0);
-    expect(copies, 'the copy was asked for, and gave nothing').toBeGreaterThan(0);
+    // The reload the peek asks for reads the copy first: it is out once the copy is asked for.
+    await expect.poll(async () => { await page.clock.fastForward(31 * 1000); return copies; },
+      'the peek reloaded the list: the copy was asked for, and gave nothing').toBeGreaterThan(0);
+    await loadSettled(page);
+    await wvw.settle();
     expect(game, 'reads of the game: a peek with nothing to draw reads none').toBe(0);
-    expect(await page.evaluate(() => window.__shown), 'regions redrawn (and the Synced time restamped) by that peek').toBe(0);
+    expect(await shown(), 'regions redrawn (and the Synced time restamped) by that peek').toBe(0);
     expect(await scoreOf(page, id), 'the score the list draws').toBe(drawn);
   });
 });
@@ -372,7 +351,7 @@ test.describe('closing a popover after a skipped tick', () => {
   // The scheduler's own tick, which finds the popover open and skips (its run is not counted).
   const tickUnderPopover = async page => {
     await page.clock.fastForward(5 * 60 * 1000 + 1000);
-    await page.evaluate(() => { if (!standingsSkipped) throw new Error('the tick was not skipped'); });
+    expect(await tickSkipped(page), 'the state: the tick was skipped').toBe(true);
   };
   const close = async page => {
     await page.locator('.info-popover .info-popover-close').click();
@@ -386,7 +365,7 @@ test.describe('closing a popover after a skipped tick', () => {
     expect(seen.game, 'no game read while it is open').toEqual([]);
     await close(page);
     await expect.poll(() => seen.game.length, 'game reads after the close').toBeGreaterThan(0);
-    await page.waitForFunction(() => !standingsInFlight);
+    await loadSettled(page);
     const n = seen.game.length;
     await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
     await page.clock.fastForward(31 * 1000);
@@ -398,9 +377,9 @@ test.describe('closing a popover after a skipped tick', () => {
     const seen = await setup(page, wvw);
     // The list is overdue by the clock but nothing is owed: a close that read for the clock alone would read the game.
     await tickUnderPopover(page);
-    await page.evaluate(() => { standingsSkipped = false; });
+    await forgetSkippedTick(page);
     // The next scheduled peek is 50 s off, past the 31 s the close waits (an open popover counts as use, so the page never waits longer): only the close can bring it in.
-    await page.evaluate(() => { clearTimeout(peekTimer); peekTimer = setTimeout(runPeek, 50 * 1000); });
+    await nextPeekIn(page, 50 * 1000);
     seen.peeks = 0;
     await close(page);
     await expect.poll(() => seen.peeks, 'peeks after the close').toBeGreaterThan(0);
