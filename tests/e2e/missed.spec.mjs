@@ -271,6 +271,40 @@ test.describe('what happened', () => {
       await expect(page.locator(BLOCK), 'the block of a week that ended').toHaveCount(0);
     });
   }
+
+  // The keyboard focus inside the block when it goes would fall to <body>: it moves to the Captures tab. A focus
+  // outside the block stays where it was.
+  for (const inside of [true, false]) {
+    test(`a week that ended with the keyboard focus ${inside ? 'in the block: the focus goes to the Captures tab' : 'on the Board tab: the focus stays'}`, async ({ page, wvw }) => {
+      const g = await gap(page, wvw);
+      g.after.end_time = iso(await wvw.now() + 3 * MIN);
+      await g.afterTheGap();
+      await expect(page.locator(BLOCK), 'the summary at the return').toBeAttached();
+      await page.keyboard.press('Shift');
+      if (inside) await page.locator(`${BLOCK} .wvw-chip[data-obj]`).first().focus();
+      else await page.locator('.info-popover .wvw-subtab[data-pane="board"]').focus();
+      await later(page, wvw, 100000);
+      await later(page, wvw, 100000);
+      await expect(page.locator(BLOCK), 'the block of a week that ended').toHaveCount(0);
+      await expect(page.locator(`.info-popover .wvw-subtab[data-pane="${inside ? 'captures' : 'board'}"]`)).toBeFocused();
+    });
+  }
+
+  test('a week that ended with the keyboard focus in the folded block on a phone: the focus goes to the Captures tab', async ({ page, wvw }) => {
+    const g = await gap(page, wvw);
+    g.after.end_time = iso(await wvw.now() + 3 * MIN);
+    await g.afterTheGap();
+    await phone(page, 390);
+    await later(page, wvw, 2000);
+    await expect(page.locator(BLOCK), 'the summary at the return').toBeAttached();
+    await page.keyboard.press('Shift');
+    await page.locator(`${BLOCK} button`).first().focus();
+    await later(page, wvw, 100000);
+    await later(page, wvw, 100000);
+    await expect(page.locator(BLOCK), 'the block of a week that ended').toHaveCount(0);
+    const tab = page.locator('.info-popover .wvw-subtab[data-pane="captures"]');
+    await expect(tab).toBeFocused();
+  });
 });
 
 // ---- The block, other shapes ------------------------------------------------
