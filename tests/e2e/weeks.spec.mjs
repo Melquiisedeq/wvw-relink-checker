@@ -9,6 +9,7 @@ import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { check, firstTier, iso, later, load, openMap, play, recordedJson, matchReads, serveList } from './support/steps.mjs';
+import { deducedLineup, forgetMatches, keptWeekAndRed, loadNow, loadSettled, matchForTeam, mapHandlers, countFailedLoads, teamMatchKept, teamMatchRemembered, teamName, teamNames, forgetTeamTables, weekOf } from './support/page.mjs';
 import { MIN, FOCUS, copyAheadAtTurn, copyAltered, hidden, plainReset, searedWeekTurn, visible } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, timezoneId: 'UTC', locale: 'en-US' });
@@ -21,8 +22,8 @@ const NA = '#standingsGridNA > .standing-match';
 const TEAMS = ['red', 'blue', 'green'];
 // The team of a tier the new line-up brought (ids from 10000 are the real ones).
 const team = m => TEAMS.map(c => String(m.all_worlds[c].find(n => n >= 10000)));
-const nameOf = (page, id) => page.evaluate(i => getTeamName(i), String(id));
-const names = (page, m) => page.evaluate(t => t.map(getTeamName), team(m));
+const nameOf = (page, id) => teamName(page, String(id));
+const names = (page, m) => teamNames(page, team(m));
 
 // The NA cards, as the standings show them.
 const cards = page => page.evaluate(sel => [...document.querySelectorAll(sel)].map(b => ({
@@ -37,7 +38,8 @@ const ids = list => list.map(c => c.id).join(' ');
 // One standings cycle: what it asked of the game by id, and the cards after.
 async function cycle(page, wvw, asked) {
   const at = asked.length;
-  await page.evaluate('loadStandings()');
+  await loadNow(page);
+  await loadSettled(page);
   await wvw.settle();
   const urls = asked.slice(at);
   return { all: urls.filter(u => u === ALL).length, byId: urls.filter(u => u.startsWith(IDS) && u !== ALL), cards: await cards(page) };
@@ -97,7 +99,7 @@ test.describe('partial lists', () => {
     await answer(page, ALL, without('1-1', '1-4'));
     await answer(page, IDS + '1-1,1-4', []);
     await answer(page, IDS + '1-1', []);
-    await page.evaluate("newestMatches.delete('1-1'); matchDataCache.delete('1-1')");
+    await forgetMatches(page, ['1-1'], { board: true });
     const r = await cycle(page, wvw, asked);
     expect(ids(r.cards)).toBe('1-1 1-2 1-3');
     const w = r.cards[0];
@@ -113,7 +115,7 @@ test.describe('partial lists', () => {
     const asked = matchReads(page);
     const old2 = oldOf(rec.get('1-2'), rec.get('1-3'));
     const newLine = await Promise.all(TEAMS.map(c => nameOf(page, rec.get('1-2').all_worlds[c].find(n => n >= 10000))));
-    await page.evaluate("newestMatches.delete('1-2')");
+    await forgetMatches(page, ['1-2']);
     await answer(page, ALL, all.map(m => (m.id === '1-2' ? old2.body : m)));
     const still = await answer(page, IDS + '1-2', [old2.body]);
     const r = await cycle(page, wvw, asked);
@@ -131,7 +133,7 @@ test.describe('partial lists', () => {
     await load(page, wvw);
     const asked = matchReads(page);
     const old2 = oldOf(rec.get('1-2'), rec.get('1-3')), old4 = oldOf(rec.get('1-4'), rec.get('1-1'));
-    await page.evaluate("newestMatches.delete('1-2'); newestMatches.delete('1-4')");
+    await forgetMatches(page, ['1-2', '1-4']);
     await answer(page, ALL, all.map(m => (m.id === '1-2' ? old2.body : m.id === '1-4' ? old4.body : m)));
     const still = await answer(page, IDS + '1-2,1-4', [old2.body, old4.body]);
     const r = await cycle(page, wvw, asked);
@@ -154,7 +156,7 @@ test.describe('partial lists', () => {
   // that closes give a line-up: two late tiers leave 6 teams with 10 ways to
   // split them, three leave 9 with 280, and a table with a team too many or
   // too few breaks the count.
-  test('deduceLineup: one late tier whose count closes, nothing else', async ({ page, wvw }) => {
+  test('the line-up deduced: one late tier whose count closes, nothing else', async ({ page, wvw }) => {
     await load(page, wvw);
     const eu = all.filter(m => m.id.startsWith('2-')).sort((x, y) => x.id.localeCompare(y.id));
     expect(eu).toHaveLength(5);
@@ -175,16 +177,7 @@ test.describe('partial lists', () => {
       ['EU, 2-3 late', lateOf(eu, ['2-3']), '2', 5, '2-3'],
     ];
     for (const [what, list, set, tiers, want] of cases) {
-      const got = await page.evaluate(([list, set, tiers, want]) => {
-        const teams = new Set(Object.keys(TEAM_NAMES).filter(id => id.startsWith('1' + set[0])));
-        if (set[1] === '+') teams.add('1' + set[0] + '999');
-        if (set[1] === '-') {
-          const taken = new Set(list.filter(m => m.id !== '1-2').flatMap(m => COLORS.map(c => matchTeamId(m, c))));
-          teams.delete([...teams].find(id => !taken.has(id)));
-        }
-        const line = deduceLineup(list, teams, tiers);
-        return line && { id: line.id, teams: COLORS.map(c => matchTeamId(line, c)).sort() };
-      }, [list, set, tiers, want]);
+      const got = await deducedLineup(page, list, set, tiers);
       const real = want && rec.get(want);
       const expected = want && { id: want, teams: TEAMS.map(c => String(real.all_worlds[c].find(n => n >= 10000))).sort() };
       expect(got, what).toEqual(expected || null);
@@ -215,7 +208,8 @@ test.describe('a fresh week', () => {
     // The week turns: the clock goes to its end, the standings read again.
     const turn = wvw.recordedAt + wvw.timeline.end + MIN;
     await wvw.skew(turn - await wvw.now());
-    await page.evaluate('loadStandings()');
+    await loadNow(page);
+    await loadSettled(page);
     await wvw.settle();
     await expect.poll(async () => (await read())[FOCUS].arrows, { message: 'arrows once the week turned' }).toBe(0);
     const a = (await read())[FOCUS];
@@ -272,16 +266,18 @@ test('relink day Check: this week\'s match wins; a team the API lacks gets a gre
   await answer(page, ALL, [...all, old]);
   await answer(page, tables[where[1].r].url, moved);
   const wrong = await answer(page, `${GAME}wvw/matches?world=${MISSING}`, other);
-  await page.evaluate('wvwMapCache = null; loadStandings()');
+  await forgetTeamTables(page);
+  await loadNow(page);
+  await loadSettled(page);
   await wvw.settle();
   await check(page, wvw, wvw.guilds.slice(0, 2));
   const got = await dots(page);
   expect(got[0]?.cls, `team ${T} is in ${fresh.id} and in last week's ${old.id}`).toBe(`dot dot-${colorOf(fresh, T)}`);
-  expect(await page.evaluate(t => teamToMatchId.get(t), T)).toBe(fresh.id);
+  expect(await teamMatchKept(page, T)).toBe(fresh.id);
   expect(got[1]?.cls).toBe('dot dot-pending');
   expect(got[1]?.title).toMatch(/not in the game's data yet/);
   expect(await page.locator('#matchPanelsContainer .panel-note').allTextContents()).toEqual([`Unknown team (ID ${MISSING}): this week's match isn't in the game's data yet.`]);
-  expect(await page.evaluate(m => teamToMatchId.has(m) || teamToMatchId.has(Number(m)), MISSING), 'a wrong match kept for the missing team').toBe(false);
+  expect(await teamMatchRemembered(page, MISSING), 'a wrong match kept for the missing team').toBe(false);
   expect(wrong.reads, '?world= reads').toBeGreaterThanOrEqual(1);
   expect(wrong.reads).toBeLessThanOrEqual(3);
 
@@ -369,8 +365,7 @@ test.describe('week memory', () => {
     // The Check: a team of the new 1-2, every body in hand and ?world= on last week.
     const x = team(t3)[0];
     const world = await answer(page, `${GAME}wvw/matches?world=${x}`, old(t3));
-    const got = await page.evaluate(t => getMatchForTeam(t).then(m => ({ id: m.id, memory: !!m.fromMemory,
-      cached: [...matchDataCache.values(), ...[...newestMatches.values()].map(k => k.match)].some(b => b.fromMemory) })), x);
+    const got = await matchForTeam(page, x);
     expect(got, `the Check for team ${x}`).toEqual({ id: '1-2', memory: true, cached: false });
     expect(world.reads, '?world= reads').toBeGreaterThan(0);
 
@@ -445,7 +440,7 @@ test.describe('a map opened before the week turned', () => {
     const tabs = await page.$$eval('.info-popover .wvw-tab', t => t.map(b => b.dataset.type));
     const active = await page.$eval('.info-popover .wvw-tab.is-active', b => b.dataset.type);
     expect(tabs.length, 'a second tab to switch to').toBeGreaterThan(1);
-    const kept = id => page.evaluate(i => { const m = newestMatches.get(i).match; return { start: m.start_time, red: getTeamName(matchTeamId(m, 'red')) }; }, id);
+    const kept = id => keptWeekAndRed(page, id);
     const old = await kept(tier.id);
     await later(page, wvw, wvw.timeline.end + MIN - await wvw.now() + wvw.recordedAt);
     await expect.poll(async () => (await kept(tier.id)).start, 'the read brought the new week').not.toBe(old.start);
@@ -472,7 +467,7 @@ test.describe('a map opened before the week turned', () => {
     const home = page.locator('.info-popover .wvw-tab[data-type$="Home"]').first();
     await home.click();
     await wvw.settle();
-    const kept = id => page.evaluate(i => { const m = newestMatches.get(i).match; return { start: m.start_time, red: getTeamName(matchTeamId(m, 'red')) }; }, id);
+    const kept = id => keptWeekAndRed(page, id);
     const old = await kept(tier.id);
     await later(page, wvw, wvw.timeline.end + MIN - await wvw.now() + wvw.recordedAt);
     await expect.poll(async () => (await kept(tier.id)).start, 'the read brought the new week').not.toBe(old.start);
@@ -554,7 +549,7 @@ test.describe('a map open when the week turns its borderlands', () => {
     await expect.poll(() => marks.evaluateAll(gs => [...new Set(gs.map(g => g.dataset.obj.split('-')[0]))])).toEqual(['1099']);
     go();
     await wvw.settle();
-    expect(await page.evaluate(() => [typeof mapCatchUp, typeof mapAhead]), 'the open map still answers the focus and the push')
+    expect(await mapHandlers(page), 'the open map still answers the focus and the push')
       .toEqual(['function', 'function']);
   });
 });
@@ -582,7 +577,7 @@ test.describe('our copy ahead at the turn', () => {
   // Each NA card's team names and the week of the body it draws.
   const shown = async page => {
     const board = await naBoard(page);
-    const weeks = await page.evaluate(list => list.map(id => matchDataCache.get(id)?.start_time), NA_IDS);
+    const weeks = await Promise.all(NA_IDS.map(async id => (await weekOf(page, id)).list));
     return Object.fromEntries(NA_IDS.map((id, i) => [id, { names: board[id]?.names, week: weeks[i] }]));
   };
   const lastWeek = async (page, wvw) => {
@@ -616,13 +611,14 @@ test.describe('our copy ahead at the turn', () => {
     const want = Object.fromEntries(NA_IDS.map(id => [id, { names: fresh[id], vp: ['0', '0', '0'], waiting: 0 }]));
     expect(await naBoard(page), 'the NA board, 60 s past the reset').toEqual(want);
     // The game's own reads, still on the week that ended, leave the new week up.
-    await page.evaluate('loadStandings()');
+    await loadNow(page);
+    await loadSettled(page);
     await wvw.settle();
     await play(page, 60 * 1000, { using: true });
     expect(await naBoard(page), 'the NA board after a read of the game').toEqual(want);
     // Each team found by ?world= is in its new tier.
     const team = wvw.timeline.body('1-2', now - wvw.recordedAt).all_worlds.red.find(n => n >= 10000);
-    expect(await page.evaluate(t => getMatchForTeam(String(t)).then(m => m.id), team), "a moved team's match").toBe('1-2');
+    expect((await matchForTeam(page, String(team))).id, "a moved team's match").toBe('1-2');
   });
 
   test.describe('a tier the copy holds on the week that ended', () => {
@@ -654,14 +650,10 @@ test.describe('our copy ahead at the turn', () => {
       return data;
     });
     // A load that fails is tried again within seconds: each failure is counted as it is planned.
-    await page.addInitScript(() => addEventListener('DOMContentLoaded', () => {
-      const plan = planStandingsRetry;
-      window.__failedLoads = 0;
-      window.planStandingsRetry = () => { window.__failedLoads++; plan(); };
-    }));
+    const failedLoads = await countFailedLoads(page);
     await pastTurn(page, wvw, 45 * 1000);
     expect(await shown(page), 'the NA board').toEqual(await lastWeek(page, wvw));
-    expect(await page.evaluate(() => window.__failedLoads), 'failed loads').toBe(0);
+    expect(await failedLoads(), 'failed loads').toBe(0);
   });
 
   test('a team short in the copy: the board stays on what the game gives', async ({ page, wvw }) => {

@@ -268,3 +268,231 @@ export const raiseNotice = page => page.evaluate(() => {
   localStorage.removeItem('wvw-relink-checker:teams-notice');
   updateRelinkBanner();
 });
+
+// The id of the waypoint the map draws for objective `obj`, as the chat link carries it.
+export const waypointIdOf = (page, obj) => page.evaluate(o => WAYPOINT_AT[o][2], obj);
+
+// A kept body of a match other than `except` pushed 5000 ahead in scores and kills (the game's answer for it
+// is behind), and the summary of `except` ahead of what is on show, the summary and its ask forgotten.
+export const aheadOfGameAndSummary = (page, except) => page.evaluate(focus => {
+  const m = JSON.parse(JSON.stringify([...matchDataCache.values()].find(x => x.id !== focus)));
+  for (const k of Object.keys(m.scores)) m.scores[k] += 5000;
+  for (const k of Object.keys(m.kills)) m.kills[k] += 5000;
+  keepNewestMatch(m);
+  latestSummary.get(focus).score += 5000;
+  latestAskedAt = 0;
+  latestSummaryAt = 0;
+}, except);
+
+// One read of the copy's summary as the page makes it; the answer's Date header tells the page its clock's lead.
+export const readSummaryNow = page => page.evaluate(() => fetchOwnApi(LATEST_SUMMARY_URL, 'no-store'));
+
+// The NA standings marked as failed to load.
+export const markNaStandingsFailed = page => page.evaluate(() => { standingsFailed = [{ el: standingsStatusNA, label: 'live standings', region: 'NA' }]; });
+
+// What the map's refresh starts each of its reads of the game as: twice, together.
+export const doubleMapReads = page => page.evaluate(() => { const read = mapAhead; mapAhead = ids => { read(ids); read(ids); }; });
+
+// The match the open map recalls (null: none).
+export const recalledMatchId = page => page.evaluate(() => freshRecall && freshRecall.data && freshRecall.data.id);
+
+// When the page last read the copy's summary (ms; 0: never), and the `at` it anchors the peek to.
+export const summaryReadAt = page => page.evaluate(() => latestSummaryAt);
+export const summaryAnchor = page => page.evaluate(() => peekAnchor);
+
+// What drawing the list from the copy after a refused read comes to: 'drawn', or the reason it refuses.
+export const copyBoardRefusal = page => page.evaluate(async () => {
+  try { await copyBoard(new Error('refused')); return 'drawn'; } catch (e) { return e.message; }
+});
+
+// How far (px) the round gathering on the sling stands from the sling's tip; null: none gathering.
+export const slingGap = page => page.evaluate(() => {
+  const b = document.querySelector('.siege-charge.charging');
+  return b ? Math.round(Math.abs(parseFloat(b.style.left) - slingTip().x)) : null;
+});
+
+// ---- weeks and line-ups -----------------------------------------------------
+// The name the page gives the team `id` (a string), and of each of `ids`.
+export const teamName = (page, id) => page.evaluate(i => getTeamName(i), id);
+export const teamNames = (page, ids) => page.evaluate(t => t.map(getTeamName), ids);
+
+// The bodies of `ids` forgotten as if never seen; with `board`, the ones the board draws too.
+export const forgetMatches = (page, ids, { board = false } = {}) => page.evaluate(([list, b]) => {
+  for (const id of list) { newestMatches.delete(id); if (b) matchDataCache.delete(id); }
+}, [ids, board]);
+
+// The line-up the page deduces from `list` (bodies) for `tiers` tiers, as { id, teams } or null, with the
+// teams of region set[0]; set[1] '+' adds a team the table lacks, '-' leaves out one no body holds.
+export const deducedLineup = (page, list, set, tiers) => page.evaluate(([list, set, tiers]) => {
+  const teams = new Set(Object.keys(TEAM_NAMES).filter(id => id.startsWith('1' + set[0])));
+  if (set[1] === '+') teams.add('1' + set[0] + '999');
+  if (set[1] === '-') {
+    const taken = new Set(list.filter(m => m.id !== '1-2').flatMap(m => COLORS.map(c => matchTeamId(m, c))));
+    teams.delete([...teams].find(id => !taken.has(id)));
+  }
+  const line = deduceLineup(list, teams, tiers);
+  return line && { id: line.id, teams: COLORS.map(c => matchTeamId(line, c)).sort() };
+}, [list, set, tiers]);
+
+// The match the page keeps for team `t`, and whether it keeps one for `t` (a string or its number).
+export const teamMatchKept = (page, t) => page.evaluate(i => teamToMatchId.get(i), t);
+export const teamMatchRemembered = (page, t) => page.evaluate(m => teamToMatchId.has(m) || teamToMatchId.has(Number(m)), t);
+
+// The team tables forgotten, as on a page that never read them.
+export const forgetTeamTables = page => page.evaluate(() => { wvwMapCache = null; });
+
+// The Check's match for team `t`: its id, whether it came from the page's memory of the week, and whether
+// a body from memory sits among those the page keeps.
+export const matchForTeam = (page, t) => page.evaluate(x => getMatchForTeam(x).then(m => ({ id: m.id, memory: !!m.fromMemory,
+  cached: [...matchDataCache.values(), ...[...newestMatches.values()].map(k => k.match)].some(b => b.fromMemory) })), t);
+
+// The week and the name of the red team of the body kept for `id`.
+export const keptWeekAndRed = (page, id) => page.evaluate(i => { const m = newestMatches.get(i).match; return { start: m.start_time, red: getTeamName(matchTeamId(m, 'red')) }; }, id);
+
+// What the page has bound to the open map's reads of the focus and of the push.
+export const mapHandlers = page => page.evaluate(() => [typeof mapCatchUp, typeof mapAhead]);
+
+// Counts the failed loads of the standings the page plans a retry for, from its start;
+// returns the count's reader. No outside sign: the retry heals the board within seconds.
+export async function countFailedLoads(page) {
+  await page.addInitScript(() => addEventListener('DOMContentLoaded', () => {
+    const plan = planStandingsRetry;
+    window.__failedLoads = 0;
+    window.planStandingsRetry = () => { window.__failedLoads++; plan(); };
+  }));
+  return () => page.evaluate(() => window.__failedLoads);
+}
+
+// ---- the corners and the skirmish trend ---------------------------------------
+// The kept bodies of the match `id` as the corner and the trend read them: the kill history cleared, then
+// rows of [age (ms before now), kills added on Center] on top of the kills the body holds, the score last
+// rising `roseAgo` ms ago and the week begun `startAgo` ms ago; returns the kept body.
+export const plantKillHistory = (page, id, { rows, roseAgo, startAgo }) => page.evaluate(([id, rows, roseAgo, startAgo]) => {
+  localStorage.removeItem('wvw-fight-v1');
+  const now = Date.now();
+  const k = newestMatches.get(id);
+  const T = fightTotals(k.match);
+  killSheet = new Map([[id, rows.map(([age, bonus]) => ({ at: now - age,
+    n: Object.fromEntries(KILLS_MAP_ORDER.map(ty => [ty, (T[ty] || 0) + (ty === 'Center' ? bonus : 0)])) }))]]);
+  killSheetAt = now;
+  k.rose = true;
+  k.at = now - roseAgo;
+  k.match.start_time = new Date(now - startAgo).toISOString();
+  return k.match;
+}, [id, rows, roseAgo, startAgo]);
+
+// The kept body of `id` with its score last rising `rose` ms ago and its week four days old, the kill
+// history cleared; returns the page's now, the kills of the body by map (in the order of the map's tabs) and the body.
+export const agedKeptMatch = (page, id, rose) => page.evaluate(([id, rose]) => {
+  localStorage.removeItem('wvw-fight-v1');
+  const now = Date.now();
+  const k = newestMatches.get(id);
+  k.rose = true;
+  k.at = now - rose;
+  k.match.start_time = new Date(now - 4 * 86400e3).toISOString();
+  const T = fightTotals(k.match);
+  return { now, T: KILLS_MAP_ORDER.map(ty => T[ty] || 0), match: k.match };
+}, [id, rose]);
+
+// The time (HH:MM, the viewer's) the kill history of `id` runs to, and the time its score last rose.
+export const clockOfKillsAndScore = (page, id) => page.evaluate(i => {
+  const hh = t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return [hh(killView(newestMatches.get(i).match, null).clock), hh(matchScoreRoseAt(i))];
+}, id);
+
+// The text of the skirmish trend (red's) drawn for each case's `match` with the score of its kept body last
+// rising at `at` (ms); with `fixedNow`, the page's clock stood still there while it draws.
+export const trendTexts = (page, cases, fixedNow = null) => page.evaluate(([cases, fixed]) => {
+  const RealDate = Date;
+  if (fixed !== null) globalThis.Date = new Proxy(RealDate, { get: (t, p) => (p === 'now' ? () => fixed : Reflect.get(t, p, t)) });
+  try {
+    return Object.fromEntries(Object.entries(cases).map(([name, { match, at }]) => {
+      const k = newestMatches.get(match.id);
+      const was = k.at;
+      k.at = at;
+      const el = document.createElement('div');
+      renderSkirmishTrendPopoverContent(el, 'X', match, 'red');
+      k.at = was;
+      return [name, el.textContent];
+    }));
+  } finally { globalThis.Date = RealDate; }
+}, [cases, fixedNow]);
+
+// ---- the push ---------------------------------------------------------------
+// The newest version (the `at`, in seconds) the page heard by a push, and the one its own read of the copy holds.
+export const pushHeardAt = page => page.evaluate(() => pushHeard);
+export const latestHeldVersion = page => page.evaluate(() => latestHeldAt);
+// The newest of the two: what the page knows of the world.
+export const newestVersionKnown = page => page.evaluate(() => Math.max(pushHeard, latestHeldAt));
+
+// Whether the page counts the push as live.
+export const pushIsLive = page => page.evaluate(() => pushLive());
+
+// The servers' time by the page's reckoning (whole seconds).
+export const serverSecondsNow = page => page.evaluate(() => Math.floor((Date.now() - ownClockLead) / 1000));
+
+// The peek run now, out of its turn.
+export const runPeekNow = page => page.evaluate(() => { runPeek(); });
+
+// A read of the copy as the page makes it when it asks for the newest, offered as a late one.
+export const readLatestNow = page => page.evaluate(() => startLatest().then(offerLate));
+
+// As an init script: whether the push was live within a second of the first version the page heard;
+// liveEarly(page) reads it.
+export const LIVE_EARLY_SCRIPT = `globalThis.liveEarly = false;
+(() => {
+  let heardAt = 0;
+  setInterval(() => {
+    if (typeof pushHeard === 'undefined' || !pushHeard) return;
+    heardAt ||= Date.now();
+    if (Date.now() - heardAt < 1000 && pushLive()) liveEarly = true;
+  }, 100);
+})();`;
+export const liveEarly = page => page.evaluate(() => globalThis.liveEarly);
+
+// ---- time and the corners ------------------------------------------------------
+// The game's last answer for `id` taken to be now; the kept body of `id` replaced by a copy of itself (the game's own).
+export const gameAnsweredNow = (page, id) => page.evaluate(i => { gameAnsweredAt.set(i, Date.now()); }, id);
+export const keptBodyCopied = (page, id) => page.evaluate(i => { const k = newestMatches.get(i); k.match = { ...k.match }; }, id);
+
+// How long (ms) the kill history of `id` has been silent, and the kills per 10 min the corner rates Center at (0: none).
+export const killViewOf = (page, id) => page.evaluate(i => {
+  const kept = newestMatches.get(i);
+  const view = kept ? killView(kept.match, null) : null;
+  return { silence: view ? view.silence : 0, ebg: view && view.rates ? Math.round(view.rates.per.get('Center')) : 0 };
+}, id);
+
+// Resolves once the script of the periodic refresh has run.
+export const periodicRefreshReady = page => page.waitForFunction(() => typeof schedulePeriodicRefresh === 'function');
+
+// The periodic refresh armed on its own work, which counts its runs and answers `undefined` (done) until
+// told otherwise; `step` is its interval (ms). Returns reads() (the runs so far), back() (the tab's return,
+// then the runs so far) and answer(v), what the work answers next.
+export async function seedPeriodicRefresh(page, step) {
+  await page.evaluate(step => {
+    globalThis.__reads = 0;
+    globalThis.__answer = undefined;
+    globalThis.__run = schedulePeriodicRefresh(() => { globalThis.__reads++; return globalThis.__answer; }, step);
+  }, step);
+  const reads = () => page.evaluate(() => globalThis.__reads);
+  return {
+    reads,
+    back: async () => { await page.evaluate(() => globalThis.__run()); return reads(); },
+    answer: v => page.evaluate(v => { globalThis.__answer = v; }, v),
+  };
+}
+
+// ---- storage ----------------------------------------------------------------
+// Storage that refuses every read and write, as with site data blocked; returns a reader of how many times
+// the page tried to save the typed list (that key only: the page saves other things on load).
+export async function refuseStorage(page) {
+  await page.addInitScript(() => {
+    window.__listSaves = 0;
+    Storage.prototype.getItem = () => { throw new DOMException('blocked', 'SecurityError'); };
+    Storage.prototype.setItem = function (key) {
+      if (key === 'wvw-relink-checker:guilds') window.__listSaves++;
+      throw new DOMException('blocked', 'SecurityError');
+    };
+  });
+  return () => page.evaluate(() => window.__listSaves);
+}

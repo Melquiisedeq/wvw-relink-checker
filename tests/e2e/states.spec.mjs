@@ -6,7 +6,8 @@ import { test, expect } from './support/fixtures.mjs';
 import { answer, hold } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { FOCUS, MIN, awayAndBack, playing, skirmishAway } from './support/scenarios.mjs';
-import { check, firstTier, frame, iso, keptMatch, later, load, openMap, search } from './support/steps.mjs';
+import { check, firstTier, frame, iso, later, load, openMap, search } from './support/steps.mjs';
+import { keptBody, keptMatch, loadNow, slingGap } from './support/page.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
 
@@ -71,8 +72,9 @@ for (const kind of ['wheel', 'touchstart', 'keydown', 'mousedown']) {
       await search(page, [wvw.guilds[0]]);
       await expect.poll(() => page.evaluate(() => window.__cut), { message: 'the page on its way to the card' }).not.toBeNull();
       const cut = await page.evaluate(() => window.__cut);
-      // A glide to a card ~1600 px down takes far longer than this.
-      await page.waitForTimeout(1200);
+      // A glide to a card ~1600 px down takes far longer than these frames (90 is a second and a half at 60 Hz).
+      // Frames are the wait: the glide moves on them, and a frame count does not depend on the clock.
+    await page.evaluate(n => new Promise(done => { const tick = () => (--n > 0 ? requestAnimationFrame(tick) : done()); tick(); }), 90);
       const end = await page.evaluate(() => ({ y: window.scrollY, top: window.__card.getBoundingClientRect().top, h: innerHeight }));
       expect(end.y, `the page went on from ${cut} px after the ${kind}`).toBe(cut);
       expect(end.top, 'the found card, its top (px) below the window').toBeGreaterThan(end.h);
@@ -103,6 +105,9 @@ test('a second search blasts again: the first one\'s lobes, rays and shards are 
   await expect.poll(async () => (await count()).all - (await count()).first, { message: 'the second blast thrown' }).toBeGreaterThan(0);
   expect(await count(), 'after the second blast: none of the first, one blast of each').toEqual({ all: 41, first: 0, lobes: 7, rays: 12, shards: 22 });
 });
+
+// Real time, not the page's clock: a request the page has sent reaches the route in it.
+const realMs = ms => new Promise(done => setTimeout(done, ms));
 
 // ---- the round on the sling ----------------------------------------------------
 // Check gathers a round in the sling; the finale lets it go at the top of the swing, SWING_MS
@@ -167,10 +172,7 @@ test.describe('the round on the sling', () => {
     for (let i = 0; i < 6; i++) {
       if (!(await knockedBack())) break;
       await page.clock.runFor(20);
-      gaps.push(await page.evaluate(() => {
-        const b = document.querySelector('.siege-charge.charging');
-        return b ? Math.round(Math.abs(parseFloat(b.style.left) - slingTip().x)) : null;
-      }));
+      gaps.push(await slingGap(page));
     }
     const seen = gaps.filter(g => g !== null);
     expect(seen.length, 'samples taken while the new round gathers').toBeGreaterThan(2);
@@ -470,7 +472,7 @@ test('a read overtaken on the way is dropped when it lands', async ({ page, wvw 
   await expect.poll(() => red(), { message: 'the bar after the newer read' }).toBeGreaterThan(before);
   const drawn = await red();
   release();
-  await expect.poll(() => page.evaluate(id => newestMatches.get(id).match.scores.red, tier.id),
+  await expect.poll(() => keptBody(page, tier.id).then(b => b.scores.red),
     { message: 'the held read landed (the page keeps the further body)' }).toBe(further.scores.red);
   await frame(page);
   expect(await red(), 'the red share of the bar after the held read landed').toBe(drawn);
@@ -568,14 +570,16 @@ test.describe('the tick of an open map', () => {
     for (let i = 0; i < want.length; i++) {
       await expect.poll(() => seen.length, `pictures asked, step ${i}`).toBe(i + 1);
       // The one asked is not answered yet: the next must not have been asked beside it.
-      await page.waitForTimeout(300);
+      await page.clock.runFor(300);
+      await realMs(300);
       expect(seen.length, `a second picture asked while the first was still out (step ${i})`).toBe(i + 1);
       await held.shift().fallback();
     }
     await expect.poll(() => seen.length).toBe(3);
-    // The last picture is in; the page's decode() of it and the queue running out follow within the wait below.
+    // The last picture is in; the page's decode() of it and the next ask would follow within the waits below.
     await expect.poll(() => loaded.length, { message: 'all three pictures loaded' }).toBe(3);
-    await page.waitForTimeout(300);
+    await page.clock.runFor(300);
+    await realMs(300);
     expect(seen, 'lite pictures of the tabs not in view, in tab order, each once').toEqual(want);
     release();
     await wvw.settle();
@@ -680,7 +684,7 @@ test.describe('a side\'s VP moves on a refresh', () => {
       return list.filter(m => !ids || ids.includes(m.id));
     }, { contentType: 'application/json' });
     expect(await pulsing(), 'cards pulsing before the refresh').toEqual([]);
-    await page.evaluate(() => loadStandings('manual'));
+    await loadNow(page, 'manual');
     await expect(page.locator(`.standing-match[data-match-id="${FOCUS}"] .side-red .standing-vp .stat-value`),
       'red VP after the refresh').toHaveText(mine.victory_points.red.toLocaleString('en-US'));
     expect(await pulsing(), 'the sides whose card pulsed after red VP moved').toEqual(['red']);
