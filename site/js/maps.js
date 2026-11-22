@@ -2309,6 +2309,8 @@ function paintMissedNow(view) {
   const shown = note && missedView(note);
   if (!note || (!shown.changes.length && !shown.kills)) {
     if (box) {
+      // Removed 200 ms on, after keepFocus has looked: a focus inside would fall to <body>.
+      if (box.contains(document.activeElement)) view.side.querySelector('.wvw-subtab[data-pane="captures"]')?.focus({ preventScroll: true });
       box.classList.add('is-leaving');
       setTimeout(() => box.remove(), 200);
     }
