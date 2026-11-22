@@ -47,7 +47,7 @@ const WAITING = {
 
 const TOP = /^(?:async\s+)?(?:function\*?\s+|const\s+|let\s+|var\s+|class\s+)([A-Za-z_$][\w$]*)/;
 const NAMED = n => /[a-z][A-Z]/.test(n) || /^[A-Z][A-Z0-9]*_[A-Z0-9_]+$/.test(n);
-const escape = n => n.replace(/\$/g, '\\$');
+const escape = n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export function pageNames(root = ROOT) {
   const dir = path.join(root, 'site/js');
