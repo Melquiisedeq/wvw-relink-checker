@@ -3,8 +3,8 @@
 // limit of names.
 import { test, expect } from './support/fixtures.mjs';
 import { fail, answer } from './support/faults.mjs';
-import { load, search } from './support/steps.mjs';
-import { thirdInTierTwoStandingsOut, EU_STANDINGS_OUT } from './support/scenarios.mjs';
+import { check, firstTier, load, matchReads, openMap, play, search } from './support/steps.mjs';
+import { MIN, thirdInTierTwoStandingsOut, EU_STANDINGS_OUT, visible } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 const GAME = /^https:\/\/api\.guildwars2\.com\/v2\/guild\//;
@@ -39,50 +39,62 @@ test('guild found: the card blinks, the strip names the guild and leaves', async
 // the next Check asks again. (That a 404 is kept is guild-errors.spec.mjs.)
 test('a 429 is not kept against a guild', async ({ page, wvw }) => {
   await load(page, wvw);
-  const id = 'ZZZZ-CHECK-PAGE-GUILD';
+  const id = '11111111-2222-3333-4444-555555555555';
   const url = `https://api.guildwars2.com/v2/guild/${id}`;
-  const ask = id => getGuildInfo(id).then(g => 'ok ' + g.name, e => 'err ' + e.status);
   wvw.allowLog(GAME);
   const busy = await fail(page, wvw, url, 429);
-  expect(await page.evaluate(ask, id), 'the 429 lookup').toBe('err 429');
-  expect(await page.evaluate(id => guildNameCache.has(id), id), 'a 429 kept in guildNameCache').toBe(false);
+  await check(page, wvw, [id]);
+  await expect(page.locator('#resultBody tr .status-err'), 'the 429 lookup').toHaveText('Server busy, try again');
   busy.off();
   const found = await answer(page, url, { id, name: 'Check Page Guild', tag: 'CPG', emblem: null });
-  expect(await page.evaluate(ask, id), 'the lookup after the 429').toBe('ok Check Page Guild');
+  await check(page, wvw, [id]);
+  await expect(page.locator('#resultBody tr .status-err'), 'the lookup after the 429: the guild is known, with no link yet').toHaveText('No WvW link registered yet');
   found.off();
   await wvw.settle();
 });
 
-// A refresh that skips (a popover open) returns false and the scheduler does
-// not count it, so a focus return right after runs it; one that ran is counted,
-// so the same return does not.
-test('a skipped refresh does not spend its turn', async ({ page, wvw }) => {
-  await load(page, wvw);
-  expect(await page.evaluate(async () => { activeTrigger = document.body; const r = await refreshStandings(); activeTrigger = null; return r; }),
-    'refreshStandings with a popover open returned').toBe(false);
-  const sched = await page.evaluate(() => new Promise(res => {
-    const out = {};
-    for (const [k, ret] of [['skipped', false], ['ran', true]]) {
-      out[k] = 0;
-      schedulePeriodicRefresh(async () => { out[k]++; return ret; }, 2000);
-    }
-    setTimeout(() => {
-      document.dispatchEvent(new Event('visibilitychange'));
-      setTimeout(() => res(out), 300);
-    }, 2300);
-  }));
-  expect(sched.skipped, 'a skipped run over a tick and a focus return (counted: 1)').toBe(2);
-  expect(sched.ran, 'a run that did its work over a tick and a focus return').toBe(1);
+// A refresh that skips (a popover open) is not counted by the scheduler, so closing the
+// popover runs it; one that ran is counted, so a focus return right after does not.
+// Reads of the game's list (ids=all) are the refreshes.
+const LIST = /\/wvw\/matches\?ids=all$/;
+test.describe('the standings tick', () => {
+  test.use({ clock: 'playwright', reducedMotion: 'reduce' });
+
+  test('a skipped refresh does not spend its turn', async ({ page, wvw }) => {
+    await load(page, wvw);
+    const { button } = await firstTier(page);
+    await openMap(page, wvw, button);
+    const asked = matchReads(page);
+    await play(page, 5 * MIN + 3000);
+    await wvw.settle();
+    expect(asked.filter(u => LIST.test(u)), 'list reads over a tick with a map open').toEqual([]);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.info-popover')).toHaveCount(0);
+    await expect.poll(() => asked.filter(u => LIST.test(u)).length, { message: 'list reads when the map closes after the skip' }).toBe(1);
+    await wvw.settle();
+    expect(asked.filter(u => LIST.test(u)).length, 'one list read, not two').toBe(1);
+  });
+
+  test('a refresh that ran is counted: the focus return right after reads nothing', async ({ page, wvw }) => {
+    await load(page, wvw);
+    const asked = matchReads(page);
+    await play(page, 5 * MIN + 3000);
+    await wvw.settle();
+    expect(asked.filter(u => LIST.test(u)).length, 'list reads over a tick').toBe(1);
+    await visible(page);
+    await wvw.settle();
+    expect(asked.filter(u => LIST.test(u)).length, 'list reads after the focus return').toBe(1);
+  });
 });
 
-// A pasted list of more than MAX_ENTRIES distinct names asks for the first
-// MAX_ENTRIES only, and says so; exactly MAX_ENTRIES says nothing. Every search
-// answers 404 on purpose, so only the asking is counted.
+// A pasted list of more than the page's promised limit ("Up to N guilds per run") of distinct names asks for the first
+// N only, and says so; exactly N says nothing. Every search answers 404 on purpose, so only the asking is counted.
 for (const over of [true, false]) {
   test(`guild limit: ${over ? 'one name over the limit says so' : 'exactly the limit says nothing'}`, async ({ page, wvw }) => {
     await load(page, wvw);
-    const max = await page.evaluate(() => MAX_ENTRIES);
-    const count = over ? max + 1 : max;
+    const MAX = Number(/Up to (\d+) guilds per run/.exec(await page.getByText(/Up to \d+ guilds per run/).textContent())?.[1]);
+    expect(MAX, 'the limit the page promises').toBeGreaterThan(0);
+    const count = over ? MAX + 1 : MAX;
     const searches = await fail(page, wvw, /^https:\/\/api\.guildwars2\.com\/v2\/guild\/search\?/, 404);
     wvw.allowLog(GAME);
     const names = Array.from({ length: count }, (_, i) => `Check Page Limit ${i + 1}`);
@@ -91,8 +103,8 @@ for (const over of [true, false]) {
     await expect(page.locator('#statusMsg')).toHaveText(/^Done/, { timeout: 30000 });
     await expect(page.locator('#runBtn')).toBeEnabled();
     const said = await page.locator('#statusMsg').textContent();
-    expect(searches.reads, `${count} names asked searches`).toBe(max);
-    expect(said.includes(`Only the first ${max} guilds were checked.`), `${count} names gave status "${said}"`).toBe(over);
+    expect(searches.reads, `${count} names asked searches`).toBe(MAX);
+    expect(said.includes(`Only the first ${MAX} guilds were checked.`), `${count} names gave status "${said}"`).toBe(over);
     await wvw.settle();
   });
 }

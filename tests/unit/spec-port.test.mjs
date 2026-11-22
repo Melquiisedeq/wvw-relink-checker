@@ -19,14 +19,11 @@ const PORT = 'support/page.mjs';
 
 const WAITING = {
   'a11y.spec.mjs': ['paintRetryStatus', 'setStandingsStatus'],
-  'budget.spec.mjs': ['fillTierMaps'],
   'focus.spec.mjs': ['newestMatches', 'objectiveCatalogue'],
-  'load.spec.mjs': ['loadStandings'],
   'notice.spec.mjs': ['assignNA', 'getTeamName', 'relinkStateAt', 'updateRelinkBanner', 'wvwMapCache'],
   'popovers.spec.mjs': ['OBJ_SIZE', 'WVW_STATIC'],
   'relink.spec.mjs': ['WVW_STATIC'],
   'score.spec.mjs': ['loadStandings', 'matchDataCache', 'matchTeamId', 'showGuildFound', 'tierMapButtons'],
-  'search.spec.mjs': ['MAX_ENTRIES', 'activeTrigger', 'getGuildInfo', 'guildNameCache', 'refreshStandings', 'schedulePeriodicRefresh'],
 };
 
 const TOP = /^(?:async\s+)?(?:function\*?\s+|const\s+|let\s+|var\s+|class\s+)([A-Za-z_$][\w$]*)/;

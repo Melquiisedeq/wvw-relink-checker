@@ -25,6 +25,7 @@ import { brotliCompressSync } from 'node:zlib';
 import { test, expect } from './support/fixtures.mjs';
 import { MIN, hidden, playing, visible, wake } from './support/scenarios.mjs';
 import { load, openMap, firstTier } from './support/steps.mjs';
+import { mapsScriptIn } from './support/page.mjs';
 
 const budget = JSON.parse(readFileSync(new URL('./data/budget.json', import.meta.url), 'utf8'));
 const CYCLES = 20;
@@ -81,7 +82,7 @@ test('the load stays inside the budget, and 20 cycles leak nothing', async ({ pa
   await load(page, wvw);
   const loadMs = Math.round(performance.now() - t0);
   // js/maps.js is asked for as the board is drawn: counted with the load.
-  await expect.poll(() => page.evaluate(() => typeof fillTierMaps), { message: 'js/maps.js loaded after the board' }).toBe('function');
+  await expect.poll(() => mapsScriptIn(page), { message: 'js/maps.js run after the board' }).toBe(true);
   await wvw.settle();
   await Promise.all(bodies);
 
