@@ -608,6 +608,7 @@ test.describe('our copy ahead at the turn', () => {
   };
 
   test('a plain reset: the board takes the new week from the copy, and keeps it', async ({ page, wvw }) => {
+    test.setTimeout(120 * 1000);   // 1 min 45 s of the page's clock in 3 s steps
     await plainReset(page);
     await pastTurn(page, wvw, 45 * 1000);
     const now = await wvw.now();
