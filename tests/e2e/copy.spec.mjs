@@ -10,7 +10,7 @@ import { test, expect } from './support/fixtures.mjs';
 import { fail } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { FOCUS, MIN, copyBehindAll, playing, visitorDown } from './support/scenarios.mjs';
-import { copyBoardRefusal, doubleMapReads, keptScore, recalledMatchId, recalledScore, scoreOf, summaryAnchor, summaryReadAt } from './support/page.mjs';
+import { doubleMapReads, refreshBoard, keptScore, recalledMatchId, recalledScore, scoreOf, summaryAnchor, summaryReadAt } from './support/page.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, clock: 'playwright' });
 const PLOT = ".info-popover .wvw-plot g[role='button']";
@@ -186,7 +186,14 @@ test.describe("the visitor's group in step", () => {
 // (the Date of the copy's answer, whole seconds), whatever the device's clock says.
 test.describe('the list drawn from the copy, by the servers\' clock', () => {
   const RETRY = '.standings-alert .retry-btn';
-  const refusal = copyBoardRefusal;
+  // A load now, the game's reads refused: 'drawn' from the copy, or 'refused' with the list's "Trying again".
+  const refusal = async (page, wvw) => {
+    const done = refreshBoard(page);
+    for (let i = 0; i < 12; i++) { await wvw.settle(); await page.clock.runFor(500); }
+    await done;
+    await wvw.settle();
+    return (await page.locator(RETRY).count()) ? 'refused' : 'drawn';
+  };
 
   test.describe('the device 7 min ahead, our copy current', () => {
     test.use({ timeline: visitorDown(20) });
@@ -241,7 +248,7 @@ test.describe('the list drawn from the copy, by the servers\' clock', () => {
       const anchor = await summaryAnchor(page);
       expect(anchor, 'the summary was read').toBeGreaterThan(0);
       await page.clock.setFixedTime(anchor + 7 * MIN + 6 * MIN + 999);
-      expect(await refusal(page), 'at 6 min and 999 ms, the same second of the Date').toBe('drawn');
+      expect(await refusal(page, wvw), 'at 6 min and 999 ms, the same second of the Date').toBe('drawn');
     });
   });
 
@@ -254,10 +261,12 @@ test.describe('the list drawn from the copy, by the servers\' clock', () => {
       });
       await page.goto(wvw.url);
       await expect(page.locator('#standingsGridNA > .standing-match')).toHaveCount(wvw.tiers.NA);
+      // On into the refusal of the visitor's reads (from minute 4).
+      for (let i = 0; i < 3; i++) { await wvw.settle(); await page.clock.fastForward(2 * MIN); }
       await wvw.settle();
-      expect(await refusal(page), 'the clock right, the copy current').toBe('drawn');
+      expect(await refusal(page, wvw), 'the clock right, the copy current').toBe('drawn');
       await wvw.ahead(7 * MIN);
-      expect(await refusal(page), 'the clock 7 min ahead, with nothing else to measure by').toBe('refused');
+      expect(await refusal(page, wvw), 'the clock 7 min ahead, with nothing else to measure by').toBe('refused');
     });
   });
 });

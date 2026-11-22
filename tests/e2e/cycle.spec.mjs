@@ -7,12 +7,19 @@ import { answer, fail } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { FOCUS, MIN, copyAheadOld, livePush, playingHalfMinutes } from './support/scenarios.mjs';
 import { load, matchReads, play } from './support/steps.mjs';
-import { aheadOfGameAndSummary, boardBodies, loadNow, loadSettled, markNaStandingsFailed, readSummaryNow, scoreOf, weekOf } from './support/page.mjs';
+import { aheadOfGameAndSummary, boardBodies, loadNow, loadSettled, scoreOf, summaryReadAt, weekOf } from './support/page.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, clock: 'playwright', reducedMotion: 'reduce' });
 test.describe.configure({ timeout: 120 * 1000 });
 
 const LIST = /\/wvw\/matches\?ids=all$/;
+
+// On until the page reads the copy's summary by itself again; its Date header tells the page its clock's lead.
+async function summaryReadAgain(page) {
+  const was = await summaryReadAt(page);
+  await expect.poll(async () => { await play(page, 3000); return summaryReadAt(page); },
+    { message: 'a read of the summary', timeout: 60 * 1000 }).not.toBe(was);
+}
 const SUMMARY = /\/api\/latest\/summary$/;
 
 test.describe('fresh copy', () => {
@@ -192,7 +199,7 @@ test.describe('copy old, the clock behind', () => {
     await load(page, wvw);
     await wvw.ahead(-3 * MIN);
     // The answer's Date header tells the page how far behind its clock is.
-    await readSummaryNow(page);
+    await summaryReadAgain(page);
     const asked = matchReads(page);
     await play(page, 5.5 * MIN);
     await wvw.settle();
@@ -211,11 +218,18 @@ test.describe('a tier that failed', () => {
     await loadSettled(page);
     await wvw.settle();
     expect(asked.filter(u => LIST.test(u)), 'reads of ids=all with every tier loaded').toEqual([]);
-    await markNaStandingsFailed(page);
+    // The NA failure comes through both reads: ids=all refused, then the read by region for NA (404, not retried).
+    const naDown = await fail(page, wvw, /\/wvw\/matches\?ids=(all$|1-)/, 404);
+    await loadNow(page, 'manual');
+    await loadSettled(page);
+    await wvw.settle();
+    expect(naDown.reads, 'the NA read refused').toBeGreaterThanOrEqual(1);
+    await expect(page.locator('.standings-alert .retry-btn'), 'NA marked as failed').not.toHaveCount(0);
+    const before = asked.filter(u => LIST.test(u)).length;
     await loadNow(page);
     await loadSettled(page);
     await wvw.settle();
-    expect(asked.filter(u => LIST.test(u)).length, 'reads of ids=all with a tier failed').toBeGreaterThanOrEqual(1);
+    expect(asked.filter(u => LIST.test(u)).length - before, 'reads of ids=all with a tier failed').toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -255,7 +269,7 @@ test.describe('the week turned, the copy held', () => {
     expect(wvw.timeline.body(FOCUS, now - wvw.recordedAt).start_time, 'the game has the new week').not.toBe(was);
     await wvw.skew(now - await wvw.now());
     await wvw.ahead(-10 * MIN);
-    await readSummaryNow(page);
+    await summaryReadAgain(page);
     const asked = matchReads(page);
     await loadNow(page);
     await loadSettled(page);

@@ -128,7 +128,7 @@ function baseBodies() {
       for (const c of COLORS) got[c] += vp[c];
     }
     for (const c of COLORS) {
-      if (got[c] !== b.victory_points[c]) throw new Error(`gw2: the victory point table gives ${id} ${c} ${got[c]}, the recording has ${b.victory_points[c]}`);
+      if (got[c] !== b.victory_points[c]) throw new Error(`gw2: the victory point table (WAR_VP) gives ${id} ${c} ${got[c]}, the recording has ${b.victory_points[c]}`);
     }
   }
   const kills = read('https://wvwrelink.com/api/kills');

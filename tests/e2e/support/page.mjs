@@ -284,12 +284,6 @@ export const aheadOfGameAndSummary = (page, except) => page.evaluate(focus => {
   latestSummaryAt = 0;
 }, except);
 
-// One read of the copy's summary as the page makes it; the answer's Date header tells the page its clock's lead.
-export const readSummaryNow = page => page.evaluate(() => fetchOwnApi(LATEST_SUMMARY_URL, 'no-store'));
-
-// The NA standings marked as failed to load.
-export const markNaStandingsFailed = page => page.evaluate(() => { standingsFailed = [{ el: standingsStatusNA, label: 'live standings', region: 'NA' }]; });
-
 // What the map's refresh starts each of its reads of the game as: twice, together.
 export const doubleMapReads = page => page.evaluate(() => { const read = mapAhead; mapAhead = ids => { read(ids); read(ids); }; });
 
@@ -299,11 +293,6 @@ export const recalledMatchId = page => page.evaluate(() => freshRecall && freshR
 // When the page last read the copy's summary (ms; 0: never), and the `at` it anchors the peek to.
 export const summaryReadAt = page => page.evaluate(() => latestSummaryAt);
 export const summaryAnchor = page => page.evaluate(() => peekAnchor);
-
-// What drawing the list from the copy after a refused read comes to: 'drawn', or the reason it refuses.
-export const copyBoardRefusal = page => page.evaluate(async () => {
-  try { await copyBoard(new Error('refused')); return 'drawn'; } catch (e) { return e.message; }
-});
 
 // How far (px) the round gathering on the sling stands from the sling's tip; null: none gathering.
 export const slingGap = page => page.evaluate(() => {
@@ -316,30 +305,12 @@ export const slingGap = page => page.evaluate(() => {
 export const teamName = (page, id) => page.evaluate(i => getTeamName(i), id);
 export const teamNames = (page, ids) => page.evaluate(t => t.map(getTeamName), ids);
 
-// The bodies of `ids` forgotten as if never seen; with `board`, the ones the board draws too.
-export const forgetMatches = (page, ids, { board = false } = {}) => page.evaluate(([list, b]) => {
-  for (const id of list) { newestMatches.delete(id); if (b) matchDataCache.delete(id); }
-}, [ids, board]);
-
-// The line-up the page deduces from `list` (bodies) for `tiers` tiers, as { id, teams } or null, with the
-// teams of region set[0]; set[1] '+' adds a team the table lacks, '-' leaves out one no body holds.
-export const deducedLineup = (page, list, set, tiers) => page.evaluate(([list, set, tiers]) => {
-  const teams = new Set(Object.keys(TEAM_NAMES).filter(id => id.startsWith('1' + set[0])));
-  if (set[1] === '+') teams.add('1' + set[0] + '999');
-  if (set[1] === '-') {
-    const taken = new Set(list.filter(m => m.id !== '1-2').flatMap(m => COLORS.map(c => matchTeamId(m, c))));
-    teams.delete([...teams].find(id => !taken.has(id)));
-  }
-  const line = deduceLineup(list, teams, tiers);
-  return line && { id: line.id, teams: COLORS.map(c => matchTeamId(line, c)).sort() };
-}, [list, set, tiers]);
+// The line-up the page deduces from `list` (bodies) for `tiers` tiers out of the team ids `teams`: a body, or null.
+export const lineupFrom = (page, list, teams, tiers) => page.evaluate(([l, t, n]) => deduceLineup(l, new Set(t), n), [list, teams, tiers]);
 
 // The match the page keeps for team `t`, and whether it keeps one for `t` (a string or its number).
 export const teamMatchKept = (page, t) => page.evaluate(i => teamToMatchId.get(i), t);
 export const teamMatchRemembered = (page, t) => page.evaluate(m => teamToMatchId.has(m) || teamToMatchId.has(Number(m)), t);
-
-// The team tables forgotten, as on a page that never read them.
-export const forgetTeamTables = page => page.evaluate(() => { wvwMapCache = null; });
 
 // The Check's match for team `t`: its id, whether it came from the page's memory of the week, and whether
 // a body from memory sits among those the page keeps.
@@ -364,36 +335,6 @@ export async function countFailedLoads(page) {
 }
 
 // ---- the corners and the skirmish trend ---------------------------------------
-// The kept bodies of the match `id` as the corner and the trend read them: the kill history cleared, then
-// rows of [age (ms before now), kills added on Center] on top of the kills the body holds, the score last
-// rising `roseAgo` ms ago and the week begun `startAgo` ms ago; returns the kept body.
-export const plantKillHistory = (page, id, { rows, roseAgo, startAgo }) => page.evaluate(([id, rows, roseAgo, startAgo]) => {
-  localStorage.removeItem('wvw-fight-v1');
-  const now = Date.now();
-  const k = newestMatches.get(id);
-  const T = fightTotals(k.match);
-  killSheet = new Map([[id, rows.map(([age, bonus]) => ({ at: now - age,
-    n: Object.fromEntries(KILLS_MAP_ORDER.map(ty => [ty, (T[ty] || 0) + (ty === 'Center' ? bonus : 0)])) }))]]);
-  killSheetAt = now;
-  k.rose = true;
-  k.at = now - roseAgo;
-  k.match.start_time = new Date(now - startAgo).toISOString();
-  return k.match;
-}, [id, rows, roseAgo, startAgo]);
-
-// The kept body of `id` with its score last rising `rose` ms ago and its week four days old, the kill
-// history cleared; returns the page's now, the kills of the body by map (in the order of the map's tabs) and the body.
-export const agedKeptMatch = (page, id, rose) => page.evaluate(([id, rose]) => {
-  localStorage.removeItem('wvw-fight-v1');
-  const now = Date.now();
-  const k = newestMatches.get(id);
-  k.rose = true;
-  k.at = now - rose;
-  k.match.start_time = new Date(now - 4 * 86400e3).toISOString();
-  const T = fightTotals(k.match);
-  return { now, T: KILLS_MAP_ORDER.map(ty => T[ty] || 0), match: k.match };
-}, [id, rose]);
-
 // The time (HH:MM, the viewer's) the kill history of `id` runs to, and the time its score last rose.
 export const clockOfKillsAndScore = (page, id) => page.evaluate(i => {
   const hh = t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -437,24 +378,7 @@ export const runPeekNow = page => page.evaluate(() => { runPeek(); });
 // A read of the copy as the page makes it when it asks for the newest, offered as a late one.
 export const readLatestNow = page => page.evaluate(() => startLatest().then(offerLate));
 
-// As an init script: whether the push was live within a second of the first version the page heard;
-// liveEarly(page) reads it.
-export const LIVE_EARLY_SCRIPT = `globalThis.liveEarly = false;
-(() => {
-  let heardAt = 0;
-  setInterval(() => {
-    if (typeof pushHeard === 'undefined' || !pushHeard) return;
-    heardAt ||= Date.now();
-    if (Date.now() - heardAt < 1000 && pushLive()) liveEarly = true;
-  }, 100);
-})();`;
-export const liveEarly = page => page.evaluate(() => globalThis.liveEarly);
-
 // ---- time and the corners ------------------------------------------------------
-// The game's last answer for `id` taken to be now; the kept body of `id` replaced by a copy of itself (the game's own).
-export const gameAnsweredNow = (page, id) => page.evaluate(i => { gameAnsweredAt.set(i, Date.now()); }, id);
-export const keptBodyCopied = (page, id) => page.evaluate(i => { const k = newestMatches.get(i); k.match = { ...k.match }; }, id);
-
 // How long (ms) the kill history of `id` has been silent, and the kills per 10 min the corner rates Center at (0: none).
 export const killViewOf = (page, id) => page.evaluate(i => {
   const kept = newestMatches.get(i);

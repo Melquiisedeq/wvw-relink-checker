@@ -23,11 +23,11 @@
 // And on the row that hides the tab, "What you missed": it shows, its period
 // holds every flip, its count is the flips', its kills are the timeline's.
 import { test, expect } from './support/fixtures.mjs';
-import { fail } from './support/faults.mjs';
+import { answer, fail } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';
 import { recording } from './support/recordings.mjs';
 import { FOCUS, HOUR, MIN, apiDown, at, copyAheadOld, copyBehindAll, fightStops, frozen, hidden, killSteps, missed, playing, twoPools, visible, visitorDown, wake } from './support/scenarios.mjs';
-import { gameAnsweredNow, keptBodyCopied, killViewOf, loadNow, loadSettled, periodicRefreshReady, seedPeriodicRefresh } from './support/page.mjs';
+import { keptBody, killViewOf, loadNow, loadSettled, periodicRefreshReady, seedPeriodicRefresh } from './support/page.mjs';
 
 const STALE_MS = 6 * MIN;
 // How long the page may take to read the API again: the open map asks every
@@ -430,11 +430,26 @@ test.describe("the visitor's server group down, our copy current", () => {
     expect(tip).toContain(`Score last changed at ${want}, read by our server.`);
     // The wording follows the body on show, not the game's last answer: an answer just now
     // changes nothing while the copy's body stands, and the game's own body gets the plain line.
-    const body = mode => (mode === 'answered' ? gameAnsweredNow(page, FOCUS) : keptBodyCopied(page, FOCUS));
-    await body('answered');
+    // The map's next read of the game answered: with a body behind the one on show (the copy's stands),
+    // then with one well ahead of every copy to come (the game's own replaces it).
+    const kept = await keptBody(page, FOCUS);
+    const back = structuredClone(kept), along = structuredClone(kept);
+    for (const c of Object.keys(kept.scores)) {
+      back.kills[c] = Math.max(0, back.kills[c] - 50);
+      back.deaths[c] = Math.max(0, back.deaths[c] - 50);
+      along.scores[c] += 5000;
+      along.kills[c] += 500;
+    }
+    const answered = async body => {
+      const game = await answer(page, new RegExp(`^https://api\\.guildwars2\\.com/v2/wvw/matches\\?id=${FOCUS}$`), body);
+      await expect.poll(async () => { await wvw.settle(); await page.clock.fastForward(3000); return game.reads; },
+        { message: 'the map read the game', timeout: 30 * 1000 }).toBeGreaterThan(0);
+      game.off();
+    };
+    await answered(back);
     tip = await said();
     expect(tip, 'the game answered just now, the copy\'s body on show').toMatch(/read by our server\. The game last answered this page \d+ s ago\.$/);
-    await body('game');
+    await answered(along);
     tip = await said();
     expect(tip, 'the game\'s own body on show').toMatch(/^Score last changed at [^.]*\. This page checks the game every 30 s; last answer \d+ s ago\. The game's data runs about 40 s behind play\.$/);
     await btn.click();
