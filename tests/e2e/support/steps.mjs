@@ -154,6 +154,12 @@ export const board = async (page, id) => {
 // Two animation frames: what a repaint scheduled has been drawn.
 export const frame = page => page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
 
+// `n` animation frames: the clock had its chances to draw or to play something again.
+export const frames = (page, n) => page.evaluate(k => new Promise(done => {
+  const step = () => (--k ? requestAnimationFrame(step) : done());
+  requestAnimationFrame(step);
+}), n);
+
 // An ISO time without a trailing .000; other milliseconds stay (support/gw2.mjs has the game's whole-second form).
 export const iso = t => new Date(t).toISOString().replace('.000Z', 'Z');
 

@@ -20,20 +20,13 @@ const PORT = 'support/page.mjs';
 const WAITING = {
   'a11y.spec.mjs': ['paintRetryStatus', 'setStandingsStatus'],
   'budget.spec.mjs': ['fillTierMaps'],
-  'effects.spec.mjs': ['chargeBall', 'loadStandings', 'matchDataCache', 'matchTeamId', 'showGuildFound', 'startCharge', 'stopFollowing'],
-  'embers.spec.mjs': ['emberField', 'spawnEmberBlast', 'updateRelinkBanner'],
   'focus.spec.mjs': ['newestMatches', 'objectiveCatalogue'],
-  'frames.spec.mjs': ['emberField'],
   'load.spec.mjs': ['loadStandings'],
   'notice.spec.mjs': ['assignNA', 'getTeamName', 'relinkStateAt', 'updateRelinkBanner', 'wvwMapCache'],
   'popovers.spec.mjs': ['OBJ_SIZE', 'WVW_STATIC'],
-  'reach.spec.mjs': ['activeTrigger'],
   'relink.spec.mjs': ['WVW_STATIC'],
-  'rings.spec.mjs': ['missedOpen', 'missedRings'],
   'score.spec.mjs': ['loadStandings', 'matchDataCache', 'matchTeamId', 'showGuildFound', 'tierMapButtons'],
   'search.spec.mjs': ['MAX_ENTRIES', 'activeTrigger', 'getGuildInfo', 'guildNameCache', 'refreshStandings', 'schedulePeriodicRefresh'],
-  'shot.spec.mjs': ['guildsShotCanvas', 'renderGuildsPopoverContent'],
-  'slide.spec.mjs': ['SWAP_MS', 'loadStandings', 'matchDataCache', 'matchTeamId', 'showGuildFound'],
 };
 
 const TOP = /^(?:async\s+)?(?:function\*?\s+|const\s+|let\s+|var\s+|class\s+)([A-Za-z_$][\w$]*)/;

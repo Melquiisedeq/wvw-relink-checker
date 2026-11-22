@@ -7,7 +7,8 @@
 // run-once effects (transitions, CSS animations, element.animate) ride the same clock while
 // they last, and whatever stops it hands them back to play out.
 import { test, expect } from './support/fixtures.mjs';
-import { load, search } from './support/steps.mjs';
+import { load, search, frames } from './support/steps.mjs';
+import { hidden } from './support/scenarios.mjs';
 
 const ARGS = ['--disable-frame-rate-limit', '--disable-gpu-vsync'];
 test.use({
@@ -60,8 +61,9 @@ test('standing still and watched, the page draws only when the embers do', { tag
   // About one a frame of embers; a looping animation on CSS draws two or more.
   expect.soft(running.drawn, `${line}: about one per ember frame`).toBeLessThan(1.5 * running.embers);
 
-  // The clock stopped by hand: whatever still draws is moving on its own.
-  await page.evaluate(() => emberField.stop());
+  // The clock stopped by hiding the tab (only its visibilityState: the browser still
+  // draws): whatever still draws is moving on its own.
+  await hidden(page, wvw, 0);
   await page.waitForTimeout(300);
   const still = await count(page, 2000);
   console.log(`frames.spec: ${still.drawn} frames drawn in 2 s with the clock stopped`);
@@ -152,7 +154,8 @@ test('a run-once effect cancelled on the clock just before the tab hides is not 
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
     document.dispatchEvent(new Event('visibilitychange'));
   });
-  await page.waitForTimeout(300);
+  // Twenty frames of the shown tab, each a chance for the clock to play it again.
+  await frames(page, 20);
   expect(await page.evaluate(() => window.__cancelled.playState), 'the cancelled effect with the tab shown again').toBe('idle');
   await allFinish(page, 'the other run-once effects');
 });
@@ -192,12 +195,10 @@ for (const reduced of [false, true]) {
     // A shot at an empty spot, then a Check's round, which rides the sling until it is let go.
     await page.mouse.click(640, 20);
     await expect.poll(() => page.evaluate(() => window.__flames), { message: 'a shot flying' }).toBe(1);
-    await page.waitForTimeout(3000);
-    await expect(flames, 'flames 3 s after the shot').toHaveCount(0);
+    await expect(flames, 'flames gone within 3 s of the shot').toHaveCount(0, { timeout: 3000 });
     await search(page, wvw.guilds);
     await expect.poll(() => page.evaluate(() => window.__flames), { message: "the Check's round flying" }).toBe(2);
-    await page.waitForTimeout(3000);
-    await expect(flames, "flames 3 s after the Check's round").toHaveCount(0);
+    await expect(flames, "flames gone within 3 s of the Check's round").toHaveCount(0, { timeout: 3000 });
     await allFinish(page, 'run-once effects after the shots');
   });
 }
