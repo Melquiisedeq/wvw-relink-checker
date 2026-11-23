@@ -1,7 +1,7 @@
 # Read by Cloudflare, never served: wrangler leaves _headers out of the upload.
 
 # The Content Security Policy is a header, never a <meta> in index.html:
-# check-structure.py fails on a <meta> one, and a header also covers the document
+# check-structure.mjs fails on a <meta> one, and a header also covers the document
 # from its first byte and can say frame-ancestors, which a <meta> cannot.
 #
 # script-src and style-src 'self', no unsafe-inline: every script comes from js/,
@@ -15,7 +15,7 @@
 #
 # img-src: local files, plus guild emblems from ArenaNet's asset host.
 #
-# check-structure.py reads the policy from the line below; check-site.py compares
+# check-structure.mjs reads the policy from the line below; check-site.py compares
 # it with what wvwrelink.com serves.
 /*
   Content-Security-Policy: default-src 'none'; script-src 'self' https://static.cloudflareinsights.com/beacon.min.js; style-src 'self'; connect-src 'self' wss://wvwrelink.com https://api.guildwars2.com https://docs.google.com https://cloudflareinsights.com; img-src 'self' https://render.guildwars2.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'

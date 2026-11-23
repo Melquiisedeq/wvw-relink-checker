@@ -2,7 +2,7 @@
 // The tier maps' early half: map buttons and swords badge, the fight log, the
 // "What happened" bookkeeping. The drawing code is js/maps.js, loaded by
 // loadMapsScript; it reads what this file declares, so this file stays where
-// index.html loads it (check-structure.py fails if the quoted path is missing).
+// index.html loads it (check-structure.mjs fails if the quoted path is missing).
 
 // Tab order. Red last: it is the heaviest of the three, and second it fights EBG for the eye.
 const MAP_PANEL_ORDER = ['Center', 'BlueHome', 'GreenHome', 'RedHome'];

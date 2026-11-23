@@ -148,7 +148,7 @@ A pull request needs four checks to pass: `structure`, `syntax`, `rules` and
 `page` (`.github/workflows/checks.yml`). `rules` and `page` are the two test
 commands above; `structure` runs without a network or an install:
 
-    python3 scripts/check-structure.py
+    node scripts/check-structure.mjs
 
 `structure` also checks the README's Privacy tables against the code: every host
 the page fetches and every key it stores must be listed there.
