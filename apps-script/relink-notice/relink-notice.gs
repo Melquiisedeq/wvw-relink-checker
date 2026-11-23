@@ -49,7 +49,7 @@
  *
  * relink!A2, one epoch integer - the heartbeat, which the site never reads. It
  * is written FIRST, before anything that can throw, on every tick: a trigger
- * that never runs makes no sound. check-notice.py reads it and fails on a stale one.
+ * that never runs makes no sound. check-notice.mjs reads it and fails on a stale one.
  *
  * After every tick both cells also go to wvwrelink.com/api, signed - see
  * push(). The cells stay the one source: what is sent is read back from them.
@@ -120,7 +120,7 @@ var RelinkNotice_ = (function () {
   var BASELINE_TAB = { na: 'baseline-na', eu: 'baseline-eu' };
 
   // A baseline older than this means a whole window was missed and would read as a relink.
-  // Refuse, retake. Must agree with MAX_GAP_SECONDS in scripts/check-notice.py.
+  // Refuse, retake. Must agree with MAX_GAP_SECONDS in scripts/check-notice.mjs.
   var BASELINE_MAX_AGE_SECONDS = 45 * 24 * 60 * 60;
 
   var GUID_RE = /^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$/;
@@ -302,7 +302,7 @@ var RelinkNotice_ = (function () {
 
 
   /**
-   * The cell the site reads, creating the tab if it is not there; check-notice.py watches either way.
+   * The cell the site reads, creating the tab if it is not there; check-notice.mjs watches either way.
    * An empty default sheet is renamed rather than left in front: the CSV export serves the
    * FIRST sheet when it cannot find the tab name. Later tabs go at the end.
    */
@@ -330,7 +330,7 @@ var RelinkNotice_ = (function () {
    * Stamps the heartbeat, and never lets its own failure end the tick.
    *
    * A failed write means the document is unreachable, which the work below reports
-   * through fail(); throwing here would replace that report, and check-notice.py
+   * through fail(); throwing here would replace that report, and check-notice.mjs
    * should see a stale heartbeat anyway.
    */
   function beat(now) {

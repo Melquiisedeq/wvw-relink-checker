@@ -7,10 +7,6 @@ Thumbs.db
 .idea/
 *.swp
 
-# The checks under scripts/ import workflow_text.py, and the tests import the
-# checks; Python leaves this behind next to every file it imported.
-__pycache__/
-
 # Notes to self, and nothing the site needs to run: the research behind each
 # feature and a sweep of everything the GW2 API can return. The Apps Script
 # code is not here but in apps-script/. Also where the full-size image

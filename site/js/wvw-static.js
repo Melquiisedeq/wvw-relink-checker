@@ -3,7 +3,7 @@
 // The two static catalogues the objective maps are built from, written out instead of
 // fetched: the objectives on the WvW maps and the polygons of their sectors. They
 // sit on the popover's critical path; the page never refreshes them from the game, and
-// scripts/check-catalogue.py compares this copy with the game on Health's six-hour
+// scripts/check-catalogue.mjs compares this copy with the game on Health's six-hour
 // schedule (.github/workflows/health.yml), which GitHub may delay or drop.
 //
 // Only the fields the drawing code reads; coordinates rounded to one decimal (the
