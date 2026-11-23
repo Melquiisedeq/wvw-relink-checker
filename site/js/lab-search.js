@@ -247,12 +247,11 @@ function labOnBreak() {
 // ---- the found team's card in the standings ------------------------------------------------
 // The showGuildFound hook. No scroll: the sheen and ring start when the card comes into view, and
 // last 8 s from then; a standings repaint rebuilds the card, and labAfterStandings paints it again.
-// The site's strip with the guild's name (paintGuildFound) hangs from the card from that moment too.
 function labGuildFound(teamId, guildName) {
   if (typeof document.querySelectorAll !== 'function') return false;
   labS.found = { teamId, guildName };
   labDropMark();
-  labS.mark = { names: [getTeamName(teamId)], started: 0, guild: ['both', 'search'].includes(labPrefs.strip) ? guildName : '' };
+  labS.mark = { names: [getTeamName(teamId)], started: 0 };
   labWatchMark();
   return true;
 }
@@ -295,7 +294,6 @@ function labStartMark() {
   if (!m || m.started) return;
   m.started = Date.now();
   labPaintMark(true);
-  if (m.guild) labHangStrip(m.names[0], m.guild);
   labS.markTimer = setTimeout(labDropMark, LAB_MARK_MS);
 }
 function labPaintMark(fresh) {
@@ -317,13 +315,11 @@ function labDropMark() {
   if (typeof document.querySelectorAll !== 'function') return;
   for (const el of document.querySelectorAll('.lab-hl')) el.remove();
 }
-// The strike on the team cards at the end of a spotlight: the sheen, the sparks, the 8 s ring from now,
-// and the guild's strip when the arrow of a found guild brought it there.
-function labStrikeCards(names, guild) {
+// The strike on the team cards at the end of a spotlight: the sheen, the sparks, the 8 s ring from now.
+function labStrikeCards(names) {
   labDropMark();
-  labS.mark = { names, started: Date.now(), guild: '' };
+  labS.mark = { names, started: Date.now() };
   for (const card of labPaintMark(true)) labSparksFrom(card);
-  if (guild && ['both', 'arrow'].includes(labPrefs.strip)) labHangStrip(names[0], guild);
   labS.markTimer = setTimeout(labDropMark, LAB_MARK_MS);
 }
 
@@ -359,9 +355,12 @@ function labRingPath(w, h) {
   const t = LAB_RING;
   return `path(evenodd, 'M${c} 0H${w}V${h - c}L${w - c} ${h}H0V${c}Z M${c + 1} ${t}L${t} ${c + 1}V${h - t}H${w - c - 1}L${w - t} ${h - c - 1}V${t}Z')`;
 }
+// The guild's strip (the arrow of a found guild) hangs under its team's card before the ring is measured:
+// it makes the tier taller, and a ring measured without it would cross it.
 function labPlaySpot(tier, names, guild) {
   for (const old of document.querySelectorAll('.lab-spot')) old.remove();
   for (const m of document.querySelectorAll('.lab-dimmed')) m.classList.remove('lab-dimmed');
+  if (guild) labHangStrip(names[0], guild);
   const first = labMarkCardOf(names[0]);
   const col = tier.parentElement;
   col.classList.add('lab-spot-col');
@@ -379,7 +378,7 @@ function labPlaySpot(tier, names, guild) {
   fx.appendChild(labEl('span', 'lab-ring'));
   col.appendChild(fx);
   for (const m of col.children) if (m !== tier && m.classList.contains('standing-match')) m.classList.add('lab-dimmed');
-  setTimeout(() => labStrikeCards(names, guild), LAB_SPOT_HIT_MS);
+  setTimeout(() => labStrikeCards(names), LAB_SPOT_HIT_MS);
   setTimeout(() => {
     fx.remove();
     for (const m of document.querySelectorAll('.lab-dimmed')) m.classList.remove('lab-dimmed');

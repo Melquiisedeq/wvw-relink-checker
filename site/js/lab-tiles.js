@@ -1,20 +1,23 @@
 'use strict';
 // LAB (never merged). The highlights panel, from the page's own live data (newestMatches and the kill
-// readings of js/maps-early.js): no request of its own. Up to four tiles (three, and the leaders in a strip
-// of their own, with "Own strip"), each with its tier's chip in the same corner, the site's own icon for what it counts, and the colour only on what is a team's. Every
-// number says its period. Team names are strangers' text: textContent only.
+// readings of js/maps-early.js): no request of its own. Only the region the page puts first
+// (data-rail-first, js/region.js): the Hottest fight and the Busiest map side by side, the Closest match
+// under them, and the week's leaders one at a time in a box of their own below. Team names are strangers'
+// text: textContent only.
 
 const LAB_MIN = 60000;
-const LAB_STONEMIST = '38-9';
 const labNow = () => (typeof steadyNow === 'function' ? steadyNow() : Date.now());
 const labNum = (n) => Math.round(Number(n) || 0).toLocaleString('en-US');
 const labRegion = (id) => (String(id).charAt(0) === '1' ? 'NA' : 'EU');
+// The region the page puts first (railFirst, js/dom.js): the only one the highlights cover.
+const labRegionFirst = () => (typeof railFirst === 'function' ? railFirst() : 'na').toUpperCase();
 const labCap = (c) => c.charAt(0).toUpperCase() + c.slice(1);
 
 function labKept() {
   if (typeof newestMatches === 'undefined') return [];
   return [...newestMatches.values()]
     .filter((k) => k && k.match && typeof k.match.id === 'string' && Array.isArray(k.match.maps))
+    .filter((k) => labRegion(k.match.id) === labRegionFirst())
     .sort((a, b) => (a.match.id < b.match.id ? -1 : 1));
 }
 function labTeamName(m, color) {
@@ -72,38 +75,6 @@ function labFlips() {
   }
   return out.sort((a, b) => b.n - a.n);
 }
-function labStonemist() {
-  const t = labNow();
-  let best = null;
-  for (const k of labKept()) {
-    const ebg = k.match.maps.find((x) => x.type === 'Center');
-    const o = ebg && (ebg.objectives || []).find((x) => x.id === LAB_STONEMIST);
-    if (!o) continue;
-    const color = String(o.owner).toLowerCase();
-    if (!COLORS.includes(color)) continue;
-    const row = { m: k.match, o, color, name: labTeamName(k.match, color), held: t - Date.parse(o.last_flipped) };
-    if (!best || row.held < best.held) best = row;
-  }
-  return best;
-}
-// objectiveTier's rule (js/maps.js) on the upgrade lines maps.js fetched for an open map: before the
-// first opening there are none, and the lab asks for nothing of its own.
-function labUpgrade(o) {
-  const cat = typeof upgradeCatalogue !== 'undefined' ? upgradeCatalogue : null;
-  const pack = typeof WVW_STATIC === 'object' && WVW_STATIC && Array.isArray(WVW_STATIC.objectives) ? WVW_STATIC.objectives : [];
-  const meta = pack.find((x) => x.id === o.id);
-  const line = cat && meta && cat.get(meta.upgrade_id);
-  if (!line || !Array.isArray(line.tiers)) return null;
-  const yaks = Number(o.yaks_delivered || 0);
-  let spent = 0;
-  let reached = 0;
-  for (const tier of line.tiers) {
-    const at = spent + Number(tier.yaks_required || 0);
-    if (yaks >= at) reached += 1;
-    spent = at;
-  }
-  return { tier: reached, of: line.tiers.length, name: reached ? line.tiers[reached - 1].name : null };
-}
 function labClosest() {
   let best = null;
   for (const k of labKept()) {
@@ -125,8 +96,14 @@ function labPpt(m) {
   }
   return by;
 }
-// The K/D leader needs this many deaths in the week: a team a few kills in is no record.
+// The K/D leader needs this many deaths in the week: a team that has barely played is no record. Not
+// shown: every team past the first hours of a week is far over it.
 const LAB_KD_MIN_DEATHS = 500;
+// The site's own marks, one per measure: the map's swords for kills, the card's Activity bolt
+// (js/stat-popovers.js), the score-trend line (js/stat-popovers.js) for the points that feed the score,
+// the card's own "VP" label for VP, and K/D as the card writes it.
+const LAB_BOLT = ['M13 2 L4 14 h6 l-1 8 l9 -12 h-6 Z'];
+const LAB_TREND = ['M3 17 L9 10 L14 14 L21 5'];
 function labLeaders() {
   const rows = [];
   for (const k of labKept()) {
@@ -140,34 +117,34 @@ function labLeaders() {
   }
   const top = (f, ok = () => true) => rows.filter(ok).reduce((b, r) => (!b || f(r) > f(b) ? r : b), null);
   const list = [
-    { label: 'Most kills', icon: 'Swords', r: top((r) => r.kills), big: (r) => labNum(r.kills), unit: 'kills', period: 'this week' },
-    { label: 'Most VP', icon: 'VP', r: top((r) => r.vp), big: (r) => labNum(r.vp), unit: 'VP', period: 'this week' },
-    { label: 'Highest PPT', icon: 'Keep', r: top((r) => r.ppt), big: (r) => labNum(r.ppt), unit: 'points per tick', period: 'now' },
-    { label: 'Most active', icon: 'Swords', r: top((r) => r.kills + r.deaths), big: (r) => labNum(r.kills + r.deaths), unit: 'kills + deaths', period: 'this week' },
-    { label: 'Best K/D', icon: 'Swords', r: top((r) => r.kills / r.deaths, (r) => r.deaths >= LAB_KD_MIN_DEATHS),
-      big: (r) => (r.kills / r.deaths).toFixed(2), unit: 'kills per death', period: `this week · ${LAB_KD_MIN_DEATHS}+ deaths` },
+    { label: 'Most kills', icon: () => labImg('Event_Swords', 'lt-ic lt-ic-img', 16), r: top((r) => r.kills), big: (r) => labNum(r.kills), unit: 'kills', period: 'this week' },
+    { label: 'Most VP', icon: () => labIconOf('VP'), r: top((r) => r.vp), big: (r) => labNum(r.vp), unit: 'VP', period: 'this week' },
+    { label: 'Highest PPT', icon: () => labIcon(LAB_TREND, 'lt-ic lt-ic-svg'), r: top((r) => r.ppt), big: (r) => labNum(r.ppt), unit: 'points per tick', period: 'now' },
+    { label: 'Most active', icon: () => labIcon(LAB_BOLT, 'lt-ic lt-ic-svg'), r: top((r) => r.kills + r.deaths), big: (r) => labNum(r.kills + r.deaths), unit: 'kills + deaths', period: 'this week' },
+    { label: 'Best K/D', kd: true, r: top((r) => r.kills / r.deaths, (r) => r.deaths >= LAB_KD_MIN_DEATHS),
+      big: (r) => (r.kills / r.deaths).toFixed(2), unit: 'kills per death', period: 'this week' },
   ];
-  return list.filter((x) => x.r && (x.icon === 'VP' || x.r.kills + x.r.deaths + x.r.ppt > 0));
+  return list.filter((x) => x.r && (x.unit === 'VP' || x.r.kills + x.r.deaths + x.r.ppt > 0));
 }
 
-// Opens the live map of a match by pressing its own "Live maps" button: the map then sits where it always
-// does. A tab or an objective asked for waits in labMapWant until js/maps.js hands over its goTo.
+// Opens the live map of a match on one of its tabs by pressing the match's own "Live maps" button: the map
+// then sits where it always does. The tab waits in labMapWant until js/maps.js hands over its goTo.
 let labMapWant = null;
-function labOpenMap(matchId, type, id) {
+function labOpenMap(matchId, type) {
   if (typeof tierMapButtons === 'undefined') return;
-  labMapWant = type ? { matchId, type, id } : null;
+  labMapWant = type ? { matchId, type } : null;
   for (const btn of document.querySelectorAll('.tier-map-btn')) {
     const it = tierMapButtons.get(btn);
     if (it && it.match && it.match.id === matchId) { btn.click(); return; }
   }
   labMapWant = null;
 }
-// The js/maps.js hook, once the opening tab is up: goTo(type, id, select) shows a tab and selects an objective.
+// The js/maps.js hook, once the opening tab is up: goTo(type) shows a tab.
 function labMapOpened(matchId, goTo) {
   const want = labMapWant;
   labMapWant = null;
   if (!want || want.matchId !== matchId || typeof goTo !== 'function') return;
-  try { goTo(want.type, want.id == null ? null : want.id, want.id != null); } catch { /* the map is already up */ }
+  try { goTo(want.type, null, false); } catch { /* the map is already up */ }
 }
 
 function labDot(color) { return labEl('span', `lab-dot lab-dot-${color}`); }
@@ -199,7 +176,10 @@ function labIconOf(kind, color) {
   if (kind === 'VP') return labEl('span', 'lt-ic lt-ic-vp', 'VP');
   return labImg(`Event_${kind}${COLORS.includes(color) ? `_${color}` : ''}`, 'lt-ic lt-ic-img', 16);
 }
-const labChipOf = (id) => labEl('span', 'lt-tier', `${labRegion(id)} · T${String(id).split('-')[1] || '?'}`);
+const labTierNo = (id) => String(id).split('-')[1] || '?';
+const labTierTag = (id) => `${labRegion(id)} · T${labTierNo(id)}`;
+// The region is in the panel's title: the chip names the tier alone.
+const labChipOf = (id) => labEl('span', 'lt-tier', `T${labTierNo(id)}`);
 
 // One tile: the icon and what it counts in the top row with the tier's chip in the far corner, then what
 // the tile builds. A tile with t.go is a button.
@@ -227,38 +207,32 @@ function labBig(num, unit) {
 }
 const LAB_MAP_LONG = { Center: 'Eternal Battlegrounds', RedHome: 'Red Borderlands', BlueHome: 'Blue Borderlands', GreenHome: 'Green Borderlands' };
 
-// The map's capture rings (.wvw-ring in css/maps.css) round an objective's marker, looping: the Busiest map's
-// motion, as the swords are the Hottest fight's.
-function labPulse(type, color) {
+// The map's capture ring (.wvw-ring in css/maps.css) round an objective's marker: the Busiest map's motion,
+// as the swords are the Hottest fight's. "slow": one ping every 4 s; "once": one ping when the tile first
+// shows and when its count changes (a repaint with the same count plays nothing); "still": none.
+let labBusyShown = '';
+function labPulse(type, color, key) {
+  const motion = labPrefs.busyMotion;
+  const fresh = key !== labBusyShown;
+  labBusyShown = key;
   const wrap = labEl('span', 'lt-pulse');
-  wrap.append(labEl('span', 'lt-pulse-ring'), labEl('span', 'lt-pulse-ring lt-pulse-ring-b'), labIconOf(type, color));
+  if (motion === 'slow' || (motion === 'once' && fresh)) wrap.appendChild(labEl('span', `lt-pulse-ring lt-pulse-${motion}`));
+  wrap.appendChild(labIconOf(type, color));
   return wrap;
 }
-// The castle's marker in its owner's colour, inside a ring of that colour: Stonemist's mark.
-function labCastleMark(color) {
-  const wrap = labEl('span', `lt-mark side-${color}`);
-  wrap.appendChild(labIconOf('Castle', color));
-  return wrap;
-}
-function labFightTile(f) {
+function labFightTile(f, solo) {
   const teams = labEl('span', 'lt-teams');
   for (const c of COLORS) teams.appendChild(labTeamText(labTeamName(f.m, c), c));
   const where = LAB_MAP_LONG[f.type] || f.type;
   const when = f.silence > 3 * LAB_MIN ? `last kill ${labSpan(f.silence)} ago` : 'now';
-  return labTile({ cls: 'lt-wide lt-hot', icon: labClash(), label: 'Hottest fight', chip: labChipOf(f.m.id),
+  return labTile({ cls: `lt-hot${solo ? ' lt-solo' : ''}`, icon: labClash(), label: 'Hottest fight', chip: labChipOf(f.m.id),
     body: [labBig(labNum(f.n), 'kills / 10 min'), labEl('span', 'lt-map', `${where} · ${when}`), teams],
     go: () => labOpenMap(f.m.id, f.type),
     aria: `Hottest fight, ${labTierTag(f.m.id)}: ${labNum(f.n)} kills per 10 minutes on ${where}, ${when}. Open the live map on it` });
 }
-// "Captures by team": who holds what was taken, as a bar and three counts in the teams' colours.
-function labBusyTile(flip) {
+// Who holds what was taken, as a bar and three counts in the teams' colours.
+function labBusyTile(flip, solo) {
   const where = LAB_MAP_LONG[flip.type] || flip.type;
-  const aria = `Busiest map, ${labTierTag(flip.m.id)}: ${flip.n} objectives taken in the last 2 hours on ${where}`;
-  const go = () => labOpenMap(flip.m.id, flip.type);
-  if (labPrefs.busy === 'count') {
-    return labTile({ cls: 'lt-wide', icon: labIconOf('Tower'), label: 'Busiest map', chip: labChipOf(flip.m.id),
-      body: [labBig(String(flip.n), 'captures'), labEl('span', 'lt-map', `${where} · last 2 h`)], go, aria: `${aria}. Open the live map on it` });
-  }
   const order = COLORS.slice().sort((a, b) => flip.by[b] - flip.by[a]);
   const bar = labEl('span', 'lt-split');
   for (const c of order) {
@@ -274,38 +248,20 @@ function labBusyTile(flip) {
     teams.appendChild(row);
   }
   const said = order.map((c) => `${labTeamName(flip.m, c)} ${flip.by[c]}`).join(', ');
-  return labTile({ cls: 'lt-wide lt-busy', icon: labPulse(flip.last.type, flip.last.color), label: 'Busiest map', chip: labChipOf(flip.m.id),
+  const icon = labPulse(flip.last.type, flip.last.color, `${flip.m.id}|${flip.type}|${flip.n}`);
+  return labTile({ cls: `lt-busy${solo ? ' lt-solo' : ''}`, icon, label: 'Busiest map', chip: labChipOf(flip.m.id),
     body: [labBig(String(flip.n), flip.n === 1 ? 'objective taken' : 'objectives taken'), labEl('span', 'lt-map', `${where} · last 2 h`), bar, teams],
-    go, aria: `${aria}, held now by ${said}. Open the live map on it` });
+    go: () => labOpenMap(flip.m.id, flip.type),
+    aria: `Busiest map, ${labTierTag(flip.m.id)}: ${flip.n} objectives taken in the last 2 hours on ${where}, held now by ${said}. Open the live map on it` });
 }
-function labHotTile() {
-  const f = labPrefs.busyPreview ? null : labHot();
-  if (f) return labFightTile(f);
-  const flip = labFlips()[0];
-  if (flip) return labBusyTile(flip);
-  return labTile({ cls: 'lt-wide', icon: labImg('Event_Swords', 'lt-ic lt-ic-img', 16), label: 'Hottest fight', chip: labEl('span', 'lt-tier', 'All tiers'),
-    body: [labEl('span', 'lt-map', 'No map with a fight right now')] });
-}
-// Three faces, the Hottest fight's shape (a small mark by the label, one thing big, a line of context):
-// the owner's name, the time held, or the yaks delivered since it was taken (the API's yaks_delivered,
-// which a capture sets back to 0).
-function labStonemistTile() {
-  const sm = labStonemist();
-  if (!sm) return null;
-  const up = labUpgrade(sm.o);
-  const held = labSpan(sm.held);
-  const yaks = Number(sm.o.yaks_delivered);
-  const face = labPrefs.stone === 'yaks' && !Number.isFinite(yaks) ? 'owner' : labPrefs.stone;
-  const owner = labEl('span', `lt-owner-name side-${sm.color}`, sm.name);
-  const by = labEl('span', 'lt-teams');
-  by.appendChild(labTeamText(sm.name, sm.color));
-  const body = face === 'time' ? [labBig(held, 'held'), labEl('span', 'lt-map', 'Eternal Battlegrounds'), by]
-    : face === 'yaks' ? [labBig(labNum(yaks), yaks === 1 ? 'yak since taken' : 'yaks since taken'), labEl('span', 'lt-map', `Held ${held}`), by]
-      : [owner, labEl('span', 'lt-map', `Held ${held} · Eternal Battlegrounds`)];
-  if (up) body.push(labEl('span', 'lt-line', up.tier ? `${up.name} · tier ${up.tier} of ${up.of}` : 'Not upgraded'));
-  return labTile({ cls: `lt-stone lt-stone-${face}`, icon: labCastleMark(sm.color), label: 'Stonemist', chip: labChipOf(sm.m.id), body,
-    go: () => labOpenMap(sm.m.id, 'Center', LAB_STONEMIST),
-    aria: `Stonemist Castle, ${labTierTag(sm.m.id)}: held by ${sm.name} for ${held}${face === 'yaks' ? `, ${labNum(yaks)} yaks delivered since` : ''}. Open the live map on it` });
+// The fight and the busiest map, side by side; either alone takes the row. "The next busiest map" skips
+// the fight's own map.
+function labTopTiles() {
+  const f = labHot();
+  const flips = labFlips();
+  const flip = f && labPrefs.busySame === 'next' ? flips.find((x) => !(x.m.id === f.m.id && x.type === f.type)) : flips[0];
+  const both = !!(f && flip);
+  return [f && labFightTile(f, !both), flip && labBusyTile(flip, !both)].filter(Boolean);
 }
 function labClosestTile() {
   const c = labClosest();
@@ -331,45 +287,12 @@ function labClosestTile() {
     aria: `Closest match, ${labTierTag(c.m.id)}: ${c.a.name} ${labNum(c.a.vp)} VP and ${c.b.name} ${labNum(c.b.vp)} VP, ${labNum(c.gap)} apart this week. Show them in the standings` });
 }
 
-// ---- the week's leaders: a fixed list in a tile ("Static list"), the same list in a strip of its own
-// under the grid ("Own strip"), or one at a time every LAB_ROT_MS with a pause button first in the Tab order ----
-const LAB_ROT_MS = 7000;
+// ---- the week's leaders: one at a time every LAB_ROT_MS in a box under the tiles, with a pause button
+// first in the Tab order; the pointer over it, the focus in it, a touch on it or reduced motion stop it ----
+const LAB_ROT_MS = 5000;
 const labRot = { idx: 0, timer: 0, hover: false, focus: false, paused: false, n: 0 };
 const labStill = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-function labLeaderRow(x) {
-  const row = labEl('span', 'lt-lead');
-  const what = labEl('span', 'lt-lead-what');
-  what.append(labIconOf(x.icon), labEl('span', null, x.label));
-  const val = labEl('span', 'lt-lead-val', x.big(x.r));
-  row.append(what, labTeamText(x.r.name, x.r.color), val);
-  return row;
-}
-function labLeadersList(list, cls) {
-  const box = labEl('div', `lt-leads ${cls}`);
-  box.setAttribute('aria-hidden', 'true');
-  for (const x of list) box.appendChild(labLeaderRow(x));
-  return box;
-}
 const labLeadersSaid = (list) => list.map((x) => `${x.label}, ${x.period}: ${x.r.name}, ${x.big(x.r)} ${x.unit}, ${labTierTag(x.r.m.id)}.`).join(' ');
-function labLeadersStatic(list) {
-  const box = labEl('div', 'lt-tile lt-wide lt-leaders');
-  box.setAttribute('role', 'group');
-  box.setAttribute('aria-label', 'Leaders this week');
-  const top = labEl('span', 'lt-top');
-  const label = labEl('span', 'lt-label');
-  label.append(labIconOf('Keep'), labEl('span', null, 'Leaders'));
-  top.append(label, labEl('span', 'lt-tier', 'This week'));
-  box.append(labEl('span', 'sr-only', labLeadersSaid(list)), top, labLeadersList(list, ''), labEl('span', 'lt-line', 'All tiers, NA and EU · PPT now'));
-  return box;
-}
-function labLeadersStrip(list) {
-  const box = labEl('section', 'lt-strip');
-  box.setAttribute('aria-label', 'This week’s leaders');
-  const head = labEl('div', 'lt-strip-head');
-  head.append(labEl('span', null, 'This week’s leaders'), labEl('span', 'lt-strip-note', 'All tiers · PPT now'));
-  box.append(head, labEl('span', 'sr-only', labLeadersSaid(list)), labLeadersList(list, 'lt-leads-strip'));
-  return box;
-}
 function labRotShow(i) {
   const box = document.querySelector('.lt-rot');
   if (!box) return;
@@ -378,7 +301,7 @@ function labRotShow(i) {
   box.querySelectorAll('.lt-pip').forEach((b, k) => b.setAttribute('aria-pressed', k === i ? 'true' : 'false'));
 }
 function labRotTick() {
-  if (labPrefs.leaders !== 'rot' || labRot.paused || labRot.hover || labRot.focus || document.hidden || labStill() || labRot.n < 2) return;
+  if (labRot.paused || labRot.hover || labRot.focus || document.hidden || labStill() || labRot.n < 2) return;
   labRotShow((labRot.idx + 1) % labRot.n);
 }
 function labRotPaint(b = document.querySelector('.lt-rot-pause')) {
@@ -388,33 +311,47 @@ function labRotPaint(b = document.querySelector('.lt-rot-pause')) {
   b.textContent = '';
   b.appendChild(labIcon(stopped ? ['M8 6l10 6-10 6Z'] : ['M8 6v12', 'M16 6v12'], 'lt-rot-svg'));
 }
-function labLeadersRotating(list) {
+// One metric: its mark and what it measures with the tier's chip, then the team in its colour and the number big.
+// K/D is written as the card writes it: "K/D" before the number, the number green above 1 and red below.
+function labLeaderSlide(x, on) {
+  const s = labEl('div', `lt-slide${on ? ' is-on' : ''}`);
+  const top = labEl('span', 'lt-top');
+  const label = labEl('span', 'lt-label');
+  if (x.icon) label.appendChild(x.icon());
+  label.appendChild(labEl('span', null, `${x.label} · ${x.period}`));
+  top.append(label, labChipOf(x.r.m.id));
+  const who = labEl('span', `lt-rot-row side-${x.r.color}`);
+  const name = labTeamText(x.r.name, x.r.color);
+  name.classList.add('lt-rot-team');
+  let big;
+  if (x.kd) {
+    big = labEl('span', 'lt-big lt-kd');
+    const n = labEl('span', 'lt-num', x.big(x.r));
+    if (x.r.kills !== x.r.deaths) n.classList.add(x.r.kills > x.r.deaths ? 'kd-good' : 'kd-bad');
+    big.append(labEl('span', 'stat-label', 'K/D'), n);
+  } else {
+    big = labBig(x.big(x.r), x.unit);
+  }
+  who.append(name, big);
+  s.append(top, who);
+  return s;
+}
+function labLeadersBox(list) {
+  if (!list.length) return null;
   labRot.n = list.length;
   if (labRot.idx >= list.length || labStill()) labRot.idx = 0;
-  const box = labEl('div', 'lt-tile lt-wide lt-rot');
-  box.setAttribute('role', 'group');
+  const box = labEl('section', 'lt-tile lt-rot');
   box.setAttribute('aria-roledescription', 'carousel');
   box.setAttribute('aria-label', 'Leaders this week');
+  const head = labEl('div', 'lt-rot-head');
+  head.append(labEl('span', null, 'Leaders'), labEl('span', 'lt-rot-note', 'All tiers'));
   const pause = labEl('button', 'lt-rot-pause');
   pause.type = 'button';
   pause.addEventListener('click', () => { labRot.paused = !labRot.paused; labRotPaint(); });
-  const said = labEl('span', 'sr-only', labLeadersSaid(list));
   const slides = labEl('div', 'lt-slides');
   slides.setAttribute('aria-hidden', 'true');
-  list.forEach((x, k) => {
-    const s = labEl('div', `lt-slide${k === labRot.idx ? ' is-on' : ''}`);
-    const top = labEl('span', 'lt-top');
-    const label = labEl('span', 'lt-label');
-    label.append(labIconOf(x.icon), labEl('span', null, `${x.label} · ${x.period}`));
-    top.append(label, labChipOf(x.r.m.id));
-    const who = labEl('span', 'lt-rot-row');
-    who.append(labTeamText(x.r.name, x.r.color), labBig(x.big(x.r), x.unit));
-    s.append(top, who);
-    slides.appendChild(s);
-  });
+  list.forEach((x, k) => slides.appendChild(labLeaderSlide(x, k === labRot.idx)));
   const pips = labEl('div', 'lt-pips');
-  // First in the row, so first in the Tab order.
-  pips.appendChild(pause);
   list.forEach((x, k) => {
     const b = labEl('button', 'lt-pip');
     b.type = 'button';
@@ -429,27 +366,24 @@ function labLeadersRotating(list) {
   box.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse' && !labRot.paused) { labRot.paused = true; labRotPaint(); } });
   box.addEventListener('focusin', () => { labRot.focus = true; });
   box.addEventListener('focusout', () => { labRot.focus = false; });
-  box.append(said, slides, pips);
+  // The pause button first in the box, so first in the Tab order.
+  const ctl = labEl('div', 'lt-rot-ctl');
+  ctl.append(pause, pips);
+  box.append(head, labEl('span', 'sr-only', labLeadersSaid(list)), slides, ctl);
   labRotPaint(pause);
   if (!labRot.timer) labRot.timer = setInterval(labRotTick, LAB_ROT_MS);
   return box;
 }
-function labLeadersTile(list) {
-  if (!list.length || labPrefs.leaders === 'strip') return null;
-  return labPrefs.leaders === 'rot' ? labLeadersRotating(list) : labLeadersStatic(list);
-}
 
-const labTierTag = (id) => `${labRegion(id)} · T${String(id).split('-')[1] || '?'}`;
 function labTilesPanel() {
+  const region = labRegionFirst();
   const panel = labEl('section', 'lt-panel');
-  panel.setAttribute('aria-label', 'Highlights');
-  panel.appendChild(labEl('div', 'lt-head', 'Highlights'));
-  const grid = labEl('div', `lt-grid${labPrefs.grid2 ? ' lt-grid-2' : ''}`);
-  const leaders = labLeaders();
-  const tiles = [labHotTile(), labStonemistTile(), labClosestTile(), labLeadersTile(leaders)].filter(Boolean);
-  for (const t of tiles) grid.appendChild(t);
-  grid.classList.add(`lt-n${tiles.length}`);
+  panel.setAttribute('aria-label', `Highlights, ${region}`);
+  panel.appendChild(labEl('div', 'lt-head', `Highlights · ${region}`));
+  const grid = labEl('div', 'lt-grid');
+  for (const t of [...labTopTiles(), labClosestTile()].filter(Boolean)) grid.appendChild(t);
   panel.appendChild(grid);
-  if (labPrefs.leaders === 'strip' && leaders.length) panel.appendChild(labLeadersStrip(leaders));
+  const leaders = labLeadersBox(labLeaders());
+  if (leaders) panel.appendChild(leaders);
   return panel;
 }

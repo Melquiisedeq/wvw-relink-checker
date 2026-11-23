@@ -104,10 +104,12 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 @keyframes ls-jolt{0%,100%{transform:none;}35%{transform:translateY(-2px);}70%{transform:translateY(1px);}}
 /* ---- highlights ---- */
 .lt-panel{padding:10px 12px 12px;}
-.lt-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;}
-@media (min-width:600px){.lt-grid{grid-template-columns:repeat(4,minmax(0,1fr));}.lt-grid.lt-n3{grid-template-columns:repeat(3,minmax(0,1fr));}}
-/* "Phones: highlights 2x2": two a row under 600 px too; with three, the first takes the whole row. */
-@media (max-width:599px){.lt-grid-2{grid-template-columns:repeat(2,minmax(0,1fr));}.lt-grid-2.lt-n3 > :first-child,.lt-grid-2 .lt-leaders,.lt-grid-2:has(.lt-leaders) .lt-close{grid-column:1 / -1;}}
+/* The Hottest fight and the Busiest map side by side, the Closest match under them; either of the first two
+   alone takes their row. One a row under 360 px, where two would cut their text; three a row from 600 px. */
+.lt-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.lt-grid > .lt-close,.lt-grid > .lt-solo{grid-column:1 / -1;}
+@media (max-width:359px){.lt-grid{grid-template-columns:minmax(0,1fr);}}
+@media (min-width:600px){.lt-grid{grid-template-columns:repeat(3,minmax(0,1fr));}.lt-grid > .lt-close{grid-column:auto;}.lt-grid > .lt-solo{grid-column:span 2;}}
 .lt-tile{
   position:relative;overflow:hidden;min-width:0;padding:9px 10px;border-radius:10px;
   display:flex;flex-direction:column;gap:3px;justify-content:flex-start;
@@ -140,22 +142,20 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
   animation:clash-shine 2.8s infinite;
 }
 .lt-hot .lt-unit{color:#f0b27a;}
-/* Busiest map: the marker of the last objective taken, inside the map's capture rings (.wvw-ring's frames in
-   css/maps.css, under a name of their own: map-rings.spec counts the map's by name), looping; then who holds what was taken, in the teams' colours. */
+/* Busiest map: the marker of the last objective taken and the map's capture ring round it (.wvw-ring's frames in
+   css/maps.css, under a name of their own: map-rings.spec counts the map's by name); then who holds what was
+   taken, in the teams' colours. "slow" pings once in every 4 s and rests; "once" plays a single ping. */
 .lt-pulse{position:relative;width:16px;height:16px;flex:none;display:grid;place-items:center;margin-right:3px;}
 .lt-pulse .lt-ic{position:relative;width:18px;height:18px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.7));}
-.lt-pulse-ring{position:absolute;inset:0;border-radius:50%;border:1.5px solid #fff;opacity:0;animation:lt-pulse 1.6s ease-out infinite;}
-@keyframes lt-pulse{0%{opacity:.95;transform:scale(.9);}100%{opacity:0;transform:scale(2.1);}}
-.lt-pulse-ring-b{border-color:var(--accent-bright);border-width:1px;animation-delay:.8s;}
+.lt-pulse-ring{position:absolute;inset:0;border-radius:50%;border:1.5px solid #fff;opacity:0;}
+.lt-pulse-slow{animation:lt-ping 4s ease-out infinite;}
+.lt-pulse-once{animation:lt-ping-once 1.4s ease-out 1;}
+@keyframes lt-ping{0%{opacity:.9;transform:scale(.9);}35%,100%{opacity:0;transform:scale(2.1);}}
+@keyframes lt-ping-once{0%{opacity:.9;transform:scale(.9);}100%{opacity:0;transform:scale(2.1);}}
 .lt-takers{display:flex;flex-wrap:wrap;gap:2px 12px;font-size:.78rem;font-weight:600;line-height:1.3;}
 .lt-taker{display:inline-flex;align-items:baseline;gap:5px;min-width:0;}
 .lt-taker .lab-team{overflow-wrap:anywhere;}
 .lt-taker-n{color:var(--side-glow);font-variant-numeric:tabular-nums;}
-/* Stonemist: the castle's marker in its owner's colour, ringed in it; the owner's name big in its colour. */
-.lt-mark{width:20px;height:20px;flex:none;display:grid;place-items:center;border-radius:50%;margin:-2px 1px -2px 0;
-  border:1.5px solid var(--side-rail);box-shadow:0 0 6px -1px var(--side-glow);background:rgba(0,0,0,.35);}
-.lt-mark .lt-ic{width:14px;height:14px;}
-.lt-owner-name{font-size:1.25rem;font-weight:800;line-height:1.15;overflow-wrap:anywhere;color:var(--side-glow);}
 /* Closest match: the two teams' VP as one bar split in their colours. */
 .lt-split{display:flex;height:6px;gap:2px;border-radius:3px;overflow:hidden;margin:2px 0;}
 .lt-seg{display:block;flex-basis:0;min-width:6px;}
@@ -164,37 +164,28 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 .lt-vprow .lab-team{min-width:0;overflow-wrap:anywhere;}
 .lt-vp{font-variant-numeric:tabular-nums;white-space:nowrap;flex:none;}
 .lt-vp .stat-label{color:#8d97a6;font-weight:400;font-size:.68rem;}
-/* Leaders, "Static list" and "Own strip": one row each, what · the team · the number. */
-.lt-leads{display:flex;flex-direction:column;gap:2px;font-size:.76rem;line-height:1.3;}
-.lt-lead{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:baseline;gap:6px;min-width:0;}
-.lt-lead-what{display:inline-flex;align-items:center;gap:4px;color:var(--muted);font-size:.68rem;white-space:nowrap;align-self:center;}
-.lt-lead-what .lt-ic{width:13px;height:13px;}
-.lt-lead-what .lt-ic-vp{font-size:.56rem;}
-.lt-lead .lab-team{font-weight:600;min-width:0;overflow-wrap:anywhere;}
-.lt-lead-val{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;}
-.lt-strip{margin-top:8px;padding:8px 10px;border-radius:10px;background:rgba(10,13,17,.5);border:1px solid var(--border);}
-.lt-strip-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:4px;font-size:.6rem;font-weight:800;color:#a3adbb;text-transform:uppercase;letter-spacing:.09em;}
-.lt-strip-note{font-weight:600;letter-spacing:.04em;text-transform:none;font-size:.68rem;color:var(--muted);}
-@media (min-width:600px){
-  .lt-leads-strip{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 18px;}
-  /* "Static list" on a wide page: a row of its own under the other three, the five side by side. */
-  .lt-grid:has(.lt-leaders){grid-template-columns:repeat(3,minmax(0,1fr));}
-  .lt-leaders{grid-column:1 / -1;}
-  .lt-leaders .lt-leads{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px 12px;}
-  .lt-leaders .lt-lead{grid-template-columns:minmax(0,1fr);gap:1px;align-content:start;}
-}
-/* "Rotating": the five stacked in one cell, one shown; the pause button and the dots in a row under them. */
-.lt-rot{min-height:0;padding-bottom:2px;}
+/* Leaders: a box of its own under the tiles, the five stacked in one cell, one shown; the pause button and the
+   dots in a row under them. */
+.lt-rot{margin-top:8px;padding:9px 12px 4px;gap:4px;}
+.lt-rot-head{display:flex;justify-content:space-between;gap:8px;font-size:.6rem;font-weight:800;color:#a3adbb;text-transform:uppercase;letter-spacing:.09em;}
+.lt-rot-note{font-weight:600;letter-spacing:.04em;text-transform:none;font-size:.68rem;color:var(--muted);}
 .lt-slides{display:grid;}
-.lt-slide{grid-area:1 / 1;display:flex;flex-direction:column;gap:3px;min-width:0;opacity:0;transform:translateY(5px);transition:opacity .35s ease,transform .35s ease;visibility:hidden;}
+.lt-slide{grid-area:1 / 1;display:flex;flex-direction:column;gap:4px;min-width:0;opacity:0;transform:translateY(5px);transition:opacity .35s ease,transform .35s ease;visibility:hidden;}
 .lt-slide.is-on{opacity:1;transform:none;visibility:visible;}
-.lt-rot-row{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0 10px;font-weight:700;font-size:.9rem;}
-.lt-rot-row .lab-team{overflow-wrap:anywhere;}
-.lt-pips{display:flex;justify-content:center;align-items:center;gap:0;margin-top:2px;}
-.lab-mid button.lt-pip,.lab-mid button.lt-rot-pause{width:24px;height:24px;min-width:0;min-height:0;padding:0;border:0;border-radius:50%;background:none;box-shadow:none;display:grid;place-items:center;cursor:pointer;color:var(--muted);}
-.lab-mid button.lt-rot-pause{width:44px;height:44px;margin:-10px 0 -10px -10px;}
+.lt-slide .lt-label{font-size:.66rem;}
+.lt-slide .lt-ic{width:18px;height:18px;}
+.lt-ic-svg{fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.lt-rot-row{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0 12px;}
+.lt-rot-team{font-size:1.05rem;font-weight:800;color:var(--side-glow);overflow-wrap:anywhere;min-width:0;}
+.lt-rot-row .lt-num{font-size:1.6rem;}
+.lt-kd{gap:0 6px;}
+.lt-kd .stat-label{font-size:.8rem;font-weight:700;color:#8d97a6;}
+.lt-rot-ctl{display:flex;align-items:center;justify-content:center;}
+.lt-pips{display:flex;justify-content:center;align-items:center;gap:0;}
+.lab-mid button.lt-pip,.lab-mid button.lt-rot-pause{width:28px;height:44px;min-width:0;min-height:0;padding:0;border:0;border-radius:50%;background:none;box-shadow:none;display:grid;place-items:center;cursor:pointer;color:var(--muted);}
+.lab-mid button.lt-rot-pause{width:44px;}
 .lt-rot-svg{width:14px;height:14px;fill:currentColor;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;}
-.lt-pip::before{content:'';width:6px;height:6px;border-radius:50%;background:#4a5462;transition:background-color .2s ease;}
+.lt-pip::before{content:'';width:7px;height:7px;border-radius:50%;background:#4a5462;transition:background-color .2s ease;}
 .lt-pip[aria-pressed="true"]::before{background:var(--accent);}
 /* A tile is rebuilt on every standings repaint, and with reduced motion no ember frame comes to take its loops (boot.js): held here. */
 @media (prefers-reduced-motion: reduce){.lt-hot .lt-num,.lt-pulse-ring,.lt-clash *{animation-play-state:paused !important;}}
@@ -256,13 +247,13 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 @keyframes lab-hl-ring{0%,85%{opacity:1;}100%{opacity:0;}}
 
 /* ---- where the finale lands: the crest on the answer card at its size (--lab-ax/ay/as, js/lab-search.js),
-   and what css/facets.css centres on the screen with it: the two shock rings, the debris and the wash. The
-   individual scale multiplies the rings' and the debris' own animated transform. The page stays still. ---- */
+   and what css/facets.css centres on the screen with it: the debris and the wash; the two shock rings are
+   left out. The individual scale multiplies the debris' own animated transform. The page stays still. ---- */
 html.lab-mid-on .impact-overlay{display:block;}
 html.lab-mid-on .impact-overlay::before{background:radial-gradient(circle calc(var(--lab-as,1) * 320px) at var(--lab-ax,50%) var(--lab-ay,50%), rgba(140,224,255,.4) 0%, transparent 100%);}
 html.lab-mid-on .impact-stack{position:absolute;left:calc(var(--lab-ax,50vw) - 100px);top:calc(var(--lab-ay,50vh) - 100px);scale:var(--lab-as,1);}
-html.lab-mid-on .impact-ring,html.lab-mid-on .impact-shard{left:var(--lab-ax,50%);top:var(--lab-ay,50%);scale:var(--lab-as,1);}
-html.lab-no-rings .impact-ring{display:none;}
+html.lab-mid-on .impact-shard{left:var(--lab-ax,50%);top:var(--lab-ay,50%);scale:var(--lab-as,1);}
+html.lab-mid-on .impact-ring{display:none;}
 html.lab-mid-on .page.struck{animation:none;}
 
 /* ---- the tier spotlight, in the found team's colour (--lab-c), then the strike on its card ---- */
