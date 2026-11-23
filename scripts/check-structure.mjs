@@ -239,7 +239,12 @@ export function checkNoticePosition(problems, root = ROOT) {
 
   // Comments and blank lines in front of it are fine. The first *element* is
   // not, whatever it is.
-  const rest = html.slice(body.index + body[0].length).replace(/<!--[\s\S]*?-->/g, '').trimStart();
+  let rest = html.slice(body.index + body[0].length).trimStart();
+  while (rest.startsWith('<!--')) {
+    const end = rest.indexOf('-->', 4);
+    if (end < 0) break;
+    rest = rest.slice(end + 3).trimStart();
+  }
   const first = /^<([a-zA-Z][^\s>/]*)([^>]*)>/.exec(rest);
   if (!first || !first[2].includes('id="teamsNotice"')) {
     const found = first ? `<${first[1]}>` : '(no element at all)';

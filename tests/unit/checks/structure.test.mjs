@@ -132,6 +132,16 @@ test('checkNoticePosition: another element before #teamsNotice', () => {
 test('checkNoticePosition: no element at all after <body>', () => {
   fails((r) => write(r, 'site/index.html', read(r, 'site/index.html').replace(/<body>[\s\S]*$/, '<body>text')), /body of index\.html is \(no element at all\), not the teams notice/);
 });
+test('checkNoticePosition: comments in front of #teamsNotice are skipped', () => {
+  const { code, out } = planted((r) => edit(r, 'site/index.html', '<body>', '<body>\n<!-- a -->\n  <!-- <div> -->'));
+  assert.equal(code, 0, out.join('\n'));
+});
+test('checkNoticePosition: an element after a comment is still the first element', () => {
+  fails((r) => edit(r, 'site/index.html', '<body>', '<body><!-- a --><div></div>'), /first element in the body of index\.html is <div>, not the teams notice/);
+});
+test('checkNoticePosition: a comment left open hides every element', () => {
+  fails((r) => write(r, 'site/index.html', read(r, 'site/index.html').replace(/<body>[\s\S]*$/, '<body><!-- a <div id="teamsNotice"></div>')), /body of index\.html is \(no element at all\), not the teams notice/);
+});
 test('checkNoticePosition: no <body> tag', () => {
   fails((r) => edit(r, 'site/index.html', '<body>', '<bod>'), /No <body> tag in index\.html/);
 });
