@@ -1,7 +1,7 @@
 // /api/latest, the second read of the matches: bodies of the live matches as JSON with
 // only the running skirmish, the finished ones at /api/history, read once per version.
 // A newer one wins; a 503 or a hung answer costs nothing. (Which bodies pass the
-// page's checks is tests/unit/page-rules.test.mjs.)
+// page's checks is tests/unit/page/api.test.mjs.)
 import { test, expect } from './support/fixtures.mjs';
 import { answer, fail } from './support/faults.mjs';
 import { gw2 } from './support/gw2.mjs';

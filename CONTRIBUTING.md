@@ -101,7 +101,7 @@ The Worker behind `wvwrelink.com/api` has tests, and so do the page's rules
 (its scripts loaded into a `node:vm`, no browser), with nothing to install
 (Node 22.13 or later, and `python3` for the 37 tests in six files that run the checks):
 
-    node --test "tests/unit/*.test.mjs"
+    node --test "tests/unit/**/*.test.mjs"
 
 The page itself has browser tests that open it in a real Chrome. They use
 Playwright Test, pinned in `tests/e2e/package-lock.json` (Node 22 and one
@@ -126,7 +126,7 @@ finds an element by its role and its text (`getByRole`, `getByText`; a class
 only where neither names it), counts requests (`page.on('request')`) rather
 than calls, and waits on what is drawn or on the clock. What none of those
 shows is asked of the page through one file, `tests/e2e/support/page.mjs`, a
-function there for each thing read or done; `tests/unit/spec-port.test.mjs`
+function there for each thing read or done; `tests/unit/e2e/spec-port.test.mjs`
 fails on a name from `site/js/` anywhere else under `tests/e2e/` (its
 `WAITING` list holds the older specs that still use some; a review takes no
 name added there). A test added in place of an older one says so in its pull

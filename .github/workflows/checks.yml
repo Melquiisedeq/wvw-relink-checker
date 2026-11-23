@@ -92,13 +92,13 @@ jobs:
       # The runner's own Node, no setup step and nothing installed: node:test
       # is built in, and node:sqlite (the fake D1) needs 22.13 or later, which
       # the image carries (Node 22; the step prints the exact version).
-      # The page's own rules (tests/unit/page-rules.test.mjs: the scripts in a
+      # The page's own rules (tests/unit/page/: the scripts in a
       # node:vm, no browser) and the notice's Apps Script setup() ride along.
       # The dot reporter keeps the log to the failures.
-      - name: The unit tests (tests/unit/*.test.mjs)
+      - name: The unit tests (tests/unit/**/*.test.mjs)
         run: |
           node --version
-          node --test --test-reporter=dot "tests/unit/*.test.mjs"
+          node --test --test-reporter=dot "tests/unit/**/*.test.mjs"
 
   # Playwright Test (tests/e2e): the repository's dependencies (with monocart-coverage-reports,
   # below), for the tests only - the exact versions of the lockfile, no install scripts, no

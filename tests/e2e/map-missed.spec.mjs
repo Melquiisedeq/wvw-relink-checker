@@ -1,5 +1,5 @@
 // "What happened" over a tier's map: the block a visitor sees after a gap (the rules
-// of when one is raised are in tests/unit/page-rules.test.mjs).
+// of when one is raised are in tests/unit/page/maps-early.test.mjs).
 //
 // Block: a match answered with the same body for over 10 min while the page
 // kept asking, then a body with two objectives taken (one on the open map, one

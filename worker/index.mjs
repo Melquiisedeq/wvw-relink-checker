@@ -545,7 +545,7 @@ const FULL_EVERY_MS = 10 * 60e3;
 // included. The full read runs instead (logged with its reason) when there is no body,
 // it does not join up, it is from another slot, a line to read is missing, or a write
 // another rebuild overtook. kills.gs never asks for it: its batches reach behind the window.
-// tests/unit/worker-kills.test.mjs checks the body equals the full read's.
+// tests/unit/worker/kills.test.mjs checks the body equals the full read's.
 async function rebuildRecent(db, now, incremental = false) {
   const started = Date.now();
   const nowMs = now * 1000;

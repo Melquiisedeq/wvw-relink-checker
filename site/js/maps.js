@@ -14,7 +14,7 @@ const MAP_SKIP_TYPES = new Set(['Spawn']);
 // Drawn biggest first, so the smaller shape stays on top.
 const OBJ_DRAW_ORDER = ['Castle', 'Keep', 'Tower', 'Mercenary', 'Camp', 'Ruins'];
 // Marker radius in map units, also their on-screen size at the default view.
-// The radii of two markers on a map sum to less than their distance; tests/unit/map-positions.test.mjs
+// The radii of two markers on a map sum to less than their distance; tests/unit/page/map-positions.test.mjs
 // holds it.
 const OBJ_SIZE = Object.freeze({
   Castle: 118, Keep: 110, Tower: 100, Camp: 92, Mercenary: 92, Ruins: 80,

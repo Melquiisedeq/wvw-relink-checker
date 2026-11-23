@@ -114,7 +114,7 @@ function table(joined, node, committed) {
 
 function nodeTests() {
   rmSync(NODE_DIR, { recursive: true, force: true });
-  execFileSync('node', ['--test', '--test-reporter=dot', 'tests/unit/*.test.mjs'], {
+  execFileSync('node', ['--test', '--test-reporter=dot', 'tests/unit/**/*.test.mjs'], {
     cwd: ROOT, stdio: 'inherit', env: { ...process.env, NODE_V8_COVERAGE: NODE_DIR },
   });
 }
