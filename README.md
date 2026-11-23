@@ -75,6 +75,8 @@ three are a single value each that gets overwritten.
 | Key | What it holds |
 |---|---|
 | `wvw-relink-checker:guilds` | The list you typed, so it is still there next time |
+| `wvw-lab-v1` | Lab preview only, never on the live site: the lab panel's choices |
+| `wvw-lab-recent-v1` | Lab preview only, never on the live site: the last eight guilds found, offered as you type |
 | `wvw-guilds-v1` | Name, tag and emblem of guilds already looked up, so the maps don't ask twice |
 | `wvw-fight-v1` | Recent kill counts per match — what puts the crossed swords on each map with a fight |
 | `wvw-weeks-v1` | The week's team line-up per tier, so a reload on a relink night does not bring back last week's while the API catches up |

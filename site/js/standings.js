@@ -206,6 +206,7 @@ function paintGuildFound(root, fresh) {
 
 // Called once, by the search, with the team and guild it chose.
 function showGuildFound(teamId, guildName) {
+  if (typeof labGuildFound === 'function' && labGuildFound(teamId, guildName)) return; // LAB (never merged)
   guildFound = { teamName: getTeamName(teamId), guildName, until: Date.now() + GUILD_FOUND_MS };
   const card = paintGuildFound(document, true);
   if (!card) return;
@@ -266,6 +267,7 @@ function showRegion(gridEl, statusEl, matches, label, syncedAt, failed) {
   if (matches && (matches.length || !resetting)) {
     renderStandingsRegion(gridEl, matches);
     paintGuildFound(gridEl, false);
+    if (typeof labAfterStandings === 'function') labAfterStandings(gridEl, label); // LAB (never merged)
   } else clearSkeleton(gridEl);
   const ok = !!matches && matches.length > 0;
   if (ok) return setStandingsStatus(statusEl, true, syncedAt);
