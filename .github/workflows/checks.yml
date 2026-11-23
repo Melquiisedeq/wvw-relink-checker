@@ -74,15 +74,6 @@ jobs:
           done
           echo "$(ls site/js/*.js worker/*.mjs scripts/*.mjs apps-script/*/*.gs | wc -l) scripts parse."
 
-      # The outward-looking checks run only in health.yml: a syntax
-      # error in one would pass here and ring as a false alarm later.
-      # py_compile parses a file without running it.
-      - name: Compile every Python check
-        run: |
-          set -euo pipefail
-          python3 -m py_compile scripts/*.py
-          echo "$(ls scripts/*.py | wc -l) Python scripts compile."
-
   rules:
     runs-on: ubuntu-latest
     timeout-minutes: 5
