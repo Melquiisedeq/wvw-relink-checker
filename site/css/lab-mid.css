@@ -1,5 +1,5 @@
-/* LAB - never merged. The middle, round 2 (js/lab.js): the search bar in three forms, the answer card in
-   three, the highlights, the news, the mark on the found team's card and where the finale lands.
+/* LAB - never merged. The middle, round 3 (js/lab.js): the search bar, the answer card and its arrow,
+   the highlights, the news, the tier spotlight, the mark on the found team's card and the Check effects.
    Drawn for 390 and 320 px first. */
 html.lab-mid-on .lab-old-search,
 html.lab-mid-on #resultsPlaceholder,
@@ -21,31 +21,27 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 .lab-team .lab-dot{align-self:center;}
 
 /* ---- the panels ---- */
-.ls-search.ls-form-panel,.lt-panel,.ln-panel{
+.ls-search,.lt-panel,.ln-panel{
   border:1px solid var(--border);border-top-color:rgba(255,255,255,.12);border-radius:14px;
   background:linear-gradient(180deg,rgba(27,32,40,.86),rgba(18,22,27,.86));min-width:0;
 }
 .lt-head,.ls-head{margin:0 0 8px;font-size:.66rem;font-weight:800;color:#a3adbb;text-transform:uppercase;letter-spacing:.1em;}
 
 /* ---- search: a 48 px capsule, the button its right end ---- */
-.ls-search{min-width:0;}
-.ls-search.ls-form-panel{padding:10px 12px 12px;}
-.ls-head{display:none;align-items:center;gap:6px;}
-.ls-form-panel .ls-head{display:flex;}
-.ls-head-ic,.ls-in-ic{width:15px;height:15px;flex:none;fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;}
+.ls-search{padding:10px 12px 12px;}
+.ls-head{display:flex;align-items:center;gap:6px;}
+.ls-head-ic{width:15px;height:15px;flex:none;fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;}
 .ls-bar{
   position:relative;display:flex;align-items:center;height:48px;min-width:0;
   border-radius:999px;border:1px solid rgba(127,214,242,.28);background:rgba(10,13,17,.78);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
 }
 .ls-bar:focus-within{border-color:var(--accent);}
-.ls-in-ic{display:none;margin-left:14px;}
-.ls-form-bare .ls-in-ic{display:block;}
+
 .ls-input{
   flex:1;min-width:0;height:100%;padding:0 10px 0 18px;border:0;background:none;outline:none;
   color:var(--text);font:inherit;font-size:16px;-webkit-appearance:none;appearance:none;
 }
-.ls-form-bare .ls-input{padding-left:8px;}
 .ls-input::-webkit-search-cancel-button{display:none;}
 .ls-input::placeholder{color:#7e8899;}
 .ls-btn{position:relative;flex:none;display:flex;align-items:center;height:100%;padding:2px;}
@@ -53,14 +49,10 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
   height:44px;min-width:44px;padding:0 18px;border-radius:999px;font-size:.92rem;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.5),inset 0 -1px 0 rgba(0,0,0,.25);
 }
-.ls-crest{display:none;}
-.ls-form-shield .ls-btn #runBtn{
-  width:44px;padding:0;border-radius:50%;font-size:0;color:transparent;
-  background:radial-gradient(circle at 50% 40%,#1d242e,#0b0f14);border:1px solid rgba(127,214,242,.35);
-}
-.ls-form-shield .ls-btn #runBtn .btn-pips{display:none;}
-.ls-form-shield .ls-crest{display:block;position:absolute;left:50%;top:50%;width:22px;height:26px;transform:translate(-50%,-50%);pointer-events:none;}
-.ls-form-shield .ls-btn #runBtn:disabled + .ls-crest{opacity:.55;}
+/* "Arrow": the answer's double chevron, a 44 px disc in the site's accent; the pips stay while it asks. */
+.ls-run-arrow .ls-btn #runBtn{width:44px;padding:0;border-radius:50%;display:grid;place-items:center;}
+.ls-run-svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;}
+.ls-run-arrow .ls-btn #runBtn .btn-pips{transform:scale(.8);}
 .ls-recent{display:flex;gap:6px;overflow-x:auto;margin-top:8px;scrollbar-width:none;overscroll-behavior-x:contain;}
 .ls-recent:empty{display:none;}
 .lab-mid .ls-recent-chip{
@@ -83,38 +75,45 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 }
 .ls-who{display:block;font-size:.8rem;color:var(--muted);overflow-wrap:anywhere;}
 .ls-team{display:block;font-size:1.3rem;font-weight:800;line-height:1.2;overflow-wrap:break-word;}
-@media (max-width:360px){.ls-ans-bigtier .ls-team{font-size:1.1rem;}.ls-bignum b{font-size:2rem;}}
 .ls-rivals{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;min-width:0;font-size:.86rem;}
 .ls-vs{color:var(--muted);font-size:.78rem;}
 .ls-chip{display:inline-flex;align-items:center;color:var(--side-glow,var(--text));font-weight:600;overflow-wrap:anywhere;}
 .ls-chip .lab-dot{flex:none;}
+/* The arrow: a 44 px target in the team's colour, the double chevron turned to where the tier is. */
 .lab-mid .ls-go{
-  width:44px;height:44px;padding:0;flex:none;display:grid;place-items:center;border-radius:50%;
-  background:var(--accent-soft);border:1px solid rgba(127,214,242,.35);color:var(--accent);
+  flex:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  min-width:44px;height:44px;padding:0;border-radius:50%;
+  color:var(--side-glow,var(--accent));
+  background:radial-gradient(circle at 50% 35%,color-mix(in oklab, var(--ls-c) 42%, #14181d),color-mix(in oklab, var(--ls-c) 18%, #0d1014));
+  border:1px solid color-mix(in oklab, var(--ls-c) 70%, transparent);
+  box-shadow:0 0 0 3px color-mix(in oklab, var(--ls-c) 14%, transparent),inset 0 1px 0 rgba(255,255,255,.14);
+  transition:transform .15s ease,box-shadow .15s ease;
 }
-.lab-mid .ls-go:hover{border-color:var(--accent);}
-.ls-go-svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
+.lab-mid .ls-go:hover{box-shadow:0 0 0 4px color-mix(in oklab, var(--ls-c) 26%, transparent),inset 0 1px 0 rgba(255,255,255,.18);}
+.lab-mid .ls-go:active{transform:translateY(1px);}
+.ls-go-svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;transform:rotate(90deg);}
+.ls-way-left .ls-go-svg{transform:rotate(180deg);}
+.ls-way-right .ls-go-svg{transform:none;}
+.lab-mid .ls-go-pill{border-radius:999px;padding:0 14px 0 16px;background:color-mix(in oklab, var(--ls-c) 16%, #14181d);box-shadow:none;color:var(--text);font-size:.86rem;font-weight:700;white-space:nowrap;}
+.ls-go-pill .ls-go-svg{width:16px;height:16px;color:var(--side-glow,var(--accent));}
 .ls-ans-top{display:flex;align-items:flex-start;gap:10px;}
 .ls-ans-name{flex:1;min-width:0;}
 .ls-tier{
   flex:none;display:flex;flex-direction:column;align-items:center;padding:4px 8px;border-radius:8px;
   border:1px solid var(--side-edge,var(--border));background:rgba(0,0,0,.25);
 }
+.lab-mid .ls-tier-go{
+  font:inherit;color:inherit;cursor:pointer;min-width:64px;min-height:56px;justify-content:center;gap:0;
+  background:color-mix(in oklab, var(--ls-c) 22%, #101317);border:1px solid color-mix(in oklab, var(--ls-c) 70%, transparent);
+  box-shadow:0 0 0 3px color-mix(in oklab, var(--ls-c) 12%, transparent);
+}
+.lab-mid .ls-tier-go:hover{box-shadow:0 0 0 4px color-mix(in oklab, var(--ls-c) 26%, transparent);}
+.ls-tier-go .ls-go-svg{width:16px;height:16px;margin-top:1px;color:var(--side-glow,var(--accent));}
 .ls-tier b{font-size:.8rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;}
 .ls-tier span{font-size:.66rem;color:var(--muted);letter-spacing:.08em;}
 .ls-ans-foot{display:flex;align-items:center;gap:10px;margin-top:8px;}
 .ls-ans-foot .ls-rivals{flex:1;}
-.ls-ans-matchup .ls-ans-top{align-items:center;justify-content:space-between;}
-.ls-where{font-size:.7rem;font-weight:800;color:#a3adbb;letter-spacing:.1em;text-transform:uppercase;}
-.ls-match-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;margin-top:2px;}
-.ls-ans-matchup .ls-team{color:var(--side-glow,var(--text));}
-.ls-who-under{margin-top:4px;}
-.ls-ans-bigtier{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:6px 12px;}
-.ls-ans-bigtier .ls-rivals{grid-column:1 / -1;}
-.ls-bignum{display:flex;flex-direction:column;align-items:center;padding-right:12px;border-right:1px solid var(--side-edge,var(--border));}
-.ls-bignum b{font-size:2.3rem;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;}
-.ls-bignum-label{font-size:.6rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;}
-/* "Simple": the sheen once over the card and a 2 px jolt of the card alone. */
+/* The strike on the card: the sheen once over it and a 2 px jolt of the card alone. */
 .ls-ans.ls-sheen{animation:ls-jolt .32s ease-out 1;}
 .ls-ans.ls-sheen::after{
   content:'';position:absolute;inset:0;pointer-events:none;
@@ -122,13 +121,28 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
   transform:translateX(-120%);animation:lt-sheen 1s ease-in-out .1s 1 both;
 }
 @keyframes ls-jolt{0%,100%{transform:none;}35%{transform:translateY(-2px);}70%{transform:translateY(1px);}}
+/* "Shield splits": the card waits under the crest, and comes up as the halves open. */
+.ls-ans.ls-veiled{opacity:0;}
+.ls-ans.ls-revealed{animation:ls-reveal .32s ease-out 1;}
+@keyframes ls-reveal{from{opacity:0;transform:scale(.97);}to{opacity:1;transform:none;}}
+/* "Small shield": the header's crest in the card, cracking into css/impact.css's two halves. */
+.ls-mini{position:absolute;z-index:2;left:50%;top:50%;width:46px;height:55px;margin:-27px 0 0 -23px;pointer-events:none;animation:ls-mini-in .22s cubic-bezier(.2,.8,.3,1.3) both;}
+.ls-mini-half{position:absolute;inset:0;}
+.ls-mini-half svg{width:100%;height:100%;display:block;filter:drop-shadow(0 2px 4px rgba(0,0,0,.6));}
+.ls-mini-l{clip-path:polygon(50% 0, 46% 18%, 54% 33%, 45% 48%, 52% 64%, 46% 80%, 50% 100%, 0 100%, 0 0);animation:ls-mini-l .5s cubic-bezier(.3,.6,.4,1) .3s both;}
+.ls-mini-r{clip-path:polygon(50% 0, 100% 0, 100% 100%, 50% 100%, 46% 80%, 52% 64%, 45% 48%, 54% 33%, 46% 18%);animation:ls-mini-r .5s cubic-bezier(.3,.6,.4,1) .3s both;}
+.ls-mini-crack{position:absolute;left:calc(50% - 1px);top:0;width:2px;height:100%;background:linear-gradient(#fff,#bfefff);opacity:0;animation:ls-mini-crack .3s ease-out .2s both;}
+@keyframes ls-mini-in{from{opacity:0;transform:scale(.4) rotate(-14deg);}to{opacity:1;transform:none;}}
+@keyframes ls-mini-l{to{opacity:0;transform:translate(-30px,14px) rotate(-26deg);}}
+@keyframes ls-mini-r{to{opacity:0;transform:translate(30px,14px) rotate(26deg);}}
+@keyframes ls-mini-crack{0%{opacity:0;transform:scaleY(.2);}40%{opacity:1;transform:none;}100%{opacity:0;}}
 
 /* ---- highlights ---- */
 .lt-panel{padding:10px 12px 12px;}
-.lt-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.lt-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;}
 @media (min-width:600px){.lt-grid{grid-template-columns:repeat(4,minmax(0,1fr));}}
 .lt-tile{
-  position:relative;overflow:hidden;min-width:0;min-height:96px;padding:9px 10px;border-radius:10px;
+  position:relative;overflow:hidden;min-width:0;padding:9px 10px;border-radius:10px;
   display:flex;flex-direction:column;gap:3px;justify-content:flex-start;
   background:rgba(10,13,17,.5);border:1px solid var(--border) !important;
 }
@@ -136,19 +150,55 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 .lt-top{display:flex;align-items:center;justify-content:space-between;gap:6px;min-height:18px;}
 .lt-label{display:flex;align-items:center;gap:5px;min-width:0;font-size:.6rem;font-weight:800;color:#a3adbb;text-transform:uppercase;letter-spacing:.09em;}
 .lt-tier{font-size:.6rem;font-weight:800;color:#a3adbb;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;}
-.lt-tag-chip .lt-tier{padding:2px 5px;border-radius:4px;border:1px solid #3a4350;color:var(--text);}
+.lt-tier{padding:2px 5px;border-radius:4px;border:1px solid #3a4350;color:var(--text);}
 .lt-ic{width:16px;height:16px;flex:none;}
-.lt-ic.swords-icon{color:var(--accent);width:15px;height:15px;}
-.lt-ic-text{width:auto;height:auto;padding:1px 3px;border-radius:3px;border:1px solid #8d97a6;color:#cfd6df;font-size:.55rem;letter-spacing:.04em;line-height:1.1;}
+.lt-ic-vp{width:auto;height:auto;font-size:.62rem;font-weight:700;color:#8d97a6;letter-spacing:.02em;text-transform:none;}
 .lt-big{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 5px;color:var(--text);}
 .lt-num{font-size:1.25rem;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.15;}
 .lt-unit{font-size:.74rem;color:var(--muted);font-weight:600;}
 .lt-teams{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 5px;font-size:.78rem;font-weight:600;line-height:1.3;}
 .lt-teams .lab-team{overflow-wrap:anywhere;}
-.lt-owner .lt-teams{font-size:1rem;font-weight:800;}
 .lt-vs{color:var(--muted);font-weight:400;font-size:.7rem;}
 .lt-line{font-size:.7rem;color:var(--muted);line-height:1.3;}
 @keyframes lt-sheen{to{transform:translateX(120%);}}
+.lt-map{font-size:.78rem;color:var(--text);line-height:1.3;}
+.lt-teams{gap:2px 12px;}
+/* The live map's strike, its 14 px box at twice the size, and its orange shine on the number. */
+.lt-clash{position:relative;width:14px;height:14px;flex:none;transform:scale(1.5);transform-origin:0 50%;margin-right:7px;}
+.lt-clash .wvw-clash{left:0;top:0;}
+.lt-hot .lt-num{
+  color:transparent;
+  background:linear-gradient(115deg, #ffb070 40%, #fff6e0 50%, #ffb070 60%) 100% 0/300% 100% no-repeat;
+  -webkit-background-clip:text;background-clip:text;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.95));
+  animation:clash-shine 2.8s infinite;
+}
+.lt-hot .lt-unit{color:#f0b27a;}
+/* Stonemist: its owner's tile, tinted the owner's colour, the map's castle marker large. */
+.lt-owner{--lt-c:var(--side-rail,#6b7584);background:color-mix(in oklab, var(--lt-c) 16%, #12161b) !important;border-color:var(--side-edge,var(--border)) !important;}
+.lt-owner .lt-owner-name,.lt-owner .lt-line{margin-right:44px;}
+.lt-castle{position:absolute;right:6px;top:32px;width:40px;height:40px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.6));}
+.lt-owner-name{font-size:.95rem;font-weight:800;line-height:1.2;overflow-wrap:anywhere;margin-top:2px;}
+.lt-owner .lt-line{color:#c5ccd6;}
+/* Closest match: the two teams' VP as one bar split in their colours. */
+.lt-split{display:flex;height:6px;gap:2px;border-radius:3px;overflow:hidden;margin:2px 0;}
+.lt-seg{display:block;flex-basis:0;min-width:6px;}
+.lt-vprows{display:flex;flex-direction:column;gap:1px;font-size:.76rem;font-weight:600;}
+.lt-vprow{display:flex;justify-content:space-between;align-items:baseline;gap:6px;min-width:0;}
+.lt-vprow .lab-team{min-width:0;overflow-wrap:anywhere;}
+.lt-vp{font-variant-numeric:tabular-nums;white-space:nowrap;flex:none;}
+.lt-vp .stat-label{color:#8d97a6;font-weight:400;font-size:.68rem;}
+/* Leaders: the five stacked in one cell, one shown; the dots are 24 px targets. */
+.lt-rot{min-height:0;padding-bottom:2px;}
+.lt-slides{display:grid;}
+.lt-slide{grid-area:1 / 1;display:flex;flex-direction:column;gap:3px;min-width:0;opacity:0;transform:translateY(5px);transition:opacity .35s ease,transform .35s ease;visibility:hidden;}
+.lt-slide.is-on{opacity:1;transform:none;visibility:visible;}
+.lt-rot-row{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0 10px;font-weight:700;font-size:.9rem;}
+.lt-rot-row .lab-team{overflow-wrap:anywhere;}
+.lt-pips{display:flex;justify-content:center;gap:0;margin-top:2px;}
+.lab-mid button.lt-pip{width:24px;height:24px;min-width:0;min-height:0;padding:0;border:0;border-radius:50%;background:none;box-shadow:none;display:grid;place-items:center;cursor:pointer;}
+.lt-pip::before{content:'';width:6px;height:6px;border-radius:50%;background:#4a5462;transition:background-color .2s ease;}
+.lt-pip[aria-pressed="true"]::before{background:var(--accent);}
+@media (prefers-reduced-motion: reduce){.lt-hot .lt-num{animation-play-state:paused !important;}}
 
 /* ---- news ---- */
 .ln-panel{padding:0 14px 6px;}
@@ -211,3 +261,38 @@ html.lab-aim .impact-overlay{display:block;}
 html.lab-aim .impact-overlay::before{background:radial-gradient(circle at var(--lab-ax,50%) var(--lab-ay,50%), rgba(140,224,255,.4) 0%, transparent 40%);}
 html.lab-aim .impact-stack{position:absolute;left:calc(var(--lab-ax,50vw) - 100px);top:calc(var(--lab-ay,50vh) - 100px);}
 html.lab-still .page.struck{animation:none;}
+/* "Shield lands" and "Shield splits": the crest at the card's size. */
+html.lab-land .impact-stack{scale:var(--lab-as,1);}
+
+/* ---- the tier spotlight, in the found team's colour (--lab-c), then the strike on its card ---- */
+.lab-spot-col{position:relative;}
+.lab-spot{position:absolute;pointer-events:none;z-index:2;--lab-c:var(--accent);filter:drop-shadow(0 0 5px var(--lab-c));animation:lab-spot-fade 2.5s ease-out both;}
+.lab-ring{position:absolute;inset:0;clip-path:var(--lab-ring);background:color-mix(in oklab, var(--lab-c) 80%, transparent);}
+/* "Light runs": a bright run along each edge in turn, one lap in 1.1 s, cut to the ring. */
+.lab-spot-run .lab-ring{background:color-mix(in oklab, var(--lab-c) 45%, transparent);}
+.lab-spot-run i{position:absolute;overflow:hidden;}
+.lab-spot-run i::before{content:'';position:absolute;}
+.lab-run-t,.lab-run-b{left:0;right:0;height:8px;}
+.lab-run-l,.lab-run-r{top:0;bottom:0;width:8px;}
+.lab-run-t{top:0;}.lab-run-b{bottom:0;}.lab-run-l{left:0;}.lab-run-r{right:0;}
+.lab-run-t::before,.lab-run-b::before{top:0;height:100%;width:40%;background:linear-gradient(90deg,transparent,var(--lab-c) 50%,#fff);}
+.lab-run-l::before,.lab-run-r::before{left:0;width:100%;height:40%;background:linear-gradient(180deg,transparent,var(--lab-c) 50%,#fff);}
+.lab-run-t::before{left:0;transform:translateX(-100%);animation:lab-run-x .275s linear 0s both;}
+.lab-run-r::before{top:0;transform:translateY(-100%);animation:lab-run-y .275s linear .275s both;}
+.lab-run-b::before{left:0;transform:translateX(-100%) scaleX(-1);animation:lab-run-xr .275s linear .55s both;}
+.lab-run-l::before{top:0;transform:translateY(-100%) scaleY(-1);animation:lab-run-yr .275s linear .825s both;}
+@keyframes lab-run-x{from{transform:translateX(-100%);}to{transform:translateX(225%);}}
+@keyframes lab-run-y{from{transform:translateY(-100%);}to{transform:translateY(225%);}}
+@keyframes lab-run-xr{from{transform:translateX(225%) scaleX(-1);}to{transform:translateX(-100%) scaleX(-1);}}
+@keyframes lab-run-yr{from{transform:translateY(225%) scaleY(-1);}to{transform:translateY(-100%) scaleY(-1);}}
+@keyframes lab-spot-fade{0%{opacity:0;}8%,70%{opacity:1;}100%{opacity:0;}}
+/* "The rest dims": the other tiers of the column at 45 % for the length of it, this one ringed. */
+.standing-match{transition:opacity .3s ease;}
+.standing-match.lab-dimmed{opacity:.4;}
+.lab-spot-dim .lab-ring{background:var(--lab-c);}
+/* "Ring pulse": the tier's outline goes out twice, past the faint one that stays. */
+.lab-spot-ring{animation:lab-spot-fade 1.6s ease-out both;}
+.lab-spot-ring .lab-ring{opacity:.5;}
+.lab-spot-ring .lab-ring + .lab-ring{opacity:0;animation:lab-ring .7s ease-out both;}
+.lab-spot-ring .lab-ring + .lab-ring + .lab-ring{animation-delay:.35s;}
+@keyframes lab-ring{0%{opacity:0;transform:none;}20%{opacity:1;}100%{opacity:0;transform:scale(1.05,1.1);}}

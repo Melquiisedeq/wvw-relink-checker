@@ -3,11 +3,12 @@
 // awaits the page's own run() (serial, as ever), then reads what it left: the team from the
 // showGuildFound hook, a failure from the results table it fills. The real #runBtn is moved into the
 // bar, so its own busy state and the effects that start from it stay. Nothing scrolls the page by
-// itself: the answer card's arrow does. Guild names are strangers' text: textContent only.
+// itself: the answer card's arrow brings the tier into view. Guild names are strangers' text: textContent only.
 
 const LAB_RECENT_KEY = 'wvw-lab-recent-v1';
 const LAB_MARK_MS = 8000;
-const labS = { found: null, outcome: null, name: '', mark: null, markTimer: 0, watch: null };
+const labS = { found: null, outcome: null, name: '', mark: null, markTimer: 0, watch: null, spot: null,
+  checkAt: 0, brokeAt: 0, veilAt: 0, veilTimer: 0, veiledMs: null };
 
 function labRecent() {
   try {
@@ -70,15 +71,7 @@ function labBuildSearch() {
   const dl = labEl('datalist');
   dl.id = 'labGuildList';
   const btnBox = labEl('span', 'ls-btn');
-  // The header's own crest, cloned, for the "Shield button" form: drawn over the button, not redrawn.
-  const crest = document.querySelector('.title-row svg');
-  if (crest) {
-    const c = crest.cloneNode(true);
-    c.setAttribute('class', 'ls-crest');
-    c.setAttribute('aria-hidden', 'true');
-    btnBox.appendChild(c);
-  }
-  bar.append(labIcon(LAB_LENS, 'ls-in-ic'), input, btnBox, dl);
+  bar.append(input, btnBox, dl);
   // Pressed in the capture phase, before boot.js's own listener on the button would start run() itself.
   bar.addEventListener('click', (e) => {
     if (e.target.closest && e.target.closest('#runBtn')) { e.stopPropagation(); e.preventDefault(); labCheck(input.value); }
@@ -93,16 +86,35 @@ function labBuildSearch() {
   box.append(head, label, bar, recent, answer);
   return box;
 }
-// The bar's form: the button sits at the bar's right end in all three; the shield form names it by aria-label.
-function labPaintSearchBar() {
+// Both the Check button and the answer's arrow draw this double chevron, turned by CSS.
+const LAB_CHEVRONS = ['M6 7l5 5-5 5', 'M12 7l5 5-5 5'];
+let labRunWatch = null;
+function labPaintRunBtn() {
   const box = document.querySelector('.ls-search');
-  if (!box) return;
-  box.className = `ls-search ls-form-${labPrefs.searchBar}`;
-  if (labPrefs.searchBar === 'shield') runBtn.setAttribute('aria-label', 'Find team');
+  if (!box || typeof runBtn === 'undefined') return;
+  const arrow = labPrefs.runBtn === 'arrow';
+  box.classList.toggle('ls-run-arrow', arrow);
+  if (arrow) runBtn.setAttribute('aria-label', 'Check');
   else runBtn.removeAttribute('aria-label');
+  labDressRunBtn();
+  if (!labRunWatch && typeof MutationObserver === 'function') {
+    labRunWatch = new MutationObserver(labDressRunBtn);
+    labRunWatch.observe(runBtn, { childList: true });
+  }
+}
+// run() puts the pips in while it asks and writes "Check" back as text when it ends: the arrow goes back over the word.
+function labDressRunBtn() {
+  if (runBtn.querySelector('.btn-pips')) return;
+  const arrow = labPrefs.runBtn === 'arrow';
+  const has = runBtn.querySelector('.ls-run-svg');
+  if (arrow && !has) {
+    runBtn.textContent = '';
+    runBtn.appendChild(labIcon(LAB_CHEVRONS, 'ls-run-svg'));
+  }
+  if (!arrow && has) runBtn.textContent = 'Check';
 }
 
-// "Simple": no trebuchet, no crest, no shake. run() calls these three by their global names, so for one
+// "Simple" and "Small shield": no trebuchet, no crest, no shake. run() calls these three by their global names, so for one
 // run they are swapped out; the sparks then fly from the answer card (labSparksFrom).
 function labQuietFinale() {
   const keep = { startCharge: window.startCharge, playFinale: window.playFinale, sparkFromButton: window.sparkFromButton };
@@ -141,7 +153,10 @@ async function labCheck(raw) {
   labS.outcome = { asking: true };
   labPaintAnswer();
   guildInput.value = name;
-  const restore = labPrefs.effect === 'simple' ? labQuietFinale() : null;
+  const fx = labPrefs.effect;
+  labS.checkAt = performance.now();
+  labS.brokeAt = 0;
+  const restore = fx === 'simple' || fx === 'small' ? labQuietFinale() : null;
   try { await run(); } catch { /* run() said it on statusMsg; read below */ }
   if (restore) restore();
   labS.outcome = await labReadOutcome(name);
@@ -151,10 +166,54 @@ async function labCheck(raw) {
   // Only as far as needed, never centred, and only for the answer: the standings card is never scrolled to.
   const shown = card || document.getElementById('labAnswer');
   if (shown && typeof shown.scrollIntoView === 'function') shown.scrollIntoView({ block: 'nearest' });
-  if (card && labPrefs.effect === 'simple') {
-    card.classList.add('ls-sheen');
-    labSparksFrom(card);
+  if (!card) return;
+  if (fx === 'simple') labHitCard(card);
+  if (fx === 'small') labMiniShield(card);
+  if (fx === 'split' && !labS.brokeAt) labVeil(card);
+}
+
+// The strike on the answer card: the sheen once over it and the sparks flying off it.
+function labHitCard(card) {
+  card.classList.remove('ls-sheen');
+  void card.offsetWidth;
+  card.classList.add('ls-sheen');
+  labSparksFrom(card);
+}
+// "Shield splits": the card waits under the crest and shows on the break; without one, at LAB_VEIL_MAX_MS.
+const LAB_VEIL_MAX_MS = 2500;
+function labVeil(card) {
+  card.classList.add('ls-veiled');
+  labS.veilAt = performance.now();
+  clearTimeout(labS.veilTimer);
+  labS.veilTimer = setTimeout(labUnveil, LAB_VEIL_MAX_MS);
+}
+function labUnveil() {
+  clearTimeout(labS.veilTimer);
+  const card = document.querySelector('#labAnswer .ls-ans.ls-veiled');
+  if (!card) return;
+  labS.veiledMs = Math.round(performance.now() - labS.veilAt);
+  card.classList.remove('ls-veiled');
+  card.classList.add('ls-revealed');
+  labHitCard(card);
+}
+// "Small shield": the header's crest, cloned into the card, cracks and falls in two halves (css/impact.css's cut).
+function labMiniShield(card) {
+  const crest = document.querySelector('.title-row svg');
+  if (!crest) { labHitCard(card); return; }
+  const box = labEl('span', 'ls-mini');
+  box.setAttribute('aria-hidden', 'true');
+  for (const side of ['l', 'r']) {
+    const half = labEl('span', `ls-mini-half ls-mini-${side}`);
+    const c = crest.cloneNode(true);
+    c.removeAttribute('width');
+    c.removeAttribute('height');
+    half.appendChild(c);
+    box.appendChild(half);
   }
+  box.appendChild(labEl('span', 'ls-mini-crack'));
+  card.appendChild(box);
+  setTimeout(() => labHitCard(card), 330);
+  setTimeout(() => box.remove(), 900);
 }
 
 async function labReadOutcome(name) {
@@ -182,51 +241,51 @@ function labChip(o) {
   c.append(labDot(o.color), labEl('span', null, o.name));
   return c;
 }
+// Where the team's tier is from the answer: below it on a narrow page, in a side rail from 1400 px.
+function labTierWay(o) {
+  if (typeof matchMedia !== 'function' || matchMedia(LAB_NARROW).matches) return 'down';
+  const grid = document.getElementById(`standingsGrid${o.region}`);
+  const mid = document.getElementById('labMid');
+  if (!grid || !mid) return 'down';
+  return grid.getBoundingClientRect().left < mid.getBoundingClientRect().left ? 'left' : 'right';
+}
+// Scrolls to the tier and plays the spotlight there; the live map stays shut.
+function labGo(el, o) {
+  el.type = 'button';
+  el.setAttribute('aria-label', `Show ${o.team} in the standings, ${o.region} Tier ${o.tier}`);
+  el.addEventListener('click', () => labGoToTier([o.team]));
+  return el;
+}
 function labGoButton(o) {
-  const go = labEl('button', 'ls-go');
-  go.type = 'button';
-  go.setAttribute('aria-label', `Show ${o.team} in the standings and open its live map`);
-  go.appendChild(labIcon(['M5 12h14', 'M13 6l6 6-6 6'], 'ls-go-svg'));
-  go.addEventListener('click', () => { labScrollToTeam(o.team); if (o.matchId) labOpenMap(o.matchId); });
+  const pill = labPrefs.arrow === 'pill';
+  const go = labGo(labEl('button', pill ? 'ls-go ls-go-pill' : 'ls-go'), o);
+  if (pill) go.appendChild(labEl('span', null, 'See in standings'));
+  go.appendChild(labIcon(LAB_CHEVRONS, 'ls-go-svg'));
   return go;
 }
 // The answer: the team's own colour (the standings cards' side-* tint), the tier said loud, the rivals as chips.
 function labAnswerCard(o) {
-  const form = labPrefs.answer;
-  const card = labEl('div', `ls-ans ls-ans-${form}${o.color ? ` side-${o.color}` : ''}`);
-  const who = labEl('span', 'ls-who', `${o.guild} is on`);
-  const team = labEl('span', 'ls-team', o.team);
+  const card = labEl('div', `ls-ans ls-arrow-${labPrefs.arrow} ls-way-${labTierWay(o)}${o.color ? ` side-${o.color}` : ''}`);
+  const name = labEl('div', 'ls-ans-name');
+  name.append(labEl('span', 'ls-who', `${o.guild} is on`), labEl('span', 'ls-team', o.team));
   const rivals = labEl('div', 'ls-rivals');
   if (o.opp.length) {
     rivals.appendChild(labEl('span', 'ls-vs', 'vs'));
     for (const r of o.opp) rivals.appendChild(labChip(r));
   }
-  if (form === 'banner') {
-    const top = labEl('div', 'ls-ans-top');
-    const name = labEl('div', 'ls-ans-name');
-    name.append(who, team);
-    top.appendChild(name);
-    if (o.tier) {
-      const tier = labEl('span', 'ls-tier');
-      tier.append(labEl('b', null, `Tier ${o.tier}`), labEl('span', null, o.region));
-      top.appendChild(tier);
-    }
-    const foot = labEl('div', 'ls-ans-foot');
-    foot.append(rivals, labGoButton(o));
-    card.append(top, foot);
-  } else if (form === 'matchup') {
-    const top = labEl('div', 'ls-ans-top');
-    top.append(labEl('span', 'ls-where', o.tier ? `${o.region} · Tier ${o.tier}` : o.region), labGoButton(o));
-    const row = labEl('div', 'ls-match-row');
-    row.append(team, rivals);
-    card.append(top, row, labEl('span', 'ls-who ls-who-under', `${o.guild}’s team`));
-  } else {
-    const num = labEl('div', 'ls-bignum');
-    num.append(labEl('span', 'ls-bignum-label', `${o.region} tier`), labEl('b', null, o.tier || '?'));
-    const name = labEl('div', 'ls-ans-name');
-    name.append(who, team);
-    card.append(num, name, labGoButton(o), rivals);
+  const top = labEl('div', 'ls-ans-top');
+  top.appendChild(name);
+  const chipGo = labPrefs.arrow === 'chip' && o.tier;
+  if (o.tier) {
+    const tier = chipGo ? labGo(labEl('button', 'ls-tier ls-tier-go'), o) : labEl('span', 'ls-tier');
+    tier.append(labEl('b', null, `Tier ${o.tier}`), labEl('span', null, o.region));
+    if (chipGo) tier.appendChild(labIcon(LAB_CHEVRONS, 'ls-go-svg'));
+    top.appendChild(tier);
   }
+  const foot = labEl('div', 'ls-ans-foot');
+  foot.appendChild(rivals);
+  if (!chipGo && o.tier) foot.appendChild(labGoButton(o));
+  card.append(top, foot);
   return card;
 }
 
@@ -257,22 +316,37 @@ function labPaintAnswer() {
 }
 
 // ---- where the finale lands -------------------------------------------------------------------
-// The trebuchet.js hook, after it aimed the round at the screen's centre: "Aimed" moves the target to
-// the answer card (or the bar, if the answer is not up yet) and the crest with it.
+// The trebuchet.js hook, after it aimed the round at the screen's centre: "Aimed", "Shield lands" and
+// "Shield splits" move the target to the answer card (or the bar, if the answer is not up yet) and the
+// crest with it. The two new ones size the crest to the card and strike the card on the break, FLIGHT_MS on.
 function labAimBall(ball, arc, from) {
-  if (labPrefs.effect !== 'aimed' || typeof document.querySelector !== 'function') return;
+  const fx = labPrefs.effect;
+  if (!['aimed', 'land', 'split'].includes(fx) || typeof document.querySelector !== 'function') return;
   const el = document.querySelector('#labAnswer .ls-ans') || document.querySelector('.ls-bar');
   if (!el) return;
   const r = el.getBoundingClientRect();
   const x = Math.min(window.innerWidth - 70, Math.max(70, r.left + r.width / 2));
   const y = Math.min(window.innerHeight - 70, Math.max(70, r.top + r.height / 2));
-  document.documentElement.style.setProperty('--lab-ax', `${Math.round(x)}px`);
-  document.documentElement.style.setProperty('--lab-ay', `${Math.round(y)}px`);
+  const html = document.documentElement;
+  html.style.setProperty('--lab-ax', `${Math.round(x)}px`);
+  html.style.setProperty('--lab-ay', `${Math.round(y)}px`);
   const dx = x - from.x;
   const dy = y - from.y;
   ball.style.setProperty('--dx', `${Math.round(dx)}px`);
   arc.style.setProperty('--dy', `${Math.round(dy)}px`);
   arc.style.setProperty('--rise', `${Math.round(arcRise(dx, dy))}px`);
+  if (fx === 'aimed') return;
+  // The 200 px stack holds a 178 px tall crest: "lands" a bit under the card's height, "splits" over all of it.
+  const want = fx === 'split' ? r.height * 1.25 : r.height * 0.9;
+  html.style.setProperty('--lab-as', Math.min(1, Math.max(0.45, want / 178)).toFixed(3));
+  setTimeout(labOnBreak, typeof FLIGHT_MS === 'number' ? FLIGHT_MS : 560);
+}
+function labOnBreak() {
+  labS.brokeAt = performance.now();
+  const card = document.querySelector('#labAnswer .ls-ans');
+  if (!card) return;
+  if (card.classList.contains('ls-veiled')) labUnveil();
+  else labHitCard(card);
 }
 
 // ---- the found team's card in the standings ------------------------------------------------
@@ -282,7 +356,7 @@ function labGuildFound(teamId, guildName) {
   if (typeof document.querySelectorAll !== 'function') return false;
   labS.found = { teamId, guildName };
   labDropMark();
-  labS.mark = { teamName: getTeamName(teamId), guildName, started: 0 };
+  labS.mark = { names: [getTeamName(teamId)], started: 0 };
   labWatchMark();
   return true;
 }
@@ -297,7 +371,7 @@ function labWatchMark() {
   if (!m) return;
   if (labS.watch) { labS.watch.disconnect(); labS.watch = null; }
   if (m.started) { labPaintMark(false); return; }
-  const card = labMarkCardOf(m.teamName);
+  const card = labMarkCardOf(m.names[0]);
   if (!card) return;
   if (typeof IntersectionObserver !== 'function') { labStartMark(); return; }
   labS.watch = new IntersectionObserver((list) => {
@@ -315,14 +389,15 @@ function labStartMark() {
 }
 function labPaintMark(fresh) {
   const m = labS.mark;
-  if (!m || !m.started || Date.now() - m.started > LAB_MARK_MS) return null;
-  const card = labMarkCardOf(m.teamName);
-  if (!card) return null;
-  for (const old of card.querySelectorAll('.lab-hl')) old.remove();
-  const layer = labEl('span', `lab-hl${fresh ? ' is-fresh' : ''}`);
-  layer.setAttribute('aria-hidden', 'true');
-  card.appendChild(layer);
-  return card;
+  if (!m || !m.started || Date.now() - m.started > LAB_MARK_MS) return [];
+  const cards = m.names.map(labMarkCardOf).filter(Boolean);
+  for (const card of cards) {
+    for (const old of card.querySelectorAll('.lab-hl')) old.remove();
+    const layer = labEl('span', `lab-hl${fresh ? ' is-fresh' : ''}`);
+    layer.setAttribute('aria-hidden', 'true');
+    card.appendChild(layer);
+  }
+  return cards;
 }
 function labDropMark() {
   clearTimeout(labS.markTimer);
@@ -331,7 +406,78 @@ function labDropMark() {
   if (typeof document.querySelectorAll !== 'function') return;
   for (const el of document.querySelectorAll('.lab-hl')) el.remove();
 }
-function labScrollToTeam(name) {
-  const card = name && labMarkCardOf(name);
-  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+// The strike on the team cards at the end of a spotlight: the sheen, the sparks, and the 8 s ring from now.
+function labStrikeCards(names) {
+  labDropMark();
+  labS.mark = { names, started: Date.now() };
+  for (const card of labPaintMark(true)) labSparksFrom(card);
+  labS.markTimer = setTimeout(labDropMark, LAB_MARK_MS);
+}
+
+// ---- the tier spotlight ------------------------------------------------------------------------
+// The whole tier is brought into view (centred, or its top if it is taller than the screen) and the
+// spotlight starts once 60 % of it is in sight; the strike on the cards comes when it ends.
+const LAB_SPOT_HIT_MS = { run: 1100, dim: 350, ring: 950 };
+const LAB_SPOT_MS = 2500;
+function labGoToTier(names) {
+  const card = labMarkCardOf(names[0]);
+  const tier = card && card.closest('.standing-match');
+  if (!tier) return;
+  if (labS.spot) labS.spot.disconnect();
+  const h = tier.getBoundingClientRect().height;
+  tier.scrollIntoView({ behavior: 'smooth', block: h > window.innerHeight * 0.9 ? 'start' : 'center' });
+  if (typeof IntersectionObserver !== 'function') { labPlaySpot(tier, names); return; }
+  // A tier taller than the screen never gets 60 % of itself in: then most of the screen will do.
+  const need = Math.min(0.6, (window.innerHeight * 0.85) / Math.max(1, h));
+  const io = new IntersectionObserver((list) => {
+    if (!list.some((e) => e.isIntersecting && e.intersectionRatio >= need - 0.01)) return;
+    io.disconnect();
+    labS.spot = null;
+    labPlaySpot(tier, names);
+  }, { threshold: need });
+  labS.spot = io;
+  io.observe(tier);
+}
+// The tier's own outline (css/facets.css cuts its corners with a clip-path that would also cut anything
+// drawn inside it): a ring of that shape, LAB_RING px thick, laid over the tier from its column.
+const LAB_RING = 3;
+function labRingPath(w, h) {
+  const c = 15;
+  const t = LAB_RING;
+  return `path(evenodd, 'M${c} 0H${w}V${h - c}L${w - c} ${h}H0V${c}Z M${c + 1} ${t}L${t} ${c + 1}V${h - t}H${w - c - 1}L${w - t} ${h - c - 1}V${t}Z')`;
+}
+function labRing() {
+  return labEl('span', 'lab-ring');
+}
+function labPlaySpot(tier, names) {
+  const kind = labPrefs.spot;
+  for (const old of document.querySelectorAll('.lab-spot')) old.remove();
+  for (const m of document.querySelectorAll('.lab-dimmed')) m.classList.remove('lab-dimmed');
+  const first = labMarkCardOf(names[0]);
+  const col = tier.parentElement;
+  col.classList.add('lab-spot-col');
+  const fx = labEl('span', `lab-spot lab-spot-${kind}`);
+  fx.setAttribute('aria-hidden', 'true');
+  const glow = first ? getComputedStyle(first).getPropertyValue('--side-glow').trim() : '';
+  if (glow) fx.style.setProperty('--lab-c', glow);
+  const w = tier.offsetWidth + 2 * LAB_RING;
+  const h = tier.offsetHeight + 2 * LAB_RING;
+  fx.style.left = `${tier.offsetLeft - LAB_RING}px`;
+  fx.style.top = `${tier.offsetTop - LAB_RING}px`;
+  fx.style.width = `${w}px`;
+  fx.style.height = `${h}px`;
+  fx.style.setProperty('--lab-ring', labRingPath(w, h));
+  const ring = labRing();
+  fx.appendChild(ring);
+  if (kind === 'run') for (const side of ['t', 'r', 'b', 'l']) ring.appendChild(labEl('i', `lab-run-${side}`));
+  if (kind === 'ring') fx.append(labRing(), labRing());
+  col.appendChild(fx);
+  if (kind === 'dim') {
+    for (const m of col.children) if (m !== tier && m.classList.contains('standing-match')) m.classList.add('lab-dimmed');
+  }
+  setTimeout(() => labStrikeCards(names), LAB_SPOT_HIT_MS[kind]);
+  setTimeout(() => {
+    fx.remove();
+    for (const m of document.querySelectorAll('.lab-dimmed')) m.classList.remove('lab-dimmed');
+  }, LAB_SPOT_MS);
 }

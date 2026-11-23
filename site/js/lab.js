@@ -1,25 +1,26 @@
 'use strict';
-// LAB (never merged). The 95-0 lab, round 2: the middle of the page as the owner kept it (setup 4 of
-// round 1), every open choice a box or a radio in the panel's "Fine-tune" group, the recommendation
+// LAB (never merged). The 95-0 lab, round 3: the middle of the page as the owner kept it (setup 4 of
+// round 1, its round 2 choices fixed), every open choice a box or a radio in the panel's "Fine-tune" group, the recommendation
 // on by default. Loaded just before js/boot.js, after the lab-*.js it draws with (check-structure
 // wants boot.js last). Everything goes through textContent.
 
 const LAB_KEY = 'wvw-lab-v1';
-const LAB_VERSION = 2;          // bump when the defaults change: older saved choices are dropped
+const LAB_VERSION = 3;          // bump when the defaults change: older saved choices are dropped
 const LAB_ITEMS = [
   { type: 'section', label: 'Fine-tune' },
-  { type: 'radio', key: 'order', label: 'Order', value: 'shn',
-    options: { shn: 'Search · Highlights · News', snh: 'Search · News · Highlights', hsn: 'Highlights · Search · News' } },
   { type: 'check', key: 'newsLow', label: 'Phones: news below the standings', on: false },
-  { type: 'radio', key: 'searchBar', label: 'Search bar', value: 'panel',
-    options: { panel: 'Panel like the others', bare: 'Bare bar', shield: 'Shield button' } },
   { type: 'radio', key: 'recent', label: 'Recent guilds', value: 'list',
     options: { list: 'Suggestions while typing', chips: 'Chips under the bar' } },
-  { type: 'radio', key: 'answer', label: 'Answer card', value: 'banner',
-    options: { banner: 'Team banner', matchup: 'Matchup', bigtier: 'Big tier' } },
-  { type: 'radio', key: 'effect', label: 'Check effect', value: 'aimed',
-    options: { aimed: 'Aimed at the answer, page still', today: 'Today’s, page still', simple: 'Simple: sparks + sheen' } },
-  { type: 'radio', key: 'tierTag', label: 'Tier tag', value: 'chip', options: { chip: 'Chip', plain: 'Plain text' } },
+  { type: 'radio', key: 'runBtn', label: 'Check button', value: 'arrow',
+    options: { arrow: 'Arrow, like the answer’s', word: 'The word Check (today)' } },
+  { type: 'radio', key: 'arrow', label: 'Answer arrow', value: 'chevron',
+    options: { chevron: 'Chevron in the team colour', pill: 'Pill with words', chip: 'Tier chip is the button' } },
+  { type: 'radio', key: 'spot', label: 'Tier spotlight', value: 'run',
+    options: { run: 'Light runs around the tier', dim: 'The rest dims', ring: 'Ring pulse' } },
+  { type: 'radio', key: 'effect', label: 'Check effect', value: 'land',
+    options: { land: 'Shield lands on the card', split: 'Shield splits, card revealed', small: 'Small shield in the card',
+      simple: 'Simple: sparks + sheen (round 2)', aimed: 'Aimed (round 2)' } },
+  { type: 'check', key: 'shake', label: 'Shake the page on the break', on: false },
   { type: 'check', key: 'ownIcon', label: 'Our icon in the news header, not "[[ ]]"', on: true },
   { type: 'check', key: 'profIcon', label: 'Profession icon beside buffs and nerfs', on: true },
   { type: 'section', label: 'Simulate a new update' },
@@ -58,14 +59,12 @@ function labMountMiddle() {
   if (typeof matchMedia === 'function') matchMedia(LAB_NARROW).addEventListener('change', labPlaceParts);
   labPaintRecent();
 }
+// The order is fixed (search, highlights, news); only where the news goes moves.
 function labPlaceParts() {
   if (!labMid) return;
-  const by = { s: labMid.querySelector('.ls-search'), h: document.getElementById('labTiles'), n: document.getElementById('labNews') };
+  const news = document.getElementById('labNews');
   const low = labPrefs.newsLow && typeof matchMedia === 'function' && matchMedia(LAB_NARROW).matches;
-  for (const k of labPrefs.order) {
-    if (k === 'n' && low) document.getElementById('labNewsLow').appendChild(by.n);
-    else labMid.appendChild(by[k]);
-  }
+  (low ? document.getElementById('labNewsLow') : labMid).appendChild(news);
 }
 function labPaintTiles() {
   const box = document.getElementById('labTiles');
@@ -89,10 +88,11 @@ function labAfterStandings() {
 function labRepaint() {
   if (!labMid) return;
   const html = document.documentElement;
-  html.classList.toggle('lab-aim', labPrefs.effect === 'aimed');
-  html.classList.toggle('lab-still', labPrefs.effect !== 'today');
+  html.classList.toggle('lab-aim', ['aimed', 'land', 'split'].includes(labPrefs.effect));
+  html.classList.toggle('lab-land', labPrefs.effect === 'land' || labPrefs.effect === 'split');
+  html.classList.toggle('lab-still', !labPrefs.shake);
   labPlaceParts();
-  labPaintSearchBar();
+  labPaintRunBtn();
   labPaintAnswer();
   labPaintTiles();
   labPaintNews();

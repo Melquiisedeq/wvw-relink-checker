@@ -3206,6 +3206,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   const opening = swap && available.includes(swap.type) ? swap.type : available[0];
   show(opening, true);
   if (swap && swap.focus) tabByType.get(opening).focus();
+  if (typeof labMapOpened === 'function') labMapOpened(match.id, goTo); // LAB (never merged)
 
   // And once, right now, rather than waiting out the first poll.
   // This popover opens with the match the standings panel is holding, and that panel refreshes every five
