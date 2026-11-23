@@ -79,3 +79,52 @@ export function describe(error) {
   const why = cause && (cause.code || cause.message);
   return `${error && error.name}: ${error && error.message}${why ? ` (${why})` : ''}`;
 }
+
+// str.strip(): the whitespace is Python's, not JavaScript's (\x1c-\x1f and \x85 count, the BOM does not). Walked from both
+// ends, no regex: a long run of spaces inside the text must not cost more than its length.
+const PY_SPACE = new Set([
+  ...Array.from({ length: 5 }, (_, i) => 9 + i), ...Array.from({ length: 4 }, (_, i) => 0x1c + i), 0x20, 0x85, 0xa0, 0x1680,
+  ...Array.from({ length: 11 }, (_, i) => 0x2000 + i), 0x2028, 0x2029, 0x202f, 0x205f, 0x3000,
+]);
+export function strip(text) {
+  const s = String(text);
+  let start = 0;
+  let end = s.length;
+  while (start < end && PY_SPACE.has(s.charCodeAt(start))) start++;
+  while (end > start && PY_SPACE.has(s.charCodeAt(end - 1))) end--;
+  return s.slice(start, end);
+}
+
+// '%.{digits}f' % x: a value exactly halfway rounds to the even digit, where toFixed rounds away from zero.
+export function fixed(x, digits) {
+  if (!Number.isFinite(x)) return x.toFixed(digits);
+  const exact = x.toFixed(digits + 60);
+  if (!/^50*$/.test(exact.slice(-60))) return x.toFixed(digits);
+  const kept = exact.slice(0, -60).replace(/\.$/, '');
+  return Number(kept.slice(-1)) % 2 === 0 ? kept : x.toFixed(digits);
+}
+
+// The text of a body with a leading BOM kept and bad bytes replaced: the cells are judged as they came, and a BOM is not whitespace.
+export const decode = (bytes) => new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes);
+
+// GET a url as text, retried: [text, error], the error worded "HTTP 403 after 3 attempts".
+export function makeFetchText({ fetchFn, sleep, userAgent }) {
+  return async function fetchText(url) {
+    let last = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt) await sleep(5);
+      try {
+        const res = await fetchFn(url, { headers: { 'User-Agent': userAgent }, signal: AbortSignal.timeout(30000) });
+        if (!res.ok) {
+          last = `HTTP ${res.status}`;
+          await res.body?.cancel();
+          continue;
+        }
+        return [decode(await res.arrayBuffer()), null];
+      } catch (error) { // timeout, DNS, truncated body
+        last = describe(error);
+      }
+    }
+    return [null, `${last} after 3 attempts`];
+  };
+}
