@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Is the published site actually serving everything it asks for?
 
-check-structure.py reads the repository. This reads wvwrelink.com. The two are
+check-structure.mjs reads the repository. This reads wvwrelink.com. The two are
 not the same question: the repository can be perfectly consistent while a file
 failed to deploy, and then the page loads, looks right, and one feature is
 missing with nothing in the logs anywhere.
@@ -184,7 +184,7 @@ def main():
         assets = []
 
     # A script can load another later by a quoted path (js/maps.js, by
-    # js/maps-early.js; check-structure.py reads the same pattern): those
+    # js/maps-early.js; check-structure.mjs reads the same pattern): those
     # are fetched too, from the served bodies.
     missing = []
     seen = set(p.lstrip('/') for p in assets)

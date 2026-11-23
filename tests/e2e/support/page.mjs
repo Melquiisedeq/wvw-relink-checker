@@ -1,7 +1,7 @@
 // The one door to the page's insides. Every name of site/js a test needs is here,
 // each behind a function named for what it reads or does; specs and the other
 // support files find the page by its roles, its text, its requests and its clock,
-// and come here only for what none of those shows. tests/unit/spec-port.test.mjs
+// and come here only for what none of those shows. tests/unit/e2e/spec-port.test.mjs
 // fails on a name of site/js anywhere else. What a function hands the page runs
 // there: it can only use its own arguments. A spy here returns its own reader, so
 // no spec touches the window.__ it writes.

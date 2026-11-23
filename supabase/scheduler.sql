@@ -26,7 +26,7 @@ alter table public.heartbeat enable row level security;
 revoke all on public.heartbeat from public, anon, authenticated;
 
 -- 3. The call. Fixed body, secret in a header, and a timeout that must exceed the
--- reader's serial deadlines (tests/unit/scheduler.test.mjs). x-region only routes the
+-- reader's serial deadlines (tests/unit/supabase/scheduler.test.mjs). x-region only routes the
 -- call to a region; the function trusts its own SB_REGION, and answers 404 if the
 -- two differ.
 create or replace function public.call_reader(p_region text) returns void
@@ -80,7 +80,7 @@ select cron.schedule('heartbeat-cleanup', '17 3 * * *',
   $$delete from public.heartbeat where at < now() - interval '7 days'$$);
 
 -- pg_cron never prunes its own log, one row per run. The exact line of the Studio's
--- "Enable cleanup" button, same name, so either leaves one job (tests/unit/scheduler.test.mjs).
+-- "Enable cleanup" button, same name, so either leaves one job (tests/unit/supabase/scheduler.test.mjs).
 select cron.schedule('delete-job-run-details', '0 12 * * *', 'DELETE FROM cron.job_run_details WHERE end_time < now() - interval ''7 days'';');
 
 -- To stop:  select cron.unschedule('readers');

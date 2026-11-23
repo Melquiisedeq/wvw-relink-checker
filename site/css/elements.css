@@ -13,7 +13,7 @@ td{color:#f2f6fa;}
 th{color:#8d97a6;font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;}
 tr:last-child td{border-bottom:none;}
 /* Phones: each row is a block, the guild name on its own line, then tag, region and
-   team. The header stays for screen readers, clipped like .sr-only. phone.spec.mjs
+   team. The header stays for screen readers, clipped like .sr-only. layout-phone.spec.mjs
    measures at 320 and 390 px. */
 @media (max-width:520px){
   #resultCard table,#resultCard tbody{display:block;}

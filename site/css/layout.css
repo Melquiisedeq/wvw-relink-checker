@@ -91,7 +91,7 @@ html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:1;}
   }
 }
 /* ---- The teams notice ------------------------------------------- */
-/* The element's position in index.html is asserted by check-structure.py. */
+/* The element's position in index.html is asserted by check-structure.mjs. */
 .teams-notice{
   --teams-notice-width:1040px;
   --teams-notice-pad-y:8px;

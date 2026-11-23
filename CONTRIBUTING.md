@@ -14,7 +14,7 @@ script from elsewhere is Cloudflare's visit counter, and the page does not
 need it to work. `worker/`, the Supabase readers in `supabase/` and the Apps Scripts in
 `apps-script/` are the code that runs outside the browser; `worker/` follows the
 same rule: one file of code, no dependencies, nothing to install. There is no local setup for
-`worker/`: the tests in `tests/unit/` run it under Node against a stand-in for its database;
+`worker/`: the tests in `tests/unit/` run it under Node against a stand-in for its database (`tests/worker-fakes/`, which the browser tests use too);
 merging into `main` deploys the code, and a schema file is run by hand. The browser tests in
 `tests/e2e/` are the one place with dependencies, Playwright Test and
 monocart-coverage-reports, and nothing in `site/` or `worker/` may import from there.
@@ -101,7 +101,7 @@ The Worker behind `wvwrelink.com/api` has tests, and so do the page's rules
 (its scripts loaded into a `node:vm`, no browser), with nothing to install
 (Node 22.13 or later, and `python3` for the 37 tests in six files that run the checks):
 
-    node --test "tests/unit/*.test.mjs"
+    node --test "tests/unit/**/*.test.mjs"
 
 The page itself has browser tests that open it in a real Chrome. They use
 Playwright Test, pinned in `tests/e2e/package-lock.json` (Node 22 and one
@@ -126,7 +126,7 @@ finds an element by its role and its text (`getByRole`, `getByText`; a class
 only where neither names it), counts requests (`page.on('request')`) rather
 than calls, and waits on what is drawn or on the clock. What none of those
 shows is asked of the page through one file, `tests/e2e/support/page.mjs`, a
-function there for each thing read or done; `tests/unit/spec-port.test.mjs`
+function there for each thing read or done; `tests/unit/e2e/spec-port.test.mjs`
 fails on a name from `site/js/` anywhere else under `tests/e2e/` (its
 `WAITING` list holds the older specs that still use some; a review takes no
 name added there). A test added in place of an older one says so in its pull
@@ -148,7 +148,7 @@ A pull request needs four checks to pass: `structure`, `syntax`, `rules` and
 `page` (`.github/workflows/checks.yml`). `rules` and `page` are the two test
 commands above; `structure` runs without a network or an install:
 
-    python3 scripts/check-structure.py
+    node scripts/check-structure.mjs
 
 `structure` also checks the README's Privacy tables against the code: every host
 the page fetches and every key it stores must be listed there.

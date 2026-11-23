@@ -56,7 +56,7 @@ button:active{
 /* The sink leaves the top 2px of the button's place to whatever is behind, and a press
    there would release on that and lose the click: this strip, carried down with the
    button, keeps the 2px. The zero-specificity position gives it a box to hang from and
-   yields to any class that sets its own (e2e/press.spec.mjs sweeps every button). */
+   yields to any class that sets its own (e2e/layout-press.spec.mjs sweeps every button). */
 :where(button:active){position:relative;}
 button:active::after{
   content:"";position:absolute;left:0;right:0;top:-2px;height:2px;

@@ -27,7 +27,7 @@
 }
 *{box-sizing:border-box;}
 /* The shake (.page.struck) would widen the document by up to 9 px; clip on both, html
-   alone does not hold (tests/e2e/layout.spec.mjs). */
+   alone does not hold (tests/e2e/layout-overflow.spec.mjs). */
 html,body{overflow-x:clip;}
 body{
   margin:0;
@@ -58,7 +58,7 @@ body{
 
 /* The photo carries its effect in the file (grey, lum = 0.3 R + 0.59 G + 0.11 B, brightness .72, contrast 1.04,
    blurred 1.14 px at 1700x820); a new photo is baked the same way. No will-change: a layer
-   of its own makes every frame dearer (paint.spec.mjs). */
+   of its own makes every frame dearer (perf-paint.spec.mjs). */
 .fx-photo{
   /* Left of centre: `center` crops the castle away on a tall window. */
   background:url("../assets/wvw13-1.webp") 22% 42%/cover no-repeat;
@@ -91,7 +91,7 @@ body{
   7%{transform:translateY(-12px);}
   100%{transform:translateY(0);}
 }
-/* Only the infinite ones, bar the loading indicators (.spinner, .btn-pips); embers.spec.mjs and fights.spec.mjs assert they pause and the run-once ones play. */
+/* Only the infinite ones, bar the loading indicators (.spinner, .btn-pips); effects-embers.spec.mjs and map-fights.spec.mjs assert they pause and the run-once ones play. */
 @media (prefers-reduced-motion: reduce){
   .header-rule::before,.rank-1::after,.skel::after,
   .relink-banner.is-urgent::before,.relink-banner.is-lockout::before,
