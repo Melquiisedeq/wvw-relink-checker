@@ -46,9 +46,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # python3, not python: Ubuntu does not guarantee the shorter name exists.
+      # The runner's own Node: the script imports nothing outside the standard library.
       - name: Scripts, styles, hosts, the ?demo= banner code, the notice and the sitemap
-        run: python3 scripts/check-structure.py
+        run: node scripts/check-structure.mjs
 
   syntax:
     runs-on: ubuntu-latest
