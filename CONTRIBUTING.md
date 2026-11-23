@@ -99,7 +99,7 @@ Then open `http://localhost:8000`. No API key, no account, nothing to set up.
 
 The Worker behind `wvwrelink.com/api` has tests, and so do the page's rules
 (its scripts loaded into a `node:vm`, no browser), with nothing to install
-(Node 22.13 or later, and `python3` for the 13 tests in two files that run the checks):
+(Node 22.13 or later):
 
     node --test "tests/unit/**/*.test.mjs"
 
