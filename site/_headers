@@ -15,7 +15,7 @@
 #
 # img-src: local files, plus guild emblems from ArenaNet's asset host.
 #
-# check-structure.mjs reads the policy from the line below; check-site.py compares
+# check-structure.mjs reads the policy from the line below; check-site.mjs compares
 # it with what wvwrelink.com serves.
 /*
   Content-Security-Policy: default-src 'none'; script-src 'self' https://static.cloudflareinsights.com/beacon.min.js; style-src 'self'; connect-src 'self' wss://wvwrelink.com https://api.guildwars2.com https://docs.google.com https://cloudflareinsights.com; img-src 'self' https://render.guildwars2.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'

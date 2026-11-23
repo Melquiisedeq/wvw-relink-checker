@@ -28,9 +28,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Every route the page reads, and the shape it reads
-        run: python3 scripts/check-api.py
+        run: node scripts/check-api.mjs
 
-  # check-api.py asks whether each route answers; this asks whether every key
+  # check-api.mjs asks whether each route answers; this asks whether every key
   # and type the page reads is still there (gw2-contract.json) and whether the
   # live answer still has the shape of the recording the browser tests run on.
   # Its own job, so the email says "contract" and the fix is to re-record.
@@ -97,7 +97,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: wvwrelink.com serves the scripts, stylesheets and images its HTML names; old Pages gone; domain not expiring
-        run: python3 scripts/check-site.py
+        run: node scripts/check-site.mjs
 
   # wvwrelink.com/api: the four sources (two Apps Scripts, two Supabase readers)
   # and the daily cleanup still reporting, the reads the page tries first still
@@ -110,7 +110,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Sources reporting, the reads answering, the push routes shut
-        run: python3 scripts/check-worker.py
+        run: node scripts/check-worker.mjs
 
   # The teams notice is meant to appear every month, and the Apps Script
   # trigger that feeds it stops as silently as the kills one does (see also

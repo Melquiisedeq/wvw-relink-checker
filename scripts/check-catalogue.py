@@ -16,7 +16,7 @@ game swaps borderlands out and back, and asking for one out of play is an HTTP
 400). A mismatch is an equality, not a judgement. To refresh the copy, rebuild it as
 that header says.
 
-Every request gets three attempts, spaced out, as in check-api.py.
+Every request gets three attempts, spaced out, as in check-api.mjs.
 
 Run it by hand any time:  python3 scripts/check-catalogue.py
 """
