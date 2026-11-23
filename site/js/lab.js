@@ -1,20 +1,16 @@
 'use strict';
-// LAB (never merged). The 95-0 lab, round 8: the middle of the page as the owner kept it (his round 1 to 4
+// LAB (never merged). The 95-0 lab, round 9: the middle of the page as the owner kept it (his round 1 to 4
 // choices fixed), every open choice a box or a radio in the panel's "Fine-tune" group, the recommendation
 // on by default. Loaded just before js/boot.js, after the lab-*.js it draws with (check-structure
 // wants boot.js last). Everything goes through textContent.
 
 const LAB_KEY = 'wvw-lab-v1';
-const LAB_VERSION = 8;          // bump when the defaults change: older saved choices are dropped
+const LAB_VERSION = 9;          // bump when the defaults change: older saved choices are dropped
 const LAB_ITEMS = [
   { type: 'section', label: 'Fine-tune' },
   { type: 'check', key: 'newsLow', label: 'Phones: news below the standings', on: false },
   { type: 'check', key: 'ownIcon', label: 'Our icon in the news header, not "[[ ]]"', on: true },
   { type: 'check', key: 'profIcon', label: 'Profession icon beside buffs and nerfs', on: true },
-  { type: 'radio', key: 'leadersAt', label: 'Leaders position', value: 'below',
-    options: { below: 'Below the three tiles (today)', above: 'Above the three tiles' } },
-  { type: 'radio', key: 'changeFx', label: 'Change effect', value: 'sheen',
-    options: { sheen: 'Quick sheen', count: 'Number counts up', slide: 'Slide up', edge: 'Edge light in the team colour' } },
   { type: 'section', label: 'Simulate a new update' },
   { type: 'button', label: 'Balance only', run: () => { labSimNews('balance'); labStatus('Example update: balance only.'); } },
   { type: 'button', label: 'Rules only', run: () => { labSimNews('rule'); labStatus('Example update: rules only.'); } },

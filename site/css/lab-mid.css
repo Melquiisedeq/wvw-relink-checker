@@ -175,9 +175,8 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 .lt-vprow .lab-team{min-width:0;overflow-wrap:anywhere;}
 .lt-vp{font-variant-numeric:tabular-nums;white-space:nowrap;flex:none;}
 .lt-vp .stat-label{color:#8d97a6;font-weight:400;font-size:.68rem;}
-/* Leaders: a box of its own under the tiles, the five stacked in one cell, one shown. */
-.lt-rot{margin-top:8px;padding:9px 12px 4px;gap:4px;}
-.lt-head + .lt-rot{margin:0 0 8px;}
+/* Leaders: a box of its own above the tiles, the five stacked in one cell, one shown. */
+.lt-rot{margin:0 0 8px;padding:9px 12px 4px;gap:4px;}
 .lt-slides{display:grid;}
 .lt-slide{grid-area:1 / 1;display:flex;flex-direction:column;gap:4px;min-width:0;opacity:0;transform:translateY(5px);transition:opacity .35s ease,transform .35s ease;visibility:hidden;}
 .lt-slide.is-on{opacity:1;transform:none;visibility:visible;}
@@ -239,19 +238,13 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
   .lt-seg-btn[aria-pressed="true"] .lt-seg-name{color:var(--text);}
   .lt-seg-btn:hover .lt-seg-name{color:var(--text);}
 }
-/* "Change effect" (js/lab.js, labChangeFx), each once from the turn, with reduced motion too. Quick sheen: the
+/* A turn's effects (js/lab-tiles.js, labChangeFx), once, with reduced motion too. The sheen: the
    first-place badge's band (css/facets.css) already inside the box at the start, across in .6 s. */
 .lt-rot-sheen,.lt-rot-edge{position:absolute;inset:0;z-index:1;pointer-events:none;border-radius:inherit;}
 .lt-rot-sheen{background:linear-gradient(115deg,transparent 38%,rgba(255,255,255,.1) 50%,transparent 62%);
   transform:translateX(-45%);animation:lt-qsheen .6s cubic-bezier(.2,.6,.4,1) 1 both;}
 @keyframes lt-qsheen{to{transform:translateX(65%);}}
-/* Slide up: the title, the team and the number rise 8 px with the fade, 40 ms apart. */
-.lt-fx-slide.lt-slide{transition:opacity .35s ease;}
-.lt-fx-slide > .lt-mt-head,.lt-fx-slide > .lt-mt-team,.lt-fx-slide > .lt-mt-num{animation:lt-rise .3s ease-out 1 both;}
-.lt-fx-slide > .lt-mt-team{animation-delay:40ms;}
-.lt-fx-slide > .lt-mt-num{animation-delay:80ms;}
-@keyframes lt-rise{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
-/* Edge light: the box's top rule in the leader's colour, out in .5 s. */
+/* The top rule: the box's top rule in the leader's colour, out in .5 s. */
 .lt-rot-edge{box-shadow:inset 0 2px 0 var(--side-rail);animation:lt-edge .5s ease-out 1 both;}
 @keyframes lt-edge{from{opacity:1;}to{opacity:0;}}
 /* A tile is rebuilt on every standings repaint, and with reduced motion no ember frame comes to take its loops (boot.js): held here. */

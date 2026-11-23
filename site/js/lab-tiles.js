@@ -2,7 +2,7 @@
 // LAB (never merged). The highlights panel, from the page's own live data (newestMatches and the kill
 // readings of js/maps-early.js): no request of its own. One region, the page's first or the one picked on
 // the panel's switch: the Hottest fight and the Busiest map side by side, the Closest match under them, and
-// the week's leaders one at a time, in a box of their own below. Team names are strangers' text: textContent
+// the week's leaders one at a time, in a box of their own above the tiles. Team names are strangers' text: textContent
 // only.
 
 const LAB_MIN = 60000;
@@ -297,7 +297,7 @@ function labClosestTile() {
     aria: `Closest match, ${labTierTag(c.m.id)}: ${c.a.name} ${labNum(c.a.vp)} VP and ${c.b.name} ${labNum(c.b.vp)} VP, ${labNum(c.gap)} apart this week. Show them in the standings` });
 }
 
-// ---- the week's leaders: one at a time for 5 s in a box under the tiles, with a pause button
+// ---- the week's leaders: one at a time for 5 s in a box above the tiles, with a pause button
 // first in the Tab order; the pointer over it, the focus in it, a touch on it or reduced motion stop it ----
 const labRot = { idx: 0, hover: false, focus: false, paused: false, n: 0, due: false, list: [] };
 const labStill = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -311,26 +311,20 @@ function labRotShow(i) {
   labSegsPaint(box);
   labChangeFx(box, box.querySelectorAll('.lt-slide')[i], labRot.list[i]);
 }
-// "Change effect" (js/lab.js), once on a turn and never on a repaint; it plays with reduced motion too, as the
-// site's run-once effects do. Each starts with the slide's fade.
+// On a turn, never on a repaint, and with reduced motion too (the site's run-once effects play): the sheen
+// across the box, the number counting up and the box's top rule lit in the leader's colour, with the slide's fade.
 let labCount = 0;
 function labChangeFx(box, slide, x) {
   if (!slide || !x) return;
-  const fx = labPrefs.changeFx;
   for (const o of box.querySelectorAll('.lt-rot-sheen, .lt-rot-edge')) o.remove();
-  for (const s of box.querySelectorAll('.lt-fx-slide')) s.classList.remove('lt-fx-slide');
-  if (fx === 'sheen' || fx === 'edge') {
-    const o = labEl('span', fx === 'sheen' ? 'lt-rot-sheen' : `lt-rot-edge side-${x.r.color}`);
+  for (const cls of ['lt-rot-sheen', `lt-rot-edge side-${x.r.color}`]) {
+    const o = labEl('span', cls);
     o.addEventListener('animationend', () => o.remove());
     box.appendChild(o);
   }
-  if (fx === 'slide') {
-    void slide.offsetWidth;
-    slide.classList.add('lt-fx-slide');
-  }
-  if (fx === 'count') labCountUp(slide.querySelector('.lt-mt-num .lt-num'), x);
+  labCountUp(slide.querySelector('.lt-mt-num .lt-num'), x);
 }
-// "Number counts up": from 85% of the value to it in 600 ms, easing out; K/D in its two decimals.
+// The number from 85% of the value to it in 600 ms, easing out; K/D in its two decimals.
 function labCountUp(el, x) {
   const id = ++labCount;
   if (!el || typeof requestAnimationFrame !== 'function') return;
@@ -496,11 +490,8 @@ function labTilesPanel() {
   panel.appendChild(head);
   const grid = labEl('div', 'lt-grid');
   for (const t of [...labTopTiles(), labClosestTile()].filter(Boolean)) grid.appendChild(t);
-  // "Leaders position" (js/lab.js): the box moves in the DOM, so the Tab order follows what is seen.
   const leaders = labLeadersBox(labLeaders());
-  const above = labPrefs.leadersAt === 'above';
-  if (leaders && above) panel.appendChild(leaders);
+  if (leaders) panel.appendChild(leaders);
   panel.appendChild(grid);
-  if (leaders && !above) panel.appendChild(leaders);
   return panel;
 }
