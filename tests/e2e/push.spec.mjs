@@ -51,6 +51,7 @@ async function relive(page, wvw, push, { early = false } = {}) {
     await page.clock.setSystemTime(grid + Math.max(1, Math.ceil((now + 1 - grid) / MIN)) * MIN);
     at = newestOf(await wvw.told());
   }
+  expect(at, `no newer version than ${known} after 3 jumps`).toBeGreaterThan(known);
   await push.sync();
   // The message on the page before the clock runs its wait.
   await expect.poll(() => pushHeardAt(page), 'the version heard').toBe(at);
@@ -471,7 +472,7 @@ test.describe('anywhere but wvwrelink.com', () => {
 test.describe('the week turns with the push live', () => {
   test.use({ timeline: pushWeekTurn(10, 8) });
 
-  test('the list and the map stay on the new week through each push and peek', { tag: '@quarantine' }, async ({ page, wvw }) => {
+  test('the list and the map stay on the new week through each push and peek', async ({ page, wvw }) => {
     await plainReset(page);
     const push = await live(page, wvw);
     await wvw.settle();

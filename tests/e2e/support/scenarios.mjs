@@ -66,9 +66,10 @@ export const weekTurnBehind = (lag = 10, min = 6, id) =>
 // minutes behind in every second minute, still serves the week that ended. The week
 // starts on the reset the page keeps (resetOnTime): inside the reset window the page
 // takes the copy's new week only on that start, and only on a plain reset (plainReset,
-// before the page opens). For a page opened on the site's own address with `livePush`.
+// before the page opens). For a page opened on the site's own address with `livePush`; the
+// minute of play after it opens is the newer version the push goes live on (push.spec, `relive`).
 export const pushWeekTurn = (lag = 10, min = 6, id = FOCUS) =>
-  gw2.match(id).resetOnTime().advance(12).pageOpens().newWeek().olderPool(lag).advance(min);
+  gw2.match(id).resetOnTime().advance(12).pageOpens().advance(1).newWeek().olderPool(lag).advance(min);
 
 // Our copy ahead of the visitor's group, and old: 40 min of play, then our
 // readers stop (/api/latest keeps that moment's bodies, /api/kills its lines)
