@@ -7,8 +7,7 @@
 
 const LAB_RECENT_KEY = 'wvw-lab-recent-v1';
 const LAB_MARK_MS = 8000;
-const labS = { found: null, outcome: null, name: '', mark: null, markTimer: 0, watch: null, spot: null,
-  checkAt: 0, brokeAt: 0, veilAt: 0, veilTimer: 0, veiledMs: null };
+const labS = { found: null, outcome: null, name: '', mark: null, markTimer: 0, watch: null, spot: null, brokeAt: 0 };
 
 function labRecent() {
   try {
@@ -21,27 +20,12 @@ function labRemember(name) {
   try { localStorage.setItem(LAB_RECENT_KEY, JSON.stringify(list)); } catch { /* fine */ }
   labPaintRecent();
 }
-// "Suggestions while typing" fills the <datalist>; "Chips under the bar" shows up to four, and a tap checks again.
+// The last guilds found, offered by the field as you type.
 function labPaintRecent() {
   const dl = document.getElementById('labGuildList');
-  const chips = document.getElementById('labRecent');
-  const input = document.getElementById('labGuild');
-  if (!dl || !chips || !input) return;
+  if (!dl) return;
   dl.textContent = '';
-  chips.textContent = '';
-  const list = labRecent();
-  if (labPrefs.recent === 'chips') {
-    input.removeAttribute('list');
-    for (const n of list.slice(0, 4)) {
-      const b = labEl('button', 'ls-recent-chip', n);
-      b.type = 'button';
-      b.addEventListener('click', () => { input.value = n; labCheck(n); });
-      chips.appendChild(b);
-    }
-    return;
-  }
-  input.setAttribute('list', 'labGuildList');
-  for (const n of list) {
+  for (const n of labRecent()) {
     const o = document.createElement('option');
     o.value = n;
     dl.appendChild(o);
@@ -76,53 +60,16 @@ function labBuildSearch() {
   bar.addEventListener('click', (e) => {
     if (e.target.closest && e.target.closest('#runBtn')) { e.stopPropagation(); e.preventDefault(); labCheck(input.value); }
   }, true);
-  const recent = labEl('div', 'ls-recent');
-  recent.id = 'labRecent';
-  recent.setAttribute('aria-label', 'Recent guilds');
   const answer = labEl('div', 'ls-answer');
   answer.id = 'labAnswer';
   answer.setAttribute('role', 'status');
   answer.setAttribute('aria-live', 'polite');
-  box.append(head, label, bar, recent, answer);
+  box.append(head, label, bar, answer);
   return box;
 }
-// Both the Check button and the answer's arrow draw this double chevron, turned by CSS.
+// The answer's arrow: a double chevron, turned by CSS to where the tier is.
 const LAB_CHEVRONS = ['M6 7l5 5-5 5', 'M12 7l5 5-5 5'];
-let labRunWatch = null;
-function labPaintRunBtn() {
-  const box = document.querySelector('.ls-search');
-  if (!box || typeof runBtn === 'undefined') return;
-  const arrow = labPrefs.runBtn === 'arrow';
-  box.classList.toggle('ls-run-arrow', arrow);
-  if (arrow) runBtn.setAttribute('aria-label', 'Check');
-  else runBtn.removeAttribute('aria-label');
-  labDressRunBtn();
-  if (!labRunWatch && typeof MutationObserver === 'function') {
-    labRunWatch = new MutationObserver(labDressRunBtn);
-    labRunWatch.observe(runBtn, { childList: true });
-  }
-}
-// run() puts the pips in while it asks and writes "Check" back as text when it ends: the arrow goes back over the word.
-function labDressRunBtn() {
-  if (runBtn.querySelector('.btn-pips')) return;
-  const arrow = labPrefs.runBtn === 'arrow';
-  const has = runBtn.querySelector('.ls-run-svg');
-  if (arrow && !has) {
-    runBtn.textContent = '';
-    runBtn.appendChild(labIcon(LAB_CHEVRONS, 'ls-run-svg'));
-  }
-  if (!arrow && has) runBtn.textContent = 'Check';
-}
 
-// "Simple" and "Small shield": no trebuchet, no crest, no shake. run() calls these three by their global names, so for one
-// run they are swapped out; the sparks then fly from the answer card (labSparksFrom).
-function labQuietFinale() {
-  const keep = { startCharge: window.startCharge, playFinale: window.playFinale, sparkFromButton: window.sparkFromButton };
-  window.startCharge = () => {};
-  window.playFinale = () => {};
-  window.sparkFromButton = () => {};
-  return () => Object.assign(window, keep);
-}
 // sparkFromButton's sparks (the .btn-spark flight in css), from a box of the lab's choosing.
 function labSparksFrom(el) {
   const r = el.getBoundingClientRect();
@@ -150,15 +97,12 @@ async function labCheck(raw) {
   const input = document.getElementById('labGuild');
   if (input) input.blur();
   labDropMark();
+  labDropStrip();
   labS.outcome = { asking: true };
   labPaintAnswer();
   guildInput.value = name;
-  const fx = labPrefs.effect;
-  labS.checkAt = performance.now();
   labS.brokeAt = 0;
-  const restore = fx === 'simple' || fx === 'small' ? labQuietFinale() : null;
   try { await run(); } catch { /* run() said it on statusMsg; read below */ }
-  if (restore) restore();
   labS.outcome = await labReadOutcome(name);
   if (labS.outcome.ok) labRemember(labS.outcome.guild);
   labPaintAnswer();
@@ -166,10 +110,6 @@ async function labCheck(raw) {
   // Only as far as needed, never centred, and only for the answer: the standings card is never scrolled to.
   const shown = card || document.getElementById('labAnswer');
   if (shown && typeof shown.scrollIntoView === 'function') shown.scrollIntoView({ block: 'nearest' });
-  if (!card) return;
-  if (fx === 'simple') labHitCard(card);
-  if (fx === 'small') labMiniShield(card);
-  if (fx === 'split' && !labS.brokeAt) labVeil(card);
 }
 
 // The strike on the answer card: the sheen once over it and the sparks flying off it.
@@ -179,43 +119,6 @@ function labHitCard(card) {
   card.classList.add('ls-sheen');
   labSparksFrom(card);
 }
-// "Shield splits": the card waits under the crest and shows on the break; without one, at LAB_VEIL_MAX_MS.
-const LAB_VEIL_MAX_MS = 2500;
-function labVeil(card) {
-  card.classList.add('ls-veiled');
-  labS.veilAt = performance.now();
-  clearTimeout(labS.veilTimer);
-  labS.veilTimer = setTimeout(labUnveil, LAB_VEIL_MAX_MS);
-}
-function labUnveil() {
-  clearTimeout(labS.veilTimer);
-  const card = document.querySelector('#labAnswer .ls-ans.ls-veiled');
-  if (!card) return;
-  labS.veiledMs = Math.round(performance.now() - labS.veilAt);
-  card.classList.remove('ls-veiled');
-  card.classList.add('ls-revealed');
-  labHitCard(card);
-}
-// "Small shield": the header's crest, cloned into the card, cracks and falls in two halves (css/impact.css's cut).
-function labMiniShield(card) {
-  const crest = document.querySelector('.title-row svg');
-  if (!crest) { labHitCard(card); return; }
-  const box = labEl('span', 'ls-mini');
-  box.setAttribute('aria-hidden', 'true');
-  for (const side of ['l', 'r']) {
-    const half = labEl('span', `ls-mini-half ls-mini-${side}`);
-    const c = crest.cloneNode(true);
-    c.removeAttribute('width');
-    c.removeAttribute('height');
-    half.appendChild(c);
-    box.appendChild(half);
-  }
-  box.appendChild(labEl('span', 'ls-mini-crack'));
-  card.appendChild(box);
-  setTimeout(() => labHitCard(card), 330);
-  setTimeout(() => box.remove(), 900);
-}
-
 async function labReadOutcome(name) {
   if (labS.found) {
     const { teamId, guildName } = labS.found;
@@ -253,19 +156,17 @@ function labTierWay(o) {
 function labGo(el, o) {
   el.type = 'button';
   el.setAttribute('aria-label', `Show ${o.team} in the standings, ${o.region} Tier ${o.tier}`);
-  el.addEventListener('click', () => labGoToTier([o.team]));
+  el.addEventListener('click', () => labGoToTier([o.team], o.guild));
   return el;
 }
 function labGoButton(o) {
-  const pill = labPrefs.arrow === 'pill';
-  const go = labGo(labEl('button', pill ? 'ls-go ls-go-pill' : 'ls-go'), o);
-  if (pill) go.appendChild(labEl('span', null, 'See in standings'));
+  const go = labGo(labEl('button', 'ls-go'), o);
   go.appendChild(labIcon(LAB_CHEVRONS, 'ls-go-svg'));
   return go;
 }
 // The answer: the team's own colour (the standings cards' side-* tint), the tier said loud, the rivals as chips.
 function labAnswerCard(o) {
-  const card = labEl('div', `ls-ans ls-arrow-${labPrefs.arrow} ls-way-${labTierWay(o)}${o.color ? ` side-${o.color}` : ''}`);
+  const card = labEl('div', `ls-ans ls-way-${labTierWay(o)}${o.color ? ` side-${o.color}` : ''}`);
   const name = labEl('div', 'ls-ans-name');
   name.append(labEl('span', 'ls-who', `${o.guild} is on`), labEl('span', 'ls-team', o.team));
   const rivals = labEl('div', 'ls-rivals');
@@ -275,16 +176,14 @@ function labAnswerCard(o) {
   }
   const top = labEl('div', 'ls-ans-top');
   top.appendChild(name);
-  const chipGo = labPrefs.arrow === 'chip' && o.tier;
   if (o.tier) {
-    const tier = chipGo ? labGo(labEl('button', 'ls-tier ls-tier-go'), o) : labEl('span', 'ls-tier');
+    const tier = labEl('span', 'ls-tier');
     tier.append(labEl('b', null, `Tier ${o.tier}`), labEl('span', null, o.region));
-    if (chipGo) tier.appendChild(labIcon(LAB_CHEVRONS, 'ls-go-svg'));
     top.appendChild(tier);
   }
   const foot = labEl('div', 'ls-ans-foot');
   foot.appendChild(rivals);
-  if (!chipGo && o.tier) foot.appendChild(labGoButton(o));
+  if (o.tier) foot.appendChild(labGoButton(o));
   card.append(top, foot);
   return card;
 }
@@ -316,12 +215,11 @@ function labPaintAnswer() {
 }
 
 // ---- where the finale lands -------------------------------------------------------------------
-// The trebuchet.js hook, after it aimed the round at the screen's centre: "Aimed", "Shield lands" and
-// "Shield splits" move the target to the answer card (or the bar, if the answer is not up yet) and the
-// crest with it. The two new ones size the crest to the card and strike the card on the break, FLIGHT_MS on.
+// The trebuchet.js hook, after it aimed the round at the screen's centre: the target moves to the answer
+// card (or the bar, if the answer is not up yet) and the crest with it, sized to the card; the card is
+// struck on the break, FLIGHT_MS on. --lab-ax/ay/as place and size the crest and everything round it.
 function labAimBall(ball, arc, from) {
-  const fx = labPrefs.effect;
-  if (!['aimed', 'land', 'split'].includes(fx) || typeof document.querySelector !== 'function') return;
+  if (typeof document.querySelector !== 'function') return;
   const el = document.querySelector('#labAnswer .ls-ans') || document.querySelector('.ls-bar');
   if (!el) return;
   const r = el.getBoundingClientRect();
@@ -335,30 +233,42 @@ function labAimBall(ball, arc, from) {
   ball.style.setProperty('--dx', `${Math.round(dx)}px`);
   arc.style.setProperty('--dy', `${Math.round(dy)}px`);
   arc.style.setProperty('--rise', `${Math.round(arcRise(dx, dy))}px`);
-  if (fx === 'aimed') return;
-  // The 200 px stack holds a 178 px tall crest: "lands" a bit under the card's height, "splits" over all of it.
-  const want = fx === 'split' ? r.height * 1.25 : r.height * 0.9;
+  // The 200 px stack holds a 178 px tall crest: a bit under the card's height.
+  const want = r.height * 0.9;
   html.style.setProperty('--lab-as', Math.min(1, Math.max(0.45, want / 178)).toFixed(3));
   setTimeout(labOnBreak, typeof FLIGHT_MS === 'number' ? FLIGHT_MS : 560);
 }
 function labOnBreak() {
   labS.brokeAt = performance.now();
   const card = document.querySelector('#labAnswer .ls-ans');
-  if (!card) return;
-  if (card.classList.contains('ls-veiled')) labUnveil();
-  else labHitCard(card);
+  if (card) labHitCard(card);
 }
 
 // ---- the found team's card in the standings ------------------------------------------------
 // The showGuildFound hook. No scroll: the sheen and ring start when the card comes into view, and
 // last 8 s from then; a standings repaint rebuilds the card, and labAfterStandings paints it again.
+// The site's strip with the guild's name (paintGuildFound) hangs from the card from that moment too.
 function labGuildFound(teamId, guildName) {
   if (typeof document.querySelectorAll !== 'function') return false;
   labS.found = { teamId, guildName };
   labDropMark();
-  labS.mark = { names: [getTeamName(teamId)], started: 0 };
+  labS.mark = { names: [getTeamName(teamId)], started: 0, guild: ['both', 'search'].includes(labPrefs.strip) ? guildName : '' };
   labWatchMark();
   return true;
+}
+// paintGuildFound draws the strip for the guildFound it reads (js/standings.js), and every standings
+// repaint draws it again until `until`; the blink it starts is the site's, and the lab's mark stands for it.
+function labHangStrip(teamName, guildName) {
+  labDropStrip();
+  if (!guildName || typeof paintGuildFound !== 'function') return;
+  guildFound = { teamName, guildName, until: Date.now() + LAB_MARK_MS };
+  const card = paintGuildFound(document, true);
+  if (card) card.classList.remove('guild-found-flash');
+}
+function labDropStrip() {
+  if (typeof paintGuildFound !== 'function') return;
+  guildFound = null;
+  for (const s of document.querySelectorAll('.guild-found-strip')) s.remove();
 }
 function labMarkCardOf(name) {
   for (const n of document.querySelectorAll('.standing-side .standing-side-name')) {
@@ -385,6 +295,7 @@ function labStartMark() {
   if (!m || m.started) return;
   m.started = Date.now();
   labPaintMark(true);
+  if (m.guild) labHangStrip(m.names[0], m.guild);
   labS.markTimer = setTimeout(labDropMark, LAB_MARK_MS);
 }
 function labPaintMark(fresh) {
@@ -406,34 +317,36 @@ function labDropMark() {
   if (typeof document.querySelectorAll !== 'function') return;
   for (const el of document.querySelectorAll('.lab-hl')) el.remove();
 }
-// The strike on the team cards at the end of a spotlight: the sheen, the sparks, and the 8 s ring from now.
-function labStrikeCards(names) {
+// The strike on the team cards at the end of a spotlight: the sheen, the sparks, the 8 s ring from now,
+// and the guild's strip when the arrow of a found guild brought it there.
+function labStrikeCards(names, guild) {
   labDropMark();
-  labS.mark = { names, started: Date.now() };
+  labS.mark = { names, started: Date.now(), guild: '' };
   for (const card of labPaintMark(true)) labSparksFrom(card);
+  if (guild && ['both', 'arrow'].includes(labPrefs.strip)) labHangStrip(names[0], guild);
   labS.markTimer = setTimeout(labDropMark, LAB_MARK_MS);
 }
 
 // ---- the tier spotlight ------------------------------------------------------------------------
-// The whole tier is brought into view (centred, or its top if it is taller than the screen) and the
-// spotlight starts once 60 % of it is in sight; the strike on the cards comes when it ends.
-const LAB_SPOT_HIT_MS = { run: 1100, dim: 350, ring: 950 };
+// The whole tier is brought into view (centred, or its top if it is taller than the screen) and, once
+// 60 % of it is in sight, the other tiers of its column dim and it is ringed; then the strike on the cards.
+const LAB_SPOT_HIT_MS = 350;
 const LAB_SPOT_MS = 2500;
-function labGoToTier(names) {
+function labGoToTier(names, guild) {
   const card = labMarkCardOf(names[0]);
   const tier = card && card.closest('.standing-match');
   if (!tier) return;
   if (labS.spot) labS.spot.disconnect();
   const h = tier.getBoundingClientRect().height;
   tier.scrollIntoView({ behavior: 'smooth', block: h > window.innerHeight * 0.9 ? 'start' : 'center' });
-  if (typeof IntersectionObserver !== 'function') { labPlaySpot(tier, names); return; }
+  if (typeof IntersectionObserver !== 'function') { labPlaySpot(tier, names, guild); return; }
   // A tier taller than the screen never gets 60 % of itself in: then most of the screen will do.
   const need = Math.min(0.6, (window.innerHeight * 0.85) / Math.max(1, h));
   const io = new IntersectionObserver((list) => {
     if (!list.some((e) => e.isIntersecting && e.intersectionRatio >= need - 0.01)) return;
     io.disconnect();
     labS.spot = null;
-    labPlaySpot(tier, names);
+    labPlaySpot(tier, names, guild);
   }, { threshold: need });
   labS.spot = io;
   io.observe(tier);
@@ -446,17 +359,13 @@ function labRingPath(w, h) {
   const t = LAB_RING;
   return `path(evenodd, 'M${c} 0H${w}V${h - c}L${w - c} ${h}H0V${c}Z M${c + 1} ${t}L${t} ${c + 1}V${h - t}H${w - c - 1}L${w - t} ${h - c - 1}V${t}Z')`;
 }
-function labRing() {
-  return labEl('span', 'lab-ring');
-}
-function labPlaySpot(tier, names) {
-  const kind = labPrefs.spot;
+function labPlaySpot(tier, names, guild) {
   for (const old of document.querySelectorAll('.lab-spot')) old.remove();
   for (const m of document.querySelectorAll('.lab-dimmed')) m.classList.remove('lab-dimmed');
   const first = labMarkCardOf(names[0]);
   const col = tier.parentElement;
   col.classList.add('lab-spot-col');
-  const fx = labEl('span', `lab-spot lab-spot-${kind}`);
+  const fx = labEl('span', 'lab-spot');
   fx.setAttribute('aria-hidden', 'true');
   const glow = first ? getComputedStyle(first).getPropertyValue('--side-glow').trim() : '';
   if (glow) fx.style.setProperty('--lab-c', glow);
@@ -467,15 +376,10 @@ function labPlaySpot(tier, names) {
   fx.style.width = `${w}px`;
   fx.style.height = `${h}px`;
   fx.style.setProperty('--lab-ring', labRingPath(w, h));
-  const ring = labRing();
-  fx.appendChild(ring);
-  if (kind === 'run') for (const side of ['t', 'r', 'b', 'l']) ring.appendChild(labEl('i', `lab-run-${side}`));
-  if (kind === 'ring') fx.append(labRing(), labRing());
+  fx.appendChild(labEl('span', 'lab-ring'));
   col.appendChild(fx);
-  if (kind === 'dim') {
-    for (const m of col.children) if (m !== tier && m.classList.contains('standing-match')) m.classList.add('lab-dimmed');
-  }
-  setTimeout(() => labStrikeCards(names), LAB_SPOT_HIT_MS[kind]);
+  for (const m of col.children) if (m !== tier && m.classList.contains('standing-match')) m.classList.add('lab-dimmed');
+  setTimeout(() => labStrikeCards(names, guild), LAB_SPOT_HIT_MS);
   setTimeout(() => {
     fx.remove();
     for (const m of document.querySelectorAll('.lab-dimmed')) m.classList.remove('lab-dimmed');

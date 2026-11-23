@@ -1,26 +1,26 @@
 'use strict';
-// LAB (never merged). The 95-0 lab, round 3: the middle of the page as the owner kept it (setup 4 of
-// round 1, its round 2 choices fixed), every open choice a box or a radio in the panel's "Fine-tune" group, the recommendation
+// LAB (never merged). The 95-0 lab, round 4: the middle of the page as the owner kept it (his round 1 to 3
+// choices fixed), every open choice a box or a radio in the panel's "Fine-tune" group, the recommendation
 // on by default. Loaded just before js/boot.js, after the lab-*.js it draws with (check-structure
 // wants boot.js last). Everything goes through textContent.
 
 const LAB_KEY = 'wvw-lab-v1';
-const LAB_VERSION = 3;          // bump when the defaults change: older saved choices are dropped
+const LAB_VERSION = 4;          // bump when the defaults change: older saved choices are dropped
 const LAB_ITEMS = [
   { type: 'section', label: 'Fine-tune' },
   { type: 'check', key: 'newsLow', label: 'Phones: news below the standings', on: false },
-  { type: 'radio', key: 'recent', label: 'Recent guilds', value: 'list',
-    options: { list: 'Suggestions while typing', chips: 'Chips under the bar' } },
-  { type: 'radio', key: 'runBtn', label: 'Check button', value: 'arrow',
-    options: { arrow: 'Arrow, like the answer’s', word: 'The word Check (today)' } },
-  { type: 'radio', key: 'arrow', label: 'Answer arrow', value: 'chevron',
-    options: { chevron: 'Chevron in the team colour', pill: 'Pill with words', chip: 'Tier chip is the button' } },
-  { type: 'radio', key: 'spot', label: 'Tier spotlight', value: 'run',
-    options: { run: 'Light runs around the tier', dim: 'The rest dims', ring: 'Ring pulse' } },
-  { type: 'radio', key: 'effect', label: 'Check effect', value: 'land',
-    options: { land: 'Shield lands on the card', split: 'Shield splits, card revealed', small: 'Small shield in the card',
-      simple: 'Simple: sparks + sheen (round 2)', aimed: 'Aimed (round 2)' } },
-  { type: 'check', key: 'shake', label: 'Shake the page on the break', on: false },
+  { type: 'radio', key: 'strip', label: 'Guild strip under the team card', value: 'both',
+    options: { both: 'On search and on the arrow', search: 'On search only', arrow: 'On the arrow only', off: 'No strip' } },
+  { type: 'radio', key: 'rings', label: 'Rings round the shield', value: 'fit',
+    options: { fit: 'Centred on the shield, at its size', none: 'No rings' } },
+  { type: 'radio', key: 'busy', label: 'Busiest map (no fight anywhere)', value: 'teams',
+    options: { teams: 'Captures by team, the map’s rings', count: 'Captures count (round 3)' } },
+  { type: 'check', key: 'busyPreview', label: 'Preview: Busiest map in place of the fight', on: false },
+  { type: 'radio', key: 'stone', label: 'Stonemist', value: 'owner',
+    options: { owner: 'The owner’s name big', time: 'The time held big', yaks: 'The yaks since taken big' } },
+  { type: 'radio', key: 'leaders', label: 'Leaders', value: 'list',
+    options: { list: 'Static list', strip: 'Own strip under the highlights', rot: 'Rotating, 7 s, with pause' } },
+  { type: 'check', key: 'grid2', label: 'Phones: highlights 2×2', on: false },
   { type: 'check', key: 'ownIcon', label: 'Our icon in the news header, not "[[ ]]"', on: true },
   { type: 'check', key: 'profIcon', label: 'Profession icon beside buffs and nerfs', on: true },
   { type: 'section', label: 'Simulate a new update' },
@@ -87,12 +87,8 @@ function labAfterStandings() {
 
 function labRepaint() {
   if (!labMid) return;
-  const html = document.documentElement;
-  html.classList.toggle('lab-aim', ['aimed', 'land', 'split'].includes(labPrefs.effect));
-  html.classList.toggle('lab-land', labPrefs.effect === 'land' || labPrefs.effect === 'split');
-  html.classList.toggle('lab-still', !labPrefs.shake);
+  document.documentElement.classList.toggle('lab-no-rings', labPrefs.rings === 'none');
   labPlaceParts();
-  labPaintRunBtn();
   labPaintAnswer();
   labPaintTiles();
   labPaintNews();

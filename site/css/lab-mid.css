@@ -1,4 +1,4 @@
-/* LAB - never merged. The middle, round 3 (js/lab.js): the search bar, the answer card and its arrow,
+/* LAB - never merged. The middle, round 4 (js/lab.js): the search bar, the answer card and its arrow,
    the highlights, the news, the tier spotlight, the mark on the found team's card and the Check effects.
    Drawn for 390 and 320 px first. */
 html.lab-mid-on .lab-old-search,
@@ -9,7 +9,7 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 .lab-mid{display:flex;flex-direction:column;gap:14px;margin-bottom:20px;min-width:0;}
 .lab-news-low{width:100%;max-width:720px;order:3;}
 .lab-news-low:empty{display:none;}
-.lab-mid button.lt-tile,.lab-mid .ls-go,.lab-mid .ln-filter,.lab-mid .ls-retry,.lab-mid .ls-recent-chip{
+.lab-mid button.lt-tile,.lab-mid .ls-go,.lab-mid .ln-filter,.lab-mid .ls-retry{
   background:none;color:inherit;border:0;font:inherit;text-shadow:none;box-shadow:none;
   text-align:left;cursor:pointer;transition:border-color .15s ease;
 }
@@ -49,16 +49,6 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
   height:44px;min-width:44px;padding:0 18px;border-radius:999px;font-size:.92rem;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.5),inset 0 -1px 0 rgba(0,0,0,.25);
 }
-/* "Arrow": the answer's double chevron, a 44 px disc in the site's accent; the pips stay while it asks. */
-.ls-run-arrow .ls-btn #runBtn{width:44px;padding:0;border-radius:50%;display:grid;place-items:center;}
-.ls-run-svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;}
-.ls-run-arrow .ls-btn #runBtn .btn-pips{transform:scale(.8);}
-.ls-recent{display:flex;gap:6px;overflow-x:auto;margin-top:8px;scrollbar-width:none;overscroll-behavior-x:contain;}
-.ls-recent:empty{display:none;}
-.lab-mid .ls-recent-chip{
-  flex:none;min-height:32px;padding:4px 12px;border-radius:999px;border:1px solid #3a4350;
-  color:var(--muted);font-size:.82rem;white-space:nowrap;
-}
 .ls-answer:empty{display:none;}
 .ls-answer p{margin:10px 0 0;line-height:1.5;font-size:.92rem;}
 .ls-progress{color:var(--muted);}
@@ -94,21 +84,12 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 .ls-go-svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;transform:rotate(90deg);}
 .ls-way-left .ls-go-svg{transform:rotate(180deg);}
 .ls-way-right .ls-go-svg{transform:none;}
-.lab-mid .ls-go-pill{border-radius:999px;padding:0 14px 0 16px;background:color-mix(in oklab, var(--ls-c) 16%, #14181d);box-shadow:none;color:var(--text);font-size:.86rem;font-weight:700;white-space:nowrap;}
-.ls-go-pill .ls-go-svg{width:16px;height:16px;color:var(--side-glow,var(--accent));}
 .ls-ans-top{display:flex;align-items:flex-start;gap:10px;}
 .ls-ans-name{flex:1;min-width:0;}
 .ls-tier{
   flex:none;display:flex;flex-direction:column;align-items:center;padding:4px 8px;border-radius:8px;
   border:1px solid var(--side-edge,var(--border));background:rgba(0,0,0,.25);
 }
-.lab-mid .ls-tier-go{
-  font:inherit;color:inherit;cursor:pointer;min-width:64px;min-height:56px;justify-content:center;gap:0;
-  background:color-mix(in oklab, var(--ls-c) 22%, #101317);border:1px solid color-mix(in oklab, var(--ls-c) 70%, transparent);
-  box-shadow:0 0 0 3px color-mix(in oklab, var(--ls-c) 12%, transparent);
-}
-.lab-mid .ls-tier-go:hover{box-shadow:0 0 0 4px color-mix(in oklab, var(--ls-c) 26%, transparent);}
-.ls-tier-go .ls-go-svg{width:16px;height:16px;margin-top:1px;color:var(--side-glow,var(--accent));}
 .ls-tier b{font-size:.8rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;}
 .ls-tier span{font-size:.66rem;color:var(--muted);letter-spacing:.08em;}
 .ls-ans-foot{display:flex;align-items:center;gap:10px;margin-top:8px;}
@@ -121,26 +102,12 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
   transform:translateX(-120%);animation:lt-sheen 1s ease-in-out .1s 1 both;
 }
 @keyframes ls-jolt{0%,100%{transform:none;}35%{transform:translateY(-2px);}70%{transform:translateY(1px);}}
-/* "Shield splits": the card waits under the crest, and comes up as the halves open. */
-.ls-ans.ls-veiled{opacity:0;}
-.ls-ans.ls-revealed{animation:ls-reveal .32s ease-out 1;}
-@keyframes ls-reveal{from{opacity:0;transform:scale(.97);}to{opacity:1;transform:none;}}
-/* "Small shield": the header's crest in the card, cracking into css/impact.css's two halves. */
-.ls-mini{position:absolute;z-index:2;left:50%;top:50%;width:46px;height:55px;margin:-27px 0 0 -23px;pointer-events:none;animation:ls-mini-in .22s cubic-bezier(.2,.8,.3,1.3) both;}
-.ls-mini-half{position:absolute;inset:0;}
-.ls-mini-half svg{width:100%;height:100%;display:block;filter:drop-shadow(0 2px 4px rgba(0,0,0,.6));}
-.ls-mini-l{clip-path:polygon(50% 0, 46% 18%, 54% 33%, 45% 48%, 52% 64%, 46% 80%, 50% 100%, 0 100%, 0 0);animation:ls-mini-l .5s cubic-bezier(.3,.6,.4,1) .3s both;}
-.ls-mini-r{clip-path:polygon(50% 0, 100% 0, 100% 100%, 50% 100%, 46% 80%, 52% 64%, 45% 48%, 54% 33%, 46% 18%);animation:ls-mini-r .5s cubic-bezier(.3,.6,.4,1) .3s both;}
-.ls-mini-crack{position:absolute;left:calc(50% - 1px);top:0;width:2px;height:100%;background:linear-gradient(#fff,#bfefff);opacity:0;animation:ls-mini-crack .3s ease-out .2s both;}
-@keyframes ls-mini-in{from{opacity:0;transform:scale(.4) rotate(-14deg);}to{opacity:1;transform:none;}}
-@keyframes ls-mini-l{to{opacity:0;transform:translate(-30px,14px) rotate(-26deg);}}
-@keyframes ls-mini-r{to{opacity:0;transform:translate(30px,14px) rotate(26deg);}}
-@keyframes ls-mini-crack{0%{opacity:0;transform:scaleY(.2);}40%{opacity:1;transform:none;}100%{opacity:0;}}
-
 /* ---- highlights ---- */
 .lt-panel{padding:10px 12px 12px;}
 .lt-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;}
-@media (min-width:600px){.lt-grid{grid-template-columns:repeat(4,minmax(0,1fr));}}
+@media (min-width:600px){.lt-grid{grid-template-columns:repeat(4,minmax(0,1fr));}.lt-grid.lt-n3{grid-template-columns:repeat(3,minmax(0,1fr));}}
+/* "Phones: highlights 2x2": two a row under 600 px too; with three, the first takes the whole row. */
+@media (max-width:599px){.lt-grid-2{grid-template-columns:repeat(2,minmax(0,1fr));}.lt-grid-2.lt-n3 > :first-child,.lt-grid-2 .lt-leaders,.lt-grid-2:has(.lt-leaders) .lt-close{grid-column:1 / -1;}}
 .lt-tile{
   position:relative;overflow:hidden;min-width:0;padding:9px 10px;border-radius:10px;
   display:flex;flex-direction:column;gap:3px;justify-content:flex-start;
@@ -173,12 +140,22 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
   animation:clash-shine 2.8s infinite;
 }
 .lt-hot .lt-unit{color:#f0b27a;}
-/* Stonemist: its owner's tile, tinted the owner's colour, the map's castle marker large. */
-.lt-owner{--lt-c:var(--side-rail,#6b7584);background:color-mix(in oklab, var(--lt-c) 16%, #12161b) !important;border-color:var(--side-edge,var(--border)) !important;}
-.lt-owner .lt-owner-name,.lt-owner .lt-line{margin-right:44px;}
-.lt-castle{position:absolute;right:6px;top:32px;width:40px;height:40px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.6));}
-.lt-owner-name{font-size:.95rem;font-weight:800;line-height:1.2;overflow-wrap:anywhere;margin-top:2px;}
-.lt-owner .lt-line{color:#c5ccd6;}
+/* Busiest map: the marker of the last objective taken, inside the map's capture rings (.wvw-ring's frames in
+   css/maps.css, under a name of their own: map-rings.spec counts the map's by name), looping; then who holds what was taken, in the teams' colours. */
+.lt-pulse{position:relative;width:16px;height:16px;flex:none;display:grid;place-items:center;margin-right:3px;}
+.lt-pulse .lt-ic{position:relative;width:18px;height:18px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.7));}
+.lt-pulse-ring{position:absolute;inset:0;border-radius:50%;border:1.5px solid #fff;opacity:0;animation:lt-pulse 1.6s ease-out infinite;}
+@keyframes lt-pulse{0%{opacity:.95;transform:scale(.9);}100%{opacity:0;transform:scale(2.1);}}
+.lt-pulse-ring-b{border-color:var(--accent-bright);border-width:1px;animation-delay:.8s;}
+.lt-takers{display:flex;flex-wrap:wrap;gap:2px 12px;font-size:.78rem;font-weight:600;line-height:1.3;}
+.lt-taker{display:inline-flex;align-items:baseline;gap:5px;min-width:0;}
+.lt-taker .lab-team{overflow-wrap:anywhere;}
+.lt-taker-n{color:var(--side-glow);font-variant-numeric:tabular-nums;}
+/* Stonemist: the castle's marker in its owner's colour, ringed in it; the owner's name big in its colour. */
+.lt-mark{width:20px;height:20px;flex:none;display:grid;place-items:center;border-radius:50%;margin:-2px 1px -2px 0;
+  border:1.5px solid var(--side-rail);box-shadow:0 0 6px -1px var(--side-glow);background:rgba(0,0,0,.35);}
+.lt-mark .lt-ic{width:14px;height:14px;}
+.lt-owner-name{font-size:1.25rem;font-weight:800;line-height:1.15;overflow-wrap:anywhere;color:var(--side-glow);}
 /* Closest match: the two teams' VP as one bar split in their colours. */
 .lt-split{display:flex;height:6px;gap:2px;border-radius:3px;overflow:hidden;margin:2px 0;}
 .lt-seg{display:block;flex-basis:0;min-width:6px;}
@@ -187,18 +164,40 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 .lt-vprow .lab-team{min-width:0;overflow-wrap:anywhere;}
 .lt-vp{font-variant-numeric:tabular-nums;white-space:nowrap;flex:none;}
 .lt-vp .stat-label{color:#8d97a6;font-weight:400;font-size:.68rem;}
-/* Leaders: the five stacked in one cell, one shown; the dots are 24 px targets. */
+/* Leaders, "Static list" and "Own strip": one row each, what · the team · the number. */
+.lt-leads{display:flex;flex-direction:column;gap:2px;font-size:.76rem;line-height:1.3;}
+.lt-lead{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:baseline;gap:6px;min-width:0;}
+.lt-lead-what{display:inline-flex;align-items:center;gap:4px;color:var(--muted);font-size:.68rem;white-space:nowrap;align-self:center;}
+.lt-lead-what .lt-ic{width:13px;height:13px;}
+.lt-lead-what .lt-ic-vp{font-size:.56rem;}
+.lt-lead .lab-team{font-weight:600;min-width:0;overflow-wrap:anywhere;}
+.lt-lead-val{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.lt-strip{margin-top:8px;padding:8px 10px;border-radius:10px;background:rgba(10,13,17,.5);border:1px solid var(--border);}
+.lt-strip-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:4px;font-size:.6rem;font-weight:800;color:#a3adbb;text-transform:uppercase;letter-spacing:.09em;}
+.lt-strip-note{font-weight:600;letter-spacing:.04em;text-transform:none;font-size:.68rem;color:var(--muted);}
+@media (min-width:600px){
+  .lt-leads-strip{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 18px;}
+  /* "Static list" on a wide page: a row of its own under the other three, the five side by side. */
+  .lt-grid:has(.lt-leaders){grid-template-columns:repeat(3,minmax(0,1fr));}
+  .lt-leaders{grid-column:1 / -1;}
+  .lt-leaders .lt-leads{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px 12px;}
+  .lt-leaders .lt-lead{grid-template-columns:minmax(0,1fr);gap:1px;align-content:start;}
+}
+/* "Rotating": the five stacked in one cell, one shown; the pause button and the dots in a row under them. */
 .lt-rot{min-height:0;padding-bottom:2px;}
 .lt-slides{display:grid;}
 .lt-slide{grid-area:1 / 1;display:flex;flex-direction:column;gap:3px;min-width:0;opacity:0;transform:translateY(5px);transition:opacity .35s ease,transform .35s ease;visibility:hidden;}
 .lt-slide.is-on{opacity:1;transform:none;visibility:visible;}
 .lt-rot-row{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0 10px;font-weight:700;font-size:.9rem;}
 .lt-rot-row .lab-team{overflow-wrap:anywhere;}
-.lt-pips{display:flex;justify-content:center;gap:0;margin-top:2px;}
-.lab-mid button.lt-pip{width:24px;height:24px;min-width:0;min-height:0;padding:0;border:0;border-radius:50%;background:none;box-shadow:none;display:grid;place-items:center;cursor:pointer;}
+.lt-pips{display:flex;justify-content:center;align-items:center;gap:0;margin-top:2px;}
+.lab-mid button.lt-pip,.lab-mid button.lt-rot-pause{width:24px;height:24px;min-width:0;min-height:0;padding:0;border:0;border-radius:50%;background:none;box-shadow:none;display:grid;place-items:center;cursor:pointer;color:var(--muted);}
+.lab-mid button.lt-rot-pause{width:44px;height:44px;margin:-10px 0 -10px -10px;}
+.lt-rot-svg{width:14px;height:14px;fill:currentColor;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;}
 .lt-pip::before{content:'';width:6px;height:6px;border-radius:50%;background:#4a5462;transition:background-color .2s ease;}
 .lt-pip[aria-pressed="true"]::before{background:var(--accent);}
-@media (prefers-reduced-motion: reduce){.lt-hot .lt-num{animation-play-state:paused !important;}}
+/* A tile is rebuilt on every standings repaint, and with reduced motion no ember frame comes to take its loops (boot.js): held here. */
+@media (prefers-reduced-motion: reduce){.lt-hot .lt-num,.lt-pulse-ring,.lt-clash *{animation-play-state:paused !important;}}
 
 /* ---- news ---- */
 .ln-panel{padding:0 14px 6px;}
@@ -256,43 +255,22 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 }
 @keyframes lab-hl-ring{0%,85%{opacity:1;}100%{opacity:0;}}
 
-/* ---- where the finale lands: "Aimed" puts the crest on the answer; every choice but today's keeps the page still ---- */
-html.lab-aim .impact-overlay{display:block;}
-html.lab-aim .impact-overlay::before{background:radial-gradient(circle at var(--lab-ax,50%) var(--lab-ay,50%), rgba(140,224,255,.4) 0%, transparent 40%);}
-html.lab-aim .impact-stack{position:absolute;left:calc(var(--lab-ax,50vw) - 100px);top:calc(var(--lab-ay,50vh) - 100px);}
-html.lab-still .page.struck{animation:none;}
-/* "Shield lands" and "Shield splits": the crest at the card's size. */
-html.lab-land .impact-stack{scale:var(--lab-as,1);}
+/* ---- where the finale lands: the crest on the answer card at its size (--lab-ax/ay/as, js/lab-search.js),
+   and what css/facets.css centres on the screen with it: the two shock rings, the debris and the wash. The
+   individual scale multiplies the rings' and the debris' own animated transform. The page stays still. ---- */
+html.lab-mid-on .impact-overlay{display:block;}
+html.lab-mid-on .impact-overlay::before{background:radial-gradient(circle calc(var(--lab-as,1) * 320px) at var(--lab-ax,50%) var(--lab-ay,50%), rgba(140,224,255,.4) 0%, transparent 100%);}
+html.lab-mid-on .impact-stack{position:absolute;left:calc(var(--lab-ax,50vw) - 100px);top:calc(var(--lab-ay,50vh) - 100px);scale:var(--lab-as,1);}
+html.lab-mid-on .impact-ring,html.lab-mid-on .impact-shard{left:var(--lab-ax,50%);top:var(--lab-ay,50%);scale:var(--lab-as,1);}
+html.lab-no-rings .impact-ring{display:none;}
+html.lab-mid-on .page.struck{animation:none;}
 
 /* ---- the tier spotlight, in the found team's colour (--lab-c), then the strike on its card ---- */
 .lab-spot-col{position:relative;}
 .lab-spot{position:absolute;pointer-events:none;z-index:2;--lab-c:var(--accent);filter:drop-shadow(0 0 5px var(--lab-c));animation:lab-spot-fade 2.5s ease-out both;}
-.lab-ring{position:absolute;inset:0;clip-path:var(--lab-ring);background:color-mix(in oklab, var(--lab-c) 80%, transparent);}
-/* "Light runs": a bright run along each edge in turn, one lap in 1.1 s, cut to the ring. */
-.lab-spot-run .lab-ring{background:color-mix(in oklab, var(--lab-c) 45%, transparent);}
-.lab-spot-run i{position:absolute;overflow:hidden;}
-.lab-spot-run i::before{content:'';position:absolute;}
-.lab-run-t,.lab-run-b{left:0;right:0;height:8px;}
-.lab-run-l,.lab-run-r{top:0;bottom:0;width:8px;}
-.lab-run-t{top:0;}.lab-run-b{bottom:0;}.lab-run-l{left:0;}.lab-run-r{right:0;}
-.lab-run-t::before,.lab-run-b::before{top:0;height:100%;width:40%;background:linear-gradient(90deg,transparent,var(--lab-c) 50%,#fff);}
-.lab-run-l::before,.lab-run-r::before{left:0;width:100%;height:40%;background:linear-gradient(180deg,transparent,var(--lab-c) 50%,#fff);}
-.lab-run-t::before{left:0;transform:translateX(-100%);animation:lab-run-x .275s linear 0s both;}
-.lab-run-r::before{top:0;transform:translateY(-100%);animation:lab-run-y .275s linear .275s both;}
-.lab-run-b::before{left:0;transform:translateX(-100%) scaleX(-1);animation:lab-run-xr .275s linear .55s both;}
-.lab-run-l::before{top:0;transform:translateY(-100%) scaleY(-1);animation:lab-run-yr .275s linear .825s both;}
-@keyframes lab-run-x{from{transform:translateX(-100%);}to{transform:translateX(225%);}}
-@keyframes lab-run-y{from{transform:translateY(-100%);}to{transform:translateY(225%);}}
-@keyframes lab-run-xr{from{transform:translateX(225%) scaleX(-1);}to{transform:translateX(-100%) scaleX(-1);}}
-@keyframes lab-run-yr{from{transform:translateY(225%) scaleY(-1);}to{transform:translateY(-100%) scaleY(-1);}}
+.lab-ring{position:absolute;inset:0;clip-path:var(--lab-ring);}
 @keyframes lab-spot-fade{0%{opacity:0;}8%,70%{opacity:1;}100%{opacity:0;}}
-/* "The rest dims": the other tiers of the column at 45 % for the length of it, this one ringed. */
+/* The other tiers of the column at 40 % for the length of it, this one ringed. */
 .standing-match{transition:opacity .3s ease;}
 .standing-match.lab-dimmed{opacity:.4;}
-.lab-spot-dim .lab-ring{background:var(--lab-c);}
-/* "Ring pulse": the tier's outline goes out twice, past the faint one that stays. */
-.lab-spot-ring{animation:lab-spot-fade 1.6s ease-out both;}
-.lab-spot-ring .lab-ring{opacity:.5;}
-.lab-spot-ring .lab-ring + .lab-ring{opacity:0;animation:lab-ring .7s ease-out both;}
-.lab-spot-ring .lab-ring + .lab-ring + .lab-ring{animation-delay:.35s;}
-@keyframes lab-ring{0%{opacity:0;transform:none;}20%{opacity:1;}100%{opacity:0;transform:scale(1.05,1.1);}}
+.lab-spot .lab-ring{background:var(--lab-c);}
