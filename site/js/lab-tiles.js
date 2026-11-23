@@ -1,16 +1,19 @@
 'use strict';
 // LAB (never merged). The highlights panel, from the page's own live data (newestMatches and the kill
-// readings of js/maps-early.js): no request of its own. Only the region the page puts first
-// (data-rail-first, js/region.js): the Hottest fight and the Busiest map side by side, the Closest match
-// under them, and the week's leaders one at a time in a box of their own below. Team names are strangers'
+// readings of js/maps-early.js): no request of its own. One region, the page's first or the one picked on
+// the panel's switch: the Hottest fight and the Busiest map side by side, the Closest match under them, and
+// the week's leaders one at a time, in a box of their own below or as a 4th tile. Team names are strangers'
 // text: textContent only.
 
 const LAB_MIN = 60000;
 const labNow = () => (typeof steadyNow === 'function' ? steadyNow() : Date.now());
 const labNum = (n) => Math.round(Number(n) || 0).toLocaleString('en-US');
 const labRegion = (id) => (String(id).charAt(0) === '1' ? 'NA' : 'EU');
-// The region the page puts first (railFirst, js/dom.js): the only one the highlights cover.
-const labRegionFirst = () => (typeof railFirst === 'function' ? railFirst() : 'na').toUpperCase();
+// The region the highlights cover: the one picked on their own NA | EU switch, else the one the page puts
+// first (railFirst, js/dom.js). Swapping the page's columns drops the pick (js/lab.js): the last action wins.
+// Not kept between visits.
+let labRegionPick = null;
+const labRegionFirst = () => labRegionPick || (typeof railFirst === 'function' ? railFirst() : 'na').toUpperCase();
 const labCap = (c) => c.charAt(0).toUpperCase() + c.slice(1);
 
 function labKept() {
@@ -34,19 +37,28 @@ function labTeams(m) {
 }
 
 // The live map's own pick (hotMapOf, js/maps-early.js) on every running match: the map whose swords are
-// lit with the most kills per 10 min. The data holds the three teams' kills together per map, not each
-// team's over a window, so the number is the map's and the three teams are named alike.
+// lit with the most kills per 10 min. With no swords lit in the region, the map with the most kills per
+// 10 min all the same, marked calm. Null while no match has a kill rate yet. The data holds the three
+// teams' kills together per map, not each team's over a window, so the number is the map's and the three
+// teams are named alike.
 function labHot() {
   if (typeof hotMapOf !== 'function') return null;
   let best = null;
+  let calm = null;
   for (const k of labKept()) {
     let v;
     try { v = hotMapOf(k.match); } catch { continue; }
-    if (!v || !v.hot || !v.rates) continue;
-    const n = v.rates.per.get(v.hot) || 0;
-    if (!best || n > best.n) best = { m: k.match, type: v.hot, n, silence: v.view.silence };
+    if (!v || !v.rates) continue;
+    if (v.hot) {
+      const n = v.rates.per.get(v.hot) || 0;
+      if (!best || n > best.n) best = { m: k.match, type: v.hot, n, silence: v.view.silence };
+      continue;
+    }
+    for (const [type, n] of v.rates.per) {
+      if (!calm || n > calm.n) calm = { m: k.match, type, n, silence: v.view.silence, calm: true };
+    }
   }
-  return best;
+  return best || calm;
 }
 // Objectives that changed hands in the last 2 h, per map: what stands in for a fight with no readings. An
 // objective's owner now is the team that took it last, and an objective taken twice counts once: the API
@@ -208,30 +220,38 @@ function labBig(num, unit) {
 const LAB_MAP_LONG = { Center: 'Eternal Battlegrounds', RedHome: 'Red Borderlands', BlueHome: 'Blue Borderlands', GreenHome: 'Green Borderlands' };
 
 // The map's capture ring (.wvw-ring in css/maps.css) round an objective's marker: the Busiest map's motion,
-// as the swords are the Hottest fight's. "slow": one ping every 4 s; "once": one ping when the tile first
-// shows and when its count changes (a repaint with the same count plays nothing); "still": none.
+// as the swords are the Hottest fight's. "beat": one ping on every blow of the swords (css/lab-mid.css);
+// "slow": one ping every 4 s; "once": one ping when the tile first shows and when its count changes (a
+// repaint with the same count plays nothing); "still": none.
 let labBusyShown = '';
 function labPulse(type, color, key) {
   const motion = labPrefs.busyMotion;
   const fresh = key !== labBusyShown;
   labBusyShown = key;
   const wrap = labEl('span', 'lt-pulse');
-  if (motion === 'slow' || (motion === 'once' && fresh)) wrap.appendChild(labEl('span', `lt-pulse-ring lt-pulse-${motion}`));
+  if (motion === 'beat' || motion === 'slow' || (motion === 'once' && fresh)) wrap.appendChild(labEl('span', `lt-pulse-ring lt-pulse-${motion}`));
   wrap.appendChild(labIconOf(type, color));
   return wrap;
 }
-function labFightTile(f, solo) {
+// A calm pick (no swords lit in the region) wears grey, still swords and a white number.
+function labFightTile(f) {
   const teams = labEl('span', 'lt-teams');
   for (const c of COLORS) teams.appendChild(labTeamText(labTeamName(f.m, c), c));
   const where = LAB_MAP_LONG[f.type] || f.type;
-  const when = f.silence > 3 * LAB_MIN ? `last kill ${labSpan(f.silence)} ago` : 'now';
-  return labTile({ cls: `lt-hot${solo ? ' lt-solo' : ''}`, icon: labClash(), label: 'Hottest fight', chip: labChipOf(f.m.id),
+  const when = f.calm ? 'quiet now' : (f.silence > 3 * LAB_MIN ? `last kill ${labSpan(f.silence)} ago` : 'now');
+  return labTile({ cls: `lt-hot${f.calm ? ' lt-calm' : ''}`, icon: labClash(), label: 'Hottest fight', chip: labChipOf(f.m.id),
     body: [labBig(labNum(f.n), 'kills / 10 min'), labEl('span', 'lt-map', `${where} · ${when}`), teams],
     go: () => labOpenMap(f.m.id, f.type),
     aria: `Hottest fight, ${labTierTag(f.m.id)}: ${labNum(f.n)} kills per 10 minutes on ${where}, ${when}. Open the live map on it` });
 }
+// No kill rate yet: the site's own spinner (.spinner, css/base.css).
+function labFightWait() {
+  const line = labEl('span', 'lt-map lt-wait');
+  line.append(labEl('span', 'spinner'), 'Reading the kills…');
+  return labTile({ cls: 'lt-hot lt-calm', icon: labClash(), label: 'Hottest fight', chip: labEl('span'), body: [line] });
+}
 // Who holds what was taken, as a bar and three counts in the teams' colours.
-function labBusyTile(flip, solo) {
+function labBusyTile(flip) {
   const where = LAB_MAP_LONG[flip.type] || flip.type;
   const order = COLORS.slice().sort((a, b) => flip.by[b] - flip.by[a]);
   const bar = labEl('span', 'lt-split');
@@ -249,19 +269,17 @@ function labBusyTile(flip, solo) {
   }
   const said = order.map((c) => `${labTeamName(flip.m, c)} ${flip.by[c]}`).join(', ');
   const icon = labPulse(flip.last.type, flip.last.color, `${flip.m.id}|${flip.type}|${flip.n}`);
-  return labTile({ cls: `lt-busy${solo ? ' lt-solo' : ''}`, icon, label: 'Busiest map', chip: labChipOf(flip.m.id),
+  return labTile({ cls: 'lt-busy', icon, label: 'Busiest map', chip: labChipOf(flip.m.id),
     body: [labBig(String(flip.n), flip.n === 1 ? 'objective taken' : 'objectives taken'), labEl('span', 'lt-map', `${where} · last 2 h`), bar, teams],
     go: () => labOpenMap(flip.m.id, flip.type),
     aria: `Busiest map, ${labTierTag(flip.m.id)}: ${flip.n} objectives taken in the last 2 hours on ${where}, held now by ${said}. Open the live map on it` });
 }
-// The fight and the busiest map, side by side; either alone takes the row. "The next busiest map" skips
-// the fight's own map.
+// The fight, always, and the busiest map beside it. "The next busiest map" skips the fight's own map.
 function labTopTiles() {
   const f = labHot();
   const flips = labFlips();
   const flip = f && labPrefs.busySame === 'next' ? flips.find((x) => !(x.m.id === f.m.id && x.type === f.type)) : flips[0];
-  const both = !!(f && flip);
-  return [f && labFightTile(f, !both), flip && labBusyTile(flip, !both)].filter(Boolean);
+  return [f ? labFightTile(f) : labFightWait(), flip && labBusyTile(flip)].filter(Boolean);
 }
 function labClosestTile() {
   const c = labClosest();
@@ -290,17 +308,21 @@ function labClosestTile() {
 // ---- the week's leaders: one at a time every LAB_ROT_MS in a box under the tiles, with a pause button
 // first in the Tab order; the pointer over it, the focus in it, a touch on it or reduced motion stop it ----
 const LAB_ROT_MS = 5000;
-const labRot = { idx: 0, timer: 0, hover: false, focus: false, paused: false, n: 0 };
+const labRot = { idx: 0, timer: 0, hover: false, focus: false, paused: false, n: 0, due: false };
 const labStill = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const labLeadersSaid = (list) => list.map((x) => `${x.label}, ${x.period}: ${x.r.name}, ${x.big(x.r)} ${x.unit}, ${labTierTag(x.r.m.id)}.`).join(' ');
 function labRotShow(i) {
   const box = document.querySelector('.lt-rot');
   if (!box) return;
   labRot.idx = i;
+  labRot.due = false;
   box.querySelectorAll('.lt-slide').forEach((s, k) => s.classList.toggle('is-on', k === i));
   box.querySelectorAll('.lt-pip').forEach((b, k) => b.setAttribute('aria-pressed', k === i ? 'true' : 'false'));
+  labSegsPaint(box);
 }
+// The segments' turn is their own fill's end (labSegsPaint): the interval turns only the dots.
 function labRotTick() {
+  if (document.querySelector('.lt-segs')) return;
   if (labRot.paused || labRot.hover || labRot.focus || document.hidden || labStill() || labRot.n < 2) return;
   labRotShow((labRot.idx + 1) % labRot.n);
 }
@@ -325,10 +347,7 @@ function labLeaderSlide(x, on) {
   name.classList.add('lt-rot-team');
   let big;
   if (x.kd) {
-    big = labEl('span', 'lt-big lt-kd');
-    const n = labEl('span', 'lt-num', x.big(x.r));
-    if (x.r.kills !== x.r.deaths) n.classList.add(x.r.kills > x.r.deaths ? 'kd-good' : 'kd-bad');
-    big.append(labEl('span', 'stat-label', 'K/D'), n);
+    big = labKdBig(x, x.r, 'lt-big lt-kd');
   } else {
     big = labBig(x.big(x.r), x.unit);
   }
@@ -336,54 +355,184 @@ function labLeaderSlide(x, on) {
   s.append(top, who);
   return s;
 }
-function labLeadersBox(list) {
+// K/D as the card writes it: "K/D" before the number, green above 1 and red below.
+function labKdBig(x, r, cls) {
+  const big = labEl('span', cls);
+  const n = labEl('span', 'lt-num', x.big(r));
+  if (r.kills !== r.deaths) n.classList.add(r.kills > r.deaths ? 'kd-good' : 'kd-bad');
+  big.append(labEl('span', 'stat-label', 'K/D'), n);
+  return big;
+}
+// The measure's mark and name, small, with no chip: each row carries its own tier.
+function labSlideHead(x) {
+  const label = labEl('span', 'lt-label');
+  if (x.icon) label.appendChild(x.icon());
+  label.appendChild(labEl('span', null, `${x.label} · ${x.period}`));
+  return label;
+}
+// The metric's name with "now" on the one that is not the week's: the week is said once, in the box's head.
+const labShort = (x) => (x.period === 'now' ? `${x.label} · now` : x.label);
+// The number with its unit after it, or K/D as the card writes it.
+const labLeadNum = (x, cls) => {
+  const big = x.kd ? labKdBig(x, x.r, `lt-big lt-kd ${cls}`) : labBig(x.big(x.r), x.unit);
+  big.classList.add(cls);
+  return big;
+};
+function labLeadTeam(x, cls) {
+  const t = labEl('span', `${cls} side-${x.r.color}`);
+  const name = labTeamText(x.r.name, x.r.color);
+  name.classList.add('lt-lead-name');
+  t.append(name, labChipOf(x.r.m.id));
+  return t;
+}
+// "Stat first": the metric's mark big in a soft circle, then its name, the team and the number in a column.
+function labStatSlide(x) {
+  const s = labEl('div', 'lt-slide lt-sf');
+  const ic = labEl('span', 'lt-sf-ic');
+  if (x.icon) ic.appendChild(x.icon());
+  const col = labEl('span', 'lt-sf-col');
+  col.append(labEl('span', 'lt-lead-label', labShort(x)), labLeadTeam(x, 'lt-sf-team'), labLeadNum(x, 'lt-sf-num'));
+  s.append(ic, col);
+  return s;
+}
+// "Broadcast bar": a block in the team's colour with the mark, the name over the team, the number at the right.
+function labBarSlide(x) {
+  const s = labEl('div', `lt-slide lt-bb side-${x.r.color}`);
+  const ic = labEl('span', 'lt-bb-ic');
+  if (x.icon) ic.appendChild(x.icon());
+  const col = labEl('span', 'lt-bb-col');
+  col.append(labEl('span', 'lt-lead-label', labShort(x)), labLeadTeam(x, 'lt-bb-team'));
+  s.append(ic, col, labLeadNum(x, 'lt-bb-num'));
+  return s;
+}
+// "Metric as title": the metric heads the slide, with where it sits in the turn; team and number centred.
+function labTitleSlide(x, k, n) {
+  const s = labEl('div', 'lt-slide lt-mt');
+  const head = labEl('span', 'lt-mt-head');
+  const title = labEl('span', 'lt-mt-title');
+  if (x.icon) title.appendChild(x.icon());
+  title.appendChild(labEl('span', null, labShort(x)));
+  head.append(title, labEl('span', 'lt-mt-note', `Leaders · ${k + 1}/${n} · this week`));
+  s.append(head, labLeadTeam(x, 'lt-mt-team'), labLeadNum(x, 'lt-mt-num'));
+  return s;
+}
+const LAB_SLIDE = { stat: labStatSlide, bar: labBarSlide, title: labTitleSlide };
+// The segments under the new slides, one per metric: the shown one fills in LAB_ROT_MS (css/lab-mid.css), and
+// its fill's end turns to the next. A hold (the pause, the pointer over the box, the focus in it) or reduced
+// motion stops the fill where it is; a press on a segment goes to that metric.
+function labSegsPaint(box) {
+  const segs = box.querySelectorAll('.lt-seg-btn');
+  if (!segs.length) return;
+  segs.forEach((b, k) => {
+    b.setAttribute('aria-pressed', k === labRot.idx ? 'true' : 'false');
+    b.classList.toggle('is-done', k < labRot.idx);
+    const old = b.querySelector('.lt-seg-fill');
+    const fill = labEl('span', 'lt-seg-fill');
+    if (k === labRot.idx) fill.addEventListener('animationend', () => { labRot.due = true; labRotHold(); });
+    old.replaceWith(fill);
+  });
+  labRotHold(box);
+}
+// A fill that ends under a hold (a paused animation's clock can still run) turns when the hold ends.
+function labRotHold(box = document.querySelector('.lt-rot')) {
+  const held = labRot.paused || labRot.hover || labRot.focus || labStill();
+  if (box) box.classList.toggle('is-held', held);
+  if (labRot.due && !held && box && box.isConnected) {
+    labRot.due = false;
+    labRotShow((labRot.idx + 1) % labRot.n);
+  }
+}
+function labLeadersBox(list, style = 'wide') {
   if (!list.length) return null;
   labRot.n = list.length;
   if (labRot.idx >= list.length || labStill()) labRot.idx = 0;
-  const box = labEl('section', 'lt-tile lt-rot');
+  const segs = Object.prototype.hasOwnProperty.call(LAB_SLIDE, style);
+  const box = labEl('section', `lt-tile lt-rot lt-rot-${style}`);
   box.setAttribute('aria-roledescription', 'carousel');
   box.setAttribute('aria-label', 'Leaders this week');
   const head = labEl('div', 'lt-rot-head');
-  head.append(labEl('span', null, 'Leaders'), labEl('span', 'lt-rot-note', 'All tiers'));
+  if (segs) head.appendChild(labEl('span', null, 'Leaders · this week · all tiers'));
+  else head.append(labEl('span', null, 'Leaders'), labEl('span', 'lt-rot-note', 'All tiers'));
   const pause = labEl('button', 'lt-rot-pause');
   pause.type = 'button';
-  pause.addEventListener('click', () => { labRot.paused = !labRot.paused; labRotPaint(); });
+  pause.addEventListener('click', () => { labRot.paused = !labRot.paused; labRotPaint(); labRotHold(); });
   const slides = labEl('div', 'lt-slides');
   slides.setAttribute('aria-hidden', 'true');
-  list.forEach((x, k) => slides.appendChild(labLeaderSlide(x, k === labRot.idx)));
-  const pips = labEl('div', 'lt-pips');
   list.forEach((x, k) => {
-    const b = labEl('button', 'lt-pip');
+    const sl = segs ? LAB_SLIDE[style](x, k, list.length) : labLeaderSlide(x, k === labRot.idx);
+    sl.classList.toggle('is-on', k === labRot.idx);
+    slides.appendChild(sl);
+  });
+  const pips = labEl('div', segs ? 'lt-segs' : 'lt-pips');
+  list.forEach((x, k) => {
+    const b = labEl('button', segs ? 'lt-seg-btn' : 'lt-pip');
     b.type = 'button';
     b.setAttribute('aria-label', x.label);
     b.setAttribute('aria-pressed', k === labRot.idx ? 'true' : 'false');
+    if (segs) b.appendChild(labEl('span', 'lt-seg-fill'));
     b.addEventListener('click', () => labRotShow(k));
     pips.appendChild(b);
   });
-  box.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') labRot.hover = true; });
-  box.addEventListener('pointerleave', () => { labRot.hover = false; });
+  box.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') { labRot.hover = true; labRotHold(); } });
+  box.addEventListener('pointerleave', () => { labRot.hover = false; labRotHold(); });
   // A touch has no hover to end: it stops the turning as the button does.
-  box.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse' && !labRot.paused) { labRot.paused = true; labRotPaint(); } });
-  box.addEventListener('focusin', () => { labRot.focus = true; });
-  box.addEventListener('focusout', () => { labRot.focus = false; });
-  // The pause button first in the box, so first in the Tab order.
-  const ctl = labEl('div', 'lt-rot-ctl');
-  ctl.append(pause, pips);
-  box.append(head, labEl('span', 'sr-only', labLeadersSaid(list)), slides, ctl);
+  box.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse' && !labRot.paused) { labRot.paused = true; labRotPaint(); labRotHold(); } });
+  box.addEventListener('focusin', () => { labRot.focus = true; labRotHold(); });
+  box.addEventListener('focusout', () => { labRot.focus = false; labRotHold(); });
+  const said = labEl('span', 'sr-only', labLeadersSaid(list));
+  if (segs) {
+    // The pause in the top corner, first in the box and in the Tab order; the segments at the foot.
+    box.append(pause, style === 'title' ? '' : head, said, slides, pips);
+  } else {
+    // The pause button first in the box, so first in the Tab order.
+    const ctl = labEl('div', 'lt-rot-ctl');
+    ctl.append(pause, pips);
+    box.append(head, said, slides, ctl);
+  }
   labRotPaint(pause);
+  labSegsPaint(box);
   if (!labRot.timer) labRot.timer = setInterval(labRotTick, LAB_ROT_MS);
   return box;
 }
 
+// The highlights' own region switch, styled as the live map's tabs (.wvw-subtab, css/maps.css): only the
+// highlights change.
+function labRegionSwitch(region) {
+  const group = labEl('div', 'lt-reg');
+  group.setAttribute('role', 'group');
+  group.setAttribute('aria-label', 'Highlights region');
+  for (const r of ['NA', 'EU']) {
+    const b = labEl('button', 'lt-reg-btn');
+    b.type = 'button';
+    b.setAttribute('aria-pressed', r === region ? 'true' : 'false');
+    b.appendChild(labEl('span', `wvw-subtab${r === region ? ' is-active' : ''}`, r));
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (labRegionFirst() === r) return;
+      labRegionPick = r;
+      labPaintTiles();
+      const again = document.querySelector(`.lt-reg-btn[aria-pressed="true"]`);
+      if (again) again.focus();
+    });
+    group.appendChild(b);
+  }
+  return group;
+}
 function labTilesPanel() {
   const region = labRegionFirst();
   const panel = labEl('section', 'lt-panel');
   panel.setAttribute('aria-label', `Highlights, ${region}`);
-  panel.appendChild(labEl('div', 'lt-head', `Highlights · ${region}`));
+  const head = labEl('div', 'lt-head');
+  head.append(labEl('span', null, `Highlights · ${region}`), labRegionSwitch(region));
+  panel.appendChild(head);
   const grid = labEl('div', 'lt-grid');
   for (const t of [...labTopTiles(), labClosestTile()].filter(Boolean)) grid.appendChild(t);
   panel.appendChild(grid);
-  const leaders = labLeadersBox(labLeaders());
-  if (leaders) panel.appendChild(leaders);
+  const tile = labPrefs.leaders === 'tile';
+  const leaders = labLeadersBox(labLeaders(), tile ? 'wide' : labPrefs.leaders);
+  if (leaders && tile) {
+    grid.classList.add('lt-grid-4');
+    grid.appendChild(leaders);
+  } else if (leaders) panel.appendChild(leaders);
   return panel;
 }

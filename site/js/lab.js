@@ -1,18 +1,20 @@
 'use strict';
-// LAB (never merged). The 95-0 lab, round 5: the middle of the page as the owner kept it (his round 1 to 4
+// LAB (never merged). The 95-0 lab, round 6: the middle of the page as the owner kept it (his round 1 to 4
 // choices fixed), every open choice a box or a radio in the panel's "Fine-tune" group, the recommendation
 // on by default. Loaded just before js/boot.js, after the lab-*.js it draws with (check-structure
 // wants boot.js last). Everything goes through textContent.
 
 const LAB_KEY = 'wvw-lab-v1';
-const LAB_VERSION = 5;          // bump when the defaults change: older saved choices are dropped
+const LAB_VERSION = 6;          // bump when the defaults change: older saved choices are dropped
 const LAB_ITEMS = [
   { type: 'section', label: 'Fine-tune' },
   { type: 'check', key: 'newsLow', label: 'Phones: news below the standings', on: false },
   { type: 'radio', key: 'busySame', label: 'Busiest map on the fight’s map', value: 'any',
     options: { any: 'Show it anyway', next: 'The next busiest map' } },
-  { type: 'radio', key: 'busyMotion', label: 'Busiest map motion', value: 'slow',
-    options: { slow: 'A slow ping every 4 s', once: 'One ping when a capture comes in', still: 'Still' } },
+  { type: 'radio', key: 'busyMotion', label: 'Busiest map motion', value: 'beat',
+    options: { beat: 'A ping every 2.8 s, the swords’ beat', slow: 'A slow ping every 4 s', once: 'One ping when a capture comes in', still: 'Still' } },
+  { type: 'radio', key: 'leaders', label: 'Leaders', value: 'stat',
+    options: { stat: 'Stat first', bar: 'Broadcast bar', title: 'Metric as title', wide: 'Wide card (round 5)', tile: '4th card' } },
   { type: 'check', key: 'ownIcon', label: 'Our icon in the news header, not "[[ ]]"', on: true },
   { type: 'check', key: 'profIcon', label: 'Profession icon beside buffs and nerfs', on: true },
   { type: 'section', label: 'Simulate a new update' },
@@ -49,8 +51,9 @@ function labMountMiddle() {
   low.id = 'labNewsLow';
   document.getElementById('page').appendChild(low);
   if (typeof matchMedia === 'function') matchMedia(LAB_NARROW).addEventListener('change', labPlaceParts);
-  // The columns' swap (js/standings.js) sets data-rail-first: the highlights follow the region put first.
-  if (typeof MutationObserver === 'function') new MutationObserver(labPaintTiles)
+  // The columns' swap (js/standings.js) sets data-rail-first: the highlights follow the region put first,
+  // over a pick on their own switch.
+  if (typeof MutationObserver === 'function') new MutationObserver(() => { labRegionPick = null; labPaintTiles(); })
     .observe(document.documentElement, { attributes: true, attributeFilter: ['data-rail-first'] });
   labPaintRecent();
 }
@@ -62,7 +65,7 @@ function labPlaceParts() {
   (low ? document.getElementById('labNewsLow') : labMid).appendChild(news);
 }
 let labHotKey = '';
-const labHotSig = () => { const f = labHot(); return f ? `${f.m.id}|${f.type}|${Math.round(f.n)}` : ''; };
+const labHotSig = () => { const f = labHot(); return f ? `${f.m.id}|${f.type}|${Math.round(f.n)}|${f.calm ? 'calm' : 'lit'}` : ''; };
 function labPaintTiles() {
   const box = document.getElementById('labTiles');
   if (!box) return;

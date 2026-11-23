@@ -9,7 +9,7 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 .lab-mid{display:flex;flex-direction:column;gap:14px;margin-bottom:20px;min-width:0;}
 .lab-news-low{width:100%;max-width:720px;order:3;}
 .lab-news-low:empty{display:none;}
-.lab-mid button.lt-tile,.lab-mid .ls-go,.lab-mid .ln-filter,.lab-mid .ls-retry{
+.lab-mid button.lt-tile,.lab-mid button.lt-reg-btn,.lab-mid .ls-go,.lab-mid .ln-filter,.lab-mid .ls-retry{
   background:none;color:inherit;border:0;font:inherit;text-shadow:none;box-shadow:none;
   text-align:left;cursor:pointer;transition:border-color .15s ease;
 }
@@ -104,12 +104,21 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 @keyframes ls-jolt{0%,100%{transform:none;}35%{transform:translateY(-2px);}70%{transform:translateY(1px);}}
 /* ---- highlights ---- */
 .lt-panel{padding:10px 12px 12px;}
-/* The Hottest fight and the Busiest map side by side, the Closest match under them; either of the first two
-   alone takes their row. One a row under 360 px, where two would cut their text; three a row from 600 px. */
+/* The Hottest fight and the Busiest map side by side, the Closest match under them. One a row under 360 px,
+   where two would cut their text; three a row from 600 px. With the leaders as a 4th tile (.lt-grid-4), two
+   by two up to 600 px and four a row from it. */
 .lt-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
-.lt-grid > .lt-close,.lt-grid > .lt-solo{grid-column:1 / -1;}
+.lt-grid > .lt-close{grid-column:1 / -1;}
+.lt-grid-4 > .lt-close{grid-column:auto;}
+.lt-grid > .lt-rot{margin-top:0;}
 @media (max-width:359px){.lt-grid{grid-template-columns:minmax(0,1fr);}}
-@media (min-width:600px){.lt-grid{grid-template-columns:repeat(3,minmax(0,1fr));}.lt-grid > .lt-close{grid-column:auto;}.lt-grid > .lt-solo{grid-column:span 2;}}
+@media (min-width:600px){.lt-grid{grid-template-columns:repeat(3,minmax(0,1fr));}.lt-grid > .lt-close{grid-column:auto;}.lt-grid-4{grid-template-columns:repeat(4,minmax(0,1fr));}}
+/* The region switch: 44 px tall to press, the live map's tab drawn inside; the row keeps its height. */
+.lt-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.lt-reg{display:flex;margin:-14px -6px -14px 0;}
+.lab-mid button.lt-reg-btn{min-width:0;min-height:0;width:40px;height:44px;padding:0;display:grid;place-items:center;cursor:pointer;}
+.lt-reg-btn .wvw-subtab{letter-spacing:.06em;}
+.lab-mid button.lt-reg-btn:focus-visible{outline:2px solid var(--accent);outline-offset:-6px;}
 .lt-tile{
   position:relative;overflow:hidden;min-width:0;padding:9px 10px;border-radius:10px;
   display:flex;flex-direction:column;gap:3px;justify-content:flex-start;
@@ -142,13 +151,24 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
   animation:clash-shine 2.8s infinite;
 }
 .lt-hot .lt-unit{color:#f0b27a;}
+/* No swords lit in the region: grey swords at rest, the number white. */
+.lt-calm .lt-num{color:var(--text);background:none;filter:none;animation:none;}
+.lt-calm .lt-unit{color:var(--muted);}
+.lt-calm .lt-clash *{animation:none !important;}
+.lt-calm .wvw-clash-flash,.lt-calm .wvw-clash-shine,.lt-calm .wvw-clash-spark{display:none;}
+.lt-calm .wvw-clash-sword{filter:grayscale(1) brightness(.75) drop-shadow(0 1px 1px rgba(0,0,0,.7));}
+.lt-wait{display:flex;align-items:center;gap:6px;color:var(--muted);}
 /* Busiest map: the marker of the last objective taken and the map's capture ring round it (.wvw-ring's frames in
    css/maps.css, under a name of their own: map-rings.spec counts the map's by name); then who holds what was
-   taken, in the teams' colours. "slow" pings once in every 4 s and rests; "once" plays a single ping. */
-.lt-pulse{position:relative;width:16px;height:16px;flex:none;display:grid;place-items:center;margin-right:3px;}
-.lt-pulse .lt-ic{position:relative;width:18px;height:18px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.7));}
+   taken, in the teams' colours. "beat" pings on each blow of the swords: their 2.8 s cycle (clash-punch in
+   css/maps.css), the ring out at its 16.5 %; "slow" pings once in every 4 s and rests; "once" plays a single
+   ping. The marker is the swords' drawn size, 14 px at 1.5 (.lt-clash). */
+.lt-pulse{position:relative;width:21px;height:21px;flex:none;display:grid;place-items:center;}
+.lt-pulse .lt-ic{position:relative;width:21px;height:21px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.7));}
 .lt-pulse-ring{position:absolute;inset:0;border-radius:50%;border:1.5px solid #fff;opacity:0;}
 .lt-pulse-slow{animation:lt-ping 4s ease-out infinite;}
+.lt-pulse-beat{animation:lt-ping-beat 2.8s infinite;}
+@keyframes lt-ping-beat{0%,16.4%{opacity:0;transform:scale(.9);animation-timing-function:ease-out;}16.5%{opacity:.9;transform:scale(.9);animation-timing-function:ease-out;}60%,100%{opacity:0;transform:scale(2.1);}}
 .lt-pulse-once{animation:lt-ping-once 1.4s ease-out 1;}
 @keyframes lt-ping{0%{opacity:.9;transform:scale(.9);}35%,100%{opacity:0;transform:scale(2.1);}}
 @keyframes lt-ping-once{0%{opacity:.9;transform:scale(.9);}100%{opacity:0;transform:scale(2.1);}}
@@ -187,6 +207,53 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 .lt-rot-svg{width:14px;height:14px;fill:currentColor;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;}
 .lt-pip::before{content:'';width:7px;height:7px;border-radius:50%;background:#4a5462;transition:background-color .2s ease;}
 .lt-pip[aria-pressed="true"]::before{background:var(--accent);}
+/* The new leaders (stat, bar, title): the pause a 44 px target in the top corner, the segments at the foot. */
+.lt-rot-stat,.lt-rot-bar,.lt-rot-title{position:relative;padding-bottom:0;}
+.lt-rot-stat .lt-rot-head,.lt-rot-bar .lt-rot-head{padding-right:34px;min-height:18px;align-items:center;}
+.lab-mid .lt-rot > button.lt-rot-pause{position:absolute;top:-4px;right:0;width:44px;height:44px;}
+.lt-rot > .lt-rot-pause .lt-rot-svg{width:12px;height:12px;}
+.lt-lead-label{font-size:.66rem;font-weight:800;color:#a3adbb;text-transform:uppercase;letter-spacing:.09em;}
+.lt-lead-name{font-weight:800;color:var(--side-glow);overflow-wrap:anywhere;min-width:0;}
+.lt-sf-team,.lt-bb-team,.lt-mt-team{display:flex;flex-wrap:wrap;align-items:center;gap:2px 7px;min-width:0;}
+.lt-lead-name + .lt-tier{font-size:.56rem;padding:1px 4px;}
+.lt-segs{display:flex;gap:4px;margin:2px -2px 0;}
+.lab-mid button.lt-seg-btn{flex:1 1 0;min-width:0;min-height:0;height:24px;padding:0 2px;border:0;background:none;box-shadow:none;display:flex;align-items:center;cursor:pointer;}
+.lt-seg-btn{position:relative;}
+.lt-seg-btn::after{content:'';position:absolute;left:2px;right:2px;top:50%;height:3px;margin-top:-1.5px;border-radius:2px;background:#3a4350;}
+.lt-seg-fill{position:relative;z-index:1;display:block;width:100%;height:3px;border-radius:2px;background:var(--accent);transform:scaleX(0);transform-origin:0 50%;}
+.lt-seg-btn.is-done .lt-seg-fill{transform:none;background:#6b7584;}
+.lt-seg-btn[aria-pressed="true"] .lt-seg-fill{animation:lt-fill 5s linear 1 both;}
+.lt-rot.is-held .lt-seg-fill{animation-play-state:paused;}
+@media (prefers-reduced-motion: reduce){.lt-seg-fill{animation-play-state:paused !important;}}
+@keyframes lt-fill{from{transform:scaleX(0);}to{transform:none;}}
+/* Stat first: the mark at 32 px in a soft circle, then the name, the team and the number in a column. */
+.lt-sf{flex-direction:row;align-items:center;gap:12px;}
+.lt-sf-ic{flex:none;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.06);}
+.lt-sf-ic .lt-ic{width:32px;height:32px;}
+.lt-sf-ic .lt-ic-vp{width:auto;height:auto;font-size:1rem;}
+.lt-sf-col{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.lt-sf-team .lt-lead-name{font-size:1.03rem;}
+.lt-sf-num .lt-num{font-size:1.75rem;line-height:1.1;}
+/* Broadcast bar: one row, the team's colour as a block at the left. */
+.lt-bb{flex-direction:row;align-items:center;gap:10px;}
+.lt-bb-ic{flex:none;width:44px;height:48px;border-radius:6px;display:grid;place-items:center;background:color-mix(in srgb,var(--side-rail) 45%,#12161b);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--side-rail) 70%,transparent);}
+.lt-bb-ic .lt-ic{width:24px;height:24px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.6));}
+.lt-bb-ic .lt-ic-svg{stroke:#fff;}
+.lt-bb-ic .lt-ic-vp{color:#fff;font-size:.8rem;}
+.lt-bb-col{display:flex;flex-direction:column;justify-content:center;gap:1px;min-width:0;flex:1 1 auto;}
+.lt-bb-team .lt-lead-name{font-size:.95rem;}
+.lt-bb-num{margin-left:auto;flex:none;flex-direction:column;align-items:flex-end;gap:0;}
+.lt-bb-num.lt-kd{flex-direction:row;align-items:baseline;gap:0 5px;}
+.lt-bb-num .lt-num{font-size:1.6rem;line-height:1.05;}
+/* Metric as title: the metric heads the slide, the team and the number centred under it. */
+.lt-mt{align-items:center;gap:2px;}
+.lt-mt-head{align-self:stretch;display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;min-height:24px;padding-right:34px;}
+.lt-mt-title{display:flex;align-items:center;gap:6px;font-size:.8rem;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:.08em;}
+.lt-mt-note{font-size:.64rem;color:var(--muted);font-weight:600;}
+.lt-mt-team{justify-content:center;margin-top:4px;}
+.lt-mt-team .lt-lead-name{font-size:1.05rem;}
+.lt-mt-num{justify-content:center;}
+.lt-mt-num .lt-num{font-size:1.75rem;line-height:1.1;}
 /* A tile is rebuilt on every standings repaint, and with reduced motion no ember frame comes to take its loops (boot.js): held here. */
 @media (prefers-reduced-motion: reduce){.lt-hot .lt-num,.lt-pulse-ring,.lt-clash *{animation-play-state:paused !important;}}
 
@@ -265,3 +332,4 @@ html.lab-mid-on .page.struck{animation:none;}
 .standing-match{transition:opacity .3s ease;}
 .standing-match.lab-dimmed{opacity:.4;}
 .lab-spot .lab-ring{background:var(--lab-c);}
+@media (max-width:359px){.lt-bb-num .lt-num{font-size:1.3rem;}.lt-bb{gap:8px;}.lt-bb-ic{width:38px;}}
