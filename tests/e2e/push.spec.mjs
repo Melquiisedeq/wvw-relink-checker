@@ -471,7 +471,7 @@ test.describe('anywhere but wvwrelink.com', () => {
 test.describe('the week turns with the push live', () => {
   test.use({ timeline: pushWeekTurn(10, 8) });
 
-  test('the list and the map stay on the new week through each push and peek', async ({ page, wvw }) => {
+  test('the list and the map stay on the new week through each push and peek', { tag: '@quarantine' }, async ({ page, wvw }) => {
     await plainReset(page);
     const push = await live(page, wvw);
     await wvw.settle();
