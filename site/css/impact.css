@@ -137,7 +137,7 @@
 /* A 52 px round painted at --max times that, the most it ever grows (2.4 × 1.16, with
    charge-swell's 2.4, mirrored in launchCharge), and only ever scaled down: a will-change layer is rastered once
    and the compositor scales it, so a scale above 1 would blur it, and without the layer
-   every size is rastered again. effects.spec.mjs counts both. */
+   every size is rastered again. effects-glow.spec.mjs counts both. */
 .siege-charge b{
   --max:2.784;
   position:absolute;display:block;

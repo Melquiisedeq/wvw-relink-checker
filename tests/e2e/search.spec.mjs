@@ -36,7 +36,7 @@ test('guild found: the card blinks, the strip names the guild and leaves', async
 });
 
 // A guild lookup answered 429 (after its retries) says nothing about the guild:
-// the next Check asks again. (That a 404 is kept is guild-errors.spec.mjs.)
+// the next Check asks again. (That a 404 is kept is search-errors.spec.mjs.)
 test('a 429 is not kept against a guild', async ({ page, wvw }) => {
   await load(page, wvw);
   const id = '11111111-2222-3333-4444-555555555555';

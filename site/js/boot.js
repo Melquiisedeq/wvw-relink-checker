@@ -288,9 +288,9 @@ const emberField = (function () {
   const MIN_FRAME_MS = 1000 / 85;
 
   // Every animation and transition on the page, CSS or element.animate, is paused here and moved
-  // on by these frames, so the page draws only when the embers do (frames.spec.mjs). Paused through
+  // on by these frames, so the page draws only when the embers do (perf-frames.spec.mjs). Paused through
   // the API they no longer follow animation-play-state, so the stopped clock is what holds the
-  // looping ones still under reduced motion (embers.spec.mjs); play() would set them moving there.
+  // looping ones still under reduced motion (effects-embers.spec.mjs); play() would set them moving there.
   // The run-once ones and the loading indicators play under reduced motion and in a hidden tab, so
   // a stop hands them back. element.animate fires no event: every frame sweeps.
   const driven = new Set();

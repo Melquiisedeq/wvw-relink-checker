@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../../worker/index.mjs';
-import { fakeD1 } from './fake-d1.mjs';
+import { fakeD1 } from '../worker-fakes/fake-d1.mjs';
 import { setup } from './worker-harness.mjs';
 
 test('/api/relink gives A1 as two integers, and 503 when it cannot', async () => {

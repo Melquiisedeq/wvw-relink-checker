@@ -159,7 +159,7 @@ test('keepNewestMatch: a rise after a gap is not watched, and its burst shares t
 
 test('keepNewestMatch: an answer that does not move the data still ends the gap for the rise after it (js/api.js)', () => {
   // A read asked before a sleep can land after it, ahead of the game's new
-  // answer (/api/latest, mergeLatest's late offer): seen under load in time.spec.mjs.
+  // answer (/api/latest, mergeLatest's late offer): seen under load in freshness-time.spec.mjs.
   for (const [what, late] of [['the same body', 1], ['an older body', 0]]) {
     const p = fresh();
     const m = matches[0];

@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readScript, loadScript, fakeClock, fakeProps, fakeLogger, fakeUtilities, fakeLock, fakeSheet, fakeSpreadsheetApp, deliverer, httpResponse } from './apps-script-harness.mjs';
 import { KILLS_KEY, NA_WEEK, setup } from './worker-harness.mjs';
-import { signHeaders } from './signed.mjs';
+import { signHeaders } from '../worker-fakes/signed.mjs';
 
 const src = readScript('kills/kills.gs');
 const MAPS = ['Center', 'RedHome', 'BlueHome', 'GreenHome'];

@@ -91,7 +91,7 @@
   background:rgba(255,255,255,.04);
   position:relative;overflow:hidden;
 }
-/* The band of light is a layer wider than the block it slides across. paint.spec.mjs
+/* The band of light is a layer wider than the block it slides across. perf-paint.spec.mjs
    fails an infinite animation off the compositor. */
 .skel::after{
   content:"";position:absolute;top:0;bottom:0;left:0;width:280%;
@@ -290,7 +290,7 @@
   text-shadow:0 1px 2px rgba(0,0,0,.7), 0 0 8px rgba(102,245,255,.35);
 }
 /* The glow is two copies of the text (js/relink.js sets data-text) trading places in
-   opacity, behind the text: paint.spec.mjs fails an infinite animation off the compositor.
+   opacity, behind the text: perf-paint.spec.mjs fails an infinite animation off the compositor.
    Neither copy is read aloud; where `/ ""` is not understood the weak glow stays on the
    element. */
 @supports (content:"x" / "") {

@@ -1,0 +1,250 @@
+// Popovers by hand and by finger: a click outside closes and one
+// inside does not; the guilds popover expands and shrinks back leaving
+// nothing over the page; on a phone a tap opens and closes, the popover
+// follows its icon when the page scrolls, and the trebuchet does not aim at
+// a finger.
+import { test, expect } from './support/fixtures.mjs';
+import { load, firstTier, openMap, search, frames } from './support/steps.mjs';
+
+test.describe.configure({ timeout: 60 * 1000 });
+const POP = '.info-popover';
+const GUILDS = '.server-guilds-btn';
+
+// The first icon of that kind a visitor can see, and its popover opened with
+// the content loaded.
+async function openGuilds(page, wvw, tap) {
+  await load(page, wvw);
+  const btn = page.locator(GUILDS).locator('visible=true').first();
+  await expect(btn).toBeVisible();
+  if (tap) await btn.tap(); else await btn.click();
+  await expect(page.locator(`${POP} .info-popover-body`).first()).toBeAttached();
+  await wvw.settle();
+  return btn;
+}
+const state = (page, btn) => btn.evaluate(b => ({
+  pops: document.querySelectorAll('.info-popover').length,
+  backdrops: document.querySelectorAll('.info-popover-backdrop').length,
+  expanded: !!document.querySelector('.info-popover--expanded'),
+  active: b.classList.contains('active'), aria: b.getAttribute('aria-expanded') }));
+
+const CLOSED = { pops: 0, backdrops: 0, expanded: false, active: false, aria: 'false' };
+const OPEN = { pops: 1, backdrops: 0, expanded: false, active: true, aria: 'true' };
+
+test.describe('desktop', () => {
+  test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
+
+  test('a click outside closes the popover and keeps the caret; a click inside does not', async ({ page, wvw }) => {
+    // Tall enough that the guild box needs no scrolling to be clicked: scrolling, the popover held at an edge could cover the box and the click would land inside it.
+    await page.setViewportSize({ width: 1280, height: 2000 });
+    const btn = await openGuilds(page, wvw);
+    expect(await page.locator('#guildInput').evaluate(i => i.getBoundingClientRect().bottom < innerHeight), 'the guild box in view').toBe(true);
+    expect(await state(page, btn)).toEqual(OPEN);
+    for (const inside of [`${POP} .info-popover-header span`, `${POP} .info-popover-body`]) {
+      await page.locator(inside).first().click();
+      expect(await state(page, btn), `after a click on ${inside}`).toEqual(OPEN);
+    }
+    await page.locator('#guildInput').click();
+    expect(await state(page, btn), 'after a click on the guild box').toEqual(CLOSED);
+    expect(await page.evaluate(() => document.activeElement.id), 'the caret stays where it was clicked').toBe('guildInput');
+    // And again, with a click on blank page.
+    await btn.click();
+    await expect(page.locator(POP)).toHaveCount(1);
+    await page.mouse.click(4, 4);
+    expect(await state(page, btn), 'after a click on the page margin').toEqual(CLOSED);
+  });
+
+  test('the icon toggles, Escape closes and hands focus back, a reopen is a fresh popover', async ({ page, wvw }) => {
+    const btn = await openGuilds(page, wvw);
+    await btn.click();
+    expect(await state(page, btn), 'the icon pressed again').toEqual(CLOSED);
+    await btn.click();
+    await expect(page.locator(POP)).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    expect(await state(page, btn), 'Escape').toEqual(CLOSED);
+    expect(await btn.evaluate(b => b === document.activeElement), 'focus back on the icon').toBe(true);
+  });
+
+  test('expand and shrink: the backdrop comes and goes, the popover goes back beside its icon', async ({ page, wvw }) => {
+    const btn = await openGuilds(page, wvw);
+    const expand = page.locator(`${POP} .info-popover-expand`);
+    const aria = () => expand.getAttribute('aria-label');
+    const before = await page.locator(POP).boundingBox();
+    expect(await aria()).toMatch(/^Expand/);
+
+    await expand.click();
+    expect(await state(page, btn), 'expanded').toEqual({ ...OPEN, expanded: true, backdrops: 1 });
+    expect(await aria(), 'the button now offers to shrink').toMatch(/^Shrink/);
+    const wide = await page.locator(POP).boundingBox();
+    expect(wide.width, 'the expanded popover is wider').toBeGreaterThan(before.width);
+    expect(await page.evaluate(() => document.elementFromPoint(5, 5).className), 'the backdrop covers the page').toContain('info-popover-backdrop');
+
+    await expand.click();
+    expect(await state(page, btn), 'shrunk').toEqual(OPEN);
+    expect(await page.evaluate(() => [...document.body.children].filter(e => e.inert).length), 'the page answers again after shrinking').toBe(0);
+    expect(await aria()).toMatch(/^Expand/);
+    const after = await page.locator(POP).boundingBox();
+    expect(Math.abs(after.width - before.width), 'the width it had').toBeLessThan(2);
+    const rect = await btn.boundingBox();
+    const vw = 1280, vh = 800;
+    const wantLeft = Math.max(12, Math.min(rect.x, vw - after.width - 12));
+    expect(Math.abs(after.x - wantLeft), `left: ${after.x}, wanted ${wantLeft}`).toBeLessThan(2);
+    expect(await page.evaluate(() => {
+      const hits = new Set();
+      for (let x = 2; x < innerWidth; x += 160) for (let y = 2; y < innerHeight; y += 100) hits.add(document.elementFromPoint(x, y)?.className);
+      return [...hits].filter(c => String(c).includes('backdrop'));
+    }), 'nothing left over the page').toEqual([]);
+    // The page answers again: a click on a control outside works and closes it.
+    await page.locator('#guildInput').click();
+    expect(await state(page, btn)).toEqual(CLOSED);
+  });
+
+  test('Enter four times on the expand button, Space, Escape, reopen: one backdrop at a time', async ({ page, wvw }) => {
+    const btn = await openGuilds(page, wvw);
+    const expand = page.locator(`${POP} .info-popover-expand`);
+    await expand.focus();
+    for (const want of [1, 0, 1, 0]) {
+      await page.keyboard.press('Enter');
+      expect((await state(page, btn)).backdrops, 'backdrops after Enter on the expand button').toBe(want);
+    }
+    await page.keyboard.press(' ');
+    expect((await state(page, btn)).expanded, 'Space expands').toBe(true);
+    await page.keyboard.press('Escape');
+    expect(await state(page, btn), 'Escape from the expanded popover').toEqual(CLOSED);
+    await btn.click();
+    await expect(page.locator(POP)).toHaveCount(1);
+    expect(await state(page, btn), 'reopened: not expanded, no backdrop').toEqual(OPEN);
+  });
+
+  test('expanded: a click on the backdrop closes everything; so does the ×', async ({ page, wvw }) => {
+    const btn = await openGuilds(page, wvw);
+    await page.locator(`${POP} .info-popover-expand`).click();
+    await page.locator(`${POP} .info-popover-body`).first().click();
+    expect((await state(page, btn)).expanded, 'a click inside keeps it').toBe(true);
+    await page.mouse.click(5, 5);
+    expect(await state(page, btn), 'the backdrop clicked').toEqual(CLOSED);
+    await btn.click();
+    await page.locator(`${POP} .info-popover-expand`).click();
+    await page.locator(`${POP} .info-popover-close`).click();
+    expect(await state(page, btn), 'the ×').toEqual(CLOSED);
+  });
+
+  test("a tier's map, opened expanded: the backdrop closes it, nothing stays over the page", async ({ page, wvw }) => {
+    await load(page, wvw);
+    const tier = await firstTier(page);
+    await openMap(page, wvw, tier.button);
+    expect(await state(page, tier.button)).toEqual({ ...OPEN, expanded: true, backdrops: 1 });
+    await page.mouse.click(5, 5);
+    expect(await state(page, tier.button)).toEqual(CLOSED);
+  });
+});
+
+// A phone: touch on, mobile on, 390 x 844.
+test.describe('phone', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, locale: 'en-US' });
+
+  test('a tap opens, a tap outside closes, a tap inside does not; no round is thrown', async ({ page, wvw }) => {
+    const btn = await openGuilds(page, wvw, true);
+    expect(await state(page, btn)).toEqual(OPEN);
+    await page.locator(`${POP} .info-popover-header span`).tap();
+    expect(await state(page, btn), 'a tap inside').toEqual(OPEN);
+    // The popover stays through any scroll and may cover the box: tap the margin beside it.
+    const margin = await page.evaluate(() => { const p = document.querySelector('.info-popover').getBoundingClientRect(); return { x: p.left / 2, y: p.top + p.height / 2 }; });
+    await page.touchscreen.tap(margin.x, margin.y);
+    expect(await state(page, btn), 'a tap outside').toEqual(CLOSED);
+    // Watched from before the tap: where each round lands.
+    await page.evaluate(() => {
+      window.__landed = [];
+      new MutationObserver(ms => {
+        for (const m of ms) for (const n of m.addedNodes) {
+          if (n.classList?.contains('shot-bloom')) window.__landed.push(`${parseInt(n.style.left)},${parseInt(n.style.top)}`);
+        }
+      }).observe(document.body, { subtree: true, childList: true });
+    });
+    await page.touchscreen.tap(6, 6);
+    // A mouse click elsewhere after it; once its round lands, a round of the tap's would have.
+    await page.mouse.click(60, 6);
+    await expect.poll(() => page.evaluate(() => window.__landed), { message: 'the click\'s round landing' }).toContain('60,6');
+    expect(await page.evaluate(() => window.__landed), 'a tap throws no round, only the click does').toEqual(['60,6']);
+  });
+
+  test('scrolling the page, the popover follows its icon; the icon gone, it stays open at the edge', async ({ page, wvw }) => {
+    await load(page, wvw);
+    const btn = page.locator(GUILDS).locator('visible=true').first();
+    await btn.evaluate(b => window.scrollTo(0, b.getBoundingClientRect().top + scrollY - 90));
+    await wvw.settle();
+    await btn.tap();
+    await expect(page.locator(`${POP} .info-popover-body`).first()).toBeAttached();
+    // Where the page's rule puts a popover for this icon (below it when it fits,
+    // else above, and never off the screen) against where it is.
+    const beside = () => page.evaluate(() => {
+      const p = document.querySelector('.info-popover')?.getBoundingClientRect();
+      const t = document.querySelector('.server-guilds-btn.active')?.getBoundingClientRect();
+      if (!p || !t) return null;
+      const vh = window.visualViewport.height;
+      const top = vh - t.bottom >= p.height + 12 ? t.bottom + 6 : t.top - p.height - 6;
+      return { trigger: Math.round(t.top), off: Math.round(Math.abs(p.top - Math.max(12, Math.min(top, vh - p.height - 12)))) };
+    });
+    const first = await beside();
+    expect(first.off, 'placed by the rule when opened').toBeLessThanOrEqual(2);
+    const y0 = await page.evaluate(() => scrollY);
+    await page.evaluate(() => window.scrollBy(0, 60));
+    expect(await page.evaluate(() => scrollY), 'the page scrolled').toBeGreaterThan(y0);
+    // The icon has moved and the popover stands where the rule puts it for the new place.
+    await expect.poll(async () => {
+      const now = await beside();
+      return !!now && now.trigger !== first.trigger && now.off <= 2;
+    }, { message: 'the popover following its icon to its new place' }).toBe(true);
+    await page.evaluate(() => window.scrollBy(0, 4000));
+    // The icon out of sight above: the popover stays, clamped to the top edge (the rule gives 12 px).
+    await expect.poll(async () => {
+      const now = await beside();
+      return !!now && now.trigger < -40 && now.off <= 2;
+    }, { message: 'the popover held at the edge, the icon out of sight' }).toBe(true);
+    await expect(page.locator(POP), 'the popover stays open').toHaveCount(1);
+    expect((await state(page, btn)).active).toBe(true);
+  });
+
+  test('a finger does not aim the trebuchet; a mouse does', async ({ page, wvw }) => {
+    await load(page, wvw);
+    const aim = () => page.evaluate(() => {
+      const t = document.getElementById('trebuchet');
+      return { yaw: t.style.getPropertyValue('--yaw'), arm: document.getElementById('trebArm').style.transform };
+    });
+    const rest = await aim();
+    // A finger's moves as the page hears them: a swipe sideways in the emulator
+    // would be taken for the browser's own back gesture and leave the page, so
+    // the pointer events are dispatched, with the type a finger gives them.
+    await page.evaluate(() => {
+      for (const [x, y] of [[100, 300], [200, 200], [350, 100]]) {
+        window.dispatchEvent(new PointerEvent('pointermove', { pointerType: 'touch', clientX: x, clientY: y, bubbles: true }));
+      }
+    });
+    await frames(page, 20);
+    expect(await aim(), 'the beam and frame 20 frames after a finger dragged across the screen').toEqual(rest);
+    await page.mouse.move(380, 20);
+    await page.mouse.move(370, 30);
+    await expect.poll(async () => (await aim()).yaw, { message: 'a mouse aiming it' }).not.toBe(rest.yaw);
+  });
+});
+
+test('Ctrl+Enter in the guild box closes a result row\'s popover and leaves no active trigger', async ({ page, wvw }) => {
+  await page.setViewportSize({ width: 1280, height: 2000 });
+  await load(page, wvw);
+  await search(page, wvw.guilds.slice(0, 1));
+  await page.locator('#resultBody .server-guilds-btn').first().click();
+  await expect(page.locator(POP)).toHaveCount(1);
+  await page.locator('#guildInput').focus();
+  await page.keyboard.press('Control+Enter');
+  await expect(page.locator(POP)).toHaveCount(0);
+  await expect(page.locator('#statusMsg')).toHaveText(/^Done/, { timeout: 15000 });
+  // A popover still held as open would keep the trebuchet from throwing.
+  await page.evaluate(() => {
+    window.__thrown = 0;
+    new MutationObserver(ms => {
+      for (const m of ms) for (const n of m.addedNodes) if (n.classList?.contains('siege-shot')) window.__thrown++;
+    }).observe(document.body, { childList: true });
+  });
+  await page.mouse.click(640, 20);
+  await expect.poll(() => page.evaluate(() => window.__thrown), { message: 'a click on an empty spot throwing a round' }).toBe(1);
+  await wvw.settle();
+});

@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { workerHarness } from './worker-harness.mjs';
-import { signHeaders, defineSignatureTests } from './signed.mjs';
+import { signHeaders, defineSignatureTests } from '../worker-fakes/signed.mjs';
 
 const SOURCES = {
   'latest-supa-us': 'INGEST_LATEST_SUPA_US', 'latest-supa-eu': 'INGEST_LATEST_SUPA_EU'

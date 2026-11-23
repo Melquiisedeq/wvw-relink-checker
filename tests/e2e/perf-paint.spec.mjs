@@ -5,7 +5,7 @@
 // named here), the embers on a layer of their own, and the photo on none and with
 // no filter and no blend mode (its effect is baked into the file). Raster, paint and
 // layout counts per 2 s go to one "e2e paint: ..." line, and to $GITHUB_STEP_SUMMARY on CI,
-// never to a failure: a count over a span of time is not a rule. Frames drawn are frames.spec.mjs's.
+// never to a failure: a count over a span of time is not a rule. Frames drawn are perf-frames.spec.mjs's.
 //
 // LayerTree is an experimental CDP domain: a test that breaks after a Chrome
 // update points at the domain first, not at the page.
