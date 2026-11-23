@@ -3,7 +3,7 @@
 // moves, so no frame repaints them. Each state is brought up and every running
 // CSS animation, one-shot or looping, is read: none may move a property the
 // compositor cannot run alone (the guild strip's clip-path, named in its own test, is the
-// one exception). paint.spec.mjs holds the looping ones at rest;
+// one exception). perf-paint.spec.mjs holds the looping ones at rest;
 // this one reaches the states it never sees.
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';

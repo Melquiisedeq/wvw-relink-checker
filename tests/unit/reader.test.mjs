@@ -5,8 +5,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { fakeD1 } from './fake-d1.mjs';
-import { postSigned, signHeaders } from './signed.mjs';
+import { fakeD1 } from '../worker-fakes/fake-d1.mjs';
+import { postSigned, signHeaders } from '../worker-fakes/signed.mjs';
 import {
   REGIONS, regionFor, checkMatch, checkRead, checkSummaryBody, pickNewer, buildMessages, sign, sameSecret, handle, boardOf,
   splitMatch, MAX_MESSAGE

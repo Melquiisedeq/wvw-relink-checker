@@ -4,9 +4,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../../worker/index.mjs';
-import { fakeD1 } from './fake-d1.mjs';
+import { fakeD1 } from '../worker-fakes/fake-d1.mjs';
 import { KILLS_KEY, RELINK_KEY, NA_WEEK, EU_WEEK, setup, v2Body } from './worker-harness.mjs';
-import { signHeaders } from './signed.mjs';
+import { signHeaders } from '../worker-fakes/signed.mjs';
 
 // What each statement of the Worker hands back, by statement: the rows each
 // read hands back, our estimate of what D1 reads, since every read of kills is

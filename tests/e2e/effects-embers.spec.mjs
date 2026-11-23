@@ -337,7 +337,7 @@ test('the surge brightens the embers as they are painted and only lifts the canv
   expect(late.filter(c => !BASE_CORES.includes(c)), 'embers painted brighter after the surge').toEqual([]);
 });
 
-// The relink bar's timers, in milliseconds from the page's opening (as in banners.spec.mjs).
+// The relink bar's timers, in milliseconds from the page's opening (as in notice-bar.spec.mjs).
 async function bar(page, wvw, { lockout, assign, na }) {
   const at = ms => iso(wvw.opensAt + ms);
   const regions = { 1: na, 2: { start: -2 * DAY, end: 3 * DAY } };

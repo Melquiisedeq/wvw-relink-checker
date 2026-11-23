@@ -14,7 +14,7 @@ script from elsewhere is Cloudflare's visit counter, and the page does not
 need it to work. `worker/`, the Supabase readers in `supabase/` and the Apps Scripts in
 `apps-script/` are the code that runs outside the browser; `worker/` follows the
 same rule: one file of code, no dependencies, nothing to install. There is no local setup for
-`worker/`: the tests in `tests/unit/` run it under Node against a stand-in for its database;
+`worker/`: the tests in `tests/unit/` run it under Node against a stand-in for its database (`tests/worker-fakes/`, which the browser tests use too);
 merging into `main` deploys the code, and a schema file is run by hand. The browser tests in
 `tests/e2e/` are the one place with dependencies, Playwright Test and
 monocart-coverage-reports, and nothing in `site/` or `worker/` may import from there.

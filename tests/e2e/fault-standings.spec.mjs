@@ -1,44 +1,13 @@
-// A page that is used before it is ready, and one whose lines fail: a visitor
-// acting before the last scripts have loaded, a failed load that tries again,
-// and /api down so that the page falls back to the sheets. Then the game's API
+// A failed load that tries again. Then the game's API
 // and ours failing in each way a player can meet: what is on screen in each.
 import { test, expect } from './support/fixtures.mjs';
-import { abort, answer, fail, hold, stall } from './support/faults.mjs';
-import { firstTier, later, load, openMap } from './support/steps.mjs';
-import { recording } from './support/recordings.mjs';
-import { allQuietNow, askKills, emblemLayerCount, forgetCommunityGuilds, forgetEmblems, holdSummary, liveOnBoard, loadNow, quietFor, retryWaiting, upgradeLines } from './support/page.mjs';
-import { MIN, killRows, killsGap, playing } from './support/scenarios.mjs';
+import { abort, answer, fail } from './support/faults.mjs';
+import { later, load } from './support/steps.mjs';
+import { holdSummary, liveOnBoard, loadNow, retryWaiting } from './support/page.mjs';
+import { playing } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 const TIERS = '#standingsGridNA > .standing-match';
-
-// Scripts run in order and the page is usable before the last one: with one
-// held, Escape, a resize, the Check button, Ctrl+Enter and a click must raise
-// nothing (the fixture fails the test on an exception), and the page must work
-// once it is let go.
-for (const script of ['maps-early.js', 'trebuchet.js', 'boot.js']) {
-  test(`early actions with ${script} held`, async ({ page, wvw }) => {
-    const release = await hold(page, wvw.url + 'js/' + script);
-    await page.goto(wvw.url, { waitUntil: 'commit' });
-    await expect.poll(() => release.reads > 0, { message: 'the request being held' }).toBe(true);
-    await page.keyboard.press('Escape');
-    await page.evaluate(() => {
-      window.dispatchEvent(new Event('resize'));
-      if (window.visualViewport) window.visualViewport.dispatchEvent(new Event('resize'));
-      document.getElementById('guildInput').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
-      document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', clientX: 50, clientY: 50 }));
-    });
-    await page.locator('#runBtn').click();
-    await page.waitForTimeout(200);   // a throw is reported late
-    release();
-    await page.waitForLoadState('load');
-    await expect(page.locator(TIERS)).toHaveCount(wvw.tiers.NA);
-    await expect(page.locator('#standingsGridEU > .standing-match')).toHaveCount(wvw.tiers.EU);
-    await wvw.settle();
-    expect(await page.evaluate(() => !document.getElementById('runBtn').disabled && !document.querySelector('#statusMsg .spinner')),
-      'the Check button left disabled').toBe(true);
-  });
-}
 
 // A failed load and a slow line: the live standings and the guild tables answer
 // 503, the page says it will try again and counts down, and once the API
@@ -92,28 +61,6 @@ test('a failed load tries again and paints without a reload', async ({ page, wvw
   tables.off();
   await again.click();
   await expect(page.locator('#statusMsg'), 'the "Done" status after Try again').toHaveText(/^Done/, { timeout: 15000 });
-  await wvw.settle();
-});
-
-test('the guild tables failing on a Check: the message, the Check button free, and Try again runs the whole search', async ({ page, wvw }) => {
-  await load(page, wvw);
-  const tables = await fail(page, wvw, /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/guilds\/(na|eu)$/);
-  await page.locator('#guildInput').fill(wvw.guilds.join('\n'));
-  await page.locator('#runBtn').click();
-  const status = page.locator('#statusMsg');
-  await expect(status).toContainText("Couldn't load WvW data. The connection may be slow.");
-  await expect(status, 'the error colour').toHaveClass(/status-err/);
-  await expect(status.locator('.retry-btn'), 'the button').toHaveText('Try again');
-  await expect(page.locator('#runBtn'), 'Check left free').toBeEnabled();
-  await expect(page.locator('#runBtn')).toHaveText('Check');
-  await expect(page.locator('#resultBody tr')).toHaveCount(0);
-  await expect(page.locator('#copyRow')).toBeHidden();
-  tables.off();
-  await status.locator('.retry-btn').click();
-  await expect(status, 'the whole search run by the button').toHaveText(`Done, checked ${wvw.guilds.length} guild(s).`, { timeout: 15000 });
-  await expect(status).not.toHaveClass(/status-err/);
-  await expect(page.locator('#resultBody tr').first()).toBeVisible();
-  await expect(page.locator('#copyRow')).toBeVisible();
   await wvw.settle();
 });
 
@@ -307,152 +254,5 @@ test.describe('one region of the fallback', () => {
     await expect(alertOf(page, 'EU'), 'spoken in the alert, with no button').toHaveText("Couldn't load EU standings.");
     await expect(page.locator(EU)).toHaveCount(0);
     await expect(page.locator('#standingsStatusNA')).toContainText('Synced');
-  });
-});
-
-// Only our /api/kills out, /api/relink answering: the kill history comes from the sheet,
-// and a map shows its age from it, amber, as with /api/kills.
-test('only /api/kills down: the sheet still gives the history, and the map its age', async ({ page, wvw }) => {
-  let target;
-  const sheet = await answer(page, /^https:\/\/docs\.google\.com\/spreadsheets\/.*sheet=kills/, async () => {
-    const rows = await killRows(page, target, 7 * 60000);
-    return rows.map(r => r.join(',')).join('\n');
-  }, { contentType: 'text/csv', noStore: false });
-  const relink = [];
-  page.on('response', r => { if (/^http:\/\/127\.0\.0\.1:\d+\/api\/relink$/.test(r.url())) relink.push(r.status()); });
-  await load(page, wvw);
-  const tier = await firstTier(page);
-  target = tier.id;
-  const down = await fail(page, wvw, /^http:\/\/127\.0\.0\.1:\d+\/api\/kills$/);
-  await allQuietNow(page);
-  await askKills(page, { stale: true });
-  expect(relink, 'answers of /api/relink, which stayed up').toContain(200);
-  expect(down.reads, 'reads of /api/kills that failed').toBeGreaterThan(0);
-  expect(sheet.reads, 'reads of the sheet instead').toBeGreaterThan(0);
-  expect(await quietFor(page, tier.id), 'the match backdated by the sheet\'s history')
-    .toBeGreaterThanOrEqual(6 * 60000);
-  await openMap(page, wvw, tier.button);
-  await expect(page.locator('.info-popover .wvw-plot-wrap .wvw-hud-ago'), 'the map opens amber, from the sheet').toHaveText(/^⚠ data from /);
-  await expect(page.locator('.info-popover .wvw-plot-wrap .wvw-hud-big')).toHaveText('–');
-  await wvw.settle();
-});
-
-// Our readers stopped for 12 min while the game's API went on: a page opened
-// afterwards has no log of its own, and the history has a hole in it. The corner
-// names the window and the gap, and the swords still count by the pace.
-test.describe('a hole in the kill history', () => {
-  const BEFORE = 6, GAP = 12;
-  test.use({ timeline: killsGap(GAP, BEFORE, 2), timezoneId: 'UTC', locale: 'en-US' });
-  test('the corner says "data gap" with its hours and the busiest map keeps its swords', async ({ page, wvw }) => {
-    // The hole runs from the last row before it (the minute before the readers stop) to the first one after it (the minute they start).
-    const hhmm = ms => new Date(recording().recordedAt + ms).toLocaleTimeString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
-    const hours = `${hhmm((BEFORE - 1) * MIN)}–${hhmm((BEFORE + GAP) * MIN)}`;
-    await load(page, wvw);
-    await later(page, wvw, 2 * MIN);
-    const tier = await firstTier(page);
-    await openMap(page, wvw, tier.button);
-    const left = page.locator('.info-popover .wvw-plot-wrap .wvw-hud-l');
-    await expect(left.locator('.wvw-hud-big'), 'the kills of the window across the hole').toHaveText(/^\d+$/);
-    await expect(left.locator('.wvw-hud-small').first(), 'its length').toContainText('kills in 17 min');
-    await expect(left.locator('.wvw-hud-small2'), 'the gap, in two lines, with the hours the timeline gives').toHaveText(`data gap ${hours}`);
-    await expect(left).not.toHaveClass(/is-dim/);
-    await expect(page.locator('.info-popover .wvw-tab[data-type="Center"]'), 'the busiest map is hot').toHaveClass(/is-hot/);
-    await left.locator('.wvw-hud-btn').click();
-    await expect(page.locator('.info-popover .wvw-hud-note'), 'the balloon names the gap and the pace')
-      .toHaveText(new RegExp(`^\\d+ kills in the 17 min up to .+\\. No kill data reached us between ${hours.replace('–', ' and ')}\\. The swords count the pace per 10 minutes\\.$`));
-    await wvw.settle();
-  });
-});
-
-// The upgrade catalogue failing once does not blank the tier shields for the session: the next opening asks again.
-test('a failed upgrade catalogue is asked for again on the next opening', async ({ page, wvw }) => {
-  const down = await abort(page, wvw, /\/v2\/wvw\/upgrades/);
-  await load(page, wvw);
-  const tier = await firstTier(page);
-  await openMap(page, wvw, tier.button);
-  await expect.poll(() => down.reads, 'the first opening tried the catalogue and its retries').toBe(3);
-  await wvw.settle();
-  expect(await upgradeLines(page), 'the failed opening has no upgrade lines').toBe(0);
-  await page.locator('.info-popover .info-popover-close').click();
-  await expect(page.locator('.info-popover')).toHaveCount(0);
-  down.off();
-  await openMap(page, wvw, tier.button);
-  const tiers = () => page.$$eval('.info-popover .wvw-plot g[role="button"] > title', t => t.filter(e => / \u00b7 T\d/.test(e.textContent)).length);
-  await expect.poll(tiers, 'tier shields (titles naming "T<n>") on the second opening').toBeGreaterThan(0);
-});
-
-// The same, while the popover stays open: its 30 s refresh asks for the catalogue again and the shields appear
-// without a reopening.
-test('a failed upgrade catalogue is asked for again by the open map\'s refresh', async ({ page, wvw }) => {
-  const down = await abort(page, wvw, /\/v2\/wvw\/upgrades/);
-  await load(page, wvw);
-  const tier = await firstTier(page);
-  await openMap(page, wvw, tier.button);
-  await expect.poll(() => down.reads, 'the opening tried the catalogue and its retries').toBe(3);
-  await wvw.settle();
-  const tiers = () => page.$$eval('.info-popover .wvw-plot g[role="button"] > title', t => t.filter(e => / · T\d/.test(e.textContent)).length);
-  expect(await tiers(), 'no tier shields while the catalogue is missing').toBe(0);
-  expect(down.reads, 'nothing asked between the opening and the refresh').toBe(3);
-  down.off();
-  await later(page, wvw, 31 * 1000);
-  await expect.poll(tiers, 'tier shields from the refresh, popover never closed').toBeGreaterThan(0);
-});
-
-// An emblem catalogue that failed is not kept as an empty one against a guild: the same guild asked again after
-// the network is back gets its layers.
-test('a guild emblem asked while the emblem catalogue was down is drawn on the next ask', async ({ page, wvw }) => {
-  await load(page, wvw);
-  const id = 'ZZZZ-EMBLEM-GUILD';
-  const emblem = { background: { id: 1, colors: [1] }, foreground: { id: 2, colors: [1, 1] }, flags: [] };
-  await answer(page, `https://api.guildwars2.com/v2/guild/${id}`, { id, name: 'Emblem Guild', tag: 'EMB', emblem });
-  await forgetEmblems(page);
-  const down = await abort(page, wvw, /\/v2\/emblem\//);
-  const layers = () => emblemLayerCount(page, id);
-  expect(await layers(), 'layers while the catalogue is down').toBe(0);
-  down.off();
-  await answer(page, /\/v2\/emblem\/backgrounds/, [{ id: 1, layers: ['https://render.guildwars2.com/b.png'] }]);
-  await answer(page, /\/v2\/emblem\/foregrounds/, [{ id: 2, layers: ['https://render.guildwars2.com/f0.png', 'https://render.guildwars2.com/f1.png'] }]);
-  expect(await layers(), 'layers of the same guild once the catalogue is back').toBe(2);
-});
-
-// A sheet that never answers: the page ends the read itself at REQUEST_TIMEOUT_MS (js/config.js) and
-// carries on as it does when the read fails, and the next ask reads again.
-test.describe('a sheet that never answers', () => {
-  test.use({ clock: 'playwright' });
-  const KILLS = /^https:\/\/docs\.google\.com\/spreadsheets\/.*sheet=kills/;
-  const pastDeadline = (page) => page.clock.runFor(11 * 1000);
-
-  test('the kill history: the first read ends empty at the deadline, the next ask reads the sheet again', async ({ page, wvw }) => {
-    let target;
-    const sheet = await answer(page, KILLS, async () => (await killRows(page, target, 7 * MIN)).map(r => r.join(',')).join('\n'),
-      { contentType: 'text/csv', noStore: false });
-    const silent = await stall(page, KILLS);
-    await load(page, wvw);
-    target = (await firstTier(page)).id;
-    await fail(page, wvw, /^http:\/\/127\.0\.0\.1:\d+\/api\/kills$/);
-    let first = null;
-    askKills(page, { forget: true }).then(n => { first = n; });
-    await expect.poll(() => silent.reads, { message: 'the read went out and got no answer' }).toBe(1);
-    await pastDeadline(page);
-    await expect.poll(() => first, { message: 'the ask of the history settled once the deadline passed' }).toBe(0);
-    expect(sheet.reads, 'the stalled read never reached the recording').toBe(0);
-    expect(await askKills(page), 'the next ask reads the sheet again').toBeGreaterThan(0);
-    expect(sheet.reads).toBe(1);
-  });
-
-  test('the community guild list: the popover says it could not load, and opens with the list the next time', async ({ page, wvw }) => {
-    const silent = await stall(page, /^https:\/\/docs\.google\.com\/spreadsheets\/.*sheet=SoloGuilds/);
-    await load(page, wvw);
-    await forgetCommunityGuilds(page);
-    const btn = page.locator('.server-guilds-btn').locator('visible=true').first();
-    const body = page.locator('.info-popover--guilds');
-    await btn.click();
-    await expect(body).toContainText('Loading community list');
-    await expect.poll(() => silent.reads, { message: 'the read went out and got no answer' }).toBe(1);
-    await pastDeadline(page);
-    await expect(body, 'the message once the deadline passed').toContainText("Couldn't load the community guild list right now.");
-    await btn.click();
-    await btn.click();
-    await expect(page.locator('.info-popover--guilds .guild-line').first(), 'the next opening reads again and lists').toBeVisible();
   });
 });

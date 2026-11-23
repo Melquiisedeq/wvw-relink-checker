@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../../worker/index.mjs';
 import { KILLS_KEY, RELINK_KEY, NA_WEEK, EU_WEEK, setup } from './worker-harness.mjs';
-import { defineSignatureTests } from './signed.mjs';
+import { defineSignatureTests } from '../worker-fakes/signed.mjs';
 
 test('the entrance takes a signed message from each source', async () => {
   const w = setup();

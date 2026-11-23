@@ -57,7 +57,7 @@ test('the relink bar halves slide on a swap, and none does on a swap undone befo
 });
 
 // The recorded body repeated for 1600 s leaves no swords badge on any tier, and at
-// 320 px no tier title row overflows or grows taller (that no box spills past the edge is layout.spec.mjs).
+// 320 px no tier title row overflows or grows taller (that no box spills past the edge is layout-overflow.spec.mjs).
 test('no tier wears a mark after 1600 s of the same body, and at 320 px no title row overflows', async ({ page, wvw }) => {
   await page.goto(wvw.url);
   await expect(page.locator('#standingsGridNA > .standing-match').first()).toBeVisible();

@@ -1,4 +1,4 @@
-// The weekly reset exists in four files (page, Worker, Supabase reader, the week the corners spec stamps on its fake rows). If they
+// The weekly reset exists in four files (page, Worker, Supabase reader, the week the map-corners spec stamps on its fake rows). If they
 // disagree, each counts the week from a different instant.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -23,10 +23,10 @@ const COPIES = [
   ['site/js/relink.js', 'const RESET_SCHEDULE = { NA: [day, hour], EU: [day, hour] }', page],
   ['worker/index.mjs', 'const RESET = { 1: { day, hour }, 2: { day, hour } }', byId],
   ['supabase/reader.mjs', 'const RESET = { 1: { day, hour }, 2: { day, hour } }', byId],
-  ['tests/e2e/corners.spec.mjs', "const [day, hour] = id[0] === '1' ? [day, hour] : [day, hour];", specTernary]
+  ['tests/e2e/map-corners.spec.mjs', "const [day, hour] = id[0] === '1' ? [day, hour] : [day, hour];", specTernary]
 ];
 
-test('page, Worker, reader and the corners spec agree on each region\'s reset', () => {
+test('page, Worker, reader and the map-corners spec agree on each region\'s reset', () => {
   const [first, ...rest] = COPIES.map(([file, shape, parse]) => {
     const table = parse(read(file));
     assert.ok(table, `${file}: could not find "${shape}"`);

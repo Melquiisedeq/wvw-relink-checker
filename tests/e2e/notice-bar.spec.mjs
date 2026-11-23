@@ -1,4 +1,4 @@
-// The relink bar and the teams notice (js/relink.js), one test per state a
+// The relink bar (js/relink.js), one test per state a
 // player sees, each from a new page whose timers (lockout, teamAssignment),
 // matches and relink count are answered relative to the page's own clock, so
 // that the states stay where they are as the recording ages.
@@ -16,7 +16,7 @@ const S = 45 * 1000;
 test.use({ clock: 'playwright', timezoneId: 'UTC', locale: 'en-US', viewport: { width: 1280, height: 900 } });
 
 const banner = page => page.locator('#relinkBanner');
-const notice = page => page.locator('#teamsNotice');
+
 const titles = page => banner(page).locator('.relink-stat-title');
 const alertLine = page => banner(page).locator('.relink-alert');
 
@@ -221,54 +221,6 @@ test('no clock anywhere: no bar', async ({ page, wvw }) => {
   await answer(page, GAME + 'wvw/timers/lockout', { na: iso(wvw.opensAt + 6 * DAY) });
   await page.clock.fastForward(10 * MIN);
   await expect(titles(page)).toHaveText(['Season Lockout']);
-});
-
-// The rebuilding state the notice lives in: the lockout shut, NA's teams ahead.
-const rebuilding = { lockout: -1 * HOUR, assign: { na: 2 * DAY, eu: 2 * DAY - 8 * HOUR } };
-
-test('the teams notice goes up once the sheet says the new table is out', async ({ page, wvw }) => {
-  const { windowId } = await open(page, wvw, { ...rebuilding, published: 7 });
-  await expect(notice(page)).toBeVisible();
-  await expect(notice(page)).toHaveAttribute('data-window', String(windowId));
-  await expect(notice(page)).toContainText('The new teams are out.');
-  await expect(notice(page).locator('.teams-notice-spoken')).toHaveText('guild list shield');
-});
-
-// Nothing published stays down too: notice.spec.mjs's relinkWindow asserts the notice hidden in the rebuild before any count.
-test('the teams notice stays down for another window\'s count', async ({ page, wvw }) => {
-  const last = Math.floor((wvw.opensAt + rebuilding.assign.na) / 1000) - 30 * 24 * 3600;
-  await open(page, wvw, { ...rebuilding, published: 7, window: last });
-  await expect(banner(page)).toHaveClass(/is-rebuild/);
-  await expect(notice(page)).toBeHidden();
-});
-
-test('dismissing the teams notice keeps it dismissed over a reload', async ({ page, wvw }) => {
-  await open(page, wvw, { ...rebuilding, published: 7 });
-  await expect(notice(page)).toBeVisible();
-  await notice(page).getByRole('button', { name: 'Dismiss this notice' }).click();
-  await expect(notice(page)).toBeHidden();
-  await page.reload();
-  await expect(banner(page)).toHaveClass(/is-rebuild/);
-  await wvw.settle();
-  await expect(notice(page)).toBeHidden();
-});
-
-test('the teams notice goes down with the Relink bar when NA lands', async ({ page, wvw }) => {
-  await open(page, wvw, { lockout: -1 * HOUR, assign: { na: 5 * MIN + S, eu: -3 * HOUR }, published: 3 });
-  await expect(notice(page)).toBeVisible();
-  await page.clock.fastForward(6 * MIN);
-  await expect(banner(page)).not.toHaveClass(/is-rebuild/);
-  await expect(notice(page)).toBeHidden();
-});
-
-test('without /api/relink the sheet raises the teams notice', async ({ page, wvw }) => {
-  const down = await fail(page, wvw, /\/api\/relink$/);
-  const windowId = Math.floor((wvw.opensAt + rebuilding.assign.na) / 1000);
-  await answer(page, /^https:\/\/docs\.google\.com\/spreadsheets\/d\/[^/]+\/gviz\/tq\?.*sheet=relink/, `${windowId}:5`);
-  await open(page, wvw, rebuilding);
-  await expect(notice(page)).toBeVisible();
-  await expect(notice(page)).toHaveAttribute('data-window', String(windowId));
-  expect(down.reads, 'the own API tried first').toBeGreaterThan(0);
 });
 
 // Friday 18:00 UTC, EU's weekly reset, with the game's API not having the new week yet.

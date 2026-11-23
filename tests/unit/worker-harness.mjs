@@ -1,9 +1,9 @@
 // A Worker (worker/index.mjs) with its database and a clock the test moves:
 // Date.now reads that clock only while a request is being handled.
 import worker from '../../worker/index.mjs';
-import { fakeD1 } from './fake-d1.mjs';
+import { fakeD1 } from '../worker-fakes/fake-d1.mjs';
 import { createHash, createHmac } from 'node:crypto';
-import { signHeaders } from './signed.mjs';
+import { signHeaders } from '../worker-fakes/signed.mjs';
 
 // start: the clock's first instant (ms); secrets: the env keys the Worker
 // reads; env: overrides; ctx: the default execution context of a call; d1: options of fakeD1.

@@ -1,7 +1,7 @@
 // The hours that make a region's relink urgent (js/relink.js regionIsUrgent) and the 15 minutes its
 // clock reads "resetting" (regionResetting): the edges of each, which a browser test would have to
 // wait out to the minute. What the bar shows for them is tests in
-// tests/e2e/banners.spec.mjs.
+// tests/e2e/notice-bar.spec.mjs.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadPage } from './page-harness.mjs';

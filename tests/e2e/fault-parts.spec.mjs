@@ -1,6 +1,6 @@
 // A script of the page that does not download, one at a time. Each one the page needs makes it say to reload,
 // where the search's and the standings' statuses go, and Check stays usable; boot.js too, which starts the page.
-// Without js/trebuchet.js (effects only), js/wvw-static.js (the maps read the game instead: relink.spec.mjs) or
+// Without js/trebuchet.js (effects only), js/wvw-static.js (the maps read the game instead: map-relink.spec.mjs) or
 // js/region.js (the watcher) the page works, without a word.
 import { test, expect } from './support/fixtures.mjs';
 import { abort } from './support/faults.mjs';

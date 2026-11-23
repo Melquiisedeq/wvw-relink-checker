@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readScript, loadScript, fakeProps, fakeLogger, fakeUtilities, httpResponse, fakeClock, fakeLock, fakeSheet, fakeSpreadsheetApp, deliverer } from './apps-script-harness.mjs';
 
 import { RELINK_KEY, setup } from './worker-harness.mjs';
-import { signHeaders } from './signed.mjs';
+import { signHeaders } from '../worker-fakes/signed.mjs';
 
 const src = readScript('relink-notice/relink-notice.gs');
 
