@@ -177,7 +177,6 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 .lt-vp .stat-label{color:#8d97a6;font-weight:400;font-size:.68rem;}
 /* Leaders: a box of its own under the tiles, the five stacked in one cell, one shown. */
 .lt-rot{margin-top:8px;padding:9px 12px 4px;gap:4px;}
-.lt-rot-head{display:flex;justify-content:space-between;gap:8px;font-size:.6rem;font-weight:800;color:#a3adbb;text-transform:uppercase;letter-spacing:.09em;}
 .lt-slides{display:grid;}
 .lt-slide{grid-area:1 / 1;display:flex;flex-direction:column;gap:4px;min-width:0;opacity:0;transform:translateY(5px);transition:opacity .35s ease,transform .35s ease;visibility:hidden;}
 .lt-slide.is-on{opacity:1;transform:none;visibility:visible;}
@@ -189,12 +188,11 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 .lt-rot-svg{width:14px;height:14px;fill:currentColor;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;}
 /* The pause a 44 px target in the top corner, the segments at the foot. */
 .lt-rot{position:relative;padding-bottom:0;}
-.lt-rot-stat .lt-rot-head{padding-right:34px;min-height:18px;align-items:center;}
 .lab-mid .lt-rot > button.lt-rot-pause{position:absolute;top:-4px;right:0;width:44px;height:44px;}
 .lt-rot > .lt-rot-pause .lt-rot-svg{width:12px;height:12px;}
 .lt-lead-label{font-size:.66rem;font-weight:800;color:#a3adbb;text-transform:uppercase;letter-spacing:.09em;}
 .lt-lead-name{font-weight:800;color:var(--side-glow);overflow-wrap:anywhere;min-width:0;}
-.lt-sf-team,.lt-mt-team{display:flex;flex-wrap:wrap;align-items:center;gap:2px 7px;min-width:0;}
+.lt-mt-team{display:flex;flex-wrap:wrap;align-items:center;gap:2px 7px;min-width:0;}
 .lt-lead-name + .lt-tier{font-size:.56rem;padding:1px 4px;}
 .lt-segs{display:flex;gap:4px;margin:2px -2px 0;}
 .lab-mid button.lt-seg-btn{flex:1 1 0;min-width:0;min-height:0;height:24px;padding:0 2px;border:0;background:none;box-shadow:none;display:flex;align-items:center;cursor:pointer;}
@@ -206,14 +204,6 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 .lt-rot.is-held .lt-seg-fill{animation-play-state:paused;}
 @media (prefers-reduced-motion: reduce){.lt-seg-fill{animation-play-state:paused !important;}}
 @keyframes lt-fill{from{transform:scaleX(0);}to{transform:none;}}
-/* Stat first: the mark at 32 px in a soft circle, then the name, the team and the number in a column. */
-.lt-sf{flex-direction:row;align-items:center;gap:12px;}
-.lt-sf-ic{flex:none;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.06);}
-.lt-sf-ic .lt-ic{width:32px;height:32px;}
-.lt-sf-ic .lt-ic-vp{width:auto;height:auto;font-size:1rem;}
-.lt-sf-col{display:flex;flex-direction:column;gap:2px;min-width:0;}
-.lt-sf-team .lt-lead-name{font-size:1.03rem;}
-.lt-sf-num .lt-num{font-size:1.75rem;line-height:1.1;}
 /* Metric as title: the metric heads the slide, the team and the number centred under it. */
 .lt-mt{align-items:center;gap:2px;}
 .lt-mt-head{align-self:stretch;display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;min-height:24px;padding-right:34px;}
@@ -222,40 +212,47 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 .lt-mt-team{justify-content:center;margin-top:4px;}
 .lt-mt-team .lt-lead-name{font-size:1.05rem;}
 .lt-mt-num{justify-content:center;}
-.lt-mt-num .lt-num{font-size:1.75rem;line-height:1.1;}
-/* "Leaders detail" (js/lab.js, the root's lab-ld* classes). Each slide holds its own mark and glow, so both fade
+.lt-mt-num .lt-num{font-size:1.75rem;line-height:1.1;font-variant-numeric:tabular-nums;}
+/* The leader's mark and glow. Each slide holds its own, so both fade
    with it; the slide is their box (an inactive slide's transform would make it one anyway) and the tile's
    overflow cuts the mark at the right edge. The slide's own content sits above them; the pause above all. */
 .lt-slide{position:relative;}
 .lt-slide > *{position:relative;}
 .lab-mid .lt-rot > button.lt-rot-pause{z-index:2;}
-.lt-rot-head{position:relative;}
-.lt-slide > .lt-deco-ic,.lt-slide > .lt-deco-glow{position:absolute;pointer-events:none;display:none;}
-html.lab-ldIcon .lt-slide > .lt-deco-ic{display:grid;}
-html.lab-ldGlow .lt-slide > .lt-deco-glow{display:block;}
+.lt-slide > .lt-deco-ic,.lt-slide > .lt-deco-glow{position:absolute;pointer-events:none;}
+.lt-slide > .lt-deco-ic{display:grid;}
 .lt-deco-ic{place-items:center;width:112px;height:112px;right:-38px;top:50%;margin-top:-56px;opacity:.08;}
 .lt-slide .lt-deco-ic .lt-ic{width:100%;height:100%;}
 .lt-deco-ic .lt-ic-img{filter:grayscale(1) brightness(1.6);}
 .lt-deco-ic .lt-ic-svg{stroke:#fff;}
 .lt-slide .lt-deco-ic .lt-ic-vp{width:auto;height:auto;font-size:3.4rem;font-weight:800;color:#fff;letter-spacing:-.02em;}
 .lt-deco-glow{inset:-14px -12px;background:radial-gradient(closest-side at 50% 60%,color-mix(in srgb,var(--side-rail) 10%,transparent),transparent);}
-.lt-sf > .lt-deco-glow{background:radial-gradient(closest-side at 32% 50%,color-mix(in srgb,var(--side-rail) 10%,transparent),transparent);}
 @media (min-width:600px){.lt-deco-ic{width:150px;height:150px;margin-top:-75px;right:-44px;}.lt-slide .lt-deco-ic .lt-ic-vp{font-size:4.4rem;}}
 /* The metrics' short names under the segments, the shown one white: from 360 px, where the longest
    ("Active") leaves a quarter of its segment free; at 320 it would leave 10 px. */
 .lt-seg-name{display:none;}
 @media (min-width:360px){
-  html.lab-ldNames .lab-mid button.lt-seg-btn{height:40px;flex-direction:column;align-items:stretch;justify-content:flex-start;padding-top:10px;}
-  html.lab-ldNames .lt-seg-btn::after{top:10px;margin-top:0;}
-  html.lab-ldNames .lt-seg-name{display:block;margin-top:6px;font-size:.68rem;font-weight:700;letter-spacing:.04em;color:#8d97a6;text-align:center;white-space:nowrap;}
-  html.lab-ldNames .lt-seg-btn[aria-pressed="true"] .lt-seg-name{color:var(--text);}
-  html.lab-ldNames .lt-seg-btn:hover .lt-seg-name{color:var(--text);}
+  .lab-mid button.lt-seg-btn{height:40px;flex-direction:column;align-items:stretch;justify-content:flex-start;padding-top:10px;}
+  .lt-seg-btn::after{top:10px;margin-top:0;}
+  .lt-seg-name{display:block;margin-top:6px;font-size:.68rem;font-weight:700;letter-spacing:.04em;color:#8d97a6;text-align:center;white-space:nowrap;}
+  .lt-seg-btn[aria-pressed="true"] .lt-seg-name{color:var(--text);}
+  .lt-seg-btn:hover .lt-seg-name{color:var(--text);}
 }
-/* "Sheen on each change": the first-place badge's sheen (css/facets.css), once, softer. */
-.lt-rot-sheen{position:absolute;inset:0;z-index:1;pointer-events:none;
-  background:linear-gradient(115deg,transparent 38%,rgba(255,255,255,.1) 50%,transparent 62%);
-  transform:translateX(-130%);animation:sheen 1.4s ease-in-out 1 both;}
-@media (prefers-reduced-motion: reduce){.lt-slide{transition:none;}.lt-rot-sheen{display:none;}}
+/* "Change effect" (js/lab.js, labChangeFx), each once from the turn, with reduced motion too. Quick sheen: the
+   first-place badge's band (css/facets.css) already inside the box at the start, across in .6 s. */
+.lt-rot-sheen,.lt-rot-edge{position:absolute;inset:0;z-index:1;pointer-events:none;border-radius:inherit;}
+.lt-rot-sheen{background:linear-gradient(115deg,transparent 38%,rgba(255,255,255,.1) 50%,transparent 62%);
+  transform:translateX(-45%);animation:lt-qsheen .6s cubic-bezier(.2,.6,.4,1) 1 both;}
+@keyframes lt-qsheen{to{transform:translateX(65%);}}
+/* Slide up: the title, the team and the number rise 8 px with the fade, 40 ms apart. */
+.lt-fx-slide.lt-slide{transition:opacity .35s ease;}
+.lt-fx-slide > .lt-mt-head,.lt-fx-slide > .lt-mt-team,.lt-fx-slide > .lt-mt-num{animation:lt-rise .3s ease-out 1 both;}
+.lt-fx-slide > .lt-mt-team{animation-delay:40ms;}
+.lt-fx-slide > .lt-mt-num{animation-delay:80ms;}
+@keyframes lt-rise{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+/* Edge light: the box's top rule in the leader's colour, out in .5 s. */
+.lt-rot-edge{box-shadow:inset 0 2px 0 var(--side-rail);animation:lt-edge .5s ease-out 1 both;}
+@keyframes lt-edge{from{opacity:1;}to{opacity:0;}}
 /* A tile is rebuilt on every standings repaint, and with reduced motion no ember frame comes to take its loops (boot.js): held here. */
 @media (prefers-reduced-motion: reduce){.lt-hot .lt-num,.lt-pulse-ring,.lt-clash *{animation-play-state:paused !important;}}
 

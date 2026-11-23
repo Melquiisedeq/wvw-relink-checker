@@ -129,12 +129,12 @@ function labLeaders() {
   }
   const top = (f, ok = () => true) => rows.filter(ok).reduce((b, r) => (!b || f(r) > f(b) ? r : b), null);
   const list = [
-    { label: 'Most kills', short: 'Kills', icon: () => labImg('Event_Swords', 'lt-ic lt-ic-img', 16), r: top((r) => r.kills), big: (r) => labNum(r.kills), unit: 'kills', period: 'this week' },
-    { label: 'Most VP', short: 'VP', icon: () => labIconOf('VP'), r: top((r) => r.vp), big: (r) => labNum(r.vp), unit: 'VP', period: 'this week' },
-    { label: 'Highest PPT', short: 'PPT', icon: () => labIcon(LAB_TREND, 'lt-ic lt-ic-svg'), r: top((r) => r.ppt), big: (r) => labNum(r.ppt), unit: 'points per tick', period: 'now' },
-    { label: 'Most active', short: 'Active', icon: () => labIcon(LAB_BOLT, 'lt-ic lt-ic-svg'), r: top((r) => r.kills + r.deaths), big: (r) => labNum(r.kills + r.deaths), unit: 'kills + deaths', period: 'this week' },
+    { label: 'Most kills', short: 'Kills', icon: () => labImg('Event_Swords', 'lt-ic lt-ic-img', 16), r: top((r) => r.kills), val: (r) => r.kills, big: (r) => labNum(r.kills), unit: 'kills', period: 'this week' },
+    { label: 'Most VP', short: 'VP', icon: () => labIconOf('VP'), r: top((r) => r.vp), val: (r) => r.vp, big: (r) => labNum(r.vp), unit: 'VP', period: 'this week' },
+    { label: 'Highest PPT', short: 'PPT', icon: () => labIcon(LAB_TREND, 'lt-ic lt-ic-svg'), r: top((r) => r.ppt), val: (r) => r.ppt, big: (r) => labNum(r.ppt), unit: 'points per tick', period: 'now' },
+    { label: 'Most active', short: 'Active', icon: () => labIcon(LAB_BOLT, 'lt-ic lt-ic-svg'), r: top((r) => r.kills + r.deaths), val: (r) => r.kills + r.deaths, big: (r) => labNum(r.kills + r.deaths), unit: 'kills + deaths', period: 'this week' },
     { label: 'Best K/D', short: 'K/D', kd: true, r: top((r) => r.kills / r.deaths, (r) => r.deaths >= LAB_KD_MIN_DEATHS),
-      big: (r) => (r.kills / r.deaths).toFixed(2), unit: 'kills per death', period: 'this week' },
+      val: (r) => r.kills / r.deaths, big: (r) => (r.kills / r.deaths).toFixed(2), unit: 'kills per death', period: 'this week' },
   ];
   return list.filter((x) => x.r && (x.unit === 'VP' || x.r.kills + x.r.deaths + x.r.ppt > 0));
 }
@@ -299,7 +299,7 @@ function labClosestTile() {
 
 // ---- the week's leaders: one at a time for 5 s in a box under the tiles, with a pause button
 // first in the Tab order; the pointer over it, the focus in it, a touch on it or reduced motion stop it ----
-const labRot = { idx: 0, hover: false, focus: false, paused: false, n: 0, due: false };
+const labRot = { idx: 0, hover: false, focus: false, paused: false, n: 0, due: false, list: [] };
 const labStill = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const labLeadersSaid = (list) => list.map((x) => `${x.label}, ${x.period}: ${x.r.name}, ${x.big(x.r)} ${x.unit}, ${labTierTag(x.r.m.id)}.`).join(' ');
 function labRotShow(i) {
@@ -309,16 +309,42 @@ function labRotShow(i) {
   labRot.due = false;
   box.querySelectorAll('.lt-slide').forEach((s, k) => s.classList.toggle('is-on', k === i));
   labSegsPaint(box);
-  labSheen(box);
+  labChangeFx(box, box.querySelectorAll('.lt-slide')[i], labRot.list[i]);
 }
-// "Sheen on each change": the site's sheen (css/facets.css) once over the box on a turn, never on a repaint.
-function labSheen(box) {
-  if (!document.documentElement.classList.contains('lab-ldSheen') || labStill()) return;
-  const old = box.querySelector('.lt-rot-sheen');
-  if (old) old.remove();
-  const sh = labEl('span', 'lt-rot-sheen');
-  sh.addEventListener('animationend', () => sh.remove());
-  box.appendChild(sh);
+// "Change effect" (js/lab.js), once on a turn and never on a repaint; it plays with reduced motion too, as the
+// site's run-once effects do. Each starts with the slide's fade.
+let labCount = 0;
+function labChangeFx(box, slide, x) {
+  if (!slide || !x) return;
+  const fx = labPrefs.changeFx;
+  for (const o of box.querySelectorAll('.lt-rot-sheen, .lt-rot-edge')) o.remove();
+  for (const s of box.querySelectorAll('.lt-fx-slide')) s.classList.remove('lt-fx-slide');
+  if (fx === 'sheen' || fx === 'edge') {
+    const o = labEl('span', fx === 'sheen' ? 'lt-rot-sheen' : `lt-rot-edge side-${x.r.color}`);
+    o.addEventListener('animationend', () => o.remove());
+    box.appendChild(o);
+  }
+  if (fx === 'slide') {
+    void slide.offsetWidth;
+    slide.classList.add('lt-fx-slide');
+  }
+  if (fx === 'count') labCountUp(slide.querySelector('.lt-mt-num .lt-num'), x);
+}
+// "Number counts up": from 85% of the value to it in 600 ms, easing out; K/D in its two decimals.
+function labCountUp(el, x) {
+  const id = ++labCount;
+  if (!el || typeof requestAnimationFrame !== 'function') return;
+  const end = x.val(x.r);
+  const say = (v) => (x.kd ? v.toFixed(2) : labNum(Math.round(v)));
+  const t0 = performance.now();
+  const step = (now) => {
+    if (id !== labCount || !el.isConnected) return;
+    const p = Math.min(1, (now - t0) / 600);
+    el.textContent = p < 1 ? say(end * (0.85 + 0.15 * (1 - (1 - p) ** 3))) : x.big(x.r);
+    if (p < 1) requestAnimationFrame(step);
+  };
+  el.textContent = say(end * 0.85);
+  requestAnimationFrame(step);
 }
 function labRotPaint(b = document.querySelector('.lt-rot-pause')) {
   if (!b) return;
@@ -350,24 +376,13 @@ function labLeadTeam(x, cls) {
   t.append(name, labChipOf(x.r.m.id));
   return t;
 }
-// The "Leaders detail" boxes (css/lab-mid.css, on the root's lab-ld* classes): the metric's mark big and faint
-// at the box's right edge, and a soft glow in the leader's colour. Each is the slide's own, so each fades with it.
+// The metric's mark big and faint at the box's right edge, and a soft glow in the leader's colour
+// (css/lab-mid.css). Each is the slide's own, so each fades with it.
 function labDeco(x) {
   const ic = labEl('span', 'lt-deco-ic');
   if (x.kd) ic.appendChild(labEl('span', 'lt-ic lt-ic-vp', 'K/D'));
   else if (x.icon) ic.appendChild(x.icon());
   return [labEl('span', 'lt-deco-glow'), ic];
-}
-// "Stat first": the metric's mark big in a soft circle, then its name, the team and the number in a column.
-function labStatSlide(x) {
-  const s = labEl('div', `lt-slide lt-sf side-${x.r.color}`);
-  s.append(...labDeco(x));
-  const ic = labEl('span', 'lt-sf-ic');
-  if (x.icon) ic.appendChild(x.icon());
-  const col = labEl('span', 'lt-sf-col');
-  col.append(labEl('span', 'lt-lead-label', labShort(x)), labLeadTeam(x, 'lt-sf-team'), labLeadNum(x, 'lt-sf-num'));
-  s.append(ic, col);
-  return s;
 }
 // "Metric as title": the metric heads the slide, with where it sits in the turn; team and number centred.
 function labTitleSlide(x, k, n) {
@@ -381,7 +396,6 @@ function labTitleSlide(x, k, n) {
   s.append(head, labLeadTeam(x, 'lt-mt-team'), labLeadNum(x, 'lt-mt-num'));
   return s;
 }
-const LAB_SLIDE = { stat: labStatSlide, title: labTitleSlide };
 // The segments under the slides, one per metric: the shown one fills in 5 s (lt-fill, css/lab-mid.css), and
 // its fill's end turns to the next. A hold (the pause, the pointer over the box, the focus in it) or reduced
 // motion stops the fill where it is; a press on a segment goes to that metric.
@@ -407,23 +421,22 @@ function labRotHold(box = document.querySelector('.lt-rot')) {
     labRotShow((labRot.idx + 1) % labRot.n);
   }
 }
-// The segments carry the metrics' short names, shown with "Metric names under the segments" (css/lab-mid.css).
-function labLeadersBox(list, style) {
+// The segments carry the metrics' short names under them from 360 px (css/lab-mid.css).
+function labLeadersBox(list) {
   if (!list.length) return null;
   labRot.n = list.length;
+  labRot.list = list;
   if (labRot.idx >= list.length || labStill()) labRot.idx = 0;
-  const box = labEl('section', `lt-tile lt-rot lt-rot-${style}`);
+  const box = labEl('section', 'lt-tile lt-rot');
   box.setAttribute('aria-roledescription', 'carousel');
   box.setAttribute('aria-label', 'Leaders this week');
-  const head = labEl('div', 'lt-rot-head');
-  head.appendChild(labEl('span', null, 'Leaders · this week · all tiers'));
   const pause = labEl('button', 'lt-rot-pause');
   pause.type = 'button';
   pause.addEventListener('click', () => { labRot.paused = !labRot.paused; labRotPaint(); labRotHold(); });
   const slides = labEl('div', 'lt-slides');
   slides.setAttribute('aria-hidden', 'true');
   list.forEach((x, k) => {
-    const sl = LAB_SLIDE[style](x, k, list.length);
+    const sl = labTitleSlide(x, k, list.length);
     sl.classList.toggle('is-on', k === labRot.idx);
     slides.appendChild(sl);
   });
@@ -445,7 +458,7 @@ function labLeadersBox(list, style) {
   box.addEventListener('focusout', () => { labRot.focus = false; labRotHold(); });
   const said = labEl('span', 'sr-only', labLeadersSaid(list));
   // The pause in the top corner, first in the box and in the Tab order; the segments at the foot.
-  box.append(pause, style === 'title' ? '' : head, said, slides, segs);
+  box.append(pause, said, slides, segs);
   labRotPaint(pause);
   labSegsPaint(box);
   return box;
@@ -484,7 +497,7 @@ function labTilesPanel() {
   const grid = labEl('div', 'lt-grid');
   for (const t of [...labTopTiles(), labClosestTile()].filter(Boolean)) grid.appendChild(t);
   panel.appendChild(grid);
-  const leaders = labLeadersBox(labLeaders(), labPrefs.leaders);
+  const leaders = labLeadersBox(labLeaders());
   if (leaders) panel.appendChild(leaders);
   return panel;
 }
