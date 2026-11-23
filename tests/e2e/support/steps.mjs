@@ -4,9 +4,6 @@ import { expect } from '@playwright/test';
 import { recording } from './recordings.mjs';
 import { boardBodies } from './page.mjs';
 
-// Read through the port, kept here for the specs that import them from steps.
-export { keptMatch, raiseNotice, scoreOf } from './page.mjs';
-
 // A phone's screen at `width`, with the protocol's device override, mobile on.
 // A page wider than the screen makes the layout widen to fit and innerWidth then differs: `exact` (default) says so, for the steps that
 // check the width first; the others only measure.

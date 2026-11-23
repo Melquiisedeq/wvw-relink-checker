@@ -6,9 +6,9 @@
 // on another) and a known number of kills more.
 import { test, expect } from './support/fixtures.mjs';
 import { answer } from './support/faults.mjs';
-import { phone, load, firstTier, openMap, later, keptMatch, iso, play } from './support/steps.mjs';
+import { phone, load, firstTier, openMap, later, iso, play } from './support/steps.mjs';
 import { FOCUS, MIN, hidden, missed, missedBehind, missedFrozenAtTurn, missedStopped, missedWeekTurn, visible } from './support/scenarios.mjs';
-import { countMissedPaints, forgetKillHistory, keptLive, logTitlesAtKillReads, missedAgainstHistory, missedFromOlderWeek, missedHeld, missedNoted, missedOverdue, missedWeekLive, scoreRoseAt, unholdMissed, weekOf } from './support/page.mjs';
+import { countMissedPaints, forgetKillHistory, keptLive, keptMatch, logTitlesAtKillReads, missedAgainstHistory, missedFromOlderWeek, missedHeld, missedNoted, missedOverdue, missedWeekLive, scoreRoseAt, unholdMissed, weekOf } from './support/page.mjs';
 
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
 

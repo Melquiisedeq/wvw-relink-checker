@@ -76,8 +76,6 @@ export async function hold(page, url) {
   return release;
 }
 
-export { holdSummary } from './page.mjs';
-
 // Answers `body` to one address instead of the recording, counting the reads.
 // `body` may be a function, called with the request's address at each read.
 // With `contentType` given, a string body goes as it is and the header is exactly

@@ -77,16 +77,18 @@ test.describe('the Seared Borderlands', () => {
         .toEqual(Array(18).fill(String(map)));
       await expect(page.locator(`.info-popover .wvw-marker[data-obj="${map}-37"] .wvw-wp.is-copyable`),
         `${type}: the garrison's waypoint`).toHaveCount(1);
+      // The disc is the marker's `.hit` circle: its radius is the icon's box, its centre the group's translate.
       const outside = await page.evaluate(() => {
         const [x, y, w, h] = document.querySelector('.info-popover .wvw-plot').getAttribute('viewBox').split(' ').map(Number);
-        return [...document.querySelectorAll('.info-popover .wvw-plot .wvw-marker')].filter((g) => {
+        const discs = [...document.querySelectorAll('.info-popover .wvw-plot .wvw-marker')];
+        return { drawn: discs.length, outside: discs.filter((g) => {
           const [, px, py] = g.getAttribute('transform').match(/translate\(([-\d.]+) ([-\d.]+)\)/).map(Number);
-          const meta = WVW_STATIC.objectives.find(o => o.id === g.dataset.obj);
-          const r = OBJ_SIZE[meta.type];
-          return px - r < x || px + r > x + w || py - r < y || py + r > y + h;
-        }).map(g => g.dataset.obj);
+          const r = Number(g.querySelector('circle.hit').getAttribute('r'));
+          return !(r > 0) || px - r < x || px + r > x + w || py - r < y || py + r > y + h;
+        }).map(g => g.dataset.obj) };
       });
-      expect(outside, `${type}: every marker's disc inside the frame`).toEqual([]);
+      expect(outside.drawn, `${type}: markers measured`).toBe(18);
+      expect(outside.outside, `${type}: every marker's disc inside the frame`).toEqual([]);
       await wvw.settle();
     }
   });

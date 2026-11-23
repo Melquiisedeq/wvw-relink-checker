@@ -1,74 +1,78 @@
 // The teams notice: a Check across it reads the new guild table, not the kept
-// one (the notice raised the way the page raises it); and in the rebuild window
+// one (the notice raised by a tick that reads the changed cell); and in the rebuild window
 // the page asks /api/relink on every second one-minute tick, a hidden tab at most
 // once in ten minutes; a notice that goes up in a hidden tab marks its title and
 // icon until the tab is seen or the notice goes.
 import { test, expect } from './support/fixtures.mjs';
 import { answer, fail, stall } from './support/faults.mjs';
 import { hidden, visible } from './support/scenarios.mjs';
-import { check, raiseNotice, recordedJson } from './support/steps.mjs';
+import { check, recordedJson } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 const GAME = 'https://api.guildwars2.com/v2/';
 
-test('the Check after the teams notice reads the new guild table', async ({ page, wvw }) => {
-  expect(wvw.guilds.length).toBeGreaterThanOrEqual(2);
-  const tables = {};
-  for (const r of ['na', 'eu']) tables[r] = { url: GAME + 'wvw/guilds/' + r, body: recordedJson(GAME + 'wvw/guilds/' + r) };
-  const where = wvw.guilds.slice(0, 2).map(name => {
-    const gid = recordedJson(`${GAME}guild/search?name=${encodeURIComponent(name)}`)[0];
-    const r = ['na', 'eu'].find(x => gid && Object.hasOwn(tables[x].body, gid));
-    expect(r, `${name} in a recorded guild table`).toBeTruthy();
-    return { gid, r };
-  });
-  const was = tables[where[0].r].body[where[0].gid];
-  const next = tables[where[1].r].body[where[1].gid];
+const DAY = 24 * 3600 * 1000, MIN = 60 * 1000;
+const quiet = () => new Promise(r => setTimeout(r, 300));
+
+// The page opened in the rebuild window (or, `open: false`, a day before the
+// lockout closes), /api/relink counted and answered with `cell.published`.
+async function relinkWindow(page, wvw, { open = true } = {}) {
+  const at = ms => new Date(wvw.opensAt + ms).toISOString().replace('.000Z', 'Z');
+  const list = recordedJson(GAME + 'wvw/matches?ids=all').map(m => ({
+    ...m, start_time: at(-2 * DAY), end_time: at(5 * DAY) }));
+  await answer(page, GAME + 'wvw/matches?ids=all', list);
+  const lockout = at(open ? -3600000 : DAY);
+  await answer(page, GAME + 'wvw/timers/lockout', { na: lockout, eu: lockout });
+  await answer(page, GAME + 'wvw/timers/teamAssignment', { na: at(2 * DAY), eu: at(2 * DAY - 8 * 3600000) });
+  const cell = { windowId: Math.floor((wvw.opensAt + 2 * DAY) / 1000), published: 0 };
+  const served = await answer(page, '**/api/relink', () => ({ window: cell.windowId, published: cell.published }), { contentType: 'application/json' });
+  Object.defineProperty(cell, 'reads', { get: () => served.reads });
   await page.goto(wvw.url);
-  await expect(page.locator('#standingsGridNA > .standing-match')).toHaveCount(wvw.tiers.NA);
+  if (open) await expect(page.locator('#relinkBanner')).toHaveClass(/is-rebuild/);
   await wvw.settle();
-  const nameOf = t => page.evaluate(i => getTeamName(i), t);
-  const [wasName, nextName] = [await nameOf(was), await nameOf(next)];
-  expect(wasName, 'the two guilds\' teams share a name').not.toBe(nextName);
-  const rows = () => page.evaluate(() => [...document.querySelectorAll('#resultBody tr')].map(tr => tr.querySelector('.server-cell')?.textContent ?? null));
+  await expect(page.locator('#teamsNotice')).toBeHidden();
+  return cell;
+}
+test.describe('the Check across the teams notice', () => {
+  test.use({ clock: 'playwright', timezoneId: 'UTC', locale: 'en-US' });
 
-  await page.evaluate('wvwMapCache = null');
-  await check(page, wvw, [wvw.guilds[0]]);
-  expect(String((await rows())[0]), 'the first Check').toContain(wasName);
+  test('the Check after the teams notice reads the new guild table', async ({ page, wvw }) => {
+    expect(wvw.guilds.length).toBeGreaterThanOrEqual(2);
+    const tables = {};
+    for (const r of ['na', 'eu']) tables[r] = { url: GAME + 'wvw/guilds/' + r, body: recordedJson(GAME + 'wvw/guilds/' + r) };
+    const where = wvw.guilds.slice(0, 2).map(name => {
+      const gid = recordedJson(`${GAME}guild/search?name=${encodeURIComponent(name)}`)[0];
+      const r = ['na', 'eu'].find(x => gid && Object.hasOwn(tables[x].body, gid));
+      expect(r, `${name} in a recorded guild table`).toBeTruthy();
+      return { gid, r };
+    });
+    const next = tables[where[1].r].body[where[1].gid];
+    const cell = await relinkWindow(page, wvw);
+    const teamsOf = () => page.locator('#resultBody tr .server-cell .status-ok').allTextContents();
 
-  // The table is rewritten, then the notice goes up.
-  const moved = structuredClone(tables[where[0].r].body);
-  moved[where[0].gid] = next;
-  await answer(page, tables[where[0].r].url, moved);
-  await raiseNotice(page);
-  await expect(page.locator('#teamsNotice')).toHaveAttribute('data-window', '1900000000');
-  await check(page, wvw, [wvw.guilds[0]]);
-  expect(String((await rows())[0]), `after the notice, wanted the new team (the kept table has "${wasName}")`).toContain(nextName);
+    await check(page, wvw, wvw.guilds.slice(0, 2));
+    const [wasName, nextName] = await teamsOf();
+    expect(nextName, 'the second guild\'s row').toBeTruthy();
+    expect(wasName, 'the two guilds\' teams share a name').not.toBe(nextName);
+
+    // The table is rewritten, then the notice goes up on the tick that reads the changed cell.
+    const moved = structuredClone(tables[where[0].r].body);
+    moved[where[0].gid] = next;
+    await answer(page, tables[where[0].r].url, moved);
+    cell.published = 5;
+    for (let m = 0; m < 4 && !(await page.locator('#teamsNotice').isVisible()); m++) {
+      await page.clock.fastForward(MIN);
+      await quiet();
+    }
+    await expect(page.locator('#teamsNotice')).toHaveAttribute('data-window', String(cell.windowId));
+    await check(page, wvw, [wvw.guilds[0]]);
+    expect(await teamsOf(), `after the notice, wanted the new team (the kept table has "${wasName}")`).toEqual([nextName]);
+  });
 });
 
 test.describe('the notice on the one-minute tick', () => {
   test.use({ clock: 'playwright', timezoneId: 'UTC', locale: 'en-US' });
-  const DAY = 24 * 3600 * 1000, MIN = 60 * 1000;
-  const quiet = () => new Promise(r => setTimeout(r, 300));
 
-  // The page opened in the rebuild window (or, `open: false`, a day before the
-  // lockout closes), /api/relink counted and answered with `cell.published`.
-  async function relinkWindow(page, wvw, { open = true } = {}) {
-    const at = ms => new Date(wvw.opensAt + ms).toISOString().replace('.000Z', 'Z');
-    const list = recordedJson(GAME + 'wvw/matches?ids=all').map(m => ({
-      ...m, start_time: at(-2 * DAY), end_time: at(5 * DAY) }));
-    await answer(page, GAME + 'wvw/matches?ids=all', list);
-    const lockout = at(open ? -3600000 : DAY);
-    await answer(page, GAME + 'wvw/timers/lockout', { na: lockout, eu: lockout });
-    await answer(page, GAME + 'wvw/timers/teamAssignment', { na: at(2 * DAY), eu: at(2 * DAY - 8 * 3600000) });
-    const cell = { windowId: Math.floor((wvw.opensAt + 2 * DAY) / 1000), published: 0 };
-    const served = await answer(page, '**/api/relink', () => ({ window: cell.windowId, published: cell.published }), { contentType: 'application/json' });
-    Object.defineProperty(cell, 'reads', { get: () => served.reads });
-    await page.goto(wvw.url);
-    if (open) await expect(page.locator('#relinkBanner')).toHaveClass(/is-rebuild/);
-    await wvw.settle();
-    await expect(page.locator('#teamsNotice')).toBeHidden();
-    return cell;
-  }
   const tab = page => page.evaluate(() => ({
     title: document.title,
     icons: [...document.querySelectorAll('link[rel="icon"]')].map(l => l.getAttribute('href')),
@@ -215,30 +219,53 @@ test.describe('the notice on the one-minute tick', () => {
     expect(cell.reads, 'the notice up: no asks').toBe(reads);
   });
 
-  test('a marked tab is put back when the notice is dismissed, and when the window ends', async ({ page, wvw }) => {
-    const cell = await relinkWindow(page, wvw);
+  // The notice goes up in a hidden tab the way it does for a visitor: the cell changes and the
+  // next ask the tab is allowed (one in ten minutes) reads it. Returns the tab as it was.
+  async function raiseHidden(page, wvw, cell) {
     const was = await tab(page);
-    const raise = async () => {
-      await hidden(page, wvw, 0);
-      cell.published = 5;
-      await page.evaluate(() => { relinkStateAt = 0; updateRelinkBanner(); });
-      await expect(page.locator('#teamsNotice')).toBeVisible();
-      expect(await tab(page), 'the notice went up hidden').toEqual({ title: NOTICE_TITLE, icons: MARKED_ICONS });
-    };
+    await hidden(page, wvw, 0);
+    cell.published = 5;
+    for (let m = 0; m < 12 && !(await page.locator('#teamsNotice').isVisible()); m++) {
+      await page.clock.fastForward(MIN);
+      await quiet();
+    }
+    await expect(page.locator('#teamsNotice')).toHaveAttribute('data-window', String(cell.windowId));
+    return was;
+  }
 
-    await raise();
-    const assigned = await page.evaluate(() => assignNA);
-    await page.evaluate(() => { assignNA = Date.now() - 1000; updateRelinkBanner(); });
-    await expect(page.locator('#teamsNotice')).toBeHidden();
-    expect(await tab(page), 'the window over: the title and the icons back').toEqual(was);
-    await clockStopped(page, was);
-
-    await page.evaluate(t => { assignNA = t; }, assigned);
-    await raise();
+  test('a marked tab is put back when the notice is dismissed', async ({ page, wvw }) => {
+    const cell = await relinkWindow(page, wvw);
+    const was = await raiseHidden(page, wvw, cell);
+    expect(await tab(page), 'the notice went up hidden').toEqual({ title: NOTICE_TITLE, icons: MARKED_ICONS });
     await page.locator('.teams-notice-close').click();
     await expect(page.locator('#teamsNotice')).toBeHidden();
     expect(await tab(page), 'dismissed: the title and the icons back').toEqual(was);
     await clockStopped(page, was);
+  });
+
+  test('a marked tab is put back when the window ends', async ({ page, wvw }) => {
+    const cell = await relinkWindow(page, wvw);
+    const was = await raiseHidden(page, wvw, cell);
+    expect(await tab(page), 'the notice went up hidden').toEqual({ title: NOTICE_TITLE, icons: MARKED_ICONS });
+    // NA's teams land: the device clock passes the assignment and the next tick sees the window over.
+    await page.clock.setSystemTime(new Date((cell.windowId + 1) * 1000));
+    await page.clock.fastForward(MIN);
+    await expect(page.locator('#teamsNotice')).toBeHidden();
+    expect(await tab(page), 'the window over: the title and the icons back').toEqual(was);
+    await clockStopped(page, was);
+
+    // A page left open into the next month: the next assignment, a new cell, and the notice marks the tab again.
+    const next = (cell.windowId + 2 * DAY / 1000) * 1000;
+    const iso = ms => new Date(ms).toISOString().replace('.000Z', 'Z');
+    await answer(page, GAME + 'wvw/timers/teamAssignment', { na: iso(next), eu: iso(next - 8 * 3600000) });
+    cell.windowId = next / 1000;
+    cell.published = 0;
+    await visible(page);
+    await expect(page.locator('#relinkBanner')).toHaveClass(/is-rebuild/);
+    await wvw.settle();
+    await expect(page.locator('#teamsNotice')).toBeHidden();
+    await raiseHidden(page, wvw, cell);
+    expect(await tab(page), 'the next window\'s notice went up hidden').toEqual({ title: NOTICE_TITLE, icons: MARKED_ICONS });
   });
 
   // Three flips (odd, so a clock still running would leave the other title) with no page error
@@ -251,16 +278,6 @@ test.describe('the notice on the one-minute tick', () => {
     page.off('pageerror', onError);
     expect((await tab(page)).title, 'the clock stopped').toBe(was.title);
     expect(errors, 'nothing ran after the mark went').toEqual([]);
-  }
-
-  // Raises the notice in a hidden tab; returns the tab as it was.
-  async function raiseHidden(page, wvw, cell) {
-    const was = await tab(page);
-    await hidden(page, wvw, 0);
-    cell.published = 5;
-    await page.evaluate(() => { relinkStateAt = 0; updateRelinkBanner(); });
-    await expect(page.locator('#teamsNotice')).toBeVisible();
-    return was;
   }
 
   test('the dot is inserted after the old icons are gone, and the originals return after the dot is gone', async ({ page, wvw }) => {

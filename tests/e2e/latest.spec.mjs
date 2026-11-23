@@ -5,10 +5,10 @@
 import { test, expect } from './support/fixtures.mjs';
 import { answer, fail } from './support/faults.mjs';
 import { gw2, historyOf, liveOf } from './support/gw2.mjs';
-import { load, recordedJson, scoreOf } from './support/steps.mjs';
+import { load, recordedJson } from './support/steps.mjs';
 import { recording } from './support/recordings.mjs';
 import { FOCUS, MIN, hidden, playing, visible } from './support/scenarios.mjs';
-import { countPeekTimers, countRegionDraws, forgetSkippedTick, keepNewest, keptBody, lastResets, liveOnBoard, loadNow, loadSettled, nextPeekIn, readCopy, tickSkipped } from './support/page.mjs';
+import { countPeekTimers, countRegionDraws, forgetSkippedTick, keepNewest, keptBody, lastResets, liveOnBoard, loadNow, loadSettled, nextPeekIn, readCopy, scoreOf, tickSkipped } from './support/page.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 const NA = '#standingsGridNA > .standing-match';

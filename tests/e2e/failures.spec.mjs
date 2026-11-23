@@ -3,10 +3,10 @@
 // and /api down so that the page falls back to the sheets. Then the game's API
 // and ours failing in each way a player can meet: what is on screen in each.
 import { test, expect } from './support/fixtures.mjs';
-import { abort, answer, fail, hold, holdSummary, stall } from './support/faults.mjs';
+import { abort, answer, fail, hold, stall } from './support/faults.mjs';
 import { firstTier, later, load, openMap } from './support/steps.mjs';
 import { recording } from './support/recordings.mjs';
-import { allQuietNow, askKills, emblemLayerCount, forgetCommunityGuilds, forgetEmblems, liveOnBoard, loadNow, quietFor, retryWaiting, upgradeLines } from './support/page.mjs';
+import { allQuietNow, askKills, emblemLayerCount, forgetCommunityGuilds, forgetEmblems, holdSummary, liveOnBoard, loadNow, quietFor, retryWaiting, upgradeLines } from './support/page.mjs';
 import { MIN, killRows, killsGap, playing } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });

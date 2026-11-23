@@ -6,14 +6,26 @@
 // map asks the game for neither list.
 import { test, expect } from './support/fixtures.mjs';
 import { answer, fail } from './support/faults.mjs';
-import { firstTier, keptMatch, later, load, openMap, recordedJson, serveList } from './support/steps.mjs';
+import { firstTier, later, load, openMap, recordedJson, serveList } from './support/steps.mjs';
+import { keptMatch } from './support/page.mjs';
 
 test.use({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
 const ALL = 'https://api.guildwars2.com/v2/wvw/matches?ids=all';
 const MARKERS = '.info-popover .wvw-marker';
 const WAITING = '.info-popover .wvw-waiting';
 
-const noStatic = page => page.route(/\/js\/wvw-static\.js(\?|$)/, route => route.abort('failed'));
+// The copy refused, and how many times the page asked for it.
+const noStatic = async page => {
+  const refused = { reads: 0 };
+  await page.route(/\/js\/wvw-static\.js(\?|$)/, route => { refused.reads++; return route.abort('failed'); });
+  return refused;
+};
+const LISTS = /\/v2\/(wvw\/objectives\?ids=all|continents\/2\/floors\/3\/regions\/7\/maps\/\d+\/sectors\?ids=all)/;
+const listReads = page => {
+  const urls = [];
+  page.on('request', r => { if (LISTS.test(r.url())) urls.push(r.url()); });
+  return urls;
+};
 const blanked = m => ({ ...m, maps: m.maps.map(x => ({ ...x, objectives: [] })) });
 const owners = page => page.evaluate(sel => [...document.querySelectorAll(sel)].map(g => g.getAttribute('class').match(/own-(\w+)/)[1]), MARKERS);
 const tints = page => page.evaluate(() => [...document.querySelectorAll('.info-popover .wvw-sector')].map(g => g.getAttribute('class').match(/own-(\w+)/)[1]));
@@ -72,15 +84,17 @@ test.describe('js/wvw-static.js did not load', () => {
 
   test('the map is drawn from the API alone, with its owners', async ({ page, wvw }) => {
     wvw.allowLog(/\/js\/wvw-static\.js/);
-    await noStatic(page);
+    const refused = await noStatic(page);
+    const urls = listReads(page);
     await load(page, wvw);
-    expect(await page.evaluate(() => typeof WVW_STATIC), 'the static copy').toBe('undefined');
+    expect(refused.reads, 'the page asked for the static copy and was refused').toBeGreaterThan(0);
     const tier = await firstTier(page);
     await openMap(page, wvw, tier.button);
     const seen = await owners(page);
     expect(seen.length, 'objectives drawn').toBeGreaterThan(10);
     expect(seen.some(o => o !== 'neutral'), 'owners drawn').toBe(true);
     await expect(page.locator(WAITING)).toBeHidden();
+    expect(urls.filter(u => u.includes('/wvw/objectives')), 'the objectives read from the API').toHaveLength(1);
   });
 
   test('with /v2/wvw/objectives answering 503 too, the map says it could not load', async ({ page, wvw }) => {
@@ -117,13 +131,6 @@ test.describe('a borderland whose objectives come without a position', () => {
 });
 
 test.describe('what opening a map asks the game for', () => {
-  const LISTS = /\/v2\/(wvw\/objectives\?ids=all|continents\/2\/floors\/3\/regions\/7\/maps\/\d+\/sectors\?ids=all)/;
-  const listReads = page => {
-    const urls = [];
-    page.on('request', r => { if (LISTS.test(r.url())) urls.push(r.url()); });
-    return urls;
-  };
-
   test('with the copy, neither the objectives nor the sectors are read', async ({ page, wvw }) => {
     const urls = listReads(page);
     await load(page, wvw);
