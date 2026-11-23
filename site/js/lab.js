@@ -1,27 +1,27 @@
 'use strict';
-// LAB (never merged). The 95-0 lab: the middle of the page in five ready setups (search and answer,
-// the found card's mark, highlights, news), picked in the "Lab" panel. Loaded just before js/boot.js,
-// after the lab-*.js it draws with (check-structure wants boot.js last). Everything goes through textContent.
+// LAB (never merged). The 95-0 lab, round 2: the middle of the page as the owner kept it (setup 4 of
+// round 1), every open choice a box or a radio in the panel's "Fine-tune" group, the recommendation
+// on by default. Loaded just before js/boot.js, after the lab-*.js it draws with (check-structure
+// wants boot.js last). Everything goes through textContent.
 
 const LAB_KEY = 'wvw-lab-v1';
-const LAB_VERSION = 1;          // bump when the defaults change: older saved choices are dropped
-// search A line, B card, C the standings answer; mark blink, sheen (+ ring), here; tiles A board,
-// B duel, C pills; news A ledger, B lead + grid, C timeline, R = C under B's lead, M = A, 3 items.
-const LAB_SETUPS = {
-  1: { label: '1 · Plain', search: 'A', mark: 'blink', tiles: 'A', news: 'A' },
-  2: { label: '2 · Card', search: 'B', mark: 'sheen', tiles: 'B', news: 'B' },
-  3: { label: '3 · The standings answer', search: 'C', mark: 'here', tiles: 'C', news: 'C' },
-  4: { label: '4 · Recommended', search: 'B', mark: 'sheen', tiles: 'A', news: 'R', ownIcon: true, profIcon: true },
-  5: { label: '5 · Phone-minimal', search: 'A', mark: 'blink', tiles: 'C', news: 'M' },
-};
+const LAB_VERSION = 2;          // bump when the defaults change: older saved choices are dropped
 const LAB_ITEMS = [
-  { type: 'section', label: 'Setup' },
-  { type: 'radio', key: 'setup', label: 'Setup', options: Object.fromEntries(Object.entries(LAB_SETUPS).map(([k, s]) => [k, s.label])), value: '1',
-    // A setup brings its own fine-tune defaults.
-    then: (p) => { p.ownIcon = !!LAB_SETUPS[p.setup].ownIcon; p.profIcon = !!LAB_SETUPS[p.setup].profIcon; } },
   { type: 'section', label: 'Fine-tune' },
-  { type: 'check', key: 'ownIcon', label: 'Our icon in the news header, not "[[ ]]"', on: false },
-  { type: 'check', key: 'profIcon', label: 'Profession icon beside buffs and nerfs', on: false },
+  { type: 'radio', key: 'order', label: 'Order', value: 'shn',
+    options: { shn: 'Search · Highlights · News', snh: 'Search · News · Highlights', hsn: 'Highlights · Search · News' } },
+  { type: 'check', key: 'newsLow', label: 'Phones: news below the standings', on: false },
+  { type: 'radio', key: 'searchBar', label: 'Search bar', value: 'panel',
+    options: { panel: 'Panel like the others', bare: 'Bare bar', shield: 'Shield button' } },
+  { type: 'radio', key: 'recent', label: 'Recent guilds', value: 'list',
+    options: { list: 'Suggestions while typing', chips: 'Chips under the bar' } },
+  { type: 'radio', key: 'answer', label: 'Answer card', value: 'banner',
+    options: { banner: 'Team banner', matchup: 'Matchup', bigtier: 'Big tier' } },
+  { type: 'radio', key: 'effect', label: 'Check effect', value: 'aimed',
+    options: { aimed: 'Aimed at the answer, page still', today: 'Today’s, page still', simple: 'Simple: sparks + sheen' } },
+  { type: 'radio', key: 'tierTag', label: 'Tier tag', value: 'chip', options: { chip: 'Chip', plain: 'Plain text' } },
+  { type: 'check', key: 'ownIcon', label: 'Our icon in the news header, not "[[ ]]"', on: true },
+  { type: 'check', key: 'profIcon', label: 'Profession icon beside buffs and nerfs', on: true },
   { type: 'section', label: 'Simulate a new update' },
   { type: 'button', label: 'Balance only', run: () => { labSimNews('balance'); labStatus('Example update: balance only.'); } },
   { type: 'button', label: 'Rules only', run: () => { labSimNews('rule'); labStatus('Example update: rules only.'); } },
@@ -30,10 +30,9 @@ const LAB_ITEMS = [
   { type: 'button', label: 'Back to the real notes', run: () => { labSimNews(null); labStatus('The real notes.'); } },
 ];
 
-const labSetup = () => LAB_SETUPS[labPrefs.setup] || LAB_SETUPS[1];
-
 // ---- the middle -----------------------------------------------------------------------------
 const LAB_SUBTITLE = 'Type your guild’s name to see which WvW team it landed on after the relink, with its tier and the teams it faces. For NA and EU.';
+const LAB_NARROW = '(max-width: 1399px)';
 let labMid = null;
 function labMountMiddle() {
   const sub = document.querySelector('main .subtitle');
@@ -45,38 +44,55 @@ function labMountMiddle() {
   labMid = labEl('div', 'lab-mid');
   labMid.id = 'labMid';
   const search = labBuildSearch();
-  search.querySelector('.ls-row').appendChild(runBtn);
+  search.querySelector('.ls-btn').prepend(runBtn);
   const tiles = labEl('div', 'lab-mid-tiles');
   tiles.id = 'labTiles';
   const news = labEl('div', 'lab-mid-news');
   news.id = 'labNews';
   labMid.append(search, tiles, news);
   sub.after(labMid);
+  // Where the news goes on a narrow screen with "Phones: news below the standings": after both rails.
+  const low = labEl('div', 'lab-news-low');
+  low.id = 'labNewsLow';
+  document.getElementById('page').appendChild(low);
+  if (typeof matchMedia === 'function') matchMedia(LAB_NARROW).addEventListener('change', labPlaceParts);
   labPaintRecent();
+}
+function labPlaceParts() {
+  if (!labMid) return;
+  const by = { s: labMid.querySelector('.ls-search'), h: document.getElementById('labTiles'), n: document.getElementById('labNews') };
+  const low = labPrefs.newsLow && typeof matchMedia === 'function' && matchMedia(LAB_NARROW).matches;
+  for (const k of labPrefs.order) {
+    if (k === 'n' && low) document.getElementById('labNewsLow').appendChild(by.n);
+    else labMid.appendChild(by[k]);
+  }
 }
 function labPaintTiles() {
   const box = document.getElementById('labTiles');
   if (!box) return;
   box.textContent = '';
-  box.appendChild(labTilesPanel(labSetup().tiles));
+  box.appendChild(labTilesPanel());
 }
 function labPaintNews() {
   const box = document.getElementById('labNews');
   if (!box) return;
   box.textContent = '';
-  box.appendChild(labNewsPanel(labSetup().news, { ownIcon: labPrefs.ownIcon, profIcon: labPrefs.profIcon }));
+  box.appendChild(labNewsPanel({ ownIcon: labPrefs.ownIcon, profIcon: labPrefs.profIcon }));
 }
-// The standings hook: fresh cards lose the mark, so it is painted again; the tiles read the new data.
+// The standings hook: fresh cards lose the mark, so it is painted (or watched for) again; the tiles read the new data.
 function labAfterStandings() {
   if (typeof document.querySelector !== 'function' || !labMid) return;
-  labPaintMark(false);
+  labWatchMark();
   labPaintTiles();
 }
 
 function labRepaint() {
   if (!labMid) return;
-  document.documentElement.dataset.labSetup = labPrefs.setup;
-  if (labS.mark) labS.mark.kind = labSetup().mark;
+  const html = document.documentElement;
+  html.classList.toggle('lab-aim', labPrefs.effect === 'aimed');
+  html.classList.toggle('lab-still', labPrefs.effect !== 'today');
+  labPlaceParts();
+  labPaintSearchBar();
   labPaintAnswer();
   labPaintTiles();
   labPaintNews();
@@ -97,7 +113,7 @@ function labReadPrefs() {
     if (!v || v.v !== LAB_VERSION) return p;
     if (typeof v.open === 'boolean') p.open = v.open;
     for (const it of LAB_ITEMS) {
-      if (it.type === 'check') p[it.key] = typeof v[it.key] === 'boolean' ? v[it.key] : !!(LAB_SETUPS[p.setup] || {})[it.key];
+      if (it.type === 'check' && typeof v[it.key] === 'boolean') p[it.key] = v[it.key];
       if (it.type === 'radio' && Object.prototype.hasOwnProperty.call(it.options, v[it.key])) p[it.key] = v[it.key];
     }
   } catch { /* storage off or corrupt: the defaults */ }
@@ -157,7 +173,7 @@ function labBuildPanel() {
         r.type = 'radio';
         r.name = `lab-${it.key}`;
         r.value = k;
-        r.addEventListener('change', () => { if (r.checked) { labPrefs[it.key] = k; if (it.then) it.then(labPrefs); labChanged(); } });
+        r.addEventListener('change', () => { if (r.checked) { labPrefs[it.key] = k; labChanged(); } });
         rl.append(r, ` ${text}`);
         fs.appendChild(rl);
       }

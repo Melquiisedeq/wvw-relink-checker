@@ -479,6 +479,7 @@ function launchCharge(ball, startedAt, letGo) {
     ball.style.setProperty('--dx', `${Math.round(dx)}px`);
     arc.style.setProperty('--dy', `${Math.round(dy)}px`);
     arc.style.setProperty('--rise', `${Math.round(arcRise(dx, dy))}px`);
+    if (typeof labAimBall === 'function') labAimBall(ball, arc, from); // LAB (never merged)
     trailFrom(arc, FLIGHT_MS, true, grown);
 
     setTimeout(() => {

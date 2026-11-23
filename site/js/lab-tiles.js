@@ -1,7 +1,8 @@
 'use strict';
 // LAB (never merged). The highlights panel, from the page's own live data (newestMatches and the kill
-// readings of js/maps-early.js): no request of its own. A board of four (A), the hour's duel (B) or a
-// strip of pills (C). Every number says its period. Team names are strangers' text: textContent only.
+// readings of js/maps-early.js): no request of its own. Four tiles, each with its tier in the same
+// corner, the site's own icon for what it counts, and the teams' colours beside their names. Every
+// number says its period. Team names are strangers' text: textContent only.
 
 const LAB_MIN = 60000;
 const LAB_STONEMIST = '38-9';
@@ -9,7 +10,6 @@ const LAB_MAP_SHORT = { Center: 'EBG', RedHome: 'Red BL', BlueHome: 'Blue BL', G
 const labNow = () => (typeof steadyNow === 'function' ? steadyNow() : Date.now());
 const labNum = (n) => Math.round(Number(n) || 0).toLocaleString('en-US');
 const labRegion = (id) => (String(id).charAt(0) === '1' ? 'NA' : 'EU');
-const labTier = (id) => `${labRegion(id)} T${String(id).split('-')[1] || '?'}`;
 const labCap = (c) => c.charAt(0).toUpperCase() + c.slice(1);
 
 function labKept() {
@@ -136,103 +136,89 @@ function labTeamText(name, color) {
   s.append(labDot(color), labEl('span', null, name));
   return s;
 }
-function labSwords() {
-  return labIcon(['M4 4l10 10', 'M4 4h3l9 9-3 3-9-9Z', 'M20 4L10 14', 'M20 4h-3l-4 4', 'M7 17l-3 3', 'M17 17l3 3'], 'lt-swords');
+// The site's own pictures: the crossed swords mask (.swords-icon, css/facets.css) and the map's
+// objective markers (assets/icons, as markerIcon in js/maps.js names them).
+function labSiteIcon(kind, color) {
+  if (kind === 'swords') return labEl('span', 'swords-icon lt-ic');
+  const img = labEl('img', 'lt-ic lt-ic-img');
+  img.src = `assets/icons/Event_${kind}${COLORS.includes(color) ? `_${color}` : ''}.webp`;
+  img.alt = '';
+  img.width = 16; img.height = 16;
+  return img;
 }
 
-// One tile: a label, the dominant number, one line of context with the period; a match opens its map.
+// One tile: the icon and what it counts, the tier in the top corner, the dominant number with its unit,
+// the teams it is about, one line with the period. A tile about a match opens that match's map.
 function labTile(t) {
   const el = labEl(t.matchId ? 'button' : 'div', `lt-tile${t.cls ? ` ${t.cls}` : ''}`);
   if (t.matchId) {
     el.type = 'button';
-    el.setAttribute('aria-label', `${t.label}: ${t.big}. ${t.line}. Open the live map of ${labTier(t.matchId)}`);
-    el.addEventListener('click', () => labOpenMap(t.matchId));
+    el.setAttribute('aria-label', `${t.label}, ${t.tier}: ${t.big}${t.unit ? ` ${t.unit}` : ''}${t.teams ? `, ${t.teams.map((x) => x.name).join(' and ')}` : ''}. ${t.line}. Open the live map`);
   }
-  const top = labEl('span', 'lt-label', t.label);
-  if (t.icon) top.prepend(t.icon);
-  el.appendChild(top);
-  const big = labEl('span', 'lt-big');
-  if (t.color) big.appendChild(labDot(t.color));
-  big.appendChild(labEl('span', null, t.big));
-  el.appendChild(big);
+  if (t.matchId) el.addEventListener('click', () => labOpenMap(t.matchId));
+  // The icon and the tier share the top row, so the tier sits in the same corner at every width.
+  const top = labEl('span', 'lt-top');
+  top.append(t.icon || labEl('span', 'lt-ic'), labEl('span', 'lt-tier', t.tier));
+  el.append(top, labEl('span', 'lt-label', t.label));
+  if (t.big) {
+    const big = labEl('span', 'lt-big');
+    big.appendChild(labEl('span', 'lt-num', t.big));
+    if (t.unit) big.appendChild(labEl('span', 'lt-unit', t.unit));
+    el.appendChild(big);
+  }
+  if (t.teams) {
+    const teams = labEl('span', 'lt-teams');
+    t.teams.forEach((x, k) => {
+      if (k) teams.append(labEl('span', 'lt-vs', t.join || 'vs'));
+      teams.appendChild(labTeamText(x.name, x.color));
+    });
+    el.appendChild(teams);
+  }
   el.appendChild(labEl('span', 'lt-line', t.line));
-  if (t.color) el.style.setProperty('--lt-team', `var(--${t.color})`);
   return el;
 }
 
+const labTierTag = (id) => `${labRegion(id)} · T${String(id).split('-')[1] || '?'}`;
 function labTileData() {
-  const fights = labFights();
-  const f = fights[0];
+  const out = [];
+  const f = labFights()[0];
   const flip = f ? null : labFlips()[0];
+  if (f) {
+    const map = f.m.maps.find((x) => x.type === f.type) || {};
+    const two = COLORS.map((c) => ({ color: c, name: labTeamName(f.m, c), kills: Number((map.kills || {})[c]) || 0 }))
+      .sort((a, b) => b.kills - a.kills).slice(0, 2);
+    out.push({ label: 'Hottest fight', icon: labSiteIcon('swords'), tier: labTierTag(f.m.id), big: labNum(f.n), unit: 'kills',
+      teams: two, line: `${LAB_MAP_SHORT[f.type] || f.type} · last ${f.mins} min`, matchId: f.m.id });
+  } else if (flip) {
+    out.push({ label: 'Busiest map', icon: labSiteIcon('Tower'), tier: labTierTag(flip.m.id), big: String(flip.n), unit: 'captures',
+      line: `${LAB_MAP_SHORT[flip.type] || flip.type} · last 2 h`, matchId: flip.m.id });
+  } else {
+    out.push({ label: 'Hottest fight', icon: labSiteIcon('swords'), tier: 'all tiers', big: '—', line: 'No readings yet · last 30 min' });
+  }
   const sm = labStonemist();
+  if (sm) {
+    out.push({ label: 'Stonemist', icon: labSiteIcon('Castle', sm.color), tier: labTierTag(sm.m.id), big: '', teams: [{ name: sm.name, color: sm.color }],
+      line: `Held ${labSpan(sm.held)} · now`, matchId: sm.m.id, cls: 'lt-owner' });
+  }
   const close = labClosest();
+  if (close) {
+    out.push({ label: 'Closest match', icon: labEl('span', 'lt-ic lt-ic-text', 'VP'), tier: labTierTag(close.m.id), big: labNum(close.gap), unit: 'VP gap',
+      teams: [close.a, close.b], line: 'Top two · this week', matchId: close.m.id });
+  }
   const sk = labSkirmish();
-  const kill = labKiller();
-  const out = {};
-  if (f) out.fight = { label: 'Hottest fight', big: `${labNum(f.n)} kills`, line: `${LAB_MAP_SHORT[f.type] || f.type} · ${labTier(f.m.id)} · ${f.mins} min`, matchId: f.m.id, icon: labSwords(), cls: 'lt-fight', f };
-  else if (flip) out.fight = { label: 'Busiest map', big: `${flip.n} captures`, line: `${LAB_MAP_SHORT[flip.type] || flip.type} · ${labTier(flip.m.id)} · last 2 h`, matchId: flip.m.id, icon: labSwords(), cls: 'lt-fight' };
-  else out.fight = { label: 'Hottest fight', big: '—', line: 'No readings yet · 30 min' };
-  if (sm) out.sm = { label: 'Stonemist', big: sm.name, line: `${labTier(sm.m.id)} · held ${labSpan(sm.held)}`, matchId: sm.m.id, color: sm.color, cls: 'lt-team' };
-  if (close) out.close = { label: 'Closest match', big: `${labNum(close.gap)} VP`, line: `${labTier(close.m.id)} · ${close.a.name} vs ${close.b.name} · this week`, matchId: close.m.id };
-  if (sk) out.clock = { label: 'Skirmish', big: `${sk.n}/84`, line: `${sk.region} · next in ${labSpan(sk.next)}${sk.reset > 0 ? ` · reset in ${labSpan(sk.reset)}` : ''}`, cls: 'lt-clock' };
-  if (kill) out.kill = { label: 'Most kills', big: labNum(kill.kills), line: `${kill.name} · ${labTier(kill.m.id)} · so far`, matchId: kill.m.id, color: kill.color, cls: 'lt-team' };
+  if (sk) {
+    out.push({ label: 'Skirmish', tier: `${sk.region} · all tiers`, big: `${sk.n}/84`, unit: 'so far',
+      line: `Next in ${labSpan(sk.next)}${sk.reset > 0 ? ` · reset in ${labSpan(sk.reset)}` : ''}` });
+  }
   return out;
 }
 
-function labDuel(d) {
-  const f = d.fight.f;
-  if (!f) {
-    const t = labTile(d.fight);
-    t.classList.add('lt-wide');
-    return t;
-  }
-  const el = labEl('button', 'lt-duel');
-  el.type = 'button';
-  const map = f.m.maps.find((x) => x.type === f.type) || {};
-  const two = COLORS.map((c) => ({ color: c, name: labTeamName(f.m, c), kills: Number((map.kills || {})[c]) || 0 }))
-    .sort((a, b) => b.kills - a.kills).slice(0, 2);
-  el.setAttribute('aria-label', `Hottest fight: ${two[0].name} and ${two[1].name}, ${labNum(f.n)} kills in ${f.mins} min on ${LAB_MAP_SHORT[f.type] || f.type}, ${labTier(f.m.id)}. Open the live map`);
-  el.addEventListener('click', () => labOpenMap(f.m.id));
-  el.appendChild(labEl('span', 'lt-label', `Hottest fight · ${LAB_MAP_SHORT[f.type] || f.type} · ${labTier(f.m.id)}`));
-  const row = labEl('span', 'lt-duel-row');
-  const side = (t) => {
-    const s = labEl('span', `lt-side lt-side-${t.color}`);
-    s.append(labEl('span', 'lt-side-name', t.name), labEl('span', 'lt-side-n', `${labNum(t.kills)} this week`));
-    return s;
-  };
-  const mid = labEl('span', 'lt-duel-mid');
-  mid.append(labSwords(), labEl('span', 'lt-duel-n', labNum(f.n)), labEl('span', 'lt-duel-unit', `kills · ${f.mins} min`));
-  row.append(side(two[0]), mid, side(two[1]));
-  el.appendChild(row);
-  return el;
-}
-
-function labTilesPanel(form) {
-  const d = labTileData();
-  const panel = labEl('section', `lt-panel lt-form-${form}`);
+function labTilesPanel() {
+  const panel = labEl('section', `lt-panel lt-tag-${labPrefs.tierTag}`);
   panel.setAttribute('aria-label', 'Highlights');
-  const head = labEl('div', 'lt-head', 'Highlights');
-  if (form !== 'C') panel.appendChild(head);
-  if (form === 'A') {
-    const grid = labEl('div', 'lt-grid');
-    for (const k of ['fight', 'sm', 'close', 'clock']) if (d[k]) grid.appendChild(labTile(d[k]));
-    panel.appendChild(grid);
-  } else if (form === 'B') {
-    panel.appendChild(labDuel(d));
-    const two = labEl('div', 'lt-pair');
-    for (const k of ['sm', 'close']) if (d[k]) two.appendChild(labTile(d[k]));
-    panel.appendChild(two);
-  } else {
-    const strip = labEl('div', 'lt-strip');
-    strip.setAttribute('aria-label', 'Highlights');
-    strip.setAttribute('role', 'group');
-    for (const k of ['fight', 'sm', 'close', 'clock', 'kill']) {
-      if (!d[k]) continue;
-      const t = labTile(d[k]);
-      t.classList.add('lt-pill');
-      strip.appendChild(t);
-    }
-    panel.appendChild(strip);
-  }
+  panel.appendChild(labEl('div', 'lt-head', 'Highlights'));
+  const grid = labEl('div', 'lt-grid');
+  for (const t of labTileData()) grid.appendChild(labTile(t));
+  panel.appendChild(grid);
   return panel;
 }

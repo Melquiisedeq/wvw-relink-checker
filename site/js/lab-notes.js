@@ -1,13 +1,13 @@
 'use strict';
-// LAB (never merged). The news panel: LAB_NEWS_ROWS (js/lab-news.js) read into items and drawn in
-// one of the layouts the setups pick (A ledger, B lead + grid, C timeline, R = C under B's lead,
-// M = A with three items and "More updates"). Wiki text is strangers' text: textContent only.
+// LAB (never merged). The news panel: LAB_NEWS_ROWS (js/lab-news.js) read into items and drawn as
+// the newest map/rule/event as a lead over a timeline of the recent days. Wiki text is strangers'
+// text: textContent only.
 
 const LAB_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September',
   'October', 'November', 'December'];
 const LAB_KIND_WEIGHT = { map: 6, event: 5, rule: 4, reward: 3, buff: 3, nerf: 3, fix: 1 };
 const LAB_WIKI = 'https://wiki.guildwars2.com/wiki/';
-const labNotes = { sim: null, more: false, filter: 'wvw' };
+const labNotes = { sim: null, filter: 'wvw' };
 
 function labNoteDate(update, page) {
   const m = new RegExp(`(${LAB_MONTHS.join('|')})\\s+(\\d{1,2}),\\s+(\\d{4})`).exec(update || '');
@@ -79,20 +79,6 @@ function labAllNotes() {
 }
 // An invented update is what the simulation is for: it always makes the cut.
 const labNoteScore = (i) => (i.example ? 1000 : 0) + (LAB_KIND_WEIGHT[i.kind] || 0) * 10 - (Date.now() - i.at) / (7 * 864e5);
-
-// The n most telling items, at most perUpdate from one update, newest first.
-function labPickNotes(items, n, perUpdate = 2) {
-  const per = new Map();
-  const chosen = [];
-  for (const i of items.slice().sort((a, b) => labNoteScore(b) - labNoteScore(a))) {
-    if (chosen.length >= n) break;
-    const k = per.get(i.update) || 0;
-    if (k >= perUpdate) continue;
-    per.set(i.update, k + 1);
-    chosen.push(i);
-  }
-  return chosen.sort((a, b) => b.at - a.at || (LAB_KIND_WEIGHT[b.kind] || 0) - (LAB_KIND_WEIGHT[a.kind] || 0));
-}
 
 const LAB_SVG = 'http://www.w3.org/2000/svg';
 function labIcon(paths, cls) {
@@ -174,31 +160,6 @@ function labNewsHead(sub, opts) {
   return h;
 }
 
-function labNewsLedger(items, n, opts, more) {
-  const box = labEl('div', 'ln-a');
-  const shown = labPickNotes(items, labNotes.more && more ? n + 5 : n);
-  let last = '';
-  for (const i of shown) {
-    const row = labEl('div', 'ln-a-it');
-    const d = labDay(i.at);
-    row.appendChild(labEl('span', 'ln-day', d === last ? '' : d));
-    last = d;
-    const body = labEl('div', 'ln-a-body');
-    body.appendChild(labNoteLine(i, opts));
-    const desc = labNoteDesc(i);
-    if (desc) body.appendChild(desc);
-    row.appendChild(body);
-    box.appendChild(row);
-  }
-  if (more) {
-    const b = labEl('button', 'ln-more', labNotes.more ? 'Fewer updates' : 'More updates');
-    b.type = 'button';
-    b.addEventListener('click', () => { labNotes.more = !labNotes.more; labPaintNews(); });
-    box.appendChild(b);
-  }
-  return box;
-}
-
 function labLeadOf(items) {
   const big = items.filter((i) => ['map', 'event', 'rule'].includes(i.kind) && Date.now() - i.at < 45 * 864e5);
   if (!big.length) return null;
@@ -226,18 +187,6 @@ function labNewsLead(lead) {
   if (lead.until && lead.until > Date.now()) body.appendChild(labEl('span', 'ln-pill', `Beta ends in ${labSpan(lead.until - Date.now())}`));
   box.appendChild(body);
   return box;
-}
-
-function labNewsGrid(items, opts) {
-  const grid = labEl('div', 'ln-grid');
-  for (const i of items) {
-    const c = labEl('div', 'ln-cell');
-    c.appendChild(labNoteLine(i, opts));
-    const desc = labNoteDesc(i);
-    if (desc) c.appendChild(desc);
-    grid.appendChild(c);
-  }
-  return grid;
 }
 
 const LAB_FILTERS = { wvw: 'WvW', all: 'All', fix: 'Fixes' };
@@ -284,24 +233,14 @@ function labNewsTimeline(items, days, opts) {
   return box;
 }
 
-function labNewsPanel(form, opts) {
+function labNewsPanel(opts) {
   const items = labAllNotes();
-  const panel = labEl('section', `ln-panel ln-form-${form}`);
+  const panel = labEl('section', 'ln-panel');
   panel.setAttribute('aria-label', 'Game updates for WvW');
-  if (form === 'A' || form === 'M') {
-    panel.appendChild(labNewsHead('Game updates', opts));
-    panel.appendChild(labNewsLedger(items, form === 'M' ? 3 : 5, opts, form === 'M'));
-  } else if (form === 'B') {
-    panel.appendChild(labNewsHead('latest WvW changes', opts));
-    const lead = labLeadOf(items);
-    if (lead) panel.appendChild(labNewsLead(lead));
-    panel.appendChild(labNewsGrid(labPickNotes(items.filter((i) => i !== lead && i.kind), 4, 2), opts));
-  } else {
-    panel.appendChild(labNewsHead('Game updates · WvW', opts));
-    const lead = form === 'R' ? labLeadOf(items) : null;
-    if (lead) panel.appendChild(labNewsLead(lead));
-    panel.appendChild(labNewsTimeline(items.filter((i) => i !== lead), lead ? 2 : 3, opts));
-  }
+  panel.appendChild(labNewsHead('Game updates · WvW', opts));
+  const lead = labLeadOf(items);
+  if (lead) panel.appendChild(labNewsLead(lead));
+  panel.appendChild(labNewsTimeline(items.filter((i) => i !== lead), lead ? 2 : 3, opts));
   return panel;
 }
 
@@ -345,6 +284,5 @@ function labSimRows(kind) {
 }
 function labSimNews(kind) {
   labNotes.sim = kind ? labSimRows(kind) : null;
-  labNotes.more = false;
   labPaintNews();
 }
