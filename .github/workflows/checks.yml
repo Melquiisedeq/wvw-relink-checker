@@ -59,20 +59,20 @@ jobs:
       # A syntax error in any of these files takes the whole page down, and
       # says so nowhere except the browser console of whoever opened it.
       # node --check parses a file without running a line of it. The Worker
-      # behind /api too: .mjs, so it parses as a module on any Node version.
+      # behind /api too, and the checks under scripts/: .mjs, so they parse as modules on any Node version.
       # The Apps Scripts are .gs, which node does not know: each is checked
       # as a temporary .js copy.
       - name: Parse every script
         run: |
           set -euo pipefail
-          for f in site/js/*.js worker/*.mjs; do
+          for f in site/js/*.js worker/*.mjs scripts/*.mjs; do
             node --check "$f"
           done
           for f in apps-script/*/*.gs; do
             cp "$f" "$RUNNER_TEMP/$(basename "$f" .gs).js"
             node --check "$RUNNER_TEMP/$(basename "$f" .gs).js"
           done
-          echo "$(ls site/js/*.js worker/*.mjs apps-script/*/*.gs | wc -l) scripts parse."
+          echo "$(ls site/js/*.js worker/*.mjs scripts/*.mjs apps-script/*/*.gs | wc -l) scripts parse."
 
       # The outward-looking checks run only in health.yml: a syntax
       # error in one would pass here and ring as a false alarm later.

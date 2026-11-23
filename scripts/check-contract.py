@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Does the Guild Wars 2 API still carry the keys and types the page reads?
 
-check-api.py asks whether each route answers and carries its top-level keys.
+check-api.mjs asks whether each route answers and carries its top-level keys.
 This goes further, in two ways:
   1. every key and type in gw2-contract.json (what site/js/ reads, nested),
      checked against a live answer;

@@ -47,7 +47,7 @@ supabase/      the reader, one function run from two Supabase regions, one per
 tests/         unit/: the Worker's and the Supabase reader's rules, and the page's
                rules with its scripts in a node:vm, run by node --test;
                e2e/: the browser tests (Playwright Test, monocart-coverage-reports)
-scripts/       the checks (check-*.py), the helper most of them import (workflow_text.py) and the contract they compare against
+scripts/       the checks (check-*.mjs and check-*.py), the helpers they import (workflow-text.mjs, workflow_text.py) and the contract they compare against
 .github/       the workflows that run them, and the branch pruning
 wrangler.jsonc the root Worker: serves site/ as static assets, no code
 CONTRIBUTING.md  SECURITY.md  LICENSE
@@ -99,7 +99,7 @@ Then open `http://localhost:8000`. No API key, no account, nothing to set up.
 
 The Worker behind `wvwrelink.com/api` has tests, and so do the page's rules
 (its scripts loaded into a `node:vm`, no browser), with nothing to install
-(Node 22.13 or later, and `python3` for the 37 tests in six files that run the checks):
+(Node 22.13 or later, and `python3` for the 13 tests in two files that run the checks):
 
     node --test "tests/unit/**/*.test.mjs"
 
