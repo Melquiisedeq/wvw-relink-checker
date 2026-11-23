@@ -11,6 +11,8 @@ const LAB_ITEMS = [
   { type: 'check', key: 'newsLow', label: 'Phones: news below the standings', on: false },
   { type: 'check', key: 'ownIcon', label: 'Our icon in the news header, not "[[ ]]"', on: true },
   { type: 'check', key: 'profIcon', label: 'Profession icon beside buffs and nerfs', on: true },
+  { type: 'radio', key: 'leadersAt', label: 'Leaders position', value: 'below',
+    options: { below: 'Below the three tiles (today)', above: 'Above the three tiles' } },
   { type: 'radio', key: 'changeFx', label: 'Change effect', value: 'sheen',
     options: { sheen: 'Quick sheen', count: 'Number counts up', slide: 'Slide up', edge: 'Edge light in the team colour' } },
   { type: 'section', label: 'Simulate a new update' },

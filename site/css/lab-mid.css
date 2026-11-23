@@ -177,6 +177,7 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 .lt-vp .stat-label{color:#8d97a6;font-weight:400;font-size:.68rem;}
 /* Leaders: a box of its own under the tiles, the five stacked in one cell, one shown. */
 .lt-rot{margin-top:8px;padding:9px 12px 4px;gap:4px;}
+.lt-head + .lt-rot{margin:0 0 8px;}
 .lt-slides{display:grid;}
 .lt-slide{grid-area:1 / 1;display:flex;flex-direction:column;gap:4px;min-width:0;opacity:0;transform:translateY(5px);transition:opacity .35s ease,transform .35s ease;visibility:hidden;}
 .lt-slide.is-on{opacity:1;transform:none;visibility:visible;}

@@ -496,8 +496,11 @@ function labTilesPanel() {
   panel.appendChild(head);
   const grid = labEl('div', 'lt-grid');
   for (const t of [...labTopTiles(), labClosestTile()].filter(Boolean)) grid.appendChild(t);
-  panel.appendChild(grid);
+  // "Leaders position" (js/lab.js): the box moves in the DOM, so the Tab order follows what is seen.
   const leaders = labLeadersBox(labLeaders());
-  if (leaders) panel.appendChild(leaders);
+  const above = labPrefs.leadersAt === 'above';
+  if (leaders && above) panel.appendChild(leaders);
+  panel.appendChild(grid);
+  if (leaders && !above) panel.appendChild(leaders);
   return panel;
 }
