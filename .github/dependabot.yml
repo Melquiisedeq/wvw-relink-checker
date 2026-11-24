@@ -1,7 +1,7 @@
 # The site has no dependencies to update: nothing pulled from a CDN, no
 # package.json in site/ or worker/. Two things are pinned and never update
 # themselves: the GitHub Actions the workflows run, by commit SHA, and
-# Playwright Test and monocart-coverage-reports, the browser tests' two
+# Playwright Test, monocart-coverage-reports and @axe-core/playwright, the browser tests' three
 # dependencies, by exact version in tests/e2e/package-lock.json. This is what tells us a newer version of
 # either exists, as a pull request to read before taking it.
 version: 2

@@ -1,5 +1,5 @@
 // Playwright Test for the page in site/. The site has no dependencies; these
-// tests have two (Playwright Test, monocart-coverage-reports), kept here, away from what is published.
+// tests have three (Playwright Test, monocart-coverage-reports, @axe-core/playwright), kept here, away from what is published.
 //
 //   cd tests/e2e && npm ci --ignore-scripts && npx playwright test
 //
