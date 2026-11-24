@@ -63,6 +63,9 @@ function labPlaceParts() {
     if (k === 'n' && low) document.getElementById('labNewsLow').appendChild(parts.n);
     else labMid.appendChild(parts[k]);
   }
+  // The line under the title speaks of the search: it goes where the search goes.
+  const sub = document.querySelector('main .subtitle');
+  if (sub) ((labPrefs.order || 'shn') === 'shn' ? labMid : parts.s).before(sub);
 }
 let labHotKey = '';
 const labHotSig = () => { const f = labHot(); return f ? `${f.m.id}|${f.type}|${Math.round(f.n)}|${f.calm ? 'calm' : 'lit'}` : ''; };
