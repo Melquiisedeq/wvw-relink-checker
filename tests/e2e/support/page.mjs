@@ -420,3 +420,6 @@ export async function refuseStorage(page) {
   });
   return () => page.evaluate(() => window.__listSaves);
 }
+
+// How many requests one read of the game makes when every try fails (fetchJson).
+export const triesPerRead = page => page.evaluate(() => MAX_RETRIES + 1);

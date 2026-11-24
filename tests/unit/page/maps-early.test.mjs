@@ -581,7 +581,7 @@ test('missedMatchOffered: a return to the tab raises one when something changed,
   const arm = () => {
     reset();
     p.ctx.__bodies = new Map([[id, clone(openMatch)]]);
-    p.run(`missedReturn = { since: ${now - 5 * MIN}, back: ${now}, bodies: __bodies }`);
+    p.run(`missedReturn = { since: ${now - 5 * MIN}, answered: 0, bodies: __bodies }`);
   };
   const offerNow = (body) => { p.ctx.__kept = { match: body, at: now }; p.call('missedMatchOffered', body, p.ctx.__kept); return p.run(`missedNotes.get('${id}')`); };
   arm();
@@ -599,6 +599,27 @@ test('missedMatchOffered: a return to the tab raises one when something changed,
   p.ctx.__kept = { match: clone(openMatch), at: now };
   p.call('missedMatchOffered', clone(openMatch), p.ctx.__kept);
   assert.equal(p.run(`missedNotes.get('${id}')`), undefined, 'nothing changed, no summary');
+});
+
+test('missedMatchOffered: the return\'s 2 min count from its first answer, not from the return (js/maps-early.js)', () => {
+  const { p, id, now, reset, after } = happened();
+  const arm = () => {
+    reset();
+    p.clock.now = now;
+    p.ctx.__bodies = new Map([[id, clone(openMatch)]]);
+    p.run(`missedReturn = { since: ${now - 5 * MIN}, answered: 0, bodies: __bodies }`);
+  };
+  const offer = (body) => { p.ctx.__kept = { match: body, at: p.clock.now }; p.call('missedMatchOffered', body, p.ctx.__kept); };
+  const r = after();
+  arm();
+  p.clock.now = now + 3 * MIN;
+  offer(r.m);
+  assert.equal(p.run(`missedNotes.get('${id}')`)?.kind, 'return', '3 min of failed reads, then the first answer');
+  arm();
+  offer({ ...clone(openMatch), id: 'another' });
+  p.clock.now = now + 2 * MIN + 1000;
+  offer(r.m);
+  assert.equal(p.run(`missedNotes.get('${id}')`), undefined, 'past 2 min after another match answered');
 });
 
 test('missedPeriod: the period is the data\'s: the history says when the total before first appeared (js/maps-early.js)', () => {
@@ -630,7 +651,7 @@ test('missedPeriod: the period is the data\'s: the history says when the total b
   history(sample(now - 50 * MIN, M0), sample(now - 30 * MIN, stalled));
   reset();
   p.ctx.__bodies = new Map([[id, clone(stalled)]]);
-  p.run(`missedReturn = { since: ${now - 5 * MIN}, back: ${now}, bodies: __bodies }`);
+  p.run(`missedReturn = { since: ${now - 5 * MIN}, answered: 0, bodies: __bodies }`);
   p.ctx.__kept = { match: longer.m, at: now };
   p.call('missedMatchOffered', longer.m, p.ctx.__kept);
   n = p.run(`missedNotes.get('${id}')`);
@@ -668,7 +689,7 @@ test('missedMatchOffered: a listed flip older than the period starts it, a futur
   history();
   reset();
   p.ctx.__bodies = new Map([[id, clone(M0)]]);
-  p.run(`missedReturn = { since: ${now - 5 * MIN}, back: ${now}, bodies: __bodies }`);
+  p.run(`missedReturn = { since: ${now - 5 * MIN}, answered: 0, bodies: __bodies }`);
   p.ctx.__kept = { match: old.m, at: now };
   p.call('missedMatchOffered', old.m, p.ctx.__kept);
   let n = p.run(`missedNotes.get('${id}')`);

@@ -464,6 +464,9 @@ const MISSED_ASLEEP_MS = 3 * 60 * 1000;     // no read for this long: the page w
 // already counts, and a summary of it would read as a map without kills.
 const MISSED_AWAY_MS = HOT_WANT_MS;
 const MISSED_RETURN_WAIT_MS = 2 * 60 * 1000;
+// On a return to the tab, the open map's first read that gets nothing asks once more this much later
+// (js/maps.js, pullFresh): the poll alone would leave the corner and the summary a whole MAP_REFRESH_MS behind.
+const RETURN_RETRY_MS = 5 * 1000;
 const MISSED_CHANGES_MAX = 40;
 const MISSED_CHIPS_WIDE = 4;   // per map
 const MISSED_CHIPS_NARROW = 3;
@@ -476,7 +479,8 @@ const missedLastOffer = new Map();   // match id -> ms of the last body offered
 const missedNotes = new Map();       // match id -> the summary
 const missedRings = new Map();       // match id -> { ids: Set, until }
 let missedHidden = null;             // { at, bodies } while the tab is hidden
-let missedReturn = null;             // { since, back, bodies } until each match answers once
+let missedReturn = null;             // { since, answered, bodies } until each match answers once
+let returnRetryOwed = false;         // from the tab shown until a body ahead lands or the retry is taken
 let missedOpen = null;               // { matchId, trigger } of the maps popover
 
 const missedOwner = (s) => {
@@ -668,9 +672,13 @@ function missedMatchOffered(match, kept) {
   const keptAt = kept ? kept.at : 0;
   const lastOffer = missedLastOffer.get(match.id) || 0;
   missedLastOffer.set(match.id, now);
+  // Only a body ahead of the one kept: our copy stuck with the game's read failing still owes the retry.
+  if (!kept || matchIsBehind(kept.match, match)) returnRetryOwed = false;
   if (!kept || matchIsBehind(match, kept.match)) return;
   if (match.start_time !== kept.match.start_time || !matchIsLive(match)) return;
-  if (missedReturn && now - missedReturn.back > MISSED_RETURN_WAIT_MS) missedReturn = null;
+  // The wait counts from the first answer after the return: reads that fail meanwhile do not spend it.
+  if (missedReturn && !missedReturn.answered) missedReturn.answered = now;
+  if (missedReturn && now - missedReturn.answered > MISSED_RETURN_WAIT_MS) missedReturn = null;
   if (missedReturn && missedReturn.bodies.has(match.id)) {
     const before = missedReturn.bodies.get(match.id);
     missedReturn.bodies.delete(match.id);
@@ -695,11 +703,19 @@ function missedOnVisibility() {
     return;
   }
   if (missedHidden && steadyNow() - missedHidden.at > MISSED_AWAY_MS) {
-    missedReturn = { since: missedHidden.at, back: steadyNow(), bodies: missedHidden.bodies };
+    missedReturn = { since: missedHidden.at, answered: 0, bodies: missedHidden.bodies };
   }
   missedHidden = null;
+  returnRetryOwed = true;
 }
 document.addEventListener('visibilitychange', missedOnVisibility);
+
+// True once per return, for the first read of it that got nothing (js/maps.js, pullFresh).
+function returnRetryTake() {
+  const owed = returnRetryOwed;
+  returnRetryOwed = false;
+  return owed;
+}
 
 // A click on an objective of the map folds the summary on every width, so the
 // objective's tab has the room; it stays folded until the reader opens it.
