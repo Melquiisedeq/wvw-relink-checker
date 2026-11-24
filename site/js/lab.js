@@ -63,9 +63,15 @@ function labPlaceParts() {
     if (k === 'n' && low) document.getElementById('labNewsLow').appendChild(parts.n);
     else labMid.appendChild(parts[k]);
   }
-  // The line under the title speaks of the search: it goes where the search goes.
+  // The line under the title speaks of the search: below the title while the search leads, else inside its
+  // panel, under the panel's heading.
   const sub = document.querySelector('main .subtitle');
-  if (sub) ((labPrefs.order || 'shn') === 'shn' ? labMid : parts.s).before(sub);
+  if (sub) {
+    const first = (labPrefs.order || 'shn') === 'shn';
+    sub.classList.toggle('lab-sub-in', !first);
+    if (first) labMid.before(sub);
+    else parts.s.querySelector('.ls-head').after(sub);
+  }
 }
 let labHotKey = '';
 const labHotSig = () => { const f = labHot(); return f ? `${f.m.id}|${f.type}|${Math.round(f.n)}|${f.calm ? 'calm' : 'lit'}` : ''; };

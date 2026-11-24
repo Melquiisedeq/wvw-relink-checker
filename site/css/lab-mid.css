@@ -30,6 +30,7 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 /* ---- search: a 48 px capsule, the button its right end ---- */
 .ls-search{padding:10px 12px 12px;}
 .ls-head{display:flex;align-items:center;gap:6px;}
+.subtitle.lab-sub-in{margin:-2px 0 12px;font-size:.86rem;max-width:none;}
 .ls-head-ic{width:15px;height:15px;flex:none;fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round;}
 .ls-bar{
   position:relative;display:flex;align-items:center;height:48px;min-width:0;
