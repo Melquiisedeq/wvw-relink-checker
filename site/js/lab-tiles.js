@@ -87,15 +87,6 @@ function labFlips() {
   }
   return out.sort((a, b) => b.n - a.n);
 }
-function labClosest() {
-  let best = null;
-  for (const k of labKept()) {
-    const r = labTeams(k.match).sort((a, b) => b.vp - a.vp || b.score - a.score);
-    const gap = r[0].vp - r[1].vp;
-    if (!best || gap < best.gap) best = { m: k.match, gap, a: r[0], b: r[1] };
-  }
-  return best;
-}
 // Points per tick: what each colour's objectives are worth now, summed over the maps (tallyMaps, js/maps.js).
 function labPpt(m) {
   const by = { red: 0, blue: 0, green: 0 };
@@ -178,8 +169,11 @@ function labImg(file, cls, size) {
 function labClash() {
   const wrap = labEl('span', 'lt-clash');
   const box = labEl('span', 'wvw-clash');
+  // The shine's band moves inside the swords' mask by transform (.lt-clash-band, css/lab-mid.css).
+  const shine = labEl('span', 'wvw-clash-shine');
+  shine.appendChild(labEl('span', 'lt-clash-band'));
   box.append(labImg('Event_Swords_back', 'wvw-clash-sword is-back', 14), labImg('Event_Swords_up', 'wvw-clash-sword is-up', 14),
-    labEl('span', 'wvw-clash-flash'), labEl('span', 'wvw-clash-shine'));
+    labEl('span', 'wvw-clash-flash'), shine);
   for (let i = 0; i < 5; i++) box.appendChild(labEl('span', `wvw-clash-spark wvw-clash-spark-${i}`));
   wrap.appendChild(box);
   return wrap;
@@ -226,6 +220,18 @@ function labPulse(type, color) {
   wrap.append(labEl('span', 'lt-pulse-ring'), labIconOf(type, color));
   return wrap;
 }
+// The orange shine across the Hottest number, drawn on the compositor: a soft band (.lt-shine, its mask) slides
+// over the number and carries a bright copy of it that slides back as far (.lt-shine-in), so the copy stays on
+// the digits while the band crosses them (css/lab-mid.css).
+function labShine(big) {
+  const num = big.querySelector('.lt-num');
+  if (!num) return big;
+  const win = labEl('span', 'lt-shine');
+  win.setAttribute('aria-hidden', 'true');
+  win.appendChild(labEl('span', 'lt-shine-in', num.textContent));
+  num.appendChild(win);
+  return big;
+}
 // A calm pick (no swords lit in the region) wears grey, still swords and a white number.
 function labFightTile(f) {
   const teams = labEl('span', 'lt-teams');
@@ -233,7 +239,7 @@ function labFightTile(f) {
   const where = LAB_MAP_LONG[f.type] || f.type;
   const when = f.calm ? 'quiet now' : (f.silence > 3 * LAB_MIN ? `last kill ${labSpan(f.silence)} ago` : 'now');
   return labTile({ cls: `lt-hot${f.calm ? ' lt-calm' : ''}`, icon: labClash(), label: 'Hottest fight', chip: labChipOf(f.m.id),
-    body: [labBig(labNum(f.n), 'kills / 10 min'), labEl('span', 'lt-map', `${where} · ${when}`), teams],
+    body: [labShine(labBig(labNum(f.n), 'kills / 10 min')), labEl('span', 'lt-map', `${where} · ${when}`), teams],
     go: () => labOpenMap(f.m.id, f.type),
     aria: `Hottest fight, ${labTierTag(f.m.id)}: ${labNum(f.n)} kills per 10 minutes on ${where}, ${when}. Open the live map on it` });
 }
@@ -273,40 +279,172 @@ function labTopTiles() {
   const flip = labFlips()[0];
   return [f ? labFightTile(f) : labFightWait(), flip && labBusyTile(flip)].filter(Boolean);
 }
+// ---- the Closest match and its skirmish ----------------------------------------------------
+// The victory points of a skirmish [1st, 2nd, 3rd] by region (the id's first digit: 1 NA, 2 EU) and the UTC
+// hour it starts, 00 to 22 (https://wiki.guildwars2.com/wiki/World_versus_World, "Skirmishes"). Teams tied
+// take the points of the highest place among them. The page checks it against the week's finished
+// skirmishes before it adds anything (labVpHolds): a table the game has changed shows the leader only.
+const LAB_VP_ROWS = { a: [15, 14, 12], b: [22, 18, 14], c: [31, 24, 17], d: [51, 37, 24], e: [43, 32, 21], f: [23, 18, 14], g: [19, 16, 13] };
+const LAB_WAR_VP = Object.freeze({
+  1: 'eecfgggffffc'.split('').map((k) => LAB_VP_ROWS[k]),
+  2: 'aaaabbbccddc'.split('').map((k) => LAB_VP_ROWS[k]),
+});
+// The panel's "Simulate a changed VP table": the regions' rows swapped, which no week's skirmishes add up to.
+let labVpWrong = false;
+const LAB_SKIRMISH_MS = 2 * 60 * LAB_MIN;
+// The game's clock, as the page keeps it (js/api.js).
+const labServerNow = () => Date.now() - (typeof ownClockLead === 'number' ? ownClockLead : 0);
+// The points each colour takes from a skirmish whose scores are `sc`, or null with no table for the hour.
+function labSkirmishVp(m, sk, sc) {
+  const table = LAB_WAR_VP[labVpWrong ? (m.id.charAt(0) === '1' ? 2 : 1) : m.id.charAt(0)];
+  const start = Date.parse(m.start_time);
+  if (!table || !Number.isFinite(start) || !Number.isInteger(sk.id)) return null;
+  const hour = (Math.round(start / 3600000) + 2 * (sk.id - 1)) % 24;
+  if (hour % 2) return null;
+  return Object.fromEntries(COLORS.map((c) => [c, table[hour / 2][COLORS.filter((o) => sc[o] > sc[c]).length]]));
+}
+// The table holds when it gives the week's victory points from its finished skirmishes, all of them there
+// from the first (js/api.js puts the history back in front of each body).
+function labVpHolds(m) {
+  const list = Array.isArray(m.skirmishes) ? m.skirmishes : [];
+  if (!list.length || !list[0] || list[0].id !== 1) return false;
+  const got = { red: 0, blue: 0, green: 0 };
+  for (const sk of list.slice(0, -1)) {
+    const vp = sk && sk.scores && labSkirmishVp(m, sk, sk.scores);
+    if (!vp) return false;
+    for (const c of COLORS) got[c] += vp[c];
+  }
+  return COLORS.every((c) => got[c] === Number((m.victory_points || {})[c]));
+}
+// The skirmish under way: each colour's score (getSkirmishScore, js/panels.js), its minutes left, and, when
+// the table holds, what each colour would take if it ended now. Null with no skirmish to read.
+function labSkirmishNow(m) {
+  const list = Array.isArray(m.skirmishes) ? m.skirmishes : [];
+  const sk = list[list.length - 1];
+  if (!sk || typeof getSkirmishScore !== 'function') return null;
+  const sc = {};
+  for (const c of COLORS) {
+    const v = getSkirmishScore(m, c);
+    if (v === null) return null;
+    sc[c] = v;
+  }
+  const end = Date.parse(m.start_time) + LAB_SKIRMISH_MS * sk.id;
+  const left = Math.max(0, Math.ceil((end - labServerNow()) / LAB_MIN));
+  if (!Number.isFinite(left) || left > 120) return null;
+  return { sc, left, vp: labVpHolds(m) ? labSkirmishVp(m, sk, sc) : null };
+}
+function labClosest() {
+  let best = null;
+  for (const k of labKept()) {
+    const r = labTeams(k.match).sort((a, b) => b.vp - a.vp || b.score - a.score);
+    const gap = r[0].vp - r[1].vp;
+    if (!best || gap < best.gap) best = { m: k.match, gap, a: r[0], b: r[1] };
+  }
+  if (!best) return null;
+  const s = labSkirmishNow(best.m);
+  if (s) {
+    const { a, b } = best;
+    best.sk = s;
+    best.lead = s.sc[a.color] === s.sc[b.color] ? null : (s.sc[a.color] > s.sc[b.color] ? a : b);
+    if (s.vp) best.next = (a.vp + s.vp[a.color]) - (b.vp + s.vp[b.color]);
+  }
+  return best;
+}
+const labLeft = (n) => (n >= 60 ? `${Math.floor(n / 60)} h ${n % 60} min left` : (n > 0 ? `${n} min left` : 'ending now'));
+// The week's gap after the skirmish: "34 apart", or the second ahead of the first.
+const labNextGap = (c) => (c.next >= 0 ? `${labNum(c.next)} apart` : `${c.b.name} ahead by ${labNum(-c.next)}`);
+function labClosestSaid(c) {
+  let s = `Closest match, ${labTierTag(c.m.id)}: ${c.a.name} ${labNum(c.a.vp)} VP and ${c.b.name} ${labNum(c.b.vp)} VP, ${labNum(c.gap)} apart this week.`;
+  if (c.sk && labPrefs.closest !== 'today') {
+    s += c.lead ? ` ${c.lead.name} leads this skirmish, ${labLeft(c.sk.left)}.` : ` The two are tied in this skirmish, ${labLeft(c.sk.left)}.`;
+    if (c.sk.vp) s += ` If it ended now: ${c.a.name} plus ${c.sk.vp[c.a.color]} VP, ${c.b.name} plus ${c.sk.vp[c.b.color]}, ${labNextGap(c)}.`;
+  }
+  return `${s} Show them in the standings`;
+}
+function labVpBar(parts) {
+  const total = parts.reduce((n, x) => n + x.n, 0);
+  const bar = labEl('span', 'lt-split');
+  for (const x of parts) {
+    const seg = labEl('span', `lt-seg lab-dot-${x.color}${x.dim ? ' lt-seg-dim' : ''}`);
+    seg.style.flexGrow = String(total ? x.n / total : 0.5);
+    bar.appendChild(seg);
+  }
+  return bar;
+}
+function labVpRows(c, right) {
+  const rows = labEl('span', 'lt-vprows');
+  for (const x of [c.a, c.b]) {
+    const row = labEl('span', `lt-vprow side-${x.color}${c.lead === x ? ' is-lead' : ''}`);
+    row.append(labTeamText(x.name, x.color), right(x));
+    rows.appendChild(row);
+  }
+  return rows;
+}
+const labWeekVp = (x) => {
+  const vp = labEl('span', 'lt-vp', labNum(x.vp));
+  vp.appendChild(labEl('span', 'stat-label', ' VP'));
+  return vp;
+};
+// Who leads the skirmish between the two, said with the leader's dot.
+function labLeadLine(c, tail) {
+  const line = labEl('span', 'lt-line lt-sk-line');
+  if (c.lead) line.append(labTeamText(c.lead.name, c.lead.color), ` leads this skirmish`);
+  else line.append('Tied in this skirmish');
+  line.append(` · ${labLeft(c.sk.left)}${tail || ''}`);
+  return line;
+}
+function labClosestBody(c) {
+  const v = labPrefs.closest;
+  if (!c.sk || v === 'today') {
+    return [labBig(labNum(c.gap), 'VP apart'), labVpBar([c.a, c.b].map((x) => ({ color: x.color, n: x.vp }))),
+      labVpRows(c, labWeekVp), labEl('span', 'lt-line', 'Top two · this week')];
+  }
+  const gain = c.sk.vp;
+  const skBar = () => labVpBar([c.a, c.b].map((x) => ({ color: x.color, n: c.sk.sc[x.color], dim: c.lead && c.lead !== x })));
+  if (v === 'b') {
+    const head = labEl('span', 'lt-sk-head');
+    if (c.lead) head.append(labTeamText(c.lead.name, c.lead.color), ' winning this skirmish');
+    else head.append('Tied in this skirmish');
+    if (c.lead && gain) head.appendChild(labEl('span', 'lt-sk-plus', ` · +${Math.abs(gain[c.a.color] - gain[c.b.color])} VP ahead`));
+    const proj = gain ? `${labNum(c.gap)} VP apart → ${labNextGap(c)} if it ended now` : `${labNum(c.gap)} VP apart this week`;
+    return [head, labEl('span', 'lt-line', `${labLeft(c.sk.left)}`), labEl('span', 'lt-map lt-sk-proj', proj), labVpRows(c, labWeekVp)];
+  }
+  if (v === 'c') {
+    const line = labEl('span', 'lt-sk-one');
+    const gapEl = labEl('b', 'lt-sk-gap', labNum(c.gap));
+    line.append(gapEl, ' VP apart');
+    if (gain) line.append(' → ', labEl('b', 'lt-sk-gap', c.next >= 0 ? labNum(c.next) : `−${labNum(-c.next)}`), ' if this skirmish ended now');
+    line.append(' · ');
+    if (c.lead) line.append(labTeamText(c.lead.name, c.lead.color), ' leads it');
+    else line.append('tied in it');
+    line.append(` · ${labLeft(c.sk.left)}`);
+    return [line];
+  }
+  // (a): the bar is the skirmish's, each row its points if it ended now.
+  return [labBig(labNum(c.gap), 'VP apart'), labLeadLine(c), skBar(),
+    labVpRows(c, (x) => (gain ? labEl('span', 'lt-vp lt-sk-gain', `+${gain[x.color]} VP`) : labEl('span', 'lt-vp lt-sk-score', labNum(c.sk.sc[x.color])))),
+    labEl('span', 'lt-line', gain ? `If it ended now · ${labNextGap(c)}` : 'Skirmish score · top two')];
+}
 function labClosestTile() {
   const c = labClosest();
   if (!c) return null;
-  const total = c.a.vp + c.b.vp;
-  const bar = labEl('span', 'lt-split');
-  for (const x of [c.a, c.b]) {
-    const seg = labEl('span', `lt-seg lab-dot-${x.color}`);
-    seg.style.flexGrow = String(total ? x.vp / total : 0.5);
-    bar.appendChild(seg);
-  }
-  const rows = labEl('span', 'lt-vprows');
-  for (const x of [c.a, c.b]) {
-    const row = labEl('span', 'lt-vprow');
-    const vp = labEl('span', 'lt-vp', labNum(x.vp));
-    vp.appendChild(labEl('span', 'stat-label', ' VP'));
-    row.append(labTeamText(x.name, x.color), vp);
-    rows.appendChild(row);
-  }
-  return labTile({ cls: 'lt-close', label: 'Closest match', chip: labChipOf(c.m.id),
-    body: [labBig(labNum(c.gap), 'VP apart'), bar, rows, labEl('span', 'lt-line', 'Top two · this week')],
+  const v = c.sk ? labPrefs.closest : 'today';
+  return labTile({ cls: `lt-close lt-close-${v}`, label: 'Closest match', chip: labChipOf(c.m.id),
+    body: labClosestBody(c),
     go: () => labGoToTier([c.a.name, c.b.name]),
-    aria: `Closest match, ${labTierTag(c.m.id)}: ${c.a.name} ${labNum(c.a.vp)} VP and ${c.b.name} ${labNum(c.b.vp)} VP, ${labNum(c.gap)} apart this week. Show them in the standings` });
+    aria: labClosestSaid(c) });
 }
 
 // ---- the week's leaders: one at a time for 5 s in a box above the tiles, with a pause button
 // first in the Tab order; the pointer over it, the focus in it, a touch on it or reduced motion stop it ----
-const labRot = { idx: 0, hover: false, focus: false, paused: false, n: 0, due: false, list: [] };
+const labRot = { idx: 0, hover: false, focus: false, paused: false, n: 0, list: [] };
 const labStill = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const labLeadersSaid = (list) => list.map((x) => `${x.label}, ${x.period}: ${x.r.name}, ${x.big(x.r)} ${x.unit}, ${labTierTag(x.r.m.id)}.`).join(' ');
 function labRotShow(i) {
   const box = document.querySelector('.lt-rot');
   if (!box) return;
   labRot.idx = i;
-  labRot.due = false;
+  labTurn.ms = 0;
   box.querySelectorAll('.lt-slide').forEach((s, k) => s.classList.toggle('is-on', k === i));
   labSegsPaint(box);
   labChangeFx(box, box.querySelectorAll('.lt-slide')[i], labRot.list[i]);
@@ -388,31 +526,57 @@ function labTitleSlide(x, k, n) {
   s.append(head, labLeadTeam(x, 'lt-mt-team'), labLeadNum(x, 'lt-mt-num'));
   return s;
 }
-// The segments under the slides, one per metric: the shown one fills in 5 s (lt-fill, css/lab-mid.css), and
-// its fill's end turns to the next. A hold (the pause, the pointer over the box, the focus in it) or reduced
-// motion stops the fill where it is; a press on a segment goes to that metric.
+// The segments under the slides, one per metric: the shown one fills in 5 s and then turns to the next. The
+// fill moves on the embers' frames (emberField.nextFrame, js/boot.js), so it stands still where the page's
+// looping animations do: the tab hidden, reduced motion. A hold (the pause, the pointer over the box, the
+// focus in it) stops it where it is; a press on a segment goes to that metric.
+const LAB_TURN_MS = 5000;
+const labTurn = { ms: 0, last: 0, asked: false };
 function labSegsPaint(box) {
   const segs = box.querySelectorAll('.lt-seg-btn');
   if (!segs.length) return;
   segs.forEach((b, k) => {
     b.setAttribute('aria-pressed', k === labRot.idx ? 'true' : 'false');
     b.classList.toggle('is-done', k < labRot.idx);
-    const old = b.querySelector('.lt-seg-fill');
-    const fill = labEl('span', 'lt-seg-fill');
-    if (k === labRot.idx) fill.addEventListener('animationend', () => { labRot.due = true; labRotHold(); });
-    old.replaceWith(fill);
+    const fill = b.querySelector('.lt-seg-fill');
+    if (fill) fill.style.transform = '';
   });
+  labTurnPaint(box);
   labRotHold(box);
 }
-// A fill that ends under a hold (a paused animation's clock can still run) turns when the hold ends.
-function labRotHold(box = document.querySelector('.lt-rot')) {
-  const held = labRot.paused || labRot.hover || labRot.focus || labStill();
-  if (box) box.classList.toggle('is-held', held);
-  if (labRot.due && !held && box && box.isConnected) {
-    labRot.due = false;
-    labRotShow((labRot.idx + 1) % labRot.n);
-  }
+function labTurnPaint(box) {
+  const fill = box.querySelector('.lt-seg-btn[aria-pressed="true"] .lt-seg-fill');
+  if (fill) fill.style.transform = `scaleX(${Math.min(1, labTurn.ms / LAB_TURN_MS)})`;
 }
+const labHeld = () => labRot.paused || labRot.hover || labRot.focus || labStill();
+function labTurnAsk() {
+  if (labTurn.asked) return;
+  labTurn.asked = true;
+  labTurn.last = 0;
+  if (typeof emberField === 'object' && emberField) emberField.nextFrame(labTurnTick);
+  else if (typeof requestAnimationFrame === 'function') requestAnimationFrame(labTurnTick);
+}
+// A frame back after a hidden tab or a slow one moves the fill one frame's worth, not the time away.
+function labTurnTick(now) {
+  labTurn.asked = false;
+  const box = document.querySelector('.lt-rot');
+  if (!box || !box.isConnected || labHeld()) return;
+  if (labTurn.last) labTurn.ms += Math.min(100, Math.max(0, now - labTurn.last));
+  if (labTurn.ms >= LAB_TURN_MS) {
+    labRotShow((labRot.idx + 1) % labRot.n);
+    return;
+  }
+  labTurnPaint(box);
+  const last = now;
+  labTurnAsk();
+  labTurn.last = last;
+}
+function labRotHold(box = document.querySelector('.lt-rot')) {
+  const held = labHeld();
+  if (box) box.classList.toggle('is-held', held);
+  if (!held && box && box.isConnected) labTurnAsk();
+}
+if (typeof matchMedia === 'function') matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => labRotHold());
 // The segments carry the metrics' short names under them from 360 px (css/lab-mid.css).
 function labLeadersBox(list) {
   if (!list.length) return null;

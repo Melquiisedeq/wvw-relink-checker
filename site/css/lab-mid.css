@@ -25,6 +25,24 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
   border:1px solid var(--border);border-top-color:rgba(255,255,255,.12);border-radius:14px;
   background:linear-gradient(180deg,rgba(27,32,40,.86),rgba(18,22,27,.86));min-width:0;
 }
+/* The frame options (the panel's "Frame", labFrame in js/lab.js). A: today's opaque fill with the columns'
+   border, top light, bottom dark rule, contact and cast shadows (.card in css/controls.css, .standings-card in
+   css/standings.css). D: A with light from the top. B: the columns' glass, blur and all (the costly one). C: A,
+   with the glass on the highlights only. */
+html:is(.lab-frame-a,.lab-frame-d,.lab-frame-c) :is(.ls-search,.lt-panel,.ln-panel),
+html:is(.lab-frame-b,.lab-frame-c) .lt-panel,
+html.lab-frame-b :is(.ls-search,.ln-panel){
+  border-color:rgba(255,255,255,.06);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.14),inset 0 -1px 0 rgba(0,0,0,.5),0 2px 3px rgba(0,0,0,.45),0 20px 40px -16px rgba(0,0,0,.9);
+}
+html.lab-frame-d :is(.ls-search,.lt-panel,.ln-panel){
+  background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,0) 48px),linear-gradient(180deg,rgba(27,32,40,.86),rgba(18,22,27,.86));
+}
+html.lab-frame-b :is(.ls-search,.lt-panel,.ln-panel),
+html.lab-frame-c .lt-panel{
+  background:rgba(255,255,255,.015);
+  -webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
+}
 .lt-head,.ls-head{margin:0 0 8px;font-size:.66rem;font-weight:800;color:#a3adbb;text-transform:uppercase;letter-spacing:.1em;}
 
 /* ---- search: a 48 px capsule, the button its right end ---- */
@@ -142,15 +160,36 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 /* The live map's strike, its 14 px box at twice the size, and its orange shine on the number. */
 .lt-clash{position:relative;width:14px;height:14px;flex:none;transform:scale(1.5);transform-origin:0 50%;margin-right:7px;}
 .lt-clash .wvw-clash{left:0;top:0;}
-.lt-hot .lt-num{
-  color:transparent;
+/* The shine moves by transform only (labShine): the band and the bright copy slide opposite ways on the
+   swords' 2.8 s beat, as clash-shine's background-position did. */
+.lt-hot .lt-num{position:relative;display:inline-block;color:#ffb070;text-shadow:0 1px 1.5px rgba(0,0,0,.95);}
+.lt-shine{position:absolute;inset:0;overflow:hidden;pointer-events:none;
+  -webkit-mask-image:linear-gradient(115deg,transparent 20%,#000 50%,transparent 80%);mask-image:linear-gradient(115deg,transparent 20%,#000 50%,transparent 80%);
+  transform:translateX(-100%);animation:lt-shine-band 2.8s infinite;}
+.lt-shine-in{position:absolute;inset:0;color:#fff6e0;text-shadow:none;white-space:nowrap;transform:translateX(100%);animation:lt-shine-copy 2.8s infinite;}
+@keyframes lt-shine-band{0%,33.93%{transform:translateX(-100%);animation-timing-function:ease-in-out;}62.5%,100%{transform:translateX(100%);}}
+@keyframes lt-shine-copy{0%,33.93%{transform:translateX(100%);animation-timing-function:ease-in-out;}62.5%,100%{transform:translateX(-100%);}}
+.lt-calm .lt-shine{display:none;}
+/* The swords' own shine the same way: the band slides inside the swords' mask (.wvw-clash-shine, css/maps.css). */
+.lt-clash .wvw-clash-shine{background:none;animation:none;overflow:hidden;}
+.lt-clash-band{position:absolute;inset:0;background:linear-gradient(115deg,transparent 5%,rgba(255,240,200,.95) 50%,transparent 95%);
+  transform:translateX(-100%);animation:lt-shine-band 2.8s infinite;}
+html.lab-oldShine .lt-clash-band{display:none;}
+html.lab-oldShine .lt-clash .wvw-clash-shine{
+  background:linear-gradient(115deg, transparent 35%, rgba(255,240,200,.95) 50%, transparent 65%) 100% 0/300% 100% no-repeat;
+  animation:clash-shine 2.8s infinite;
+}
+/* The panel's "Old shine (background-position)", to compare. */
+html.lab-oldShine .lt-shine{display:none;}
+html.lab-oldShine .lt-hot:not(.lt-calm) .lt-num{
+  color:transparent;text-shadow:none;
   background:linear-gradient(115deg, #ffb070 40%, #fff6e0 50%, #ffb070 60%) 100% 0/300% 100% no-repeat;
   -webkit-background-clip:text;background-clip:text;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.95));
   animation:clash-shine 2.8s infinite;
 }
 .lt-hot .lt-unit{color:#f0b27a;}
 /* No swords lit in the region: grey swords at rest, the number white. */
-.lt-calm .lt-num{color:var(--text);background:none;filter:none;animation:none;}
+html .lt-calm .lt-num{color:var(--text);background:none;filter:none;text-shadow:none;animation:none;}
 .lt-calm .lt-unit{color:var(--muted);}
 .lt-calm .lt-clash *{animation:none !important;}
 .lt-calm .wvw-clash-flash,.lt-calm .wvw-clash-shine,.lt-calm .wvw-clash-spark{display:none;}
@@ -174,6 +213,21 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 .lt-vprows{display:flex;flex-direction:column;gap:1px;font-size:.76rem;font-weight:600;}
 .lt-vprow{display:flex;justify-content:space-between;align-items:baseline;gap:6px;min-width:0;}
 .lt-vprow .lab-team{min-width:0;overflow-wrap:anywhere;}
+/* The Closest match's skirmish (labClosestBody): the bar is the skirmish's in the round 10 options, the
+   leader's segment and row lit, the other dimmed. */
+.lt-seg-dim{opacity:.4;}
+.lt-vprow.is-lead .lab-team{color:var(--side-glow);}
+.lt-sk-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 4px;color:var(--text);}
+.lt-sk-line .lab-team{font-weight:700;}
+.lt-sk-gain{font-weight:800;color:var(--side-glow);font-variant-numeric:tabular-nums;}
+.lt-vprow:not(.is-lead) .lt-sk-gain{color:var(--muted);}
+.lt-sk-score{font-variant-numeric:tabular-nums;color:var(--muted);}
+.lt-sk-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 4px;font-size:.95rem;font-weight:800;color:var(--text);line-height:1.25;}
+.lt-sk-head .lab-team{overflow-wrap:anywhere;}
+.lt-sk-plus{color:var(--accent);}
+.lt-sk-proj{font-weight:600;}
+.lt-sk-one{font-size:.82rem;color:var(--muted);line-height:1.35;}
+.lt-sk-gap{font-size:1.05rem;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums;}
 .lt-vp{font-variant-numeric:tabular-nums;white-space:nowrap;flex:none;}
 .lt-vp .stat-label{color:#8d97a6;font-weight:400;font-size:.68rem;}
 /* Leaders: a box of its own above the tiles, the five stacked in one cell, one shown. */
@@ -201,10 +255,8 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 .lt-seg-btn::after{content:'';position:absolute;left:2px;right:2px;top:50%;height:3px;margin-top:-1.5px;border-radius:2px;background:#3a4350;}
 .lt-seg-fill{position:relative;z-index:1;display:block;width:100%;height:3px;border-radius:2px;background:var(--accent);transform:scaleX(0);transform-origin:0 50%;}
 .lt-seg-btn.is-done .lt-seg-fill{transform:none;background:#6b7584;}
-.lt-seg-btn[aria-pressed="true"] .lt-seg-fill{animation:lt-fill 5s linear 1 both;}
-.lt-rot.is-held .lt-seg-fill{animation-play-state:paused;}
-@media (prefers-reduced-motion: reduce){.lt-seg-fill{animation-play-state:paused !important;}}
-@keyframes lt-fill{from{transform:scaleX(0);}to{transform:none;}}
+/* The shown one is filled from js/lab-tiles.js (labTurnTick), on its own layer. */
+.lt-seg-btn[aria-pressed="true"] .lt-seg-fill{will-change:transform;}
 /* Metric as title: the metric heads the slide, the team and the number centred under it. */
 .lt-mt{align-items:center;gap:2px;}
 .lt-mt-head{align-self:stretch;display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;min-height:24px;padding-right:34px;}
@@ -248,7 +300,7 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
 .lt-rot-edge{box-shadow:inset 0 2px 0 var(--side-rail);animation:lt-edge .5s ease-out 1 both;}
 @keyframes lt-edge{from{opacity:1;}to{opacity:0;}}
 /* A tile is rebuilt on every standings repaint, and with reduced motion no ember frame comes to take its loops (boot.js): held here. */
-@media (prefers-reduced-motion: reduce){.lt-hot .lt-num,.lt-pulse-ring,.lt-clash *{animation-play-state:paused !important;}}
+@media (prefers-reduced-motion: reduce){.lt-hot .lt-num,.lt-shine,.lt-shine-in,.lt-pulse-ring,.lt-clash *{animation-play-state:paused !important;}}
 
 /* ---- news ---- */
 .ln-panel{padding:0 14px 6px;}

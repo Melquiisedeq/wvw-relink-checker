@@ -1,13 +1,38 @@
 'use strict';
-// LAB (never merged). The 95-0 lab, round 9: the middle of the page as the owner kept it (his round 1 to 4
+// LAB (never merged). The 95-0 lab, round 10: the middle of the page as the owner kept it (his round 1 to 4
 // choices fixed), every open choice a box or a radio in the panel's "Fine-tune" group, the recommendation
 // on by default. Loaded just before js/boot.js, after the lab-*.js it draws with (check-structure
 // wants boot.js last). Everything goes through textContent.
 
 const LAB_KEY = 'wvw-lab-v1';
-const LAB_VERSION = 12;          // bump when the defaults change: older saved choices are dropped
+const LAB_VERSION = 13;          // bump when the defaults change: older saved choices are dropped
+// Round 10: named setups, each a Closest match and a frame for the middle's panels; the Fine-tune radios
+// override the one picked.
+const LAB_SETUPS = {
+  today: { label: 'Today (round 9)', closest: 'today', frame: 'today' },
+  rec: { label: 'Recommended', closest: 'a', frame: 'a' },
+  sentence: { label: 'Sentence first', closest: 'b', frame: 'd' },
+  phone: { label: 'Phone line', closest: 'c', frame: 'a' },
+  glass: { label: 'Glass, costly', closest: 'a', frame: 'b' },
+  glassHi: { label: 'Glass on highlights only', closest: 'a', frame: 'c' },
+};
 const LAB_ITEMS = [
+  { type: 'radio', key: 'setup', label: 'Setup', value: 'rec',
+    options: Object.fromEntries(Object.entries(LAB_SETUPS).map(([k, x]) => [k, x.label])),
+    apply: (k) => { labPrefs.closest = LAB_SETUPS[k].closest; labPrefs.frame = LAB_SETUPS[k].frame; } },
   { type: 'section', label: 'Fine-tune' },
+  { type: 'radio', key: 'closest', label: 'Closest match', value: 'a', options: {
+    today: 'Today: the week only',
+    a: 'a · skirmish bar, “+51 / +37 VP if it ended now”',
+    b: 'b · sentence first: “winning this skirmish”',
+    c: 'c · one line, for phones' } },
+  { type: 'radio', key: 'frame', label: 'Frame of the middle panels', value: 'a', options: {
+    today: 'Today: dark fill, no shadow',
+    a: 'A · dark fill + the columns’ border, rules and shadows',
+    d: 'D · A + light from the top',
+    b: 'B · glass like the columns (costly: blur on all three)',
+    c: 'C · A, glass on the highlights only' } },
+  { type: 'check', key: 'oldShine', label: 'Old shine (background-position)', on: false, cls: true },
   { type: 'check', key: 'newsLow', label: 'Phones: news below the standings', on: false },
   { type: 'check', key: 'ownIcon', label: 'Our icon in the news header, not "[[ ]]"', on: true },
   { type: 'check', key: 'profIcon', label: 'Profession icon beside buffs and nerfs', on: true },
@@ -17,6 +42,9 @@ const LAB_ITEMS = [
   { type: 'button', label: 'New map, beta until a date', run: () => { labSimNews('map'); labStatus('Example update: a new map in beta.'); } },
   { type: 'button', label: 'Lines without a sure type', run: () => { labSimNews('unsure'); labStatus('Example update: lines with no label.'); } },
   { type: 'button', label: 'Back to the real notes', run: () => { labSimNews(null); labStatus('The real notes.'); } },
+  { type: 'section', label: 'Simulate a changed VP table' },
+  { type: 'button', label: 'The game changed its VP table', run: () => { labVpWrong = true; labPaintTiles(); labStatus('Simulated: the table no longer adds up to the week, so the Closest match shows the skirmish leader only.'); } },
+  { type: 'button', label: 'Back to the real table', run: () => { labVpWrong = false; labPaintTiles(); labStatus('The real VP table.'); } },
 ];
 
 // ---- the middle -----------------------------------------------------------------------------
@@ -183,7 +211,7 @@ function labBuildPanel() {
         r.type = 'radio';
         r.name = `lab-${it.key}`;
         r.value = k;
-        r.addEventListener('change', () => { if (r.checked) { labPrefs[it.key] = k; labChanged(); } });
+        r.addEventListener('change', () => { if (r.checked) { labPrefs[it.key] = k; if (it.apply) it.apply(k); labChanged(); } });
         rl.append(r, ` ${text}`);
         fs.appendChild(rl);
       }
@@ -210,6 +238,10 @@ function labPaintPanel() {
   for (const c of body.querySelectorAll('input[data-toggle]')) c.checked = !!labPrefs[c.dataset.toggle];
   for (const r of body.querySelectorAll('input[type=radio]')) r.checked = labPrefs[r.name.slice(4)] === r.value;
   for (const it of LAB_ITEMS) if (it.cls) document.documentElement.classList.toggle(`lab-${it.key}`, !!labPrefs[it.key]);
+  document.documentElement.dataset.labSetup = labPrefs.setup;
+  for (const f of Object.keys(LAB_ITEMS.find((it) => it.key === 'frame').options)) {
+    document.documentElement.classList.toggle(`lab-frame-${f}`, labPrefs.frame === f);
+  }
 }
 
 if (typeof document.querySelector === 'function' && typeof document.createElement === 'function' && document.body
