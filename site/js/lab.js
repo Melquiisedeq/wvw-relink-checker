@@ -5,9 +5,11 @@
 // wants boot.js last). Everything goes through textContent.
 
 const LAB_KEY = 'wvw-lab-v1';
-const LAB_VERSION = 10;          // bump when the defaults change: older saved choices are dropped
+const LAB_VERSION = 11;          // bump when the defaults change: older saved choices are dropped
 const LAB_ITEMS = [
   { type: 'section', label: 'Fine-tune' },
+  { type: 'radio', key: 'order', label: 'Order of the middle', value: 'shn',
+    options: { shn: 'Search, highlights, news (today)', hsn: 'Highlights, search, news', hns: 'Highlights, news, search' } },
   { type: 'check', key: 'newsLow', label: 'Phones: news below the standings', on: false },
   { type: 'check', key: 'ownIcon', label: 'Our icon in the news header, not "[[ ]]"', on: true },
   { type: 'check', key: 'profIcon', label: 'Profession icon beside buffs and nerfs', on: true },
@@ -33,6 +35,7 @@ function labMountMiddle() {
   labMid = labEl('div', 'lab-mid');
   labMid.id = 'labMid';
   const search = labBuildSearch();
+  search.id = 'labSearch';
   search.querySelector('.ls-btn').prepend(runBtn);
   const tiles = labEl('div', 'lab-mid-tiles');
   tiles.id = 'labTiles';
@@ -54,9 +57,12 @@ function labMountMiddle() {
 // The order is fixed (search, highlights, news); only where the news goes moves.
 function labPlaceParts() {
   if (!labMid) return;
-  const news = document.getElementById('labNews');
+  const parts = { s: document.getElementById('labSearch'), h: document.getElementById('labTiles'), n: document.getElementById('labNews') };
   const low = labPrefs.newsLow && typeof matchMedia === 'function' && matchMedia(LAB_NARROW).matches;
-  (low ? document.getElementById('labNewsLow') : labMid).appendChild(news);
+  for (const k of labPrefs.order || 'shn') {
+    if (k === 'n' && low) document.getElementById('labNewsLow').appendChild(parts.n);
+    else labMid.appendChild(parts[k]);
+  }
 }
 let labHotKey = '';
 const labHotSig = () => { const f = labHot(); return f ? `${f.m.id}|${f.type}|${Math.round(f.n)}|${f.calm ? 'calm' : 'lit'}` : ''; };
