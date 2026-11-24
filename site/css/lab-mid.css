@@ -238,12 +238,8 @@ html.lab-mid-on #matchPanelsContainer{display:none !important;}
   .lt-seg-btn[aria-pressed="true"] .lt-seg-name{color:var(--text);}
   .lt-seg-btn:hover .lt-seg-name{color:var(--text);}
 }
-/* A turn's effects (js/lab-tiles.js, labChangeFx), once, with reduced motion too. The sheen: the
-   first-place badge's band (css/facets.css) already inside the box at the start, across in .6 s. */
-.lt-rot-sheen,.lt-rot-edge{position:absolute;inset:0;z-index:1;pointer-events:none;border-radius:inherit;}
-.lt-rot-sheen{background:linear-gradient(115deg,transparent 38%,rgba(255,255,255,.1) 50%,transparent 62%);
-  transform:translateX(-45%);animation:lt-qsheen .6s cubic-bezier(.2,.6,.4,1) 1 both;}
-@keyframes lt-qsheen{to{transform:translateX(65%);}}
+/* A turn's effect (js/lab-tiles.js, labChangeFx), once, with reduced motion too. */
+.lt-rot-edge{position:absolute;inset:0;z-index:1;pointer-events:none;border-radius:inherit;}
 /* The top rule: the box's top rule in the leader's colour, out in .5 s. */
 .lt-rot-edge{box-shadow:inset 0 2px 0 var(--side-rail);animation:lt-edge .5s ease-out 1 both;}
 @keyframes lt-edge{from{opacity:1;}to{opacity:0;}}

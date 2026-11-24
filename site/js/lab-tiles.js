@@ -311,17 +311,15 @@ function labRotShow(i) {
   labSegsPaint(box);
   labChangeFx(box, box.querySelectorAll('.lt-slide')[i], labRot.list[i]);
 }
-// On a turn, never on a repaint, and with reduced motion too (the site's run-once effects play): the sheen
-// across the box, the number counting up and the box's top rule lit in the leader's colour, with the slide's fade.
+// On a turn, never on a repaint, and with reduced motion too (the site's run-once effects play): the number
+// counting up and the box's top rule lit in the leader's colour, with the slide's fade.
 let labCount = 0;
 function labChangeFx(box, slide, x) {
   if (!slide || !x) return;
-  for (const o of box.querySelectorAll('.lt-rot-sheen, .lt-rot-edge')) o.remove();
-  for (const cls of ['lt-rot-sheen', `lt-rot-edge side-${x.r.color}`]) {
-    const o = labEl('span', cls);
-    o.addEventListener('animationend', () => o.remove());
-    box.appendChild(o);
-  }
+  for (const o of box.querySelectorAll('.lt-rot-edge')) o.remove();
+  const o = labEl('span', `lt-rot-edge side-${x.r.color}`);
+  o.addEventListener('animationend', () => o.remove());
+  box.appendChild(o);
   labCountUp(slide.querySelector('.lt-mt-num .lt-num'), x);
 }
 // The number from 85% of the value to it in 600 ms, easing out; K/D in its two decimals.
