@@ -191,6 +191,7 @@ test.describe('a side overtakes in a tier', () => {
     await load(page, wvw);
     // A guild found: the strip hangs from its team's card for some seconds.
     await search(page, wvw.guilds[0]);
+    await page.locator('#searchAnswer .search-go').click();
     const strip = page.locator('.standing-match > .guild-found-strip');
     await expect(strip).toHaveCount(1);
     const id = await strip.evaluate(s => s.closest('.standing-match').dataset.matchId);

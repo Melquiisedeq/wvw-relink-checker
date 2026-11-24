@@ -185,9 +185,9 @@ test('without focus the loading indicators turn', async ({ page, wvw }) => {
   const held = new Promise(r => { release = r; });
   await page.route(/^https:\/\/api\.guildwars2\.com\/v2\/guild\/search\?/, async route => { await held; await route.fallback(); });
   await page.locator('#guildInput').focus();
-  await page.keyboard.insertText(wvw.guilds.join('\n'));
+  await page.keyboard.insertText(wvw.guilds[0]);
   await page.locator('#runBtn').click();
-  await expect(page.locator('#statusMsg .spinner')).toBeAttached();
+  await expect(page.locator('#searchAnswer .spinner')).toBeAttached();
   await watch(page, { focused: false });
   // A cancelled animation rejects its ready.
   await page.evaluate(() => Promise.all(document.getAnimations().map(a => a.ready.catch(() => {}))));
@@ -199,7 +199,7 @@ test('without focus the loading indicators turn', async ({ page, wvw }) => {
     .filter(a => a.effect && a.effect.target && a.effect.target.closest(sel) && a.playState !== 'paused').length, LOADERS);
   expect(onCss, 'loading indicators left on CSS while the clock runs').toBe(0);
   release();
-  await expect(page.locator('#statusMsg')).toHaveText(/^Done/, { timeout: 15000 });
+  await expect(page.locator('#searchAnswer .search-card, #searchAnswer .search-err')).toBeVisible({ timeout: 15000 });
 });
 
 for (const when of ['before the search', 'during the search']) {
@@ -211,10 +211,10 @@ for (const when of ['before the search', 'during the search']) {
     const held = new Promise(r => { release = r; });
     await page.route(/^https:\/\/api\.guildwars2\.com\/v2\/guild\/search\?/, async route => { await held; await route.fallback(); });
     await page.locator('#guildInput').focus();
-    await page.keyboard.insertText(wvw.guilds.join('\n'));
+    await page.keyboard.insertText(wvw.guilds[0]);
     await page.locator('#runBtn').click();
     await expect(page.locator('#runBtn .btn-pips')).toBeAttached();
-    await expect(page.locator('#statusMsg .spinner')).toBeAttached();
+    await expect(page.locator('#searchAnswer .spinner')).toBeAttached();
     if (when === 'during the search') {
       // Once the clock has taken them: the stop must hand them back to CSS.
       await expect.poll(() => page.evaluate(sel => document.getAnimations().filter(a => a.effect?.target?.closest(sel))
@@ -226,7 +226,7 @@ for (const when of ['before the search', 'during the search']) {
     expect(loaders.still, 'loading indicators standing still').toBe(0);
     expect((await looping(page)).moved, 'looping animations moving meanwhile').toBe(0);
     release();
-    await expect(page.locator('#statusMsg')).toHaveText(/^Done/, { timeout: 15000 });
+    await expect(page.locator('#searchAnswer .search-card, #searchAnswer .search-err')).toBeVisible({ timeout: 15000 });
   });
 }
 

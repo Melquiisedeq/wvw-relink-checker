@@ -56,37 +56,6 @@ test('the alliances popover keeps its expand button', async ({ page, wvw }) => {
   await expect(page.locator('.info-popover')).toHaveCount(0);
 });
 
-// No column cut off, nothing past the screen.
-test('the result table stays inside its card at 320 and 390 px', async ({ page, wvw }) => {
-  await load(page, wvw);
-  await search(page, wvw.guilds[0]);
-  const tagLine = await page.evaluate(() => Math.max(0, ...[...document.querySelectorAll('#resultCard .tag')].map(t => Math.round(t.getBoundingClientRect().height))));
-  for (const width of [320, 390]) {
-    const cdp = await phone(page, width, { exact: false });
-    await wvw.settle();
-    const fit = await page.evaluate(() => {
-      const card = document.getElementById('resultCard');
-      const cells = [...card.querySelectorAll('th, td, .server-cell, .server-cell *')];
-      return { scroll: card.scrollWidth - card.clientWidth,
-        past: Math.max(0, ...cells.map(c => Math.round(c.getBoundingClientRect().right - innerWidth))),
-        beyond: Math.max(0, ...cells.map(c => Math.round(c.getBoundingClientRect().right - card.getBoundingClientRect().right))),
-        tags: [...document.querySelectorAll('#resultCard .tag')].map(t => Math.round(t.getBoundingClientRect().height)) };
-    });
-    expect(fit.tags.filter(h => h > tagLine), `${width} px: tags wider than one line (heights ${JSON.stringify(fit.tags)}, one line is ${tagLine}px)`).toEqual([]);
-    expect({ scroll: fit.scroll, past: fit.past, beyond: fit.beyond }, `${width} px: px the table overflows its card, px past the screen, px a cell past the card's edge`)
-      .toEqual({ scroll: 0, past: 0, beyond: 0 });
-    // One line a guild: the name across the whole row, tag, region and team under it.
-    const rows = await page.evaluate(() => [...document.querySelectorAll('#resultBody tr')].map(tr => {
-      const [name, next] = [...tr.children].map(td => td.getBoundingClientRect());
-      const row = tr.getBoundingClientRect();
-      return { across: Math.round(name.width - row.width), under: Math.round(next.top - name.bottom) };
-    }));
-    expect(rows.length, 'result rows').toBeGreaterThan(0);
-    expect(rows.filter(r => r.across < -1 || r.under < -1), `${width} px: rows whose name does not take the whole line`).toEqual([]);
-    await cdp.send('Emulation.clearDeviceMetricsOverride');
-  }
-});
-
 async function zoomedActivityPopover(page, wvw) {
   await load(page, wvw);
   const cdp = await phone(page, 360);

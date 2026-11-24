@@ -49,11 +49,11 @@ test.describe('the round on the sling', () => {
   async function toDone(page, { press = true } = {}) {
     if (press) await page.locator('#runBtn').click();
     for (let i = 0; i < 100; i++) {
-      if (/^Done/.test(await page.locator('#statusMsg').textContent())) return;
+      if (await page.locator('#searchAnswer .search-card, #searchAnswer .search-err').count()) return;
       await page.clock.runFor(100);
       await page.waitForTimeout(20);
     }
-    await expect(page.locator('#statusMsg')).toHaveText(/^Done/);
+    await expect(page.locator('#searchAnswer .search-card, #searchAnswer .search-err')).toBeVisible();
   }
   // On to the launch, a few ms into the swing (SWING_MS).
   async function toSwing(page) {

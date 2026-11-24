@@ -22,12 +22,11 @@ const FONTS = [
   { name: 'monospace', css: 'monospace' },
 ];
 
-// The finale of a check shakes the page (.struck, translate up to 9 px) and
-// drops the panels in (.deploying): measured then, the page is wider than it
-// is. Quiet is: the charge gone (it goes at the hit), the shake and the drop
-// over, the overlay not playing.
+// The finale of a check shakes the page (.struck, translate up to 9 px):
+// measured then, the page is wider than it is. Quiet is: the charge gone (it
+// goes at the hit), the shake over, the overlay not playing.
 const quiet = page => page.evaluate(() => !document.querySelector('.siege-charge')
-  && !document.getElementById('page').matches('.struck, .deploying')
+  && !document.getElementById('page').matches('.struck')
   && !document.querySelector('.impact-overlay.play'));
 
 // Reachable: scrolled to the middle of the screen, the point at its centre hits the element itself

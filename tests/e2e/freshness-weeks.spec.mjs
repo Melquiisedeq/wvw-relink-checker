@@ -252,10 +252,10 @@ function placeGuilds(guilds, tables) {
   });
 }
 const colorOf = (m, t) => TEAMS.find(c => m.all_worlds[c].map(String).includes(String(t)));
-const dots = page => page.evaluate(() => [...document.querySelectorAll('#resultBody tr')].map(tr => {
-  const d = tr.querySelector('.dot'); return d ? { cls: d.className, title: d.title } : null; }));
+const card = page => page.locator('#searchAnswer .search-card');
+const sideOf = async page => /\bside-(red|blue|green)\b/.exec(await card(page).getAttribute('class'))?.[1] ?? null;
 
-test('relink day Check: this week\'s match wins; a team the API lacks gets a grey dot, a note, and finds it next Check', async ({ page, wvw }) => {
+test('relink day Check: this week\'s match wins; a team the API lacks gets no tier, and finds it next Check', async ({ page, wvw }) => {
   const all = recordedJson(ALL);
   const { tables } = await guildTables();
   const where = placeGuilds(wvw.guilds, tables);
@@ -277,13 +277,14 @@ test('relink day Check: this week\'s match wins; a team the API lacks gets a gre
   await answer(page, tables[where[1].r].url, moved);
   const wrong = await answer(page, `${GAME}wvw/matches?world=${MISSING}`, other);
   await opened(page, wvw);
-  await check(page, wvw, wvw.guilds.slice(0, 2));
-  const got = await dots(page);
-  expect(got[0]?.cls, `team ${T} is in ${fresh.id} and in last week's ${old.id}`).toBe(`dot dot-${colorOf(fresh, T)}`);
+  await check(page, wvw, wvw.guilds[0]);
+  expect(await sideOf(page), `team ${T} is in ${fresh.id} and in last week's ${old.id}`).toBe(colorOf(fresh, T));
+  await expect(card(page).locator('.search-tier b')).toHaveText(`Tier ${fresh.id.split('-')[1]}`);
   expect(await teamMatchKept(page, T)).toBe(fresh.id);
-  expect(got[1]?.cls).toBe('dot dot-pending');
-  expect(got[1]?.title).toMatch(/not in the game's data yet/);
-  expect(await page.locator('#matchPanelsContainer .panel-note').allTextContents()).toEqual([`Unknown team (ID ${MISSING}): this week's match isn't in the game's data yet.`]);
+  await check(page, wvw, wvw.guilds[1]);
+  await expect(card(page).locator('.search-team')).toHaveText(`Unknown team (ID ${MISSING})`);
+  await expect(card(page).locator('.search-tier b'), 'no tier for a team with no match').toHaveText(/^(NA|EU)$/);
+  await expect(card(page).locator('.search-rival')).toHaveCount(0);
   expect(await teamMatchRemembered(page, MISSING), 'a wrong match kept for the missing team').toBe(false);
   expect(wrong.reads, '?world= reads').toBeGreaterThanOrEqual(1);
   expect(wrong.reads).toBeLessThanOrEqual(3);
@@ -291,15 +292,14 @@ test('relink day Check: this week\'s match wins; a team the API lacks gets a gre
   // The API now answers right: a second Check finds the guild.
   wrong.off();
   await answer(page, `${GAME}wvw/matches?world=${MISSING}`, { ...other, all_worlds: { ...other.all_worlds, red: [Number(MISSING)] } });
-  await check(page, wvw, wvw.guilds.slice(0, 2));
-  expect((await dots(page))[1]?.cls, 'the second Check once ?world= answered right').toBe('dot dot-red');
-  await expect(page.locator('#matchPanelsContainer .panel-note')).toHaveCount(0);
+  await check(page, wvw, wvw.guilds[1]);
+  expect(await sideOf(page), 'the second Check once ?world= answered right').toBe('red');
+  await expect(card(page).locator('.search-tier b')).toHaveText(`Tier ${other.id.split('-')[1]}`);
 });
 
-// A team the API holds no match for, in a list with one it does: the run goes on
-// to its end, the missing one first in the list. The grey dot and the panel's note say it, the status says Done for
-// both guilds, and the copy gives the missing team's guild no tier or opponents.
-test('a team whose match is not in the game data: the run ends, grey dot, note, and the copy with no tier', async ({ page, wvw }) => {
+// A team the API holds no match for: its answer has the team and region, no tier, no rivals,
+// no arrow; a team that has one, all of them.
+test('a team whose match is not in the game data: the answer has no tier', async ({ page, wvw }) => {
   const all = recordedJson(ALL);
   const live = all.find(m => m.id.startsWith('1-'));
   const T = Number(live.all_worlds.red.find(n => n >= 10000)), MISSING = 99999;
@@ -309,20 +309,31 @@ test('a team whose match is not in the game data: the run ends, grey dot, note, 
   await answer(page, `${GAME}guild/${G1}`, { id: G1, name: 'Placed Guild', tag: 'PLC' });
   await answer(page, `${GAME}guild/${G2}`, { id: G2, name: 'Early Guild', tag: 'ERL' });
   await answer(page, `${GAME}wvw/matches?world=${MISSING}`, live);
-  await check(page, wvw, [G2, G1]);
-  await expect(page.locator('#statusMsg')).toHaveText('Done, checked 2 guild(s).');
-  const got = await dots(page);
-  expect(got[1]?.cls, 'the dot of the team with a match').toBe(`dot dot-${colorOf(live, T)}`);
-  expect(got[0], 'the dot of the team without').toEqual({ cls: 'dot dot-pending', title: "Match not in the game's data yet" });
-  expect(await page.locator('#matchPanelsContainer .panel-note').allTextContents())
-    .toEqual([`Unknown team (ID ${MISSING}): this week's match isn't in the game's data yet.`]);
-  const [chat, discord] = await page.evaluate(() => [copyChatBtn.dataset.summary, copyDiscordBtn.dataset.summary]);
-  for (const text of [chat, discord]) {
-    expect(text).toContain(`Early Guild landed on Unknown team (ID ${MISSING})`);
-    expect(text, 'a tier for the team with no match').not.toMatch(/Early Guild landed on [^\n]*Tier/);
-    expect(text, 'a tier for the team with a match').toMatch(/Placed Guild landed on [^\n]*\(NA Tier \d+\)/);
-  }
-  await expect(page.locator('#copyRow')).toBeVisible();
+  await check(page, wvw, G2);
+  await expect(card(page).locator('.search-who')).toHaveText('Early Guild is on');
+  await expect(card(page).locator('.search-team')).toHaveText(`Unknown team (ID ${MISSING})`);
+  await expect(card(page).locator('.search-tier b')).toHaveText('NA');
+  await expect(card(page).locator('.search-rival, .search-go')).toHaveCount(0);
+  await check(page, wvw, G1);
+  expect(await sideOf(page), 'the team with a match').toBe(colorOf(live, T));
+  await expect(card(page).locator('.search-tier b')).toHaveText(`Tier ${live.id.split('-')[1]}`);
+  await expect(card(page).locator('.search-rival')).toHaveCount(2);
+});
+
+// A week that is over says nothing about the tier or the rivals: the team and its region stay.
+test('a team whose match has ended: the answer has no tier', async ({ page, wvw }) => {
+  const live = recordedJson(ALL).find(m => m.id.startsWith('1-'));
+  const ENDED = 99998, G = 'AAAAAAAA-0000-4000-8000-000000000003';
+  await load(page, wvw);
+  await answer(page, GAME + 'wvw/guilds/na', { [G]: ENDED });
+  await answer(page, `${GAME}guild/${G}`, { id: G, name: 'Late Guild', tag: 'LTE' });
+  const ended = await answer(page, `${GAME}wvw/matches?world=${ENDED}`, { ...live, all_worlds: { ...live.all_worlds, red: [ENDED] },
+    start_time: iso(Date.now() - 2 * WEEK), end_time: iso(Date.now() - WEEK) });
+  await check(page, wvw, G);
+  expect(ended.reads, 'the ended match was read').toBeGreaterThanOrEqual(1);
+  await expect(card(page).locator('.search-team')).toHaveText(`Unknown team (ID ${ENDED})`);
+  await expect(card(page).locator('.search-tier b')).toHaveText('NA');
+  await expect(card(page).locator('.search-rival, .search-go')).toHaveCount(0);
 });
 
 // ---- the week memory -----------------------------------------------------------

@@ -48,10 +48,12 @@ test.describe('the Check across the teams notice', () => {
     });
     const next = tables[where[1].r].body[where[1].gid];
     const cell = await relinkWindow(page, wvw);
-    const teamsOf = () => page.locator('#resultBody tr .server-cell .status-ok').allTextContents();
+    const teamOf = () => page.locator('#searchAnswer .search-team').textContent();
 
-    await check(page, wvw, wvw.guilds.slice(0, 2));
-    const [wasName, nextName] = await teamsOf();
+    await check(page, wvw, wvw.guilds[0]);
+    const wasName = await teamOf();
+    await check(page, wvw, wvw.guilds[1]);
+    const nextName = await teamOf();
     expect(nextName, 'the second guild\'s row').toBeTruthy();
     expect(wasName, 'the two guilds\' teams share a name').not.toBe(nextName);
 
@@ -66,7 +68,7 @@ test.describe('the Check across the teams notice', () => {
     }
     await expect(page.locator('#teamsNotice')).toHaveAttribute('data-window', String(cell.windowId));
     await check(page, wvw, wvw.guilds[0]);
-    expect(await teamsOf(), `after the notice, wanted the new team (the kept table has "${wasName}")`).toEqual([nextName]);
+    expect(await teamOf(), `after the notice, wanted the new team (the kept table has "${wasName}")`).toBe(nextName);
   });
 });
 

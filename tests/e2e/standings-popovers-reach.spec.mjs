@@ -226,25 +226,3 @@ test.describe('phone', () => {
     await expect.poll(async () => (await aim()).yaw, { message: 'a mouse aiming it' }).not.toBe(rest.yaw);
   });
 });
-
-test('Ctrl+Enter in the guild box closes a result row\'s popover and leaves no active trigger', async ({ page, wvw }) => {
-  await page.setViewportSize({ width: 1280, height: 2000 });
-  await load(page, wvw);
-  await search(page, wvw.guilds[0]);
-  await page.locator('#resultBody .server-guilds-btn').first().click();
-  await expect(page.locator(POP)).toHaveCount(1);
-  await page.locator('#guildInput').focus();
-  await page.keyboard.press('Control+Enter');
-  await expect(page.locator(POP)).toHaveCount(0);
-  await expect(page.locator('#statusMsg')).toHaveText(/^Done/, { timeout: 15000 });
-  // A popover still held as open would keep the trebuchet from throwing.
-  await page.evaluate(() => {
-    window.__thrown = 0;
-    new MutationObserver(ms => {
-      for (const m of ms) for (const n of m.addedNodes) if (n.classList?.contains('siege-shot')) window.__thrown++;
-    }).observe(document.body, { childList: true });
-  });
-  await page.mouse.click(640, 20);
-  await expect.poll(() => page.evaluate(() => window.__thrown), { message: 'a click on an empty spot throwing a round' }).toBe(1);
-  await wvw.settle();
-});
