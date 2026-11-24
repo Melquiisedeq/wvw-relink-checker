@@ -91,7 +91,7 @@ async function measure(nodeOnly) {
 
 const text = obj => JSON.stringify(obj, null, 2) + '\n';
 
-function compare(measured, committed) {
+export function compare(measured, committed) {
   const fell = [], rose = [];
   for (const [file, was] of Object.entries(committed)) {
     const now = measured[file];
