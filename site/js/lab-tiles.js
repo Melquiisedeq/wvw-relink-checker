@@ -333,6 +333,9 @@ function labSkirmishNow(m) {
   if (!Number.isFinite(left) || left > 120) return null;
   return { sc, left, vp: labVpHolds(m) ? labSkirmishVp(m, sk, sc) : null };
 }
+// The panel's "Simulate long team names": the two longest names in TEAM_NAMES on the Closest match.
+let labLongNames = false;
+const LAB_LONG = ['Lutgardis Conservatory', 'Throne of Balthazar'];
 function labClosest() {
   let best = null;
   for (const k of labKept()) {
@@ -341,6 +344,7 @@ function labClosest() {
     if (!best || gap < best.gap) best = { m: k.match, gap, a: r[0], b: r[1] };
   }
   if (!best) return null;
+  if (labLongNames) [best.a.name, best.b.name] = LAB_LONG;
   const s = labSkirmishNow(best.m);
   if (s) {
     const { a, b } = best;
@@ -353,11 +357,21 @@ function labClosest() {
 const labLeft = (n) => (n >= 60 ? `${Math.floor(n / 60)} h ${n % 60} min left` : (n > 0 ? `${n} min left` : 'ending now'));
 // The week's gap after the skirmish: "34 apart", or the second ahead of the first.
 const labNextGap = (c) => (c.next >= 0 ? `${labNum(c.next)} apart` : `${c.b.name} ahead by ${labNum(-c.next)}`);
+const LAB_CLOSE_NEW = ['pa', 'pb', 'pc'];
 function labClosestSaid(c) {
+  const v = labPrefs.closest;
   let s = `Closest match, ${labTierTag(c.m.id)}: ${c.a.name} ${labNum(c.a.vp)} VP and ${c.b.name} ${labNum(c.b.vp)} VP, ${labNum(c.gap)} apart this week.`;
-  if (c.sk && labPrefs.closest !== 'today') {
+  if (c.sk && v === 'a') {
     s += c.lead ? ` ${c.lead.name} leads this skirmish, ${labLeft(c.sk.left)}.` : ` The two are tied in this skirmish, ${labLeft(c.sk.left)}.`;
     if (c.sk.vp) s += ` If it ended now: ${c.a.name} plus ${c.sk.vp[c.a.color]} VP, ${c.b.name} plus ${c.sk.vp[c.b.color]}, ${labNextGap(c)}.`;
+  }
+  if (c.sk && LAB_CLOSE_NEW.includes(v)) {
+    const g = c.sk.vp;
+    if (g) {
+      s += ` If this skirmish ended now: ${c.a.name} ${labNum(c.a.vp + g[c.a.color])}, plus ${g[c.a.color]};`
+        + ` ${c.b.name} ${labNum(c.b.vp + g[c.b.color])}, plus ${g[c.b.color]}; ${labNextGap(c)}.`;
+    }
+    s += c.lead ? ` ${c.lead.name} leads this skirmish, ${labLeft(c.sk.left)}.` : ` The two are tied in this skirmish, ${labLeft(c.sk.left)}.`;
   }
   return `${s} Show them in the standings`;
 }
@@ -393,33 +407,104 @@ function labLeadLine(c, tail) {
   line.append(` · ${labLeft(c.sk.left)}${tail || ''}`);
   return line;
 }
+// A name that may be cut short with an ellipsis: the tile's aria-label (labClosestSaid) says it whole.
+function labCutName(x) {
+  const s = labEl('span', 'lab-team lt-cut');
+  s.append(labDot(x.color), labEl('span', 'lt-cut-nm', x.name));
+  return s;
+}
+// What the projection says after the gap: "48 if it ended now", or the second ahead.
+function labIfEnded(c) {
+  const out = labEl('span', 'lt-if');
+  if (c.next >= 0) out.append(`${labNum(c.next)} if it ended now`);
+  else out.append(labCutName(c.b), ` ahead by ${labNum(-c.next)} if it ended now`);
+  return out;
+}
+function labRow(c, x, cells) {
+  const row = labEl('span', `lt-pr side-${x.color}${c.lead === x ? ' is-lead' : ''}`);
+  row.append(...cells);
+  return row;
+}
+// A: "● 1,234 Name" rows, the skirmish bar with each "+N" over the start of its segment.
+function labClosePa(c) {
+  const g = c.sk.vp;
+  const head = labEl('span', 'lt-big lt-pa-head');
+  head.append(labEl('span', 'lt-num', labNum(c.gap)), labEl('span', 'lt-unit', 'VP apart'));
+  if (g) head.append(labEl('span', 'lt-unit', '·'), labIfEnded(c));
+  const rows = labEl('span', 'lt-prows');
+  for (const x of [c.a, c.b]) {
+    const nm = labEl('span', 'lt-cut-nm', x.name);
+    rows.appendChild(labRow(c, x, [labDot(x.color), labEl('span', 'lt-pr-vp', labNum(x.vp)), nm]));
+  }
+  const total = c.sk.sc[c.a.color] + c.sk.sc[c.b.color];
+  const wrap = labEl('span', 'lt-pa-bar');
+  if (g) {
+    const marks = labEl('span', 'lt-pa-marks');
+    const at = total ? (100 * c.sk.sc[c.a.color]) / total : 50;
+    for (const [x, pos] of [[c.a, 0], [c.b, at]]) {
+      const mk = labEl('span', `lt-pa-mark side-${x.color}`, `+${g[x.color]}`);
+      mk.style.setProperty('--at', `${pos}%`);
+      marks.appendChild(mk);
+    }
+    wrap.appendChild(marks);
+  }
+  wrap.appendChild(labVpBar([c.a, c.b].map((x) => ({ color: x.color, n: c.sk.sc[x.color], dim: c.lead && c.lead !== x }))));
+  return [head, rows, wrap, labLeadLine(c)];
+}
+// B: "● Name  1,234  +51" rows, a thin bar of the skirmish under them with the time left.
+function labClosePb(c) {
+  const g = c.sk.vp;
+  const head = labEl('span', 'lt-big lt-pb-head');
+  head.append(labEl('span', 'lt-num', labNum(c.gap)), labEl('span', 'lt-unit', 'VP apart'));
+  if (g) head.append(labEl('span', 'lt-unit', '→'), labIfEnded(c));
+  const rows = labEl('span', `lt-prows lt-pb-rows${g ? '' : ' no-gain'}`);
+  for (const x of [c.a, c.b]) {
+    const cells = [labCutName(x), labEl('span', 'lt-pr-vp', labNum(x.vp))];
+    if (g) cells.push(labEl('span', 'lt-pr-gain', `+${g[x.color]}`));
+    rows.appendChild(labRow(c, x, cells));
+  }
+  const bar = labVpBar([c.a, c.b].map((x) => ({ color: x.color, n: c.sk.sc[x.color], dim: c.lead && c.lead !== x })));
+  bar.classList.add('lt-thin');
+  return [head, rows, bar, labLeadLine(c)];
+}
+// C: the columns "Now" and "If it ended now", then the gap in each.
+function labClosePc(c) {
+  const g = c.sk.vp;
+  const grid = labEl('span', `lt-pc${g ? '' : ' no-gain'}`);
+  const cell = (cls, text) => labEl('span', cls, text);
+  grid.append(cell('lt-pc-h'), cell('lt-pc-h lt-pc-n', 'Now'));
+  if (g) grid.appendChild(cell('lt-pc-h lt-pc-n', 'If it ended now'));
+  for (const x of [c.a, c.b]) {
+    const nm = labCutName(x);
+    nm.classList.add(`side-${x.color}`);
+    if (c.lead === x) nm.classList.add('is-lead');
+    grid.append(nm, cell('lt-pc-n lt-pc-v', labNum(x.vp)));
+    if (g) {
+      const p = cell(`lt-pc-n lt-pc-v side-${x.color}`);
+      p.append(labEl('span', 'lt-pr-gain', `+${g[x.color]}`), ` ${labNum(x.vp + g[x.color])}`);
+      grid.appendChild(p);
+    }
+  }
+  grid.append(cell('lt-pc-gap', 'VP apart'), cell('lt-pc-n lt-pc-gv', labNum(c.gap)));
+  if (g) {
+    const v = cell('lt-pc-n lt-pc-gv');
+    if (c.next >= 0) v.textContent = labNum(c.next);
+    else v.append(labDot(c.b.color), labNum(-c.next));
+    grid.appendChild(v);
+  }
+  return [grid, labLeadLine(c)];
+}
 function labClosestBody(c) {
   const v = labPrefs.closest;
   if (!c.sk || v === 'today') {
     return [labBig(labNum(c.gap), 'VP apart'), labVpBar([c.a, c.b].map((x) => ({ color: x.color, n: x.vp }))),
       labVpRows(c, labWeekVp), labEl('span', 'lt-line', 'Top two · this week')];
   }
+  if (v === 'pa') return labClosePa(c);
+  if (v === 'pb') return labClosePb(c);
+  if (v === 'pc') return labClosePc(c);
   const gain = c.sk.vp;
   const skBar = () => labVpBar([c.a, c.b].map((x) => ({ color: x.color, n: c.sk.sc[x.color], dim: c.lead && c.lead !== x })));
-  if (v === 'b') {
-    const head = labEl('span', 'lt-sk-head');
-    if (c.lead) head.append(labTeamText(c.lead.name, c.lead.color), ' winning this skirmish');
-    else head.append('Tied in this skirmish');
-    if (c.lead && gain) head.appendChild(labEl('span', 'lt-sk-plus', ` · +${Math.abs(gain[c.a.color] - gain[c.b.color])} VP ahead`));
-    const proj = gain ? `${labNum(c.gap)} VP apart → ${labNextGap(c)} if it ended now` : `${labNum(c.gap)} VP apart this week`;
-    return [head, labEl('span', 'lt-line', `${labLeft(c.sk.left)}`), labEl('span', 'lt-map lt-sk-proj', proj), labVpRows(c, labWeekVp)];
-  }
-  if (v === 'c') {
-    const line = labEl('span', 'lt-sk-one');
-    const gapEl = labEl('b', 'lt-sk-gap', labNum(c.gap));
-    line.append(gapEl, ' VP apart');
-    if (gain) line.append(' → ', labEl('b', 'lt-sk-gap', c.next >= 0 ? labNum(c.next) : `−${labNum(-c.next)}`), ' if this skirmish ended now');
-    line.append(' · ');
-    if (c.lead) line.append(labTeamText(c.lead.name, c.lead.color), ' leads it');
-    else line.append('tied in it');
-    line.append(` · ${labLeft(c.sk.left)}`);
-    return [line];
-  }
   // (a): the bar is the skirmish's, each row its points if it ended now.
   return [labBig(labNum(c.gap), 'VP apart'), labLeadLine(c), skBar(),
     labVpRows(c, (x) => (gain ? labEl('span', 'lt-vp lt-sk-gain', `+${gain[x.color]} VP`) : labEl('span', 'lt-vp lt-sk-score', labNum(c.sk.sc[x.color])))),

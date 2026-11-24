@@ -5,27 +5,30 @@
 // wants boot.js last). Everything goes through textContent.
 
 const LAB_KEY = 'wvw-lab-v1';
-const LAB_VERSION = 13;          // bump when the defaults change: older saved choices are dropped
-// Round 10: named setups, each a Closest match and a frame for the middle's panels; the Fine-tune radios
-// override the one picked.
+const LAB_VERSION = 14;          // bump when the defaults change: older saved choices are dropped
+// Named setups, each a Closest match and a frame for the middle's panels; the Fine-tune radios override
+// the one picked. Round 11: the Closest match's A, B and C, B the research's pick.
 const LAB_SETUPS = {
   today: { label: 'Today (round 9)', closest: 'today', frame: 'today' },
-  rec: { label: 'Recommended', closest: 'a', frame: 'a' },
-  sentence: { label: 'Sentence first', closest: 'b', frame: 'd' },
-  phone: { label: 'Phone line', closest: 'c', frame: 'a' },
-  glass: { label: 'Glass, costly', closest: 'a', frame: 'b' },
-  glassHi: { label: 'Glass on highlights only', closest: 'a', frame: 'c' },
+  round10: { label: 'Round 10 (Closest “a”)', closest: 'a', frame: 'a' },
+  rec: { label: 'Recommended: Closest B', closest: 'pb', frame: 'a' },
+  closeA: { label: 'Closest A: VP before the name', closest: 'pa', frame: 'a' },
+  closeC: { label: 'Closest C: two columns', closest: 'pc', frame: 'a' },
+  light: { label: 'Light from the top', closest: 'pb', frame: 'd' },
+  glass: { label: 'Glass, costly', closest: 'pb', frame: 'b' },
+  glassHi: { label: 'Glass on highlights only', closest: 'pb', frame: 'c' },
 };
 const LAB_ITEMS = [
   { type: 'radio', key: 'setup', label: 'Setup', value: 'rec',
     options: Object.fromEntries(Object.entries(LAB_SETUPS).map(([k, x]) => [k, x.label])),
     apply: (k) => { labPrefs.closest = LAB_SETUPS[k].closest; labPrefs.frame = LAB_SETUPS[k].frame; } },
   { type: 'section', label: 'Fine-tune' },
-  { type: 'radio', key: 'closest', label: 'Closest match', value: 'a', options: {
-    today: 'Today: the week only',
-    a: 'a · skirmish bar, “+51 / +37 VP if it ended now”',
-    b: 'b · sentence first: “winning this skirmish”',
-    c: 'c · one line, for phones' } },
+  { type: 'radio', key: 'closest', label: 'Closest match', value: 'pb', options: {
+    today: 'Round 9: the week only',
+    a: 'Today (a) · skirmish bar, “+51 / +37 VP”',
+    pa: 'A · “● 1,234 Name”, the “+51” over the bar',
+    pb: 'B · “● Name 1,234 +51”, thin bar (research pick)',
+    pc: 'C · columns “Now” and “If it ended now”' } },
   { type: 'radio', key: 'frame', label: 'Frame of the middle panels', value: 'a', options: {
     today: 'Today: dark fill, no shadow',
     a: 'A · dark fill + the columns’ border, rules and shadows',
@@ -43,8 +46,11 @@ const LAB_ITEMS = [
   { type: 'button', label: 'Lines without a sure type', run: () => { labSimNews('unsure'); labStatus('Example update: lines with no label.'); } },
   { type: 'button', label: 'Back to the real notes', run: () => { labSimNews(null); labStatus('The real notes.'); } },
   { type: 'section', label: 'Simulate a changed VP table' },
-  { type: 'button', label: 'The game changed its VP table', run: () => { labVpWrong = true; labPaintTiles(); labStatus('Simulated: the table no longer adds up to the week, so the Closest match shows the skirmish leader only.'); } },
+  { type: 'button', label: 'The game changed its VP table', run: () => { labVpWrong = true; labPaintTiles(); labStatus('Simulated: the table no longer adds up to the week, so the Closest match shows the week’s totals and the skirmish leader, no “+N”.'); } },
   { type: 'button', label: 'Back to the real table', run: () => { labVpWrong = false; labPaintTiles(); labStatus('The real VP table.'); } },
+  { type: 'section', label: 'Simulate long team names' },
+  { type: 'button', label: 'Long names on the Closest match', run: () => { labLongNames = true; labPaintTiles(); labStatus('Simulated: the two longest team names on the Closest match.'); } },
+  { type: 'button', label: 'Back to the real names', run: () => { labLongNames = false; labPaintTiles(); labStatus('The real team names.'); } },
 ];
 
 // ---- the middle -----------------------------------------------------------------------------
