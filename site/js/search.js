@@ -146,15 +146,14 @@ function tierWay(o) {
   return grid.getBoundingClientRect().left < mid.getBoundingClientRect().left ? 'left' : 'right';
 }
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
 const CHEVRONS = ['M6 7l5 5-5 5', 'M12 7l5 5-5 5'];
 function chevrons() {
-  const svg = document.createElementNS(SVG_NS, 'svg');
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('aria-hidden', 'true');
   svg.setAttribute('class', 'search-go-svg');
   for (const d of CHEVRONS) {
-    const p = document.createElementNS(SVG_NS, 'path');
+    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     p.setAttribute('d', d);
     svg.appendChild(p);
   }
