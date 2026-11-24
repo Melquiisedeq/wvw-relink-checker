@@ -5,11 +5,9 @@
 // wants boot.js last). Everything goes through textContent.
 
 const LAB_KEY = 'wvw-lab-v1';
-const LAB_VERSION = 11;          // bump when the defaults change: older saved choices are dropped
+const LAB_VERSION = 12;          // bump when the defaults change: older saved choices are dropped
 const LAB_ITEMS = [
   { type: 'section', label: 'Fine-tune' },
-  { type: 'radio', key: 'order', label: 'Order of the middle', value: 'shn',
-    options: { shn: 'Search, highlights, news (today)', hsn: 'Highlights, search, news', hns: 'Highlights, news, search' } },
   { type: 'check', key: 'newsLow', label: 'Phones: news below the standings', on: false },
   { type: 'check', key: 'ownIcon', label: 'Our icon in the news header, not "[[ ]]"', on: true },
   { type: 'check', key: 'profIcon', label: 'Profession icon beside buffs and nerfs', on: true },
@@ -55,25 +53,19 @@ function labMountMiddle() {
     .observe(document.documentElement, { attributes: true, attributeFilter: ['data-rail-first'] });
   labPaintRecent();
 }
-// The order is fixed (search, highlights, news); only where the news goes moves.
+// The order is fixed (highlights, search, news); only where the news goes moves.
 function labPlaceParts() {
   if (!labMid) return;
   const parts = { s: document.getElementById('labSearch'), h: document.getElementById('labTiles'), n: document.getElementById('labNews') };
   const low = labPrefs.newsLow && typeof matchMedia === 'function' && matchMedia(LAB_NARROW).matches;
-  for (const k of labPrefs.order || 'shn') {
-    if (k === 'n' && low) document.getElementById('labNewsLow').appendChild(parts.n);
-    else labMid.appendChild(parts[k]);
-  }
-  // The line under the title speaks of the search: below the title while the search leads, else inside its
-  // panel, under the panel's heading.
+  labMid.append(parts.h, parts.s);
+  (low ? document.getElementById('labNewsLow') : labMid).appendChild(parts.n);
+  // The line under the title speaks of the search: inside its panel, under the panel's heading.
   const sub = document.querySelector('main .subtitle');
-  if (sub) {
-    const first = (labPrefs.order || 'shn') === 'shn';
-    sub.classList.toggle('lab-sub-in', !first);
-    if (!sub.dataset.labText) sub.dataset.labText = sub.textContent;
-    sub.textContent = first ? sub.dataset.labText : LAB_SUB_IN;
-    if (first) labMid.before(sub);
-    else parts.s.querySelector('.ls-head').after(sub);
+  if (sub && !sub.classList.contains('lab-sub-in')) {
+    sub.classList.add('lab-sub-in');
+    sub.textContent = LAB_SUB_IN;
+    parts.s.querySelector('.ls-head').after(sub);
   }
 }
 let labHotKey = '';
