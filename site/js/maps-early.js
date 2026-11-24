@@ -249,9 +249,17 @@ function fightSamples(match) {
   // Older than FIGHT_STALE_MS is dropped: better no swords than a stale rate.
   const week = Date.parse(match && match.start_time);
   const floor = Math.max(steadyNow() - FIGHT_STALE_MS, Number.isFinite(week) ? week : 0);
+  // Inside a week kills only rise: a reading below an earlier one on some map is a server group behind, its
+  // counts older than its time, and as a base it would count hours of kills as minutes.
+  const high = {};
   return [...shared, ...local]
     .filter((s) => s && s.at >= floor)
-    .sort((a, b) => a.at - b.at);
+    .sort((a, b) => a.at - b.at)
+    .filter((s) => {
+      if (Object.keys(s.n).some((t) => (Number(s.n[t]) || 0) < (high[t] || 0))) return false;
+      for (const t in s.n) high[t] = Math.max(high[t] || 0, Number(s.n[t]) || 0);
+      return true;
+    });
 }
 
 // When a match's kills last moved: the time of the first reading (shared
@@ -312,6 +320,9 @@ const HOT_FLOOR = 50;      // kills per ten minutes: a real fight, not API noise
 // longer lights too many that have ended; shorter blinks them out between the API's own steps.
 const HOT_BIG = 75;
 const HOT_SMALL_WANT_MS = 7 * 60 * 1000;
+// Kills per 10 min on one map past which the window spans a source catching up (a group that moved hours behind,
+// then the present), not a fight: no count and no swords until the window has passed the jump.
+const KILLS_CEILING = 1000;
 
 function killView(match, types, now = steadyNow()) {
   const view = { clock: 0, atLeast: false, silence: 0, prevRun: Infinity, rates: null, pace: 0,
@@ -378,11 +389,6 @@ function killView(match, types, now = steadyNow()) {
   } else {
     killCountingSince.delete(match.id);
     const span = view.clock - base.at;
-    view.long = span > WINDOW_MAX_MS;
-    // A long window still counts for the swords up to the catch-up limit: the rates are per 10 min.
-    view.longOk = view.long && span <= KILLS_CATCHUP_MAX_MS;
-    const next = list.find((s) => s.at > base.at);
-    view.gap = { from: base.at, to: next ? Math.min(next.at, view.clock) : view.clock };
     const per = new Map();
     let moved = 0;
     for (const type in body) {
@@ -390,8 +396,15 @@ function killView(match, types, now = steadyNow()) {
       moved += d;
       per.set(type, d * (600000 / span));
     }
-    view.rates = { per, span };
-    view.pace = moved / (span / 60000);
+    if (![...per.values()].some((n) => n > KILLS_CEILING)) {
+      view.long = span > WINDOW_MAX_MS;
+      // A long window still counts for the swords up to the catch-up limit: the rates are per 10 min.
+      view.longOk = view.long && span <= KILLS_CATCHUP_MAX_MS;
+      const next = list.find((s) => s.at > base.at);
+      view.gap = { from: base.at, to: next ? Math.min(next.at, view.clock) : view.clock };
+      view.rates = { per, span };
+      view.pace = moved / (span / 60000);
+    }
   }
   if (view.pace > 0) {
     view.strange = view.silence > KILLS_STEP_MS + (KILLS_LATE_KILLS / view.pace) * 60000;
