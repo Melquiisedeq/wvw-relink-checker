@@ -3080,6 +3080,9 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
       // read failed (our copy, late: offerLate), is painted all the same.
       const kept = newestMatches.get(match.id);
       if (kept && matchIsBehind(liveMatch, kept.match)) fresh = kept.match;
+      else if (returnRetryTake()) {
+        setTimeout(() => { if (activePopover === popover && document.visibilityState !== 'hidden') pullFresh(); }, RETURN_RETRY_MS);
+      }
     }
     // Not on the opening's own first read: the opening has just asked, with its retries.
     const refresh = firstReadDone;
