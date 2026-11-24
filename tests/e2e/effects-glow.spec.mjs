@@ -83,7 +83,7 @@ test('a new score flashes on the compositor', async ({ page, wvw }) => {
 
 test('a guild found flashes on the compositor', async ({ page, wvw }) => {
   await load(page, wvw);
-  await search(page, wvw.guilds);
+  await search(page, wvw.guilds[0]);
   const { off } = await lookWith(page, ['guild-found-flash']);
   // The strip's entrance runs too: its clip-path is the exception, named in its own test.
   expect(off).toEqual({ 'guild-found-in-clip': ['clipPath'] });
@@ -115,7 +115,7 @@ test('the guild strip opens and closes without moving its height', async ({ page
     };
     tick();
   });
-  await search(page, wvw.guilds);
+  await search(page, wvw.guilds[0]);
   const strip = page.locator('.guild-found-strip');
   await expect(strip).toBeVisible();
   // It leaves on its own, some seconds on, and is gone once its exit has played.

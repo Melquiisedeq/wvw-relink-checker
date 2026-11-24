@@ -28,26 +28,27 @@ export async function phone(page, width, { exact = true, height = 800 } = {}) {
   return cdp;
 }
 
-// The guild search, typed as a visitor does, to the end: "Done", the rows, the
-// match panels, the button back. Watches the standings meanwhile, so that the
-// blink and the strip cannot be missed between two looks.
-export async function search(page, names) {
+// The guild search, typed as a visitor does, to the end: the answer up and the button
+// back. Watches the standings meanwhile, so that the strip cannot be missed between two looks.
+export async function search(page, name) {
   await page.evaluate(() => {
-    window.__found = { flash: false, strip: null, gone: false };
+    window.__found = { strip: null, gone: false };
     new MutationObserver(() => {
       const f = window.__found;
-      if (document.querySelector('.guild-found-flash')) f.flash = true;
       const s = document.querySelector('.guild-found-strip');
       if (s) { f.strip = s.textContent; f.gone = false; }
       else if (f.strip) f.gone = true;
     }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
   });
-  await page.locator('#guildInput').focus();
-  await page.keyboard.insertText(names.join('\n'));
-  await page.locator('#runBtn').click();
-  await expect(page.locator('#statusMsg')).toHaveText(/^Done/, { timeout: 15000 });
-  await expect(page.locator('#resultBody tr').first()).toBeVisible();
-  await expect(page.locator('#matchPanelsContainer > *').first()).toBeAttached();
+  await page.getByRole('combobox', { name: 'Guild name, exactly as in game' }).focus();
+  await page.keyboard.insertText(name);
+  await page.getByRole('button', { name: 'Check' }).click();
+  await answered(page);
+}
+
+// The answer to a search: its card or what went wrong, and Check back.
+export async function answered(page) {
+  await expect(page.locator('#searchAnswer .search-card, #searchAnswer .search-err')).toBeVisible({ timeout: 15000 });
   await expect(page.locator('#runBtn')).toBeEnabled();
 }
 
@@ -82,12 +83,11 @@ export async function serveList(page, list) {
   return state;
 }
 
-// A Check of `names`, to "Done": the result rows' dots.
-export async function check(page, wvw, names) {
-  await page.evaluate(v => { document.getElementById('guildInput').value = v; }, names.join('\n'));
-  await page.locator('#runBtn').click();
-  await expect(page.locator('#statusMsg')).toHaveText(/^Done/, { timeout: 15000 });
-  await expect(page.locator('#runBtn')).toBeEnabled();
+// A Check of `name`, to its answer.
+export async function check(page, wvw, name) {
+  await page.getByRole('combobox', { name: 'Guild name, exactly as in game' }).fill(name);
+  await page.getByRole('button', { name: 'Check' }).click();
+  await answered(page);
   await wvw.settle();
 }
 

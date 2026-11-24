@@ -80,7 +80,7 @@ for (const width of WIDTHS) {
       if (font.painted) expect(families, `the fonts Chrome painted the page with, wanted ${font.painted}`).toContain(font.painted);
       else if (font.css) expect(families, `the fonts Chrome painted with under ${font.name}, the same as the default's`).not.toEqual(before);
       await fits(page, wvw, `${width} px, ${font.name}, at rest`);
-      await search(page, wvw.guilds);
+      await search(page, wvw.guilds[0]);
       await fits(page, wvw, `${width} px, ${font.name}, after a search`);
       await openMap(page, wvw, page.locator('.tier-map-btn').first());
       await fits(page, wvw, `${width} px, ${font.name}, map open`);

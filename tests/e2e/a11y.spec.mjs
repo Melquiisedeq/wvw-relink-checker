@@ -84,7 +84,7 @@ test('one heading per tier, the side and the arrow in words', async ({ page, wvw
 test('the result table has four column headers at 390 px', async ({ page, wvw }) => {
   await load(page, wvw);
   await phone(page, 390);
-  await check(page, wvw, [wvw.guilds[0]]);
+  await check(page, wvw, wvw.guilds[0]);
   await expect(page.getByRole('columnheader')).toHaveCount(4);
   await expect(page.getByRole('row').filter({ has: page.getByRole('cell') })).toHaveCount(1);
 });

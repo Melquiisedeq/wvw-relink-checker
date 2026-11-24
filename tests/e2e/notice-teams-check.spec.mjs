@@ -65,7 +65,7 @@ test.describe('the Check across the teams notice', () => {
       await quiet();
     }
     await expect(page.locator('#teamsNotice')).toHaveAttribute('data-window', String(cell.windowId));
-    await check(page, wvw, [wvw.guilds[0]]);
+    await check(page, wvw, wvw.guilds[0]);
     expect(await teamsOf(), `after the notice, wanted the new team (the kept table has "${wasName}")`).toEqual([nextName]);
   });
 });

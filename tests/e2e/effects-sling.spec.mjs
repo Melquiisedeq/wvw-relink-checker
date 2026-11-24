@@ -28,11 +28,11 @@ test('a second search blasts again: the first one\'s lobes, rays and shards are 
     rays: document.querySelectorAll('.blast-ray').length,
     shards: document.querySelectorAll('.impact-shard').length,
   }), PIECES);
-  await search(page, [wvw.guilds[0]]);
+  await search(page, wvw.guilds[0]);
   await expect.poll(async () => (await count()).all, { message: 'the first blast thrown' }).toBeGreaterThan(0);
   expect(await count(), 'the first blast: lobes, rays, shards').toMatchObject({ lobes: 7, rays: 12, shards: 22 });
   await page.evaluate(sel => document.querySelectorAll(sel).forEach(e => e.setAttribute('data-first', '')), PIECES);
-  await check(page, wvw, [wvw.guilds[0]]);
+  await check(page, wvw, wvw.guilds[0]);
   await expect.poll(async () => (await count()).all - (await count()).first, { message: 'the second blast thrown' }).toBeGreaterThan(0);
   expect(await count(), 'after the second blast: none of the first, one blast of each').toEqual({ all: 41, first: 0, lobes: 7, rays: 12, shards: 22 });
 });

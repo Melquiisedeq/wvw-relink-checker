@@ -71,7 +71,7 @@ test.describe('a new score on the same board', () => {
     await load(page, wvw);
     // The guild-found strip hangs under the side that will move: the first guild of the
     // recording is the second of the tier it is found in.
-    await search(page, wvw.guilds.slice(0, 1));
+    await search(page, wvw.guilds[0]);
     const strip = page.locator('.guild-found-strip');
     await expect(strip).toHaveCount(1);
     const id = await strip.evaluate(s => s.closest('.standing-match').dataset.matchId);

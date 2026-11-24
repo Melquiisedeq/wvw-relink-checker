@@ -82,7 +82,7 @@ test.describe('copying the summary', () => {
     await page.goto(wvw.url);
     await expect(page.locator('#standingsGridNA > .standing-match').first()).toBeVisible();
     await wvw.settle();
-    await search(page, wvw.guilds);
+    await search(page, wvw.guilds[0]);
     await expect(page.locator('#copyRow')).toBeVisible();
     await wvw.settle();
   };

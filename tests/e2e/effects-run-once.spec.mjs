@@ -83,7 +83,7 @@ test("the head's fire on a round's trail, with the tab hidden and shown mid-flig
     }).observe(document, { childList: true, subtree: true });
   });
   await load(page, wvw);
-  await search(page, wvw.guilds);
+  await search(page, wvw.guilds[0]);
   await expect.poll(() => page.evaluate(() => window.__hiddenWithHead), { message: 'the tab hidden with the head lit' }).toBe(true);
   await page.waitForTimeout(100);
   await page.evaluate(() => {
@@ -108,7 +108,7 @@ for (const reduced of [false, true]) {
     await page.mouse.click(640, 20);
     await expect.poll(() => page.evaluate(() => window.__flames), { message: 'a shot flying' }).toBe(1);
     await expect(flames, 'flames gone within 3 s of the shot').toHaveCount(0, { timeout: 3000 });
-    await search(page, wvw.guilds);
+    await search(page, wvw.guilds[0]);
     await expect.poll(() => page.evaluate(() => window.__flames), { message: "the Check's round flying" }).toBe(2);
     await expect(flames, "flames gone within 3 s of the Check's round").toHaveCount(0, { timeout: 3000 });
     await allFinish(page, 'run-once effects after the shots');
@@ -134,7 +134,7 @@ test("the page's layer is made before the shake, and the cards' glass is off fro
   const glass = () => page.evaluate(() => getComputedStyle(document.querySelector('.card')).backdropFilter);
   expect(await page.evaluate(() => getComputedStyle(document.getElementById('page')).willChange), 'the page layer before any shake').toContain('transform');
   expect(await glass(), 'the cards\' glass at rest').not.toBe('none');
-  await search(page, wvw.guilds);
+  await search(page, wvw.guilds[0]);
   await expect.poll(() => page.evaluate(() => window.__finale.glassAtBrokenEnd), { message: 'the break effect ended', timeout: 10000 }).not.toBeNull();
   const seen = await page.evaluate(() => window.__finale);
   expect(seen.willChange, 'the page layer when the shake starts').toContain('transform');
@@ -182,7 +182,7 @@ for (const idle of [true, false]) test(`the crest breaks under a glow painted be
   });
   await load(page, wvw);
   if (idle) await expect.poll(() => page.evaluate(() => window.__crestGlows().filter(g => g.lit > 0).length), { message: 'every glow painted while the page idles, before any click' }).toBe(4);
-  await search(page, wvw.guilds);
+  await search(page, wvw.guilds[0]);
   await expect.poll(() => page.evaluate(() => window.__crest.midBreak), { message: 'the crest broke', timeout: 10000 }).toBeTruthy();
   const { beforeBreak, midBreak } = await page.evaluate(() => window.__crest);
   expect.soft(beforeBreak, 'four glows: the whole crest, two halves, the crack').toHaveLength(4);

@@ -171,7 +171,7 @@ for (const when of ['with reduced motion', 'without focus', 'in a hidden tab']) 
     await load(page, wvw);
     if (when === 'without focus') await watch(page, { focused: false });
     if (when === 'in a hidden tab') await watch(page, { hidden: true });
-    await search(page, wvw.guilds);
+    await search(page, wvw.guilds[0]);
     const strip = page.locator('.guild-found-strip');
     await expect(strip).toBeAttached();
     await expect.poll(() => strip.evaluate(e => getComputedStyle(e).opacity), { message: 'the strip fading in' }).toBe('1');
@@ -257,7 +257,7 @@ function recordSurge(page) {
 }
 // A Check's round breaks the crest: the embers' blast.
 async function blast(page, wvw) {
-  await search(page, wvw.guilds);
+  await search(page, wvw.guilds[0]);
   await page.waitForFunction(() => window.__surgeAt !== null);
   return page.evaluate(() => window.__surgeAt);
 }
@@ -324,7 +324,7 @@ test('the surge brightens the embers as they are painted and only lifts the canv
     }).observe(document, { subtree: true, attributes: true, attributeFilter: ['class'] });
   });
   await load(page, wvw);
-  await search(page, wvw.guilds);
+  await search(page, wvw.guilds[0]);
   await page.waitForFunction(() => window.__surge?.done, null, { timeout: 15000 });
   const { t0, samples } = await page.evaluate(() => window.__surge);
   expect(samples.filter(([, f]) => f !== 'none'), 'a filter on the canvas during the surge').toEqual([]);

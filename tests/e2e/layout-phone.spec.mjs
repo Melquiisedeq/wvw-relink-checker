@@ -59,7 +59,7 @@ test('the alliances popover keeps its expand button', async ({ page, wvw }) => {
 // No column cut off, nothing past the screen.
 test('the result table stays inside its card at 320 and 390 px', async ({ page, wvw }) => {
   await load(page, wvw);
-  await search(page, wvw.guilds);
+  await search(page, wvw.guilds[0]);
   const tagLine = await page.evaluate(() => Math.max(0, ...[...document.querySelectorAll('#resultCard .tag')].map(t => Math.round(t.getBoundingClientRect().height))));
   for (const width of [320, 390]) {
     const cdp = await phone(page, width, { exact: false });

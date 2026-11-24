@@ -230,7 +230,7 @@ test.describe('phone', () => {
 test('Ctrl+Enter in the guild box closes a result row\'s popover and leaves no active trigger', async ({ page, wvw }) => {
   await page.setViewportSize({ width: 1280, height: 2000 });
   await load(page, wvw);
-  await search(page, wvw.guilds.slice(0, 1));
+  await search(page, wvw.guilds[0]);
   await page.locator('#resultBody .server-guilds-btn').first().click();
   await expect(page.locator(POP)).toHaveCount(1);
   await page.locator('#guildInput').focus();
