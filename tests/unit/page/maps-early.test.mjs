@@ -79,6 +79,66 @@ test('killView: a catch-up step after a long stall lights nothing (js/maps-early
   assert.equal(p.call('killView', m, TYPES).hot, null);
 });
 
+// Two server groups apart, /api/kills taking rows from both as each rises in score. A reading behind an earlier one
+// is a group behind, its counts older than its time: as the base it counts the gap as ten minutes. Thousands apart,
+// and a few hundred, under the ceiling on a window: there only the reading behind gives the group away.
+test('killView: a reading behind an earlier one is no base: two groups apart light nothing (js/maps-early.js)', () => {
+  for (const apart of [4000, 300]) {
+    const p = fresh();
+    const base = matches[0];
+    const now = p.clock.now;
+    const ahead = (back) => ({ at: now - back * MIN - 30000, n: { Center: 25590, RedHome: 4095 + (14 - back), BlueHome: 8583, GreenHome: 7143 } });
+    const behind = (back) => ({ at: now - back * MIN, n: { Center: 25590, RedHome: 4095 - apart + (14 - back), BlueHome: 8583 - apart, GreenHome: 7143 - apart } });
+    const rows = [];
+    for (let back = 14; back >= 1; back--) rows.push(ahead(back), behind(back));
+    sheetOf(p, base.id, rows);
+    // The body kept, a step on from the newest reading.
+    const m = liveWith(base, { ...ahead(0).n, RedHome: 4110 });
+    p.call('keepNewestMatch', m);
+    const v = p.call('killView', m, TYPES);
+    assert.deepEqual(clone(v.lit), [], `${apart} apart: no map wears swords`);
+    assert.equal(v.hot, null);
+    assert.ok(v.rates, `${apart} apart: the group ahead still counts`);
+    for (const [type, n] of v.rates.per) assert.ok(n <= 20, `${apart} apart, ${type}: ${Math.round(n)} per 10 min from a group behind`);
+  }
+});
+
+// A group hours behind that moves (its score rising, so its readings are written stamped now) and then catches up: the
+// readings before the jump are as recent as the jump, so no stall precedes it (prevRun), and the window of ten minutes
+// spans hours of kills.
+test('killView: a catch-up after readings that moved hours behind lights nothing and counts nothing (js/maps-early.js)', () => {
+  const p = fresh();
+  const base = matches[0];
+  const now = p.clock.now;
+  const rows = [];
+  for (let back = 20; back >= 1; back--) {
+    rows.push({ at: now - back * MIN, n: { Center: 27000 + 3 * (20 - back), RedHome: 2800, BlueHome: 3016, GreenHome: 3700 + (20 - back) } });
+  }
+  sheetOf(p, base.id, rows);
+  const m = liveWith(base, { Center: 29942, RedHome: 2983, BlueHome: 3201, GreenHome: 3910 });
+  p.call('keepNewestMatch', m);
+  const v = p.call('killView', m, TYPES);
+  assert.deepEqual(clone(v.lit), [], 'no map wears swords');
+  assert.equal(v.hot, null);
+  for (const [type, n] of v.rates ? v.rates.per : []) assert.ok(n < 1000, `${type}: ${Math.round(n)} per 10 min`);
+});
+
+// The ceiling on a window: exactly 1,000 kills in 10 min on one map is a fight, one more is a source catching up.
+test('killView: 1,000 kills per 10 min on a map still counts, 1,001 does not (js/maps-early.js)', () => {
+  const at = (kills) => {
+    const p = fresh();
+    const base = matches[0];
+    sheetOf(p, base.id, [{ at: p.clock.now - 10 * MIN, n: { Center: 100, RedHome: 0, BlueHome: 0, GreenHome: 0 } }]);
+    const m = liveWith(base, { Center: 100 + kills, RedHome: 0, BlueHome: 0, GreenHome: 0 });
+    p.call('keepNewestMatch', m);
+    return p.call('killView', m, TYPES);
+  };
+  const ok = at(1000);
+  assert.ok(ok.rates, '1,000 in 10 min: counted');
+  assert.equal(Math.round(ok.rates.per.get('Center')), 1000);
+  assert.equal(at(1001).rates, null, '1,001 in 10 min: no count');
+});
+
 test('killView: a match whose end_time cannot be read is neutral, like one that is over (js/maps-early.js)', () => {
   const p = fresh();
   const base = matches[0];
@@ -255,7 +315,7 @@ test('killView: jumpHeld is set only when the stall, not the pace, kept the swor
   const p = fresh();
   const base = matches[3];
   sheetOf(p, base.id, [{ at: p.clock.now - 30 * MIN, n: { Center: 100, RedHome: 0, BlueHome: 0, GreenHome: 0 } }]);
-  const m = liveWith(base, { Center: 5100 });
+  const m = liveWith(base, { Center: 1100 });
   p.call('keepNewestMatch', m);
   const wide = p.call('killView', m, TYPES);
   assert.equal(wide.long && !wide.longOk, true, 'a window past 20 min');

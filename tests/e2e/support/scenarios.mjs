@@ -183,6 +183,23 @@ export const missedFrozenAtTurn = (frozen = 13, flips = 3, fresh = 40, id) => {
 export const missedBehind = (min = 40, lag = 1, pace = 2, id) =>
   opened(id).latestStatus(503).olderPool(lag, { every: true }).advance(min, { kills: { Center: pace }, flips: 2 });
 
+// A tab hidden for hours. `away` minutes of a slow fight from the opening, then the API stuck for
+// everyone for `stuck` minutes while the game goes on (our readers too: /api/latest keeps that moment's bodies and
+// /api/kills, as the Worker serves it, answers 503 after 20 min with no row), then `after` minutes with it back.
+export const stuckAway = (away = 440, stuck = 30, after = 30, id) =>
+  gw2.match(id ?? FOCUS).workerKills().advance(12).pageOpens().advance(away, { kills: { Center: 3, BlueHome: 1 } })
+    .stall(true).advance(stuck).stall(false).advance(after, { kills: { Center: 3, BlueHome: 1 } });
+
+// Our readers stuck (/api/latest keeps its bodies, /api/kills goes to 503) while the visitor's whole group runs `behind`
+// minutes behind and moves, its score rising: the page keeps and logs those bodies, their kills hours old under a time
+// of now. A fight on every map for `min` minutes from the opening; then the group catches up and our readers are back,
+// and one read brings `behind` minutes of kills.
+export const catchUpBehind = (min = 470, behind = 400, after = 10, id) => {
+  const kills = { Center: 4, RedHome: 1, BlueHome: 1, GreenHome: 1 };
+  return gw2.match(id ?? FOCUS).workerKills().advance(12).pageOpens().latestHeld(true).olderPool(behind, { every: true })
+    .advance(min, { kills }).olderPool(0).latestHeld(false).advance(after, { kills });
+};
+
 // The world as of an absolute instant (`iso`, UTC) instead of minutes after the
 // recording: the recorded weeks rolled over to the one that holds it, twelve
 // minutes of a fight ending at most a minute before it. The fixture installs
