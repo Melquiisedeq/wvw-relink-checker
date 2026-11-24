@@ -326,3 +326,5 @@ html.lab-mid-on .page.struck{animation:none;}
 .standing-match.lab-dimmed{opacity:.4;}
 .lab-spot .lab-ring{background:var(--lab-c);}
 
+/* The highlights lead the middle now: the gap under the title's rule, 22 px on the site, a little less. */
+html.lab-mid-on .header-rule{margin-bottom:12px;}
