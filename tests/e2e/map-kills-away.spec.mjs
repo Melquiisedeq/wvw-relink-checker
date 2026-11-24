@@ -1,14 +1,50 @@
-// The map's kills corner after a tab hidden for hours: a server group that moved hours behind and then
-// caught up.
+// The map's kills corner after a tab hidden for hours: the history out at the opening and back while the
+// map stays open; a server group that moved hours behind and then caught up.
 import { test, expect } from './support/fixtures.mjs';
+import { abort } from './support/faults.mjs';
 import { load, openMap, play } from './support/steps.mjs';
-import { FOCUS, MIN, catchUpBehind, hidden, visible } from './support/scenarios.mjs';
+import { FOCUS, MIN, catchUpBehind, hidden, stuckAway, visible } from './support/scenarios.mjs';
 
 test.describe.configure({ timeout: 4 * 60 * 1000 });
 test.use({ clock: 'playwright', viewport: { width: 1280, height: 900 }, locale: 'en-US', timezoneId: 'UTC' });
 
 const BUTTON = page => page.locator(`.tier-map-btn[aria-label*="NA Tier ${FOCUS.split('-')[1]}"]`);
 const BIG = page => page.locator('.info-popover .wvw-plot-wrap .wvw-hud-l .wvw-hud-big');
+const SHEET = /^https:\/\/docs\.google\.com\/spreadsheets\/.*sheet=kills/;
+
+// Back into a 30-min stall of the whole API: /api/kills answers 503, so the corner has nothing to count. The
+// API comes back while the map stays open, and /api/kills with it.
+test.describe('the kill history out at the opening', () => {
+  test.use({ timeline: stuckAway(440, 30, 30) });
+  test('the sheet out too: the corner counts again within two minutes of /api/kills answering', async ({ page, wvw }) => {
+    await abort(page, wvw, SHEET);
+    await load(page, wvw);
+    await hidden(page, wvw, 465 * MIN);
+    await visible(page);
+    await openMap(page, wvw, BUTTON(page));
+    await expect(BIG(page), 'the state: nothing to count at the opening').toHaveText('–');
+    const reads = [];
+    page.on('request', r => { if (new URL(r.url()).pathname === '/api/kills') reads.push(r.url()); });
+    await play(page, 4.5 * MIN);
+    expect(reads.length, 'never more than one read of the history a minute').toBeLessThanOrEqual(5);
+    await play(page, 2.5 * MIN);
+    await expect(BIG(page), 'two minutes after the API came back').toHaveText(/^\d+$/);
+    const counted = reads.length;
+    await play(page, 2 * MIN);
+    expect(reads.length, 'no read once the corner counts').toBe(counted);
+  });
+  // The sheet answers with nothing of the last 3 h: the read at the opening is a copy in hand, younger
+  // than the cache's five minutes when the API comes back.
+  test('the sheet answering nothing recent: the corner counts again within two minutes of /api/kills answering', async ({ page, wvw }) => {
+    await load(page, wvw);
+    await hidden(page, wvw, 468 * MIN);
+    await visible(page);
+    await openMap(page, wvw, BUTTON(page));
+    await expect(BIG(page), 'the state: nothing to count at the opening').toHaveText('–');
+    await play(page, 4 * MIN);
+    await expect(BIG(page), 'two minutes after the API came back').toHaveText(/^\d+$/);
+  });
+});
 
 // Our readers stuck while the visitor's group runs 400 min behind and moves; back 12 min before it catches up,
 // with the map open. One read then brings 400 minutes of kills.

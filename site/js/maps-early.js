@@ -141,7 +141,7 @@ function recordFightSamples(matches, asked) {
 
 // The shared half of the fight log, taken whether or not anyone was looking:
 // how a first-ever visitor learns which map is busy. Cached, never refetched
-// by tab switches or the poll.
+// by tab switches, nor by the poll unless an open map is counting from its own readings.
 let killSheet = null;
 let killSheetAt = 0;
 let killSheetInFlight = null;
@@ -162,9 +162,15 @@ function ageFromHistory(byMatch) {
   if (alive) ageFirstSightFromHistory(byMatch, HUD_STALE_MS, fightTotals);
 }
 
-async function getKillSheet() {
-  if (killSheet && Date.now() - killSheetAt < KILLS_SHEET_TTL_MS) return killSheet;
+// When the last read went out, answered or not: an open map counting from its own readings asks again by it
+// (js/maps.js, pullFresh), and a failed read leaves killSheetAt where it was.
+let killSheetAskedAt = 0;
+
+// `maxAge`: how old the copy in hand may be.
+async function getKillSheet(maxAge = KILLS_SHEET_TTL_MS) {
+  if (killSheet && Date.now() - killSheetAt < maxAge) return killSheet;
   if (killSheetInFlight) return killSheetInFlight;
+  killSheetAskedAt = Date.now();
 
   killSheetInFlight = (async () => {
     try {
