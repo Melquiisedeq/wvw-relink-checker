@@ -31,12 +31,12 @@
   older one.
 -->
 <link rel="canonical" href="https://wvwrelink.com/">
-<meta name="description" content="Guild Wars 2 WvW relink checker. Paste your guild names, see which team each landed on after the relink, and watch live maps that show where the fighting is.">
+<meta name="description" content="Guild Wars 2 WvW relink checker. Type your guild’s name, see which team it landed on after the relink, its tier and rivals, and watch live maps that show where the fighting is.">
 <meta name="theme-color" content="#0f1216">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="WvW Relink Checker">
 <meta property="og:title" content="WvW Relink Checker — Guild Wars 2 World vs World Teams and Standings (Fan Site)">
-<meta property="og:description" content="Guild Wars 2 WvW relink checker. Paste your guild names, see which team each landed on after the relink, and watch live maps that show where the fighting is.">
+<meta property="og:description" content="Guild Wars 2 WvW relink checker. Type your guild’s name, see which team it landed on after the relink, its tier and rivals, and watch live maps that show where the fighting is.">
 <meta property="og:url" content="https://wvwrelink.com/">
 <!--
   Discord fetches og:image from its own servers, so the CSP does not
@@ -47,7 +47,7 @@
 <meta property="og:image" content="https://wvwrelink.com/assets/social-card.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="WvW Relink Checker — find out which WvW team your alliance landed on, in one paste.">
+<meta property="og:image:alt" content="WvW Relink Checker — find out which WvW team your guild landed on after the relink.">
 <meta name="twitter:card" content="summary_large_image">
 <!--
   Renders nothing: tells a search engine what this page is and which game it
@@ -68,7 +68,7 @@
   "isAccessibleForFree": true,
   "sameAs": "https://github.com/Melquiisedeq/wvw-relink-checker",
   "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
-  "description": "Check which Guild Wars 2 WvW team your alliance's guilds landed on after the relink, with NA and EU tier standings, scores, and live maps that show where the fighting is.",
+  "description": "Check which Guild Wars 2 WvW team your guild landed on after the relink, with NA and EU tier standings, scores, and live maps that show where the fighting is.",
   "about": {
     "@type": "VideoGame",
     "name": "Guild Wars 2",
@@ -107,6 +107,7 @@
 <link rel="stylesheet" href="css/click.css">
 <link rel="stylesheet" href="css/trebuchet.css">
 <link rel="stylesheet" href="css/facets.css">
+<link rel="stylesheet" href="css/search.css">
 </head>
 
 <body>
@@ -174,51 +175,21 @@
     <h1>WvW Relink Checker</h1>
   </div>
   <div class="header-rule"></div>
-  <p class="subtitle">
-    Drop in your alliance's guild names (one per line) and find out which
-    WvW team each one landed on after the relink — plus the tier, the
-    score, and which guilds are sitting on every side of the match.
-    For NA and EU.
-  </p>
-
-  <div class="card">
-    <label for="guildInput">Guild names, one per line (a guild ID works too)</label>
-    <textarea id="guildInput" placeholder="Guild Name
-Another Guild Name
-One More Guild Name"></textarea>
-
-    <div class="row">
-      <button id="runBtn">Check</button>
-      <span id="statusMsg" class="hint" role="status" aria-live="polite"></span>
+  <section class="search-panel" aria-label="Find your guild’s team">
+    <div class="search-head">
+      <svg class="search-head-ic" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M10.5 4a6.5 6.5 0 1 1 0 13a6.5 6.5 0 1 1 0-13Z"/><path d="M15.5 15.5 20 20"/></svg>
+      <span>Find your guild’s team</span>
     </div>
-    <p class="hint">
-      Names need to match the in-game guild name exactly. The search
-      doesn't do tags or partial matches. Up to 20 guilds per run.
-    </p>
-  </div>
-
-  <div class="card" id="resultsPlaceholder">
-    <p class="muted">Paste some guild names above and hit Check. Results show up here.</p>
-  </div>
-  <div class="card" id="resultCard">
-    <table role="table">
-      <thead role="rowgroup">
-        <tr role="row">
-          <th role="columnheader">Guild</th>
-          <th role="columnheader">Tag</th>
-          <th role="columnheader">Region</th>
-          <th role="columnheader">Team</th>
-        </tr>
-      </thead>
-      <tbody id="resultBody" role="rowgroup"></tbody>
-    </table>
-    <div class="row" id="copyRow">
-      <button id="copyChatBtn" type="button">Copy for chat</button>
-      <button id="copyDiscordBtn" type="button">Copy for Discord</button>
-      <span id="copyFeedback" class="hint" role="status" aria-live="polite"></span>
+    <p class="subtitle">See which team your guild landed on after the relink, its tier and the teams it faces. NA and EU.</p>
+    <label for="guildInput" class="sr-only">Guild name, exactly as in game</label>
+    <div class="search-bar">
+      <input id="guildInput" class="search-input" type="search" maxlength="64" autocomplete="off" spellcheck="false"
+             autocapitalize="off" autocorrect="off" enterkeyhint="search" placeholder="Exact in-game guild name" list="recentGuilds">
+      <span class="search-btn"><button id="runBtn" type="button">Check</button></span>
+      <datalist id="recentGuilds"></datalist>
     </div>
-  </div>
-  <div id="matchPanelsContainer"></div>
+    <div class="search-answer" id="searchAnswer" role="status" aria-live="polite"></div>
+  </section>
 
 </main>
 
@@ -318,8 +289,6 @@ One More Guild Name"></textarea>
 <div class="impact-overlay" id="impactOverlay" aria-hidden="true">
   <!-- Reuses the four #crest* gradients and the clip path defined in the title
        icon's <defs> above, declared once (ids are document-scoped). -->
-  <div class="impact-ring"></div>
-  <div class="impact-ring impact-ring--slow"></div>
   <div class="impact-stack">
     <!-- The glow, drawn once by js/trebuchet.js: the whole crest's until the break, then each half's. -->
     <canvas class="crest-glow crest-glow--whole"></canvas>
@@ -385,8 +354,7 @@ One More Guild Name"></textarea>
 <script src="js/wvw-static.js"></script>
 <script src="js/maps-early.js"></script>
 <script src="js/panels.js"></script>
-<script src="js/summary.js"></script>
-<script src="js/run.js"></script>
+<script src="js/search.js"></script>
 <script src="js/trebuchet.js"></script>
 <script src="js/boot.js"></script>
 

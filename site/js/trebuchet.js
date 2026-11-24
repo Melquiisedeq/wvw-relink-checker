@@ -263,24 +263,6 @@ function onPointerDown(e) {
   }, SWING_MS);
 }
 
-function sparkFromButton() {
-  const r = runBtn.getBoundingClientRect();
-  if (r.width === 0) return;
-  for (let i = 0; i < 14; i++) {
-    const spark = document.createElement('div');
-    spark.className = 'btn-spark';
-    spark.style.left = `${r.left + Math.random() * r.width}px`;
-    spark.style.top = `${r.top + Math.random() * r.height}px`;
-    const angle = -Math.PI / 2 + (Math.random() - 0.5) * 2.2;
-    const distance = 30 + Math.random() * 70;
-    spark.style.setProperty('--sx', `${Math.round(Math.cos(angle) * distance)}px`);
-    spark.style.setProperty('--sy', `${Math.round(Math.sin(angle) * distance)}px`);
-    spark.style.animationDelay = `${(Math.random() * 0.12).toFixed(2)}s`;
-    document.body.appendChild(spark);
-    setTimeout(() => spark.remove(), 900);
-  }
-}
-
 // The finale: the crest appears, a heavy round gathers, is lobbed into the crest,
 // the crest splits. The wind-up is not on the click: a round launched then would
 // hang waiting for the API.
@@ -474,8 +456,9 @@ function launchCharge(ball, startedAt, letGo) {
     const arc = ball.querySelector('i');
     ball.classList.remove('charging');
     ball.classList.add('flying');
-    const dx = window.innerWidth / 2 - from.x;
-    const dy = window.innerHeight / 2 - from.y;
+    const to = finaleTarget() || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
     ball.style.setProperty('--dx', `${Math.round(dx)}px`);
     arc.style.setProperty('--dy', `${Math.round(dy)}px`);
     arc.style.setProperty('--rise', `${Math.round(arcRise(dx, dy))}px`);
@@ -484,6 +467,7 @@ function launchCharge(ball, startedAt, letGo) {
     setTimeout(() => {
       ball.remove();
       breakCrest();
+      strikeAnswer();
     }, FLIGHT_MS);
   }, SWING_MS);
 }

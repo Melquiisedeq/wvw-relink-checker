@@ -33,7 +33,6 @@ html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:1;}
   #relinkBanner[style*="display: none"] + .page .rail{margin-top:0;}
 }
 .title-row{display:flex;align-items:center;gap:12px;margin-bottom:8px;}
-#matchPanelsContainer{display:flex;flex-direction:column;gap:16px;}
 /* The closed contour is what the urgency pulse travels around. */
 .relink-banner{
   /* Shown from first paint at the bar's height so its arrival does not shift the page; updateRelinkBanner takes over display. */
