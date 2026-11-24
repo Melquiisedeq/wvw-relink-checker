@@ -18,6 +18,10 @@
 // fresh and made of known sources, and it must not run ahead of the game's own
 // API - which only a stolen signing secret can do.
 //
+// The update notes: the wiki read by the notes script every 6 hours, the forum's RSS by the
+// Worker's daily schedule; /api/notes says when each was last read well, and either older than
+// NOTES_STALE is a problem (the Worker keeps serving the last good copy, so nothing else shows it).
+//
 // And the push routes (/api/ingest/*) that must stay shut, each a status and no
 // judgement: they take no GET and no unsigned POST, and the Worker has no workers.dev
 // address (`workers_dev: false` in worker/wrangler.jsonc).
@@ -46,6 +50,8 @@ const LATEST_REQUIRED = ['latest-supa-us', 'latest-supa-eu'];
 const LATEST_STALE = 90 * 60;
 // The cleanup runs daily (worker/wrangler.jsonc, crons); 2 h of slack.
 const CLEANUP_STALE = 26 * 3600;
+// Twelve missed runs of the notes script, three of the daily schedule.
+const NOTES_STALE = 3 * 86400;
 // The summary may lead a stale read of the game's API by at most 600 points a
 // minute for the 70 minutes the API can lag; past it, a score the game never
 // had, which only a stolen signing secret could send.
@@ -250,6 +256,29 @@ export function checkCleanup(data, now, problems, notes) {
     problems.push(`The daily cleanup last ran ${floor((now - at) / 3600)} hours ago (limit ${floor(CLEANUP_STALE / 3600)}). Check its cron on the Worker wvwrelink-api.`);
   } else {
     notes.push(`${label('cleanup last ran')} ${floor((now - at) / 3600)} h ago`);
+  }
+}
+
+export async function checkNotes(ctx, problems, notes) {
+  const [data, why] = await ctx.getJson(`${API}notes`);
+  if (why) {
+    problems.push(`/api/notes: ${why}.`);
+    return;
+  }
+  const now = ctx.seconds();
+  const what = {
+    wiki: 'the wiki: the notes script, its 6-hour trigger, its ingest property, or the Worker secret INGEST_NOTES',
+    rss: "the forum's RSS: the Worker's daily schedule, or the forum refusing it (Workers Logs, \"notes\")",
+  };
+  for (const source of ['wiki', 'rss']) {
+    const at = data?.[source];
+    if (!isInt(at) || at === 0) {
+      problems.push(`/api/notes has never read ${what[source]}.`);
+    } else if (now - at > NOTES_STALE) {
+      problems.push(`/api/notes last read ${source} ${floor((now - at) / 3600)} hours ago (limit ${floor(NOTES_STALE / 3600)}). Check ${what[source]}.`);
+    } else {
+      notes.push(`${label(`notes: ${source} last read`)} ${floor((now - at) / 3600)} h ago`);
+    }
   }
 }
 
@@ -462,6 +491,7 @@ export async function main(deps = {}) {
   const notes = [];
   await checkFeeds(ctx, problems, notes);
   await checkReads(ctx, problems, notes);
+  await checkNotes(ctx, problems, notes);
   await checkLatest(ctx, problems, notes);
   await checkDoors(ctx, problems, notes);
   const out = [...notes, ...problems.map((p) => `::error::${escape(p)}`)];
