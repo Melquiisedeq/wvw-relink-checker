@@ -30,6 +30,13 @@ test('the Synced lines are not live regions; the notice stays rendered, empty, b
     .toEqual({ display: 'block', empty: true, role: 'status', border: '0px', height: 0 });
 });
 
+test('the title says fan site and the footer carries the ArenaNet trademark notice', async ({ page, wvw }) => {
+  await load(page, wvw);
+  await expect(page).toHaveTitle(/\(Fan Site\)$/);
+  await expect(page.locator('.gw2-band-fine')).toContainText(
+    '© ArenaNet LLC. All rights reserved. NCSOFT, ArenaNet, Guild Wars, Guild Wars 2, GW2, Heart of Thorns, Path of Fire, End of Dragons, Secrets of the Obscure, Janthir Wilds, Visions of Eternity, and all associated logos, designs, and composite marks are trademarks or registered trademarks of NCSOFT Corporation. All other trademarks are the property of their respective owners.');
+});
+
 test('a region that cannot load says so in its alert', async ({ page, wvw }) => {
   await answer(page, ALL, []);
   await answer(page, EU_ONLY, []);
