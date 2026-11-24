@@ -75,6 +75,8 @@ const FLIPPABLE = new Set(['Camp', 'Tower', 'Keep']);
 const ID_RE = /^[12]-[1-9]$/;
 const API = 'https://api.guildwars2.com/v2/wvw/matches?';
 const TACTICS = 'https://api.guildwars2.com/v2/guild/upgrades?ids=';
+const SHEET_RESET_RATIO = 0.5;   // apps-script/kills/kills.gs, RESET_RATIO
+const SHEET_KILLS_URL = 'https://docs.google.com/spreadsheets/d/1Lh6dGhlYVvvKlXT_tofEUKZhYGW71Jij1IstbdPF2fg/gviz/tq?tqx=out:csv&sheet=kills';   // js/config.js, KILLS_SHEET_URL
 const DEFAULT_SCORE = Object.freeze({ red: 120, blue: 80, green: 60 });   // per minute
 const DEFAULT_KILLS = Object.freeze({ Center: 30 });                     // per minute: a fight on EBG
 
@@ -273,6 +275,34 @@ class Timeline {
     return this.#with([{ kind: 'latest', at: this.#cursor, code }]);
   }
 
+  // For the whole timeline /api/kills as the Worker builds it (worker/index.mjs,
+  // rebuildRecent and READS): besides the last thirty minutes, each match's newest
+  // row before them (up to 3 h back) and its kills' last move (the first row with
+  // the newest total, the row before it, the newest row 10 min before the move,
+  // within 2.5 h); a 503 once no row came in for 20 min.
+  workerKills() {
+    return this.#with([{ kind: 'worker-kills' }]);
+  }
+
+  // For the whole timeline the kills sheet as kills.gs writes it (apps-script/kills/kills.gs):
+  // each minute in which the score its read gets rose, a row stamped with that minute, the
+  // kills, start and score of that body; each write drops the rows over 2 h older than it.
+  // `visitor`: kills.gs reads what the visitor's group answers (olderPool, a visitor's stall),
+  // not what our readers do.
+  sheetKills({ visitor = false } = {}) {
+    return this.#with([{ kind: 'sheet-kills', visitor }]);
+  }
+
+  // From here on the API answers every match URL with the bodies of this moment
+  // while the game plays on (a server group stuck); false ends it, and the next
+  // read gets the game as it stands, every kill of the stall at once. Our readers
+  // are stuck with it: /api/latest keeps this moment's bodies and /api/kills gets
+  // no rows. `visitor`: only the visitor's group; our readers, on the other one,
+  // go on, and so do /api/latest and /api/kills.
+  stall(on, { visitor = false } = {}) {
+    return this.#with([{ kind: 'stall', at: this.#cursor, on: !!on, visitor }]);
+  }
+
   // From here on our readers push nothing (each stuck on a group that stands
   // still): /api/latest and its summary keep the bodies of this moment, with
   // the time each last rose, and /api/kills gets no rows; false ends it.
@@ -386,7 +416,7 @@ class Timeline {
     for (const id of ids) roll(id, horizon);
     for (const list of frames.values()) list.sort((a, b) => a.at - b.at);
     const windows = kind => this.#ops.filter(o => o.kind === kind).sort((a, b) => a.at - b.at);
-    this.#compiled = { anchor, base, bodyOf, ids, frames, pools: windows('pool'), statuses: windows('status'), latest: windows('latest'), history: windows('history'), held: windows('held') };
+    this.#compiled = { anchor, base, bodyOf, ids, frames, pools: windows('pool'), statuses: windows('status'), latest: windows('latest'), history: windows('history'), held: windows('held'), stalls: windows('stall'), workerKills: this.#ops.some(o => o.kind === 'worker-kills'), sheetKills: this.#ops.find(o => o.kind === 'sheet-kills') || null };
     return this.#compiled;
   }
 
@@ -444,6 +474,19 @@ class Timeline {
       else if (from === t) from = w.at;
     }
     return from;
+  }
+
+  // The stall that holds at t ({ from, visitor }), or null.
+  stallAt(t) {
+    const w = this.#windowAt(this.#compile().stalls, t);
+    return w && w.on ? { from: w.at, visitor: w.visitor } : null;
+  }
+
+  // The time our readers' bodies are of at t: what they last read before the API
+  // went down, the copy held, or the stall's start when they are stuck in it.
+  readersUp(t) {
+    const s = this.stallAt(t);
+    return Math.min(this.lastUp(t), this.heldAt(t), s && !s.visitor ? s.from : t);
   }
 
   // Whether /api/kills takes rows at t.
@@ -645,6 +688,37 @@ export const historyOf = b => b.skirmishes.slice(0, -1);
 
 const json = (status, value) => ({ status, type: 'application/json; charset=utf-8', body: Buffer.from(JSON.stringify(value)) });
 
+// /api/kills as the Worker serves it at `now` (ms) from every row written up to then, oldest first
+// (worker/index.mjs, rebuildRecent): null for its 503.
+const WORKER_BASE_MS = 3 * 60 * MIN;
+const WORKER_MOVE_MS = 150 * MIN;
+const WORKER_STALE_MS = 20 * MIN;
+const rowSum = r => r[2] + r[3] + r[4] + r[5];
+function workerWindow(rows, now) {
+  if (!rows.length || now - rows[rows.length - 1][0] > WORKER_STALE_MS) return null;
+  const cut = now - KILLS_WINDOW_MS, floor = cut - WORKER_BASE_MS, reach = now - WORKER_MOVE_MS;
+  const out = new Map();
+  for (const m of new Set(rows.map(r => r[1]))) {
+    const own = rows.filter(r => r[1] === m && r[0] > floor);
+    if (!own.length) continue;
+    const add = r => { if (r) out.set(r[0] + ' ' + m, r); };
+    own.filter(r => r[0] > cut).forEach(add);
+    add(own.findLast(r => r[0] <= cut));
+    const tot = rowSum(own[own.length - 1]);
+    const before = own.findLast(r => rowSum(r) < tot);
+    if (before && before[0] > reach) {
+      const move = own.find(r => r[0] > before[0]);
+      add(before);
+      add(move);
+      add(own.findLast(r => r[0] <= move[0] - 10 * MIN));
+    } else {
+      const first = own.find(r => r[0] > reach);
+      if (first && rowSum(first) === tot) add(first);
+    }
+  }
+  return [...out.values()].sort((a, b) => a[0] - b[0] || byId(a[1], b[1]));
+}
+
 class Server {
   #tl; #problem; #newest = new Map(); #planted = new Set(); #cache = new Map();
 
@@ -675,6 +749,8 @@ class Server {
   // Which body a match URL gets: the older group's in the odd minutes while
   // one is behind.
   #at(t) {
+    const s = this.#tl.stallAt(t);
+    if (s) return { t: Math.min(s.from, t - this.#tl.lagAt(t)), older: true };
     const lag = this.#tl.lagAt(t);
     const minute = Math.floor(t / MIN);
     if (lag && this.#tl.everyAt(t)) return { t: t - lag, older: true };
@@ -726,7 +802,7 @@ class Server {
         this.#planted.add(url);
         return { ...json(down, { error: 'down' }), date: pageNow };
       }
-      const up = Math.min(this.#tl.lastUp(t), this.#tl.heldAt(t));
+      const up = this.#tl.readersUp(t);
       // `at`, in seconds as the Worker gives it: when the body's score last rose.
       const at = id => Math.floor(this.#tl.changedAt(id, up) / 1000);
       const bodies = ids.map(id => this.#body(id, up, anchor + up, false));
@@ -755,7 +831,14 @@ class Server {
       return { ...json(200, { at: newest, matches: bodies.map(b => ({ id: b.id, start: Date.parse(b.start_time), score: sum(b.scores), at: at(b.id), by: 'a',
         v: 2, body: liveOf(b) })) }), date: pageNow };
     }
-    if (path === '/api/kills') return json(200, { rows: this.#rows(t) });
+    const { sheetKills } = Timeline.compiled(this.#tl);
+    if (sheetKills && url === SHEET_KILLS_URL) return { status: 200, type: 'text/csv; charset=utf-8', body: Buffer.from(this.#sheet(t, sheetKills.visitor)) };
+    if (path === '/api/kills') {
+      const rows = this.#rows(t);
+      if (rows) return json(200, { rows });
+      this.#planted.add(url);
+      return json(503, { error: 'stale' });
+    }
     return null;
   }
 
@@ -765,7 +848,7 @@ class Server {
     const { anchor, ids } = Timeline.compiled(this.#tl);
     const t = pageNow - anchor;
     if (this.#tl.latestStatusAt(t)) return null;
-    const up = Math.min(this.#tl.lastUp(t), this.#tl.heldAt(t));
+    const up = this.#tl.readersUp(t);
     const matches = ids.map(id => {
       const b = this.#body(id, up, anchor + up, false);
       return { id, start: Date.parse(b.start_time), score: sum(b.scores), at: Math.floor(this.#tl.changedAt(id, up) / 1000) };
@@ -773,22 +856,51 @@ class Server {
     return { matches, version: versionName(Math.max(...matches.map(m => m.at))) };
   }
 
+  // The kills sheet at t (sheetKills): the focus match's rows as CSV, every column quoted as gviz does.
+  #sheet(t, visitor) {
+    const { anchor } = Timeline.compiled(this.#tl);
+    const id = this.#tl.focus;
+    let rows = [];
+    let last = -Infinity;
+    for (let m = 0; m <= t; m += MIN) {
+      if (this.#tl.statusAt(m) !== null && (visitor || this.#tl.readersStatusAt(m) !== null)) continue;
+      const b = this.#body(id, visitor ? this.#at(m).t : this.#tl.readersUp(m), anchor + m, false);
+      const score = sum(b.scores);
+      if (!(score > last)) continue;
+      last = score;
+      const at = anchor + m;
+      rows = rows.filter(r => r[0] >= at - 120 * MIN);
+      const k = Object.fromEntries(b.maps.map(x => [x.type, sum(x.kills)]));
+      const prev = rows[rows.length - 1];
+      const st = Date.parse(b.start_time);
+      if (prev && st < prev[6]) continue;
+      // kills.gs, rowFor_: each map's running maximum over the row before, unless a new week or a drop below half.
+      const keep = prev && st === prev[6];
+      rows.push([at, id, ...MAPS.map((type, i) => {
+        const n = k[type] || 0;
+        return keep && n >= prev[2 + i] * SHEET_RESET_RATIO ? Math.max(n, prev[2 + i]) : n;
+      }), st, score]);
+    }
+    return rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  }
+
   // /api/kills: the recorded rows and a row per state of the timeline, the
   // last thirty minutes, none while the API was down (the readers read it too)
   // or while killHistory(false) or latestHeld(true) holds.
   #rows(t) {
-    const { anchor, ids, frames } = Timeline.compiled(this.#tl);
-    const from = t - KILLS_WINDOW_MS;
+    const { anchor, ids, frames, workerKills } = Timeline.compiled(this.#tl);
+    const from = t - (workerKills ? KILLS_WINDOW_MS + WORKER_BASE_MS : KILLS_WINDOW_MS);
     const rows = baseBodies().rows.filter(r => r[0] - anchor > from && r[0] - anchor <= t);
     for (const id of ids) {
       for (const f of frames.get(id)) {
         if (!(f.at > from && f.at <= t) || this.#tl.readersStatusAt(f.at) !== null || !this.#tl.historyAt(f.at)
-          || this.#tl.heldAt(f.at) !== f.at) continue;
+          || this.#tl.heldAt(f.at) !== f.at || this.#tl.readersUp(f.at) !== f.at) continue;
         const k = this.#tl.killsByMap(id, f.at);
         rows.push([anchor + f.at, id, ...MAPS.map(type => k[type] || 0)]);
       }
     }
-    return rows.sort((a, b) => a[0] - b[0] || byId(a[1], b[1]));
+    rows.sort((a, b) => a[0] - b[0] || byId(a[1], b[1]));
+    return workerKills ? workerWindow(rows, anchor + t) : rows;
   }
 }
 

@@ -16,8 +16,8 @@ need it to work. `worker/`, the Supabase readers in `supabase/` and the Apps Scr
 same rule: one file of code, no dependencies, nothing to install. There is no local setup for
 `worker/`: the tests in `tests/unit/` run it under Node against a stand-in for its database (`tests/worker-fakes/`, which the browser tests use too);
 merging into `main` deploys the code, and a schema file is run by hand. The browser tests in
-`tests/e2e/` are the one place with dependencies, Playwright Test and
-monocart-coverage-reports, and nothing in `site/` or `worker/` may import from there.
+`tests/e2e/` are the one place with dependencies, Playwright Test,
+monocart-coverage-reports and @axe-core/playwright, and nothing in `site/` or `worker/` may import from there.
 
 So a pull request that adds a library, a bundler or a framework will not be
 merged, however good the library is. If something really does need one, open
@@ -46,7 +46,7 @@ supabase/      the reader, one function run from two Supabase regions, one per
                bodies to the Worker every 20 seconds
 tests/         unit/: the Worker's and the Supabase reader's rules, and the page's
                rules with its scripts in a node:vm, run by node --test;
-               e2e/: the browser tests (Playwright Test, monocart-coverage-reports)
+               e2e/: the browser tests (Playwright Test, monocart-coverage-reports, @axe-core/playwright)
 scripts/       the checks (check-*.mjs), the helper they import (workflow-text.mjs) and the contract they compare against
 .github/       the workflows that run them, and the branch pruning
 wrangler.jsonc the root Worker: serves site/ as static assets, no code
@@ -158,7 +158,7 @@ or a file's coverage under `node --test` falls (`tests/e2e/data/coverage.json`);
 which measure and which file. The browser tests run on two machines, `e2e (1/2)` and `e2e (2/2)`. Another job,
 `warn`, is not required: it runs the tests tagged `@timing` (they count frames, which a busy runner
 moves) and `@quarantine` (one that fails for the machine, not the page, until it is fixed); red there
-blocks nothing, and its summary says what failed. The coverage job's summary has the table per
+blocks nothing, and its summary says what failed. `@advisory` is a test that only warns by design: the axe accessibility scan of four screens (`tests/e2e/axe.spec.mjs`), whose violations the summary lists; it becomes a blocking check only by the owner's decision, with its list at zero. The coverage job's summary has the table per
 file with both suites joined, but only the `node --test` numbers have a floor: the browser's move a
 little between runs of one commit, the node tests' do not. `npm run coverage` in `tests/e2e` measures
 it locally, running both test suites and comparing with `data/coverage.json`; `npm run coverage:write`

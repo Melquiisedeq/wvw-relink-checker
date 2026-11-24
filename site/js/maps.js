@@ -758,6 +758,8 @@ function ageWords(ms) {
 
 // A score time `at` (the server's time) no older than `ms`.
 const scoreFresh = (at, ms) => steadyNow() - at <= ms;
+// How often an open map counting from its own readings asks the kill history again (pullFresh).
+const KILLS_ASK_AGAIN_MS = 60 * 1000;
 
 // The two corners over the map: kills on the left, on the right the age of the match's data
 // (matchScoreRoseAt). Text on a shadow, no box; they go while the map is zoomed. Built once per map;
@@ -3078,6 +3080,9 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
       // read failed (our copy, late: offerLate), is painted all the same.
       const kept = newestMatches.get(match.id);
       if (kept && matchIsBehind(liveMatch, kept.match)) fresh = kept.match;
+      else if (returnRetryTake()) {
+        setTimeout(() => { if (activePopover === popover && document.visibilityState !== 'hidden') pullFresh(); }, RETURN_RETRY_MS);
+      }
     }
     // Not on the opening's own first read: the opening has just asked, with its retries.
     const refresh = firstReadDone;
@@ -3137,6 +3142,10 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
     const gapFrom = (newestMatches.get(match.id) || {}).gapFrom;
     if (gapFrom && killSheetAt < gapFrom) {
       getKillSheet().then(() => { if (activeTrigger === triggerEl) { paintCorners(); paintNote(); } });
+    } else if (hotView && hotView.counting && Date.now() - killSheetAskedAt >= KILLS_ASK_AGAIN_MS) {
+      // Counting from this page's own readings: the history was out or short at the opening, and the
+      // opening's read is all it gets otherwise until a gap or a reopen past the cache.
+      getKillSheet(KILLS_ASK_AGAIN_MS).then(() => { if (activeTrigger === triggerEl) { markHotTab(liveMatch); paintNote(); } });
     }
   };
 

@@ -9,6 +9,7 @@
     "coverage:write": "node support/coverage.mjs run-write"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@playwright/test": "1.65.1",
     "monocart-coverage-reports": "3.2.1"
   }

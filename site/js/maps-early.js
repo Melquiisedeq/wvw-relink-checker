@@ -141,7 +141,7 @@ function recordFightSamples(matches, asked) {
 
 // The shared half of the fight log, taken whether or not anyone was looking:
 // how a first-ever visitor learns which map is busy. Cached, never refetched
-// by tab switches or the poll.
+// by tab switches, nor by the poll unless an open map is counting from its own readings.
 let killSheet = null;
 let killSheetAt = 0;
 let killSheetInFlight = null;
@@ -162,9 +162,15 @@ function ageFromHistory(byMatch) {
   if (alive) ageFirstSightFromHistory(byMatch, HUD_STALE_MS, fightTotals);
 }
 
-async function getKillSheet() {
-  if (killSheet && Date.now() - killSheetAt < KILLS_SHEET_TTL_MS) return killSheet;
+// When the last read went out, answered or not: an open map counting from its own readings asks again by it
+// (js/maps.js, pullFresh), and a failed read leaves killSheetAt where it was.
+let killSheetAskedAt = 0;
+
+// `maxAge`: how old the copy in hand may be.
+async function getKillSheet(maxAge = KILLS_SHEET_TTL_MS) {
+  if (killSheet && Date.now() - killSheetAt < maxAge) return killSheet;
   if (killSheetInFlight) return killSheetInFlight;
+  killSheetAskedAt = Date.now();
 
   killSheetInFlight = (async () => {
     try {
@@ -249,9 +255,17 @@ function fightSamples(match) {
   // Older than FIGHT_STALE_MS is dropped: better no swords than a stale rate.
   const week = Date.parse(match && match.start_time);
   const floor = Math.max(steadyNow() - FIGHT_STALE_MS, Number.isFinite(week) ? week : 0);
+  // Inside a week kills only rise: a reading below an earlier one on some map is a server group behind, its
+  // counts older than its time, and as a base it would count hours of kills as minutes.
+  const high = {};
   return [...shared, ...local]
     .filter((s) => s && s.at >= floor)
-    .sort((a, b) => a.at - b.at);
+    .sort((a, b) => a.at - b.at)
+    .filter((s) => {
+      if (Object.keys(s.n).some((t) => (Number(s.n[t]) || 0) < (high[t] || 0))) return false;
+      for (const t in s.n) high[t] = Math.max(high[t] || 0, Number(s.n[t]) || 0);
+      return true;
+    });
 }
 
 // When a match's kills last moved: the time of the first reading (shared
@@ -312,6 +326,9 @@ const HOT_FLOOR = 50;      // kills per ten minutes: a real fight, not API noise
 // longer lights too many that have ended; shorter blinks them out between the API's own steps.
 const HOT_BIG = 75;
 const HOT_SMALL_WANT_MS = 7 * 60 * 1000;
+// Kills per 10 min on one map past which the window spans a source catching up (a group that moved hours behind,
+// then the present), not a fight: no count and no swords until the window has passed the jump.
+const KILLS_CEILING = 1000;
 
 function killView(match, types, now = steadyNow()) {
   const view = { clock: 0, atLeast: false, silence: 0, prevRun: Infinity, rates: null, pace: 0,
@@ -378,11 +395,6 @@ function killView(match, types, now = steadyNow()) {
   } else {
     killCountingSince.delete(match.id);
     const span = view.clock - base.at;
-    view.long = span > WINDOW_MAX_MS;
-    // A long window still counts for the swords up to the catch-up limit: the rates are per 10 min.
-    view.longOk = view.long && span <= KILLS_CATCHUP_MAX_MS;
-    const next = list.find((s) => s.at > base.at);
-    view.gap = { from: base.at, to: next ? Math.min(next.at, view.clock) : view.clock };
     const per = new Map();
     let moved = 0;
     for (const type in body) {
@@ -390,8 +402,15 @@ function killView(match, types, now = steadyNow()) {
       moved += d;
       per.set(type, d * (600000 / span));
     }
-    view.rates = { per, span };
-    view.pace = moved / (span / 60000);
+    if (![...per.values()].some((n) => n > KILLS_CEILING)) {
+      view.long = span > WINDOW_MAX_MS;
+      // A long window still counts for the swords up to the catch-up limit: the rates are per 10 min.
+      view.longOk = view.long && span <= KILLS_CATCHUP_MAX_MS;
+      const next = list.find((s) => s.at > base.at);
+      view.gap = { from: base.at, to: next ? Math.min(next.at, view.clock) : view.clock };
+      view.rates = { per, span };
+      view.pace = moved / (span / 60000);
+    }
   }
   if (view.pace > 0) {
     view.strange = view.silence > KILLS_STEP_MS + (KILLS_LATE_KILLS / view.pace) * 60000;
@@ -445,6 +464,9 @@ const MISSED_ASLEEP_MS = 3 * 60 * 1000;     // no read for this long: the page w
 // already counts, and a summary of it would read as a map without kills.
 const MISSED_AWAY_MS = HOT_WANT_MS;
 const MISSED_RETURN_WAIT_MS = 2 * 60 * 1000;
+// On a return to the tab, the open map's first read that gets nothing asks once more this much later
+// (js/maps.js, pullFresh): the poll alone would leave the corner and the summary a whole MAP_REFRESH_MS behind.
+const RETURN_RETRY_MS = 5 * 1000;
 const MISSED_CHANGES_MAX = 40;
 const MISSED_CHIPS_WIDE = 4;   // per map
 const MISSED_CHIPS_NARROW = 3;
@@ -457,7 +479,8 @@ const missedLastOffer = new Map();   // match id -> ms of the last body offered
 const missedNotes = new Map();       // match id -> the summary
 const missedRings = new Map();       // match id -> { ids: Set, until }
 let missedHidden = null;             // { at, bodies } while the tab is hidden
-let missedReturn = null;             // { since, back, bodies } until each match answers once
+let missedReturn = null;             // { since, answered, bodies } until each match answers once
+let returnRetryOwed = false;         // from the tab shown until a body ahead lands or the retry is taken
 let missedOpen = null;               // { matchId, trigger } of the maps popover
 
 const missedOwner = (s) => {
@@ -649,9 +672,13 @@ function missedMatchOffered(match, kept) {
   const keptAt = kept ? kept.at : 0;
   const lastOffer = missedLastOffer.get(match.id) || 0;
   missedLastOffer.set(match.id, now);
+  // Only a body ahead of the one kept: our copy stuck with the game's read failing still owes the retry.
+  if (!kept || matchIsBehind(kept.match, match)) returnRetryOwed = false;
   if (!kept || matchIsBehind(match, kept.match)) return;
   if (match.start_time !== kept.match.start_time || !matchIsLive(match)) return;
-  if (missedReturn && now - missedReturn.back > MISSED_RETURN_WAIT_MS) missedReturn = null;
+  // The wait counts from the first answer after the return: reads that fail meanwhile do not spend it.
+  if (missedReturn && !missedReturn.answered) missedReturn.answered = now;
+  if (missedReturn && now - missedReturn.answered > MISSED_RETURN_WAIT_MS) missedReturn = null;
   if (missedReturn && missedReturn.bodies.has(match.id)) {
     const before = missedReturn.bodies.get(match.id);
     missedReturn.bodies.delete(match.id);
@@ -676,11 +703,19 @@ function missedOnVisibility() {
     return;
   }
   if (missedHidden && steadyNow() - missedHidden.at > MISSED_AWAY_MS) {
-    missedReturn = { since: missedHidden.at, back: steadyNow(), bodies: missedHidden.bodies };
+    missedReturn = { since: missedHidden.at, answered: 0, bodies: missedHidden.bodies };
   }
   missedHidden = null;
+  returnRetryOwed = true;
 }
 document.addEventListener('visibilitychange', missedOnVisibility);
+
+// True once per return, for the first read of it that got nothing (js/maps.js, pullFresh).
+function returnRetryTake() {
+  const owed = returnRetryOwed;
+  returnRetryOwed = false;
+  return owed;
+}
 
 // A click on an objective of the map folds the summary on every width, so the
 // objective's tab has the room; it stays folded until the reader opens it.

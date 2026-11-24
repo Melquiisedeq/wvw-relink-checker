@@ -2,11 +2,13 @@
 // every other spec and support file finds the page by its roles, its text, its
 // requests and its clock. A name is one declared at the top of a site/js script
 // (camelCase, or UPPER_CASE with an underscore), read from the scripts at each run,
-// that is not an id in index.html and that the file neither declares nor imports.
+// that is not an id in index.html and that the file neither declares nor imports. That frees
+// by part: the Node side, and each body of a call that runs in the page, is judged alone.
 // No spec or support file is let off: one that needs a name asks the port for a function.
 // Not seen, so a review has to: a name built as a string, reached as `globalThis.x`,
 // `self.x`, `window?.x` or `{ x: f } = window`; text after a `/*` or `//` inside a
-// string; names outside NAMED (`COLORS`, `run`); ids of index.html, which are globals too.
+// string; a `(` or `)` in a string or regex inside a page body, which cuts the body in
+// the wrong place; `page.evaluate(fn)` with `fn` declared in Node, which counts as Node; names outside NAMED (`COLORS`, `run`); ids of index.html, which are globals too.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -42,16 +44,42 @@ const code = s => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.
 const used = (body, n) => [...body.matchAll(new RegExp(`(?<![\\w$])(?:(?<![^.]\\.)|(?<=window\\.))${escape(n)}(?![\\w$])`, 'g'))]
   .some(m => !(/[{,]\s*$/.test(body.slice(0, m.index)) && /^\s*:(?!:)/.test(body.slice(m.index + n.length))));
 
-export function namesIn(src, names) {
-  const body = code(src);
-  return [...names].filter(n => used(body, n)
-    && !new RegExp(`\\b(?:const|let|var|function\\*?|class)\\s+${escape(n)}\\b|\\bimport\\s*\\{[^}]*\\b${escape(n)}\\b`).test(body)).sort();
+// The page's side is the body of a call that runs in the page; a declaration there
+// frees only its own body, and one outside frees only the Node side.
+const IN_PAGE = /(?:\b(?:evaluate|evaluateHandle|waitForFunction|addInitScript)|(?<![\w$])\$\$?eval)\s*\(/g;
+
+function sides(body) {
+  const bodies = [];
+  let outside = '', at = 0;
+  for (const m of body.matchAll(IN_PAGE)) {
+    if (m.index < at) continue;
+    let depth = 1, i = m.index + m[0].length;
+    for (; i < body.length && depth; i++) depth += body[i] === '(' ? 1 : body[i] === ')' ? -1 : 0;
+    outside += body.slice(at, m.index + m[0].length);
+    bodies.push(body.slice(m.index + m[0].length, i));
+    at = i - 1;
+  }
+  return [outside + body.slice(at), ...bodies];
 }
 
-function testFiles() {
-  const specs = fs.readdirSync(E2E).filter(f => f.endsWith('.spec.mjs'));
-  const support = fs.readdirSync(path.join(E2E, 'support')).filter(f => f.endsWith('.mjs')).map(f => `support/${f}`);
-  return [...specs, ...support].filter(f => f !== PORT).sort();
+export function namesIn(src, names) {
+  const parts = sides(code(src));
+  return [...names].filter(n => parts.some(p => used(p, n)
+    && !new RegExp(`\\b(?:const|let|var|function\\*?|class)\\s+${escape(n)}\\b|\\bimport\\s*\\{[^}]*\\b${escape(n)}\\b`).test(p))).sort();
+}
+
+// The config's `**/*.spec.mjs`, and everything under support/.
+const SKIP = new Set(['node_modules', 'test-results']);
+function walk(dir, rel = '') {
+  return fs.readdirSync(path.join(dir, rel), { withFileTypes: true }).flatMap(e => {
+    const r = rel ? `${rel}/${e.name}` : e.name;
+    if (e.isDirectory()) return SKIP.has(e.name) ? [] : walk(dir, r);
+    return e.name.endsWith('.mjs') ? [r] : [];
+  });
+}
+
+export function testFiles(dir = E2E) {
+  return walk(dir).filter(f => f.endsWith('.spec.mjs') || f.startsWith('support/')).filter(f => f !== PORT).sort();
 }
 
 test('the names come from the site: a few the specs lean on are there, ids are not', () => {
@@ -81,6 +109,30 @@ test('a name planted in a spec is caught, and one the file declares itself is no
   assert.deepEqual(namesIn('const f = ok ? loadStandings : null;', names), ['loadStandings']);
   assert.deepEqual(namesIn('switch (x) { case loadStandings: break; }', names), ['loadStandings']);
   assert.deepEqual(namesIn('const r = { a: 1, byId: 2 };', names), []);
+});
+
+test('a name declared in one place frees no use of it in the page, and the reverse', () => {
+  const names = new Set(['newestMatches', 'loadStandings', 'byId']);
+  assert.deepEqual(namesIn('const newestMatches = await page.evaluate(() => newestMatches);', names), ['newestMatches']);
+  assert.deepEqual(namesIn("await page.evaluate(() => { let loadStandings = 1; });\nawait page.evaluate(() => loadStandings());", names), ['loadStandings']);
+  assert.deepEqual(namesIn("const loadStandings = 1; await page.evaluate(() => loadStandings());", names), ['loadStandings']);
+  assert.deepEqual(namesIn("await page.evaluate(() => { const byId = 1; return byId; });\nconst r = [1].sort(byId);", names), ['byId']);
+  assert.deepEqual(namesIn("const newestMatches = 1; await page.$eval('#x', el => newestMatches); await page.$$eval('a', l => newestMatches);", names), ['newestMatches']);
+  assert.deepEqual(namesIn("const byId = 1; await page.evaluate(() => { a.evaluate(() => 1); return byId; }); [1].sort(byId);", names), ['byId']);
+  assert.deepEqual(namesIn("await page.evaluate(() => { a.evaluate(() => 1); let byId = 1; }); [1].sort(byId);", names), ['byId']);
+  assert.deepEqual(namesIn("const byId = (a, b) => a - b; await page.evaluate(() => 1); [1].sort(byId);", names), []);
+  assert.deepEqual(namesIn("await page.evaluate(() => { const byId = 1; return byId; });", names), []);
+});
+
+test('a spec in a subfolder is read, node_modules and test-results are not', () => {
+  const dir = fs.mkdtempSync(path.join(fs.realpathSync(process.env.TMPDIR || '/tmp'), 'ports-'));
+  try {
+    for (const f of ['a.spec.mjs', 'deep/er/b.spec.mjs', 'support/s.mjs', 'support/page.mjs', 'playwright.config.mjs', 'node_modules/x/c.spec.mjs', 'test-results/d.spec.mjs', 'e.txt']) {
+      fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
+      fs.writeFileSync(path.join(dir, f), '');
+    }
+    assert.deepEqual(testFiles(dir), ['a.spec.mjs', 'deep/er/b.spec.mjs', 'support/s.mjs']);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('no function of the port has the name of one of the page\'s', () => {
