@@ -9,7 +9,6 @@ const LAB_VERSION = 10;          // bump when the defaults change: older saved c
 const LAB_ITEMS = [
   { type: 'section', label: 'Fine-tune' },
   { type: 'check', key: 'newsLow', label: 'Phones: news below the standings', on: false },
-  { type: 'check', key: 'icSlide', label: 'Leaders: the faint icon slides in on each change', on: true },
   { type: 'check', key: 'ownIcon', label: 'Our icon in the news header, not "[[ ]]"', on: true },
   { type: 'check', key: 'profIcon', label: 'Profession icon beside buffs and nerfs', on: true },
   { type: 'section', label: 'Simulate a new update' },
@@ -93,7 +92,6 @@ function labAfterStandings() {
 
 function labRepaint() {
   if (!labMid) return;
-  document.documentElement.classList.toggle('lab-ic-slide', !!labPrefs.icSlide);
   labPlaceParts();
   labPaintAnswer();
   labPaintTiles();
