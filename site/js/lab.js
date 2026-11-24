@@ -25,6 +25,7 @@ const LAB_ITEMS = [
 const LAB_SUBTITLE = 'Type your guild’s name to see which WvW team it landed on after the relink, with its tier and the teams it faces. For NA and EU.';
 const LAB_NARROW = '(max-width: 1399px)';
 let labMid = null;
+const LAB_SUB_IN = 'See which team your guild landed on after the relink, its tier and the teams it faces. NA and EU.';
 function labMountMiddle() {
   const sub = document.querySelector('main .subtitle');
   if (!sub || typeof guildInput === 'undefined') return;
@@ -69,6 +70,8 @@ function labPlaceParts() {
   if (sub) {
     const first = (labPrefs.order || 'shn') === 'shn';
     sub.classList.toggle('lab-sub-in', !first);
+    if (!sub.dataset.labText) sub.dataset.labText = sub.textContent;
+    sub.textContent = first ? sub.dataset.labText : LAB_SUB_IN;
     if (first) labMid.before(sub);
     else parts.s.querySelector('.ls-head').after(sub);
   }
