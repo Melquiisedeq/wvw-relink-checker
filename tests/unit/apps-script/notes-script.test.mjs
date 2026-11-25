@@ -63,6 +63,20 @@ test('notesTick: one GET of the wiki\'s index with our User-Agent, then one sign
   assert.equal(w.sql.prepare('SELECT count(*) n FROM note_group').get().n, 6);
 });
 
+test('a message over 60 KB loses its oldest pages, each whole', () => {
+  const { ctx } = load({ answer: () => null });
+  const line = (i) => ({ section: 'World vs. World', sub: '', text: 'WvW ' + 'x'.repeat(290) + i, link: null, icon: false });
+  const note = (page, update) => ({ page, update, lines: Array.from({ length: 60 }, (_, i) => line(i)) });
+  const list = [note('2026-11-12', 'Update - November 12, 2026'), note('2026-11-11', 'Update 2 - November 11, 2026'),
+    note('2026-11-11', 'Update - November 11, 2026'), note('2026-11-10', 'Update - November 10, 2026')];
+  const got = ctx.out.fit(list);
+  // About 22 KB a note: 2026-11-10 leaves, then the whole of 2026-11-11, never one of its two.
+  assert.deepEqual(got.list.map((n) => n.update), ['Update - November 12, 2026']);
+  assert.equal(got.body, JSON.stringify({ v: 1, notes: got.list }));
+  const small = ctx.out.fit(list.slice(0, 1));
+  assert.equal(small.list.length, 1);
+});
+
 test('notesTick: a wiki answering 5xx is tried three times, waiting longer each time; a 403 throws and sends nothing', () => {
   const html = fixture('index-2026-11-24.html');
   const s = load({ answer: (url, opt, n) => (url.endsWith('/api/ingest/notes') ? httpResponse(200, 'ok') : httpResponse(n < 3 ? 503 : 200, html)) });

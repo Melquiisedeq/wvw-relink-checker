@@ -212,7 +212,8 @@ var Notes_ = (function () {
       if (n.lines.length >= MAX_PER_NOTE) return;
       n.lines.push({ section: r.h3, sub: r.sub, text: cut(r.text), link: linkName(r.link), icon: r.icon });
     });
-    // An update with no WvW line is sent too: the Worker then knows the reading had it.
+    // An update with no WvW line is sent too: the Worker deletes an update the pages it was sent
+    // no longer have, and keeps those of a page it was not sent.
     return out;
   }
 
@@ -235,6 +236,20 @@ var Notes_ = (function () {
     return last;
   }
 
+  // The message, at most MAX_BODY bytes: the oldest pages leave first (they were sent in earlier
+  // runs), each one whole, or the Worker would delete the updates left out of a page it was sent.
+  function fit(list) {
+    var body = JSON.stringify({ v: 1, notes: list });
+    while (Utilities.newBlob(body).getBytes().length > MAX_BODY) {
+      var oldest = list[list.length - 1].page;
+      var rest = list.filter(function (n) { return n.page !== oldest; });
+      if (!rest.length) break;
+      list = rest;
+      body = JSON.stringify({ v: 1, notes: list });
+    }
+    return { list: list, body: body };
+  }
+
   function tick() {
     var secret = PropertiesService.getScriptProperties().getProperty('ingest');
     if (!secret) {
@@ -252,12 +267,9 @@ var Notes_ = (function () {
     }
     var list = notes(res.getContentText());
     if (!list.length) throw new Error('wiki: no update found on ' + INDEX);
-    var body = JSON.stringify({ v: 1, notes: list });
-    // The oldest updates leave first: they were sent in earlier runs.
-    while (Utilities.newBlob(body).getBytes().length > MAX_BODY && list.length > 1) {
-      list.pop();
-      body = JSON.stringify({ v: 1, notes: list });
-    }
+    var fitted = fit(list);
+    list = fitted.list;
+    var body = fitted.body;
     var t = Math.floor(Date.now() / 1000);
     var sig = hex(Utilities.computeHmacSha256Signature(
       Utilities.newBlob(t + '\n' + INGEST_PATH + '\n' + body).getBytes(),
@@ -295,5 +307,5 @@ var Notes_ = (function () {
   }
 
 
-  return { tick: tick, secret: secret, notes: notes };
+  return { tick: tick, secret: secret, notes: notes, fit: fit };
 })();

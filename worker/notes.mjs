@@ -15,8 +15,8 @@ const MAX_RAW = 2000;
 const PAGE_SKEW_DAYS = 3;
 export const KEEP_NOTE_DAYS = 400;
 export const MAX_SERVED = 200;
-// A reading of a note with fewer than half the most lines ever kept from it is refused for that
-// note: a blanked or gutted section never replaces the last good copy, nor do cuts one reading at a time.
+// A note read with under this share of its `top` is refused (acceptNotes): one reading that blanks
+// or guts it never replaces the last good copy, nor do cuts one reading at a time.
 const SHRINK_FLOOR = 0.5;
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
@@ -198,7 +198,7 @@ function checkLine(l) {
   const text = cut(raw);
   return {
     section, sub, text, icon: l.icon,
-    link: l.link === null ? null : (LINK_RE.test(l.link || '') ? l.link : null),
+    link: typeof l.link === 'string' && LINK_RE.test(l.link) ? l.link : null,
     kind: labelOf(kindOf(raw, section, sub, l.icon))
   };
 }
@@ -217,30 +217,53 @@ async function sha16(text) {
 // After the signature and before the replay claim: the message checked whole. `claim` claims
 // the message's time and answers whether it was first; nothing is written before it.
 // Returns a string (refused, the reason) or the outcome to log.
+//
+// A reading is one push; a page is read when the push has a note on it (the script sends every
+// update of each page it read, with or without WvW lines, and whole pages only). Each note of a
+// page read is counted, 0 when the reading lacks it, and:
+//   - taken (its lines replaced, or the note deleted at 0) unless the count is under half of
+//     `top`; a count the reading before had too is taken anyway: the wiki has kept it;
+//   - `top` moves only on such a repeated count: one reading cannot raise the floor it is held to.
+// A note on a page the push lacks (a page that failed, or left the index) keeps its lines.
 export async function acceptNotes(db, data, nowMs, claim) {
   const checked = checkNotes(data, nowMs);
   if (typeof checked === 'string') return checked;
   const now = Math.floor(nowMs / 1000);
   const push = await sha16(JSON.stringify(checked.notes));
   const state = await db.prepare('SELECT push FROM note_served WHERE id = 1').first();
-  const { results: groups } = await db.prepare('SELECT note, top FROM note_group').all();
+  const { results: groups } = await db.prepare('SELECT note, day, page, n, top, last FROM note_group').all();
   if (!await claim()) return null;
   const log = { notes: checked.notes.length, dropped: checked.dropped };
-  if (state.push === push) {
-    // The same reading again: only its time moves.
+  const pages = new Set(checked.notes.map((n) => n.page));
+  const read = new Map(checked.notes.map((n) => [n.update, n]));
+  const kept = new Map(groups.map((g) => [g.note, g]));
+  const counted = [...checked.notes.map((n) => [n, kept.get(n.update)]),
+    ...groups.filter((g) => pages.has(g.page) && !read.has(g.note)).map((g) => [null, g])];
+  const settled = counted.every(([n, g]) => g && g.last === (n ? n.lines.length : 0) && g.n === g.last && g.top >= g.n);
+  if (state.push === push && settled) {
+    // The same reading again, nothing waiting on a repeat: only its time moves.
     log.same = true;
     await db.prepare('UPDATE note_served SET wiki = ?1 WHERE id = 1').bind(now).run();
     return log;
   }
-  const kept = new Map(groups.map((g) => [g.note, g]));
   const take = [];
+  const gone = [];
   const shrunk = [];
-  for (const n of checked.notes) {
-    const before = kept.get(n.update);
-    if (before && n.lines.length < Math.ceil(before.top * SHRINK_FLOOR)) shrunk.push(n.update);
-    else take.push(n);
+  const marks = [];
+  for (const [n, g] of counted) {
+    const c = n ? n.lines.length : 0;
+    const top = g ? g.top : 0;
+    const repeated = Boolean(g) && g.last === c;
+    const taken = c >= Math.ceil(top * SHRINK_FLOOR) || repeated;
+    const newTop = !repeated ? top : (c < Math.ceil(top * SHRINK_FLOOR) ? c : Math.max(top, c));
+    if (!taken) shrunk.push(n ? n.update : g.note);
+    if (taken && !n) { gone.push(g.note); continue; }
+    if (taken) take.push(n);
+    const keep = taken ? { day: n.day, page: n.page, n: c } : g;
+    marks.push([n ? n.update : g.note, keep.day, keep.page, keep.n, newTop, c]);
   }
   if (shrunk.length) log.shrunk = shrunk;
+  if (gone.length) log.gone = gone;
   const rows = [];
   for (const n of take) {
     let pos = 0;
@@ -248,14 +271,16 @@ export async function acceptNotes(db, data, nowMs, claim) {
   }
   const names = JSON.stringify(take.map((n) => n.update));
   const oldest = new Date(nowMs - KEEP_NOTE_DAYS * 86400e3).toISOString().slice(0, 10);
-  await db.prepare('DELETE FROM note_line WHERE note IN (SELECT note FROM note_group WHERE day < ?1)').bind(oldest).run();
-  await db.prepare('DELETE FROM note_group WHERE day < ?1').bind(oldest).run();
-  // A note absent from this reading keeps its lines.
-  await db.prepare('INSERT INTO note_group (note, day, page, n, top) ' +
-    "SELECT json_extract(j.value, '$[0]'), json_extract(j.value, '$[1]'), json_extract(j.value, '$[2]'), json_extract(j.value, '$[3]'), json_extract(j.value, '$[3]') FROM json_each(?1) j " +
+  const drop = JSON.stringify(gone);
+  await db.prepare('DELETE FROM note_line WHERE note IN (SELECT note FROM note_group WHERE day < ?1) OR note IN (SELECT value FROM json_each(?2))')
+    .bind(oldest, drop).run();
+  await db.prepare('DELETE FROM note_group WHERE day < ?1 OR note IN (SELECT value FROM json_each(?2))').bind(oldest, drop).run();
+  await db.prepare('INSERT INTO note_group (note, day, page, n, top, last) ' +
+    "SELECT json_extract(j.value, '$[0]'), json_extract(j.value, '$[1]'), json_extract(j.value, '$[2]'), json_extract(j.value, '$[3]'), " +
+    "json_extract(j.value, '$[4]'), json_extract(j.value, '$[5]') FROM json_each(?1) j " +
     'WHERE true ON CONFLICT (note) DO UPDATE SET day = excluded.day, page = excluded.page, n = excluded.n, ' +
-    'top = max(note_group.top, excluded.n)')
-    .bind(JSON.stringify(take.map((n) => [n.update, n.day, n.page, n.lines.length]))).run();
+    'top = excluded.top, last = excluded.last')
+    .bind(JSON.stringify(marks)).run();
   await db.prepare('DELETE FROM note_line WHERE note IN (SELECT value FROM json_each(?1)) AND ' +
     "note || '|' || id NOT IN (SELECT json_extract(j.value, '$[0]') || '|' || json_extract(j.value, '$[1]') FROM json_each(?2) j)")
     .bind(names, JSON.stringify(rows)).run();

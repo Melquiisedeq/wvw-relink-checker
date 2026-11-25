@@ -79,9 +79,19 @@ test('the type of each line is the lab\'s, and a type the rules are not sure of 
   }
 });
 
-test('the last good copy stays: a gutted note changes nothing published', async (t) => {
+// Two readings of the recorded pages: the second repeats each note's count, so it is the floor.
+async function settled() {
   const w = setup();
   await w.push(wikiNotes());
+  w.advance(6 * HOUR);
+  await w.push(wikiNotes());
+  return w;
+}
+const withNote = (update, lines) => wikiNotes().map((n) => (n.update === update ? { ...n, lines } : n));
+const WVW = (i) => ({ section: 'World vs. World', sub: '', text: 'WvW invented line ' + i + '.', link: null, icon: false });
+
+test('the last good copy stays: a gutted note changes nothing published', async (t) => {
+  const w = await settled();
   const before = (await w.notes()).data;
   await t.test('a reading with under half of a note\'s lines leaves the note as it was', async () => {
     w.advance(HOUR);
@@ -91,16 +101,14 @@ test('the last good copy stays: a gutted note changes nothing published', async 
     assert.deepEqual(texts((await w.notes()).data), texts(before));
   });
   await t.test('half of them is a reading like any other', async () => {
-    const w2 = setup();
-    await w2.push(wikiNotes());
+    const w2 = await settled();
     w2.advance(HOUR);
     await w2.push(wikiNotes().map((n) => (n.update === 'Update - November 10, 2026' ? { ...n, lines: n.lines.slice(0, 25) } : n)));
     assert.equal(w2.sql.prepare("SELECT n FROM note_group WHERE note = 'Update - November 10, 2026'").get().n, 25);
   });
   await t.test('cuts of under half, one a reading, stop at half of the most lines it ever had', async () => {
-    const w3 = setup();
+    const w3 = await settled();
     const cutTo = (k) => wikiNotes().map((n) => (n.update === 'Update - November 10, 2026' ? { ...n, lines: n.lines.slice(0, k) } : n));
-    await w3.push(wikiNotes());
     const n = () => w3.sql.prepare("SELECT n FROM note_group WHERE note = 'Update - November 10, 2026'").get().n;
     for (const k of [26, 14, 8, 4]) {
       w3.advance(HOUR);
@@ -116,11 +124,80 @@ test('the last good copy stays: a gutted note changes nothing published', async 
     await w.push(wikiNotes().map((n) => (n.update === 'Update - April 14, 2026' ? { ...n, lines: [] } : n)));
     assert.equal(w.sql.prepare("SELECT count(*) n FROM note_line WHERE note = 'Update - April 14, 2026'").get().n, 3);
   });
+  await t.test('a gutting the next reading repeats is taken: the wiki has kept it', async () => {
+    const w4 = await settled();
+    const gutted = withNote('Update - November 10, 2026', wikiNotes().find((n) => n.update === 'Update - November 10, 2026').lines.slice(0, 24));
+    await w4.push(gutted);
+    w4.advance(6 * HOUR);
+    await w4.push(gutted);
+    assert.deepEqual({ ...w4.sql.prepare("SELECT n, top FROM note_group WHERE note = 'Update - November 10, 2026'").get() }, { n: 24, top: 24 });
+  });
+});
+
+test('one reading cannot raise the floor: a note inflated and reverted goes back to the original', async (t) => {
+  const APRIL = 'Update - April 14, 2026';
+  const own = async (w) => (await w.notes()).data.notes.filter((n) => n.update === APRIL).map((n) => n.text);
+  const original = [...wikiNotes().find((n) => n.update === APRIL).lines].map((l) => cut(l.text));
+  const inflated = withNote(APRIL, [...wikiNotes().find((n) => n.update === APRIL).lines, ...Array.from({ length: 57 }, (_, i) => WVW(i))]);
+  await t.test('inflated once: shown, and the revert is taken at once', async () => {
+    const w = await settled();
+    w.advance(6 * HOUR);
+    await w.push(inflated);
+    assert.equal((await own(w)).length, 60);
+    w.advance(6 * HOUR);
+    await w.push(wikiNotes());
+    assert.deepEqual(await own(w), original);
+    assert.equal(w.sql.prepare('SELECT top FROM note_group WHERE note = ?1').get(APRIL).top, 3);
+  });
+  await t.test('inflated two readings: the revert is taken when the next reading repeats it', async () => {
+    const w = await settled();
+    for (let i = 0; i < 2; i++) { w.advance(6 * HOUR); await w.push(inflated); }
+    w.advance(6 * HOUR);
+    await w.push(wikiNotes());
+    assert.equal((await own(w)).length, 60, 'under half of the floor the two readings set');
+    w.advance(6 * HOUR);
+    await w.push(wikiNotes());
+    assert.deepEqual(await own(w), original);
+  });
+});
+
+test('an update the wiki deletes leaves with it; one on a page the push lacks stays', async (t) => {
+  const FAKE = 'Update 2 - November 12, 2026';
+  const fake = { page: '2026-11-12', update: FAKE, lines: Array.from({ length: 60 }, (_, i) => WVW(i)) };
+  const updates = async (w) => new Set((await w.notes()).data.notes.map((n) => n.update));
+  await t.test('an invented update, published once, is gone the reading after the wiki deletes it', async () => {
+    const w = await settled();
+    w.advance(6 * HOUR);
+    await w.push([...wikiNotes(), fake]);
+    assert.ok((await updates(w)).has(FAKE));
+    w.advance(6 * HOUR);
+    await w.push(wikiNotes());
+    assert.ok(!(await updates(w)).has(FAKE));
+    assert.equal(w.sql.prepare('SELECT count(*) n FROM note_line WHERE note = ?1').get(FAKE).n, 0);
+    assert.equal(w.sql.prepare('SELECT count(*) n FROM note_group WHERE note = ?1').get(FAKE).n, 0);
+  });
+  await t.test('a real update its page lost once stays; lost two readings in a row, it leaves', async () => {
+    const w = await settled();
+    const JULY = 'Update - July 14, 2026';
+    const without = wikiNotes().filter((n) => n.update !== JULY);
+    assert.ok(without.some((n) => n.page === '2026-07-15'), 'its page is still read');
+    w.advance(6 * HOUR);
+    await w.push(without);
+    assert.ok((await updates(w)).has(JULY));
+    w.advance(6 * HOUR);
+    await w.push(without);
+    assert.ok(!(await updates(w)).has(JULY));
+  });
+  await t.test('the notes of a page the push lacks (it failed, or left the index) stay', async () => {
+    const w = await settled();
+    const before = await updates(w);
+    for (let i = 0; i < 2; i++) { w.advance(6 * HOUR); await w.push(wikiNotes().filter((n) => n.page !== '2026-04-14')); }
+    assert.deepEqual(await updates(w), before);
+  });
 });
 
 test('the same reading again writes no line, and moves only the reading\'s time', async () => {
-  const w = setup();
-  await w.push(wikiNotes());
+  const w = await settled();
   const v = (await w.notes()).data.v;
   const ran = w.ran.length;
   w.advance(6 * HOUR);
@@ -164,6 +241,10 @@ test('what a line may carry: plain text, cut, a link only to a wiki page by a ch
   const w2 = setup();
   await w2.push([{ page: '2026-11-12', update: 'Update - November 12, 2026', lines: [line('WvW ' + 'b'.repeat(1996)), line('WvW ' + 'c'.repeat(1997))] }]);
   assert.deepEqual(texts((await w2.notes()).data).map((t) => [t[4], [...t].length]), [['b', 300]]);
+  // A link that is not a string is none, whatever it reads as.
+  const w3 = setup();
+  await w3.push([{ page: '2026-11-12', update: 'Update - November 12, 2026', lines: [line('WvW numeric link', { link: 12345 }), line('WvW listed link', { link: ['Stonemist Castle'] })] }]);
+  assert.deepEqual(w3.sql.prepare('SELECT link FROM note_line ORDER BY pos').all().map((r) => r.link), [null, null]);
 });
 
 test('a line\'s sub-heading: plain text in the wiki\'s mold, or the line is left out', async () => {
@@ -255,6 +336,8 @@ test('a note past KEEP_NOTE_DAYS is deleted by the next reading that changes som
   w.advance((KEEP_NOTE_DAYS - 20) * 86400e3);
   const later = new Date(w.now).toISOString().slice(0, 10);
   const update = 'Update - ' + new Date(w.now).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  await w.push(one('Fixed a WvW sentry that did not respawn.', update, later));
+  w.advance(HOUR);
   await w.push(one('Fixed a WvW sentry that did not respawn.', update, later));
   assert.equal(w.sql.prepare('SELECT count(*) n FROM note_group').get().n, 2, 'within the days kept');
   w.advance(11 * 86400e3);
