@@ -79,8 +79,11 @@ test('the type of each line is the lab\'s, and a type the rules are not sure of 
   }
 });
 
+// Two readings of the recorded pages, 6 h apart: the same counts twice, as a page that has settled.
 async function read() {
   const w = setup();
+  await w.push(wikiNotes());
+  w.advance(6 * HOUR);
   await w.push(wikiNotes());
   return w;
 }
