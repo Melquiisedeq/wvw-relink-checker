@@ -191,7 +191,7 @@ function answerCard(o) {
   return card;
 }
 
-// sparkFromButton's flight (.btn-spark in css), from any box.
+// The sparks' flight (.btn-spark in css/impact.css), from any box.
 function sparksFrom(box) {
   const r = box.getBoundingClientRect();
   if (r.width === 0) return;

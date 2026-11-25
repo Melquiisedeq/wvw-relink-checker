@@ -327,7 +327,8 @@ test('a team whose match has ended: the answer has no tier', async ({ page, wvw 
   await load(page, wvw);
   await answer(page, GAME + 'wvw/guilds/na', { [G]: ENDED });
   await answer(page, `${GAME}guild/${G}`, { id: G, name: 'Late Guild', tag: 'LTE' });
-  const ended = await answer(page, `${GAME}wvw/matches?world=${ENDED}`, { ...live, all_worlds: { ...live.all_worlds, red: [ENDED] },
+  // An id of its own: under the live tier's id the newer body in hand would take its place.
+  const ended = await answer(page, `${GAME}wvw/matches?world=${ENDED}`, { ...live, id: '1-9', all_worlds: { ...live.all_worlds, red: [ENDED] },
     start_time: iso(wvw.opensAt - 2 * WEEK), end_time: iso(wvw.opensAt - WEEK) });
   await check(page, wvw, G);
   expect(ended.reads, 'the ended match was read').toBeGreaterThanOrEqual(1);
@@ -386,6 +387,15 @@ test.describe('week memory', () => {
     const got = await matchForTeam(page, x);
     expect(got, `the Check for team ${x}`).toEqual({ id: '1-2', memory: true, cached: false });
     expect(world.reads, '?world= reads').toBeGreaterThan(0);
+    // A guild of that team searched: the remembered line-up is the team and its region, no tier, no rivals.
+    const G = 'AAAAAAAA-0000-4000-8000-000000000004';
+    await answer(page, GAME + 'wvw/guilds/na', { [G]: Number(x) });
+    await answer(page, `${GAME}guild/${G}`, { id: G, name: 'Kept Guild', tag: 'KPT' });
+    await check(page, wvw, G);
+    const said = page.locator('#searchAnswer .search-card');
+    await expect(said.locator('.search-team'), 'the team of the remembered line-up').toHaveText(await teamName(page, x));
+    await expect(said.locator('.search-tier b')).toHaveText('NA');
+    await expect(said.locator('.search-rival, .search-go')).toHaveCount(0);
 
     // Two hours after the remembered week began: the API's body stands.
     await page.addInitScript('__skewClock(' + 2 * 3600000 + ');');

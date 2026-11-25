@@ -275,7 +275,7 @@ let chargeStartedAt = 0;
 let stopFollowing = null;
 
 // html.finale: the cards' backdrop blur is off from the round's wind-up to FINALE_TAIL_MS after the break
-// (css/controls.css). Off is always reached: finish() in run.js plays the finale on every outcome.
+// (css/controls.css). Off is always reached: run() in js/search.js plays the finale on every outcome.
 const FINALE_TAIL_MS = 1700;
 let finaleTimer = 0;
 // The last impact's clean-up timers: the next round's release or impact cancels them, or they strip its shield.

@@ -3,7 +3,8 @@
 // brings the tier into view with the spotlight and the guild's strip, and the crest that
 // lands on the answer.
 import { test, expect } from './support/fixtures.mjs';
-import { load, search } from './support/steps.mjs';
+import { answer, hold } from './support/faults.mjs';
+import { load, recordedJson, search } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 
@@ -48,6 +49,45 @@ test('the guilds found are offered as you type, kept across a reload; the old pa
   await expect(field(page)).toHaveAttribute('list', 'recentGuilds');
   await expect(page.locator('#recentGuilds option')).toHaveAttribute('value', guild);
   expect(await page.evaluate(() => localStorage.getItem('wvw-relink-checker:guilds')), 'the old key, gone').toBeNull();
+  await wvw.settle();
+});
+
+// The offered list: the name as the game spells it (asked by id here), newest first, a name
+// once whatever its case, eight at most.
+test('the guilds offered: the game\'s spelling first, no repeats, eight at most', async ({ page, wvw }) => {
+  const GAME = 'https://api.guildwars2.com/v2/';
+  const G = 'AAAAAAAA-0000-4000-8000-000000000005';
+  const teamId = recordedJson(GAME + 'wvw/matches?ids=all').find(m => m.id.startsWith('1-')).all_worlds.red.find(n => n >= 10000);
+  const before = ['kept guild', ...[2, 3, 4, 5, 6, 7, 8, 9].map(n => `Guild ${n}`)];
+  await load(page, wvw);
+  await page.evaluate(l => localStorage.setItem('wvw-relink-checker:recent-guilds', l), JSON.stringify(before));
+  await answer(page, GAME + 'wvw/guilds/na', { [G]: teamId });
+  await answer(page, `${GAME}guild/${G}`, { id: G, name: 'Kept Guild', tag: 'KPT' });
+  await search(page, G);
+  await expect(card(page).locator('.search-who')).toHaveText('Kept Guild is on');
+  const offered = () => page.locator('#recentGuilds option').evaluateAll(os => os.map(o => o.value));
+  await expect.poll(offered).toEqual(['Kept Guild', ...before.slice(1, 8)]);
+  await wvw.settle();
+});
+
+// Check on an empty field asks nothing; Enter while a search is asking starts no second one.
+test('an empty field asks the game nothing, and Enter during a search does not ask again', async ({ page, wvw }) => {
+  await load(page, wvw);
+  const asked = [];
+  page.on('request', r => { if (r.url().startsWith('https://api.guildwars2.com/v2/guild/search?')) asked.push(r.url()); });
+  await page.getByRole('button', { name: 'Check' }).click();
+  await field(page).press('Enter');
+  await expect(page.locator('#searchAnswer')).toBeEmpty();
+  expect(asked, 'name searches with the field empty').toEqual([]);
+  const release = await hold(page, /\/v2\/guild\/search\?/);
+  await field(page).fill(wvw.guilds[0]);
+  await field(page).press('Enter');
+  await expect(page.getByText('Asking the game…')).toBeVisible();
+  await field(page).press('Enter');
+  await field(page).press('Enter');
+  release();
+  await expect(card(page)).toBeVisible();
+  expect(asked.length, 'name searches for one Enter and two more while asking').toBe(1);
   await wvw.settle();
 });
 
