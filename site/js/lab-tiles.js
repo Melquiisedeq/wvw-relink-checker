@@ -426,17 +426,15 @@ function labCutName(x) {
   s.append(labDot(x.color), labEl('span', 'lt-cut-nm', x.name));
   return s;
 }
-// Round 13 and 14: round 9 and 10's frame (the big number, the bar, the two rows, the foot), each row the team's
-// week VP; round 14 adds where each team's points if the skirmish ended now (c.sk.vp) go.
-const labWeekBar = (c) => labVpBar([c.a, c.b].map((x) => ({ color: x.color, n: x.vp })));
+// Round 15 (barTop): round 9 and 10's frame - the big number, the skirmish bar with each team's points if it
+// ended now (c.sk.vp) over its ends, the two rows with each team's week VP, the foot with the favourite and the
+// time left. With no VP table to trust the points are left out.
 const labSkBar = (c) => labVpBar([c.a, c.b].map((x) => ({ color: x.color, n: c.sk.sc[x.color], dim: c.lead && c.lead !== x })));
-const labGain = (c, x) => `+${c.sk.vp[x.color]}`;
-// The two rows, "● Name … 1,690 VP", or what `right` puts after the name.
-function labWeekRows(c, right) {
+function labWeekRows(c) {
   const rows = labEl('span', 'lt-vprows');
   for (const x of [c.a, c.b]) {
     const row = labEl('span', `lt-vprow side-${x.color}`);
-    row.append(labCutName(x), right ? right(x) : labWeekVp(x));
+    row.append(labCutName(x), labWeekVp(x));
     rows.appendChild(row);
   }
   return rows;
@@ -449,71 +447,74 @@ function labFavFoot(c) {
   line.append(labTeamText(f.x.name, f.x.color), ` ${said} · ${labTimeLeft(c)}`);
   return line;
 }
-// The skirmish bar, thicker, each segment carrying its "+N". The lit segment's number is dark on the colour,
-// the dimmed one's light on the colour mixed into the tile's dark (css/lab-mid.css, .lt-bar-in).
-function labGainBar(c) {
-  const bar = labSkBar(c);
-  bar.classList.add('lt-bar-in');
-  [c.a, c.b].forEach((x, i) => {
-    const seg = bar.children[i];
-    seg.classList.add(i ? 'lt-seg-b' : 'lt-seg-a');
-    seg.appendChild(labEl('span', 'lt-seg-n', labGain(c, x)));
-  });
-  return bar;
-}
-const labGainSpan = (c, x, text) => labEl('span', `lt-gain side-${x.color}`, text);
-const labVpApart = (c) => labBig(labNum(c.gap), 'VP apart');
-const LAB_CLOSE = {
-  weekFav: (c) => [labVpApart(c), labWeekBar(c), labWeekRows(c), labFavFoot(c)],
-  skFav: (c) => [labVpApart(c), labSkBar(c), labWeekRows(c), labFavFoot(c)],
-  barIn: (c) => [labVpApart(c), labGainBar(c), labWeekRows(c), labFavFoot(c)],
-  barTop: (c) => {
+function labBarTop(c) {
+  const wrap = labEl('span', 'lt-gain-bar');
+  if (c.sk.vp) {
     const top = labEl('span', 'lt-gain-ends');
-    top.append(labGainSpan(c, c.a, `${labGain(c, c.a)} VP`), labGainSpan(c, c.b, `${labGain(c, c.b)} VP`));
-    const wrap = labEl('span', 'lt-gain-bar');
-    wrap.append(top, labSkBar(c));
-    return [labVpApart(c), wrap, labWeekRows(c), labFavFoot(c)];
-  },
-  barCap: (c) => {
-    const cap = labEl('span', 'lt-line lt-gain-cap');
-    cap.append('This skirmish: ', labGainSpan(c, c.a, labGain(c, c.a)), ' · ', labGainSpan(c, c.b, labGain(c, c.b)), ' VP if it ended now');
-    const wrap = labEl('span', 'lt-gain-bar');
-    wrap.append(labSkBar(c), cap);
-    return [labVpApart(c), wrap, labWeekRows(c), labFavFoot(c)];
-  },
-  rowGain: (c) => [labVpApart(c), labSkBar(c), labWeekRows(c, (x) => {
-    const vp = labWeekVp(x);
-    vp.append(' ', labGainSpan(c, x, labGain(c, x)));
-    return vp;
-  }), labFavFoot(c)],
-  rowArrowTotal: (c) => [labVpApart(c), labSkBar(c), labWeekRows(c, (x) => {
-    const vp = labEl('span', 'lt-vp', `${labNum(x.vp)} → `);
-    vp.append(labGainSpan(c, x, labNum(x.vp + c.sk.vp[x.color])), labEl('span', 'stat-label', ' VP'));
-    return vp;
-  }), labFavFoot(c)],
-};
-// The variants that show the points: with no VP table to trust they are skFav.
-const LAB_CLOSE_GAIN = ['barIn', 'barTop', 'barCap', 'rowGain', 'rowArrowTotal'];
+    for (const x of [c.a, c.b]) top.appendChild(labEl('span', `lt-gain side-${x.color}`, `+${c.sk.vp[x.color]} VP`));
+    wrap.appendChild(top);
+  }
+  wrap.appendChild(labSkBar(c));
+  return [labBig(labNum(c.gap), 'VP apart'), wrap, labWeekRows(c), labFavFoot(c)];
+}
 function labClosestBody(c) {
   const v = labPrefs.closest;
   if (!c.sk || v === 'today') {
     return [labBig(labNum(c.gap), 'VP apart'), labVpBar([c.a, c.b].map((x) => ({ color: x.color, n: x.vp }))),
       labVpRows(c, labWeekVp), labEl('span', 'lt-line', 'Top two · this week')];
   }
-  if (LAB_CLOSE_GAIN.includes(v) && !c.sk.vp) return LAB_CLOSE.skFav(c);
-  if (Object.prototype.hasOwnProperty.call(LAB_CLOSE, v)) return LAB_CLOSE[v](c);
+  if (v === 'barTop') return labBarTop(c);
   const gain = c.sk.vp;
-  const skBar = () => labVpBar([c.a, c.b].map((x) => ({ color: x.color, n: c.sk.sc[x.color], dim: c.lead && c.lead !== x })));
   const rows = labVpRows(c, (x) => (gain ? labEl('span', 'lt-vp lt-sk-gain', `+${gain[x.color]} VP`) : labEl('span', 'lt-vp lt-sk-score', labNum(c.sk.sc[x.color]))));
   // (a): the bar is the skirmish's, each row its points if it ended now.
-  return [labBig(labNum(c.gap), 'VP apart'), labLeadLine(c), skBar(), rows,
+  return [labBig(labNum(c.gap), 'VP apart'), labLeadLine(c), labSkBar(c), rows,
     labEl('span', 'lt-line', gain ? `If it ended now · ${labNextGap(c)}` : 'Skirmish score · top two')];
+}
+// The Closest match's icon, drawn like the other tiles' game icons: 21 px, filled in a pale gold with a dark
+// outline and the same drop shadow (.lt-ci in css/lab-mid.css). Each part: [d, kind], kind f (filled), d (the
+// dark inside), s (a line), or a transform for the shield halves.
+const LAB_SHIELD = 'M-4.4 -7.2 L0 -8.6 L4.4 -7.2 V-1.2 C4.4 3.2 2.2 6.2 0 8 C-2.2 6.2 -4.4 3.2 -4.4 -1.2 Z';
+const LAB_SHIELD_BAND = 'M-0.7 -7.9 h1.4 v15 h-1.4 Z';
+const LAB_CLOSE_ICONS = {
+  scales: [['M8 21.2 h8 v-1.8 h-8 Z', 'f'], ['M11.1 5 h1.8 v14.6 h-1.8 Z', 'f'], ['M3 7.1 L21 6.1 L21 7.7 L3 8.7 Z', 'f'],
+    ['M12 3 a1.9 1.9 0 1 0 0.01 0 Z', 'f'], ['M4.6 8.3 L2 13.6 M4.6 8.3 L7.2 13.6 M19.4 7.4 L16.8 12.9 M19.4 7.4 L22 12.9', 's'],
+    ['M1.2 13.4 h6.8 a3.4 2.6 0 0 1 -6.8 0 Z', 'f'], ['M16 12.7 h6.8 a3.4 2.6 0 0 1 -6.8 0 Z', 'f']],
+  stopwatch: [['M10.3 1.8 h3.4 v2.8 h-3.4 Z', 'f'], ['M17.6 4.6 l1.9 1.9 -1.4 1.4 -1.9 -1.9 Z', 'f'],
+    ['M12 5.4 a8 8 0 1 0 0.01 0 Z', 'f'], ['M12 7.6 a5.8 5.8 0 1 0 0.01 0 Z', 'd'], ['M12 13.4 V9.4 M12 13.4 L14.8 15.2', 'h']],
+  flag: 'flag',
+  shields: [[LAB_SHIELD, 'f', 'translate(7.4 12.4) rotate(10)'], [LAB_SHIELD_BAND, 'q', 'translate(7.4 12.4) rotate(10)'],
+    [LAB_SHIELD, 'f', 'translate(16.6 12.4) rotate(-10)'], [LAB_SHIELD_BAND, 'q', 'translate(16.6 12.4) rotate(-10)']],
+};
+function labCloseIcon(kind) {
+  const parts = LAB_CLOSE_ICONS[kind];
+  if (!parts) return null;
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', 'lt-ic lt-ci');
+  const add = (d, k, tf) => {
+    const p = document.createElementNS(ns, 'path');
+    p.setAttribute('d', d);
+    p.setAttribute('class', `lt-ci-${k}`);
+    if (tf) p.setAttribute('transform', tf);
+    svg.appendChild(p);
+  };
+  if (parts === 'flag') {
+    // A chequered finish flag: a pole and 4 by 3 squares, the gold ones over a dark cloth.
+    add('M3.4 2 h1.8 v20 h-1.8 Z', 'f');
+    add('M5.2 3.2 h15.6 v11 h-15.6 Z', 'd');
+    let sq = '';
+    for (let r = 0; r < 3; r++) for (let q = 0; q < 4; q++) if ((r + q) % 2 === 0) sq += `M${5.2 + q * 3.9} ${3.2 + r * 3.667} h3.9 v3.667 h-3.9 Z `;
+    add(sq.trim(), 'q');
+  } else for (const [d, k, tf] of parts) add(d, k, tf);
+  return svg;
 }
 function labClosestTile() {
   const c = labClosest();
   if (!c) return null;
   const v = c.sk ? labPrefs.closest : 'today';
-  return labTile({ cls: `lt-close lt-close-${v}`, label: 'Closest match', chip: labChipOf(c.m.id),
+  return labTile({ cls: `lt-close lt-close-${v}`, icon: labCloseIcon(labPrefs.closeIcon), label: 'Closest match', chip: labChipOf(c.m.id),
     body: labClosestBody(c),
     go: () => labGoToTier([c.a.name, c.b.name]),
     aria: labClosestSaid(c) });

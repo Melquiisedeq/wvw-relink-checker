@@ -5,29 +5,30 @@
 // wants boot.js last). Everything goes through textContent.
 
 const LAB_KEY = 'wvw-lab-v1';
-const LAB_VERSION = 17;          // bump when the defaults change: older saved choices are dropped
-// Round 14: the Closest match in round 9 and 10's frame with each team's week VP on its row, who would lead the
-// week if the skirmish ended now and the time left in the foot, and, in the new ones, where each team's points
-// if it ended now go. Each setup is one of them on frame A; the Fine-tune radios override the one picked.
+const LAB_VERSION = 18;          // bump when the defaults change: older saved choices are dropped
+// Round 15: the Closest match's barTop, with round 10's "a" and round 9 to compare, and an icon for its title.
 const LAB_CLOSE_OPTS = {
-  barIn: 'Thick skirmish bar, “+18” and “+23” inside it',
   barTop: '“+18 VP” and “+23 VP” over the bar’s ends',
-  barCap: 'A line under the bar: “This skirmish: +18 · +23 VP”',
-  rowGain: 'On the rows: “1,690 VP +18”',
-  rowArrowTotal: 'On the rows: “1,690 → 1,708 VP”',
-  skFav: 'Round 13: skirmish bar, no points',
-  weekFav: 'Round 13: week bar, no points',
   a: 'Round 10 (a)',
   today: 'Round 9: the week only',
 };
-const LAB_SETUPS = Object.fromEntries(Object.entries(LAB_CLOSE_OPTS).map(([k, label]) => [k,
-  { label, closest: k, frame: k === 'today' ? 'today' : 'a' }]));
+const LAB_SETUPS = {
+  barTop: { label: LAB_CLOSE_OPTS.barTop, closest: 'barTop', frame: 'a', icon: 'scales' },
+  a: { label: LAB_CLOSE_OPTS.a, closest: 'a', frame: 'a', icon: 'none' },
+  today: { label: LAB_CLOSE_OPTS.today, closest: 'today', frame: 'today', icon: 'none' },
+};
 const LAB_ITEMS = [
-  { type: 'radio', key: 'setup', label: 'Setup', value: 'barIn',
+  { type: 'radio', key: 'setup', label: 'Setup', value: 'barTop',
     options: Object.fromEntries(Object.entries(LAB_SETUPS).map(([k, x]) => [k, x.label])),
-    apply: (k) => { labPrefs.closest = LAB_SETUPS[k].closest; labPrefs.frame = LAB_SETUPS[k].frame; } },
+    apply: (k) => { labPrefs.closest = LAB_SETUPS[k].closest; labPrefs.frame = LAB_SETUPS[k].frame; labPrefs.closeIcon = LAB_SETUPS[k].icon; } },
   { type: 'section', label: 'Fine-tune' },
-  { type: 'radio', key: 'closest', label: 'Closest match', value: 'barIn', options: LAB_CLOSE_OPTS },
+  { type: 'radio', key: 'closest', label: 'Closest match', value: 'barTop', options: LAB_CLOSE_OPTS },
+  { type: 'radio', key: 'closeIcon', label: 'Closest match icon', value: 'scales', options: {
+    scales: 'Scales, the pans almost level',
+    stopwatch: 'A stopwatch',
+    flag: 'A chequered finish flag',
+    shields: 'Two shields face to face',
+    none: 'No icon' } },
   { type: 'radio', key: 'frame', label: 'Frame of the middle panels', value: 'a', options: {
     today: 'Today: dark fill, no shadow',
     a: 'A · dark fill + the columns’ border, rules and shadows',
