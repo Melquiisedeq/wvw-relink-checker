@@ -172,10 +172,12 @@ for (const when of ['with reduced motion', 'without focus', 'in a hidden tab']) 
     if (when === 'without focus') await watch(page, { focused: false });
     if (when === 'in a hidden tab') await watch(page, { hidden: true });
     await search(page, wvw.guilds[0]);
+    await page.getByRole('button', { name: /^Show .+ in the standings/ }).click();
     const strip = page.locator('.guild-found-strip');
     await expect(strip).toBeAttached();
     await expect.poll(() => strip.evaluate(e => getComputedStyle(e).opacity), { message: 'the strip fading in' }).toBe('1');
-    await expect.poll(() => runOnce(page), { message: 'run-once animations not finished', timeout: 5000 }).toEqual({ pastEnd: [], left: [] });
+    // The longest of them is the found card's mark, MARK_MS (js/search.js).
+    await expect.poll(() => runOnce(page), { message: 'run-once animations not finished', timeout: 12000 }).toEqual({ pastEnd: [], left: [] });
   });
 }
 

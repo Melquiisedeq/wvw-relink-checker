@@ -117,6 +117,7 @@ test('the guild strip opens and closes without moving its height', async ({ page
     tick();
   });
   await search(page, wvw.guilds[0]);
+  await page.getByRole('button', { name: /^Show .+ in the standings/ }).click();
   const strip = page.locator('.guild-found-strip');
   await expect(strip).toBeVisible();
   // It leaves on its own, some seconds on, and is gone once its exit has played.

@@ -284,6 +284,8 @@ test.describe('the round on the sling', () => {
     await load(page, wvw);
     await page.locator('#guildInput').fill(wvw.guilds[0]);
     await pause(page, wvw);
+    // The name read is held, so the search is still on and its round still gathering.
+    const release = await hold(page, new RegExp(`/guild/search\\?name=${encodeURIComponent(wvw.guilds[0])}$`));
     await page.locator('#runBtn').click();
     await expect(page.locator(`${ROUNDS}.charging`), 'the round, gathering').toHaveCount(1);
     await expect(page.locator('#trebuchet')).toHaveClass(/cocking/);
@@ -292,6 +294,7 @@ test.describe('the round on the sling', () => {
     await expect(page.locator('.siege-shot'), "the click's shot, in the air").toHaveCount(1);
     await expect(page.locator('#trebuchet'), 'the beam still cocked, the round still on the sling').toHaveClass(/cocking/);
     await expect(page.locator(`${ROUNDS}.charging`)).toHaveCount(1);
+    release();
     await wvw.settle();
   });
 });
