@@ -222,79 +222,13 @@ html .lt-calm .lt-num{color:var(--text);background:none;filter:none;text-shadow:
 .lt-sk-gain{font-weight:800;color:var(--side-glow);font-variant-numeric:tabular-nums;}
 .lt-vprow:not(.is-lead) .lt-sk-gain{color:var(--muted);}
 .lt-sk-score{font-variant-numeric:tabular-nums;color:var(--muted);}
-/* Round 12's variants (LAB_CLOSE in js/lab-tiles.js): a name too long for its cell ends in an ellipsis, said
-   whole by the tile's aria-label; the favourite is always worded (.lt-tag, .lt-fav-w), never a dimmed colour. */
+/* A name that may be cut short ends in an ellipsis, said whole by the tile's aria-label. */
 .lt-cut{display:flex;align-items:baseline;min-width:0;}
 .lt-cut-nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.lt-vpn{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--side-glow,var(--text));}
-.lt-vpn-big{font-size:1.4rem;line-height:1.1;}
-.lt-vpn-mid{font-size:1.05rem;line-height:1.15;}
-.lt-tag{flex:none;padding:1px 5px;border-radius:4px;font-size:.6rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--text);background:var(--side-fill,#2a313b);border:1px solid var(--side-edge,#3a4350);white-space:nowrap;}
-.lt-sep{color:var(--muted);flex:none;}
-.lt-time{white-space:nowrap;}
-.lt-center{text-align:center;}
-.lt-fav-w{flex:none;font-size:.66rem;font-weight:800;letter-spacing:.03em;color:var(--side-glow,var(--text));white-space:nowrap;}
-.lt-fav{display:flex;align-items:baseline;gap:5px;min-width:0;font-weight:700;color:var(--text);}
-.lt-fav .lt-fav-w{font-size:inherit;letter-spacing:0;font-weight:600;color:var(--text);}
-.lt-fav-big{font-size:.95rem;}
-.lt-fav-sm{font-size:.74rem;}
-.lt-pair{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 8px;font-size:.78rem;color:var(--muted);}
-.lt-pair .lab-team{gap:0 3px;}
-.lt-pair .lt-vpn{color:var(--text);}
-.lt-pair .is-fav .lt-vpn{color:var(--side-glow);}
-.lt-pair .stat-label{color:#8d97a6;font-size:.68rem;}
-.lt-foot{display:flex;align-items:baseline;gap:5px;min-width:0;font-size:.74rem;font-weight:600;color:var(--text);}
-.lt-foot .lt-tag{align-self:center;}
-.lt-foot > :last-child{flex:none;color:var(--muted);font-weight:400;}
-/* Scoreboard and no names: two halves, the favourite's half on its colour's fill. */
-.lt-board{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;}
-.lt-side{display:flex;flex-direction:column;align-items:center;gap:1px;min-width:0;padding:3px 4px;border-radius:7px;border:1px solid transparent;font-size:.72rem;font-weight:600;color:var(--muted);}
-.lt-side .lt-cut{max-width:100%;}
-.lt-side .lab-dot{display:none;}
-.lt-side.is-fav{background:var(--side-fill);border-color:var(--side-edge);color:var(--text);}
-.lt-dotvp{display:flex;align-items:center;gap:6px;}
-.lt-swatch{display:inline-block;flex:none;width:12px;height:12px;border-radius:3px;align-self:center;}
-.lt-blank{visibility:hidden;}
-.lt-side-foot{display:flex;justify-content:center;align-items:center;min-width:0;white-space:nowrap;}
-/* The bar, the clock, the pill: two ends on one row. */
-.lt-ends{display:flex;justify-content:space-between;align-items:baseline;gap:8px;min-width:0;}
-.lt-ends-sm{align-items:center;font-size:.7rem;}
-.lt-ends-sm > .lt-line{flex:none;}
-.lt-end{display:flex;align-items:baseline;gap:4px;min-width:0;}
-.lt-end .lab-dot{align-self:center;margin-right:0;}
-/* Two rows: "● Name [tag] 1,690". */
-.lt-rows2{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:3px 6px;align-items:center;font-size:.82rem;font-weight:600;}
-.lt-row2{display:contents;}
-.lt-row2 .lt-vpn{text-align:right;font-size:.95rem;color:var(--text);}
-.lt-row2.is-fav .lt-vpn,.lt-row2.is-fav .lt-cut-nm{color:var(--side-glow);}
-.lt-row2:not(.is-fav) .lt-cut-nm{color:var(--muted);}
-/* The leader. */
-.lt-lead-big{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 6px;min-width:0;font-size:1rem;font-weight:800;color:var(--side-glow);}
-.lt-lead-big .lt-cut{flex-shrink:0;max-width:100%;}
-.lt-lead-by{flex:none;color:var(--text);}
-/* Versus. */
-.lt-vs-line{display:flex;align-items:center;justify-content:center;gap:8px;}
-.lt-vs-line .lt-vpn{font-size:1.3rem;color:var(--text);}
-.lt-vs-line .lt-vpn.is-fav{color:var(--side-glow);}
-.lt-vs-line .lab-dot{margin-right:0;width:10px;height:10px;}
-/* The clock: the skirmish's 2 h as a track that empties. */
-.lt-clock{display:block;height:4px;border-radius:2px;background:#2a313b;overflow:hidden;margin:3px 0 1px;}
-.lt-clock-fill{display:block;height:100%;background:#a3adbb;transform-origin:0 50%;}
-/* The pill. */
-.lt-pill{display:inline-flex;align-items:center;gap:5px;min-width:0;padding:2px 8px;border-radius:999px;background:var(--side-fill);border:1px solid var(--side-edge);font-size:.74rem;font-weight:700;color:var(--text);}
-.lt-pill-w{flex:none;font-size:.6rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--side-glow);}
-/* Chips: one row a team. */
-.lt-chips{display:flex;flex-direction:column;gap:4px;}
-.lt-chip{display:flex;align-items:baseline;gap:8px;min-width:0;padding:2px 8px;border-radius:7px;border:1px solid var(--side-edge);font-size:.8rem;font-weight:600;color:var(--text);}
-.lt-chip .lt-cut{flex:1 1 auto;}
-.lt-chip .lt-vpn{font-size:.95rem;}
-.lt-chip.is-fav{background:var(--side-fill);}
-.lt-chip:not(.is-fav) .lt-vpn{color:var(--text);}
-/* In a narrow tile (three a row) the word or the time goes under the name before the name is cut. */
-:is(.lt-fav,.lt-foot,.lt-ends-sm){flex-wrap:wrap;}
-:is(.lt-fav,.lt-foot) > .lt-cut{flex-shrink:0;max-width:100%;}
-.lt-pill{flex-shrink:0;max-width:100%;}
+/* Round 13: the favourite's word beside its week VP, in its colour. */
+.lt-vp-right{display:inline-flex;align-items:baseline;gap:5px;flex:none;}
+.lt-fav-w{font-size:.66rem;font-weight:800;color:var(--side-glow);white-space:nowrap;}
+.lt-vprow.is-lead .lt-vp{color:var(--side-glow);}
 .lt-vp{font-variant-numeric:tabular-nums;white-space:nowrap;flex:none;}
 .lt-vp .stat-label{color:#8d97a6;font-weight:400;font-size:.68rem;}
 /* Leaders: a box of its own above the tiles, the five stacked in one cell, one shown. */

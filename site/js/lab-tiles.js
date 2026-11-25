@@ -425,178 +425,49 @@ function labCutName(x) {
   s.append(labDot(x.color), labEl('span', 'lt-cut-nm', x.name));
   return s;
 }
-// Round 12: each variant shows the two colours, their week VP, the favourite and the time left, or part of them.
-const labVpIn = (x, cls) => labEl('span', `lt-vpn side-${x.color}${cls ? ` ${cls}` : ''}`, labNum(x.vp));
-const labTag = (text, x) => labEl('span', `lt-tag${x ? ` side-${x.color}` : ''}`, text);
-const labTimeLine = (c, cls) => labEl('span', `lt-line lt-time${cls ? ` ${cls}` : ''}`, labTimeLeft(c));
-// "● Name set to win", the name cut short when it must.
-function labFavLine(c, word, cls) {
+// Round 13: round 9 and 10's frame (the big number, the bar, the two rows, the foot), each row the team's week VP.
+const labWeekBar = (c) => labVpBar([c.a, c.b].map((x) => ({ color: x.color, n: x.vp })));
+const labSkBar = (c) => labVpBar([c.a, c.b].map((x) => ({ color: x.color, n: c.sk.sc[x.color], dim: c.lead && c.lead !== x })));
+// The two rows, "● Name … 1,690 VP"; with mark, the favourite's name lit and `mark` beside its number.
+function labWeekRows(c, mark) {
   const f = labFav(c);
-  const line = labEl('span', `lt-fav side-${f.x.color}${cls ? ` ${cls}` : ''}`);
-  line.append(labCutName(f.x), labEl('span', 'lt-fav-w', f.proj ? word : 'leads the week'));
+  const rows = labEl('span', 'lt-vprows');
+  for (const x of [c.a, c.b]) {
+    const lit = mark && f.x === x;
+    const row = labEl('span', `lt-vprow side-${x.color}${lit ? ' is-lead' : ''}`);
+    const right = labEl('span', 'lt-vp-right');
+    if (lit) right.appendChild(labEl('span', 'lt-fav-w', mark));
+    right.appendChild(labWeekVp(x));
+    row.append(labCutName(x), right);
+    rows.appendChild(row);
+  }
+  return rows;
+}
+// The foot "● Name set to win · 57 min left"; the second passing the first is "set to pass".
+function labFavFoot(c, word) {
+  const f = labFav(c);
+  const line = labEl('span', 'lt-line lt-sk-line');
+  const said = !f.proj ? 'leads the week' : (f.x === c.b ? 'set to pass' : word);
+  line.append(labTeamText(f.x.name, f.x.color), ` ${said} · ${labTimeLeft(c)}`);
   return line;
 }
+// The gap if it ended now as the big number, or the week's with no VP table.
+function labProjBig(c, unit) {
+  const f = labFav(c);
+  if (!f.proj) return labBig(labNum(c.gap), 'VP apart this week');
+  return labBig(labNum(f.by), f.x === c.a ? unit : `${unit}, ${c.b.name} ahead`);
+}
 const LAB_CLOSE = {
-  // Scoreboard: two big VP face to face, the name under each, the favourite tagged, the time at the foot.
-  score: (c) => {
-    const f = labFav(c);
-    const board = labEl('span', 'lt-board');
-    for (const x of [c.a, c.b]) {
-      const side = labEl('span', `lt-side side-${x.color}${f.x === x ? ' is-fav' : ''}`);
-      side.append(labVpIn(x, 'lt-vpn-big'), labCutName(x));
-      board.appendChild(side);
-    }
-    const foot = labEl('span', 'lt-board lt-board-foot');
-    const tag = labEl('span', 'lt-side-foot');
-    tag.appendChild(labTag(f.proj ? 'Favoured' : 'Week leader', f.x));
-    const time = labEl('span', 'lt-side-foot lt-line', labTimeLeft(c));
-    foot.append(...(f.x === c.a ? [tag, time] : [time, tag]));
-    return [board, foot];
-  },
-  // The bar: the colours split by the week's VP, the number at each end, the time under it.
-  bar: (c) => {
-    const f = labFav(c);
-    const ends = labEl('span', 'lt-ends');
-    ends.append(labVpIn(c.a, 'lt-vpn-mid'), labVpIn(c.b, 'lt-vpn-mid'));
-    const under = labEl('span', 'lt-ends lt-ends-sm');
-    const word = labEl('span', `lt-fav-w side-${f.x.color}`, f.proj ? 'set to win' : 'week leader');
-    const time = labEl('span', 'lt-line', labTimeLeft(c));
-    under.append(...(f.x === c.a ? [word, time] : [time, word]));
-    return [ends, labVpBar([c.a, c.b].map((x) => ({ color: x.color, n: x.vp }))), under];
-  },
-  // The sentence: "● Name is set to win · 57 min left", the two VP on a line under it.
-  phrase: (c) => {
-    const line = labFavLine(c, 'is set to win', 'lt-fav-big');
-    const vps = labEl('span', 'lt-pair');
-    for (const x of [c.a, c.b]) {
-      const t = labEl('span', 'lab-team');
-      t.append(labDot(x.color), labVpIn(x), labEl('span', 'stat-label', ' VP'));
-      vps.appendChild(t);
-    }
-    vps.append(labEl('span', 'lt-sep', '·'), labTimeLeft(c));
-    return [line, vps];
-  },
-  // Two rows "● Name 1,690", the favourite's lit with the word.
-  rows: (c) => {
-    const f = labFav(c);
-    const rows = labEl('span', 'lt-rows2');
-    for (const x of [c.a, c.b]) {
-      const row = labEl('span', `lt-row2 side-${x.color}${f.x === x ? ' is-fav' : ''}`);
-      row.append(labCutName(x), f.x === x ? labTag(f.proj ? 'favoured' : 'week leader', x) : labEl('span'), labVpIn(x));
-      rows.appendChild(row);
-    }
-    return [rows, labTimeLine(c)];
-  },
-  // The leader only: "● Name leads by 41 VP", big; who is set to win and the time under it.
-  leader: (c) => {
-    const f = labFav(c);
-    const big = labEl('span', `lt-lead-big side-${c.a.color}`);
-    big.append(labCutName(c.a), labEl('span', 'lt-lead-by', `leads by ${labNum(c.gap)} VP`));
-    const line = labEl('span', 'lt-line lt-sk-line');
-    if (f.proj && f.x === c.b) line.append(labTeamText(c.b.name, c.b.color), ' set to pass it');
-    else if (f.proj) line.append('On track to win');
-    else line.append('Week leader');
-    line.append(` · ${labTimeLeft(c)}`);
-    return [big, line];
-  },
-  // Versus on one line: "1,690 ● vs ● 1,649", the favourite's number lit.
-  versus: (c) => {
-    const f = labFav(c);
-    const vs = labEl('span', 'lt-vs-line');
-    vs.append(labVpIn(c.a, f.x === c.a ? 'is-fav' : ''), labDot(c.a.color), labEl('span', 'lt-vs', 'vs'),
-      labDot(c.b.color), labVpIn(c.b, f.x === c.b ? 'is-fav' : ''));
-    const line = labEl('span', 'lt-foot');
-    line.append(labTag(f.proj ? 'Favoured' : 'Week leader', f.x), labCutName(f.x), labEl('span', 'lt-sep', '·'), labEl('span', 'lt-time', labTimeLeft(c)));
-    return [vs, line];
-  },
-  // No names: the colours and the VP; the favourite's arrow and word under its number.
-  colors: (c) => {
-    const f = labFav(c);
-    const board = labEl('span', 'lt-board lt-board-dots');
-    for (const x of [c.a, c.b]) {
-      const side = labEl('span', `lt-side side-${x.color}${f.x === x ? ' is-fav' : ''}`);
-      const top = labEl('span', 'lt-dotvp');
-      top.append(labEl('span', `lt-swatch lab-dot-${x.color}`), labVpIn(x, 'lt-vpn-big'));
-      side.append(top, f.x === x ? labEl('span', 'lt-fav-w', f.proj ? '▲ set to win' : '▲ week leader') : labEl('span', 'lt-fav-w lt-blank', ' '));
-      board.appendChild(side);
-    }
-    return [board, labTimeLine(c, 'lt-center')];
-  },
-  // The projection in one number: "● 36 VP ahead if it ended now", the two VP under it.
-  gap: (c) => {
-    const f = labFav(c);
-    const big = labEl('span', `lt-big side-${f.x.color}`);
-    big.append(labEl('span', `lt-swatch lab-dot-${f.x.color}`), labEl('span', 'lt-num', labNum(f.by)),
-      labEl('span', 'lt-unit', f.proj ? 'VP ahead if it ended now' : 'VP ahead this week'));
-    const vps = labEl('span', 'lt-pair');
-    for (const x of [c.a, c.b]) {
-      const t = labEl('span', 'lab-team');
-      t.append(labDot(x.color), labVpIn(x));
-      vps.appendChild(t);
-    }
-    vps.append(labEl('span', 'lt-sep', '·'), labTimeLeft(c));
-    return [big, vps];
-  },
-  // The time as a bar that empties over the skirmish's 2 h, under the two VP.
-  clock: (c) => {
-    const f = labFav(c);
-    const ends = labEl('span', 'lt-ends');
-    for (const x of [c.a, c.b]) {
-      const t = labEl('span', `lt-end side-${x.color}${f.x === x ? ' is-fav' : ''}`);
-      t.append(labDot(x.color), labVpIn(x, 'lt-vpn-mid'));
-      if (f.x === x) t.appendChild(labEl('span', 'lt-fav-w', f.proj ? 'favoured' : 'leads'));
-      ends.appendChild(t);
-    }
-    const track = labEl('span', 'lt-clock');
-    const fill = labEl('span', 'lt-clock-fill');
-    fill.style.transform = `scaleX(${c.sk ? Math.min(1, c.sk.left / 120) : 0})`;
-    track.appendChild(fill);
-    return [ends, track, labTimeLine(c)];
-  },
-  // The favourite as a pill under the two VP.
-  badge: (c) => {
-    const f = labFav(c);
-    const vps = labEl('span', 'lt-ends');
-    for (const x of [c.a, c.b]) {
-      const t = labEl('span', 'lt-end');
-      t.append(labDot(x.color), labVpIn(x, 'lt-vpn-mid'));
-      vps.appendChild(t);
-    }
-    const pill = labEl('span', `lt-pill side-${f.x.color}`);
-    pill.append(labEl('span', 'lt-pill-w', f.proj ? 'Likely winner' : 'Week leader'), labCutName(f.x));
-    const foot = labEl('span', 'lt-ends lt-ends-sm');
-    foot.append(pill, labEl('span', 'lt-line', labTimeLeft(c)));
-    return [vps, foot];
-  },
-  // Coloured chips: one row a team, "● Name 1,690" on its colour's edge, the favourite's filled and worded.
-  chips: (c) => {
-    const f = labFav(c);
-    const rows = labEl('span', 'lt-chips');
-    for (const x of [c.a, c.b]) {
-      const chip = labEl('span', `lt-chip side-${x.color}${f.x === x ? ' is-fav' : ''}`);
-      chip.append(labCutName(x));
-      if (f.x === x) chip.appendChild(labEl('span', 'lt-fav-w', f.proj ? 'set to win' : 'leads'));
-      chip.appendChild(labVpIn(x));
-      rows.appendChild(chip);
-    }
-    return [rows, labTimeLine(c)];
-  },
-  // Time first: the minutes left big, then the two VP and the favourite's word on one line.
-  time: (c) => {
-    const f = labFav(c);
-    const big = labEl('span', 'lt-big');
-    const left = c.sk.left;
-    big.append(labEl('span', 'lt-num', left >= 60 ? `${Math.floor(left / 60)} h ${left % 60}` : String(left)),
-      labEl('span', 'lt-unit', left >= 60 ? 'min left in the skirmish' : (left === 1 ? 'minute left' : 'minutes left')));
-    const vps = labEl('span', 'lt-pair');
-    for (const x of [c.a, c.b]) {
-      const t = labEl('span', `lab-team side-${x.color}${f.x === x ? ' is-fav' : ''}`);
-      t.append(labDot(x.color), labVpIn(x));
-      if (f.x === x) t.appendChild(labEl('span', 'lt-fav-w', f.proj ? 'favoured' : 'leads'));
-      vps.appendChild(t);
-    }
-    return [big, vps];
-  },
+  weekFav: (c) => [labBig(labNum(c.gap), 'VP apart'), labWeekBar(c), labWeekRows(c), labFavFoot(c, 'set to win')],
+  skFav: (c) => [labBig(labNum(c.gap), 'VP apart'), labSkBar(c), labWeekRows(c), labFavFoot(c, 'set to win')],
+  rowWord: (c) => [labBig(labNum(c.gap), 'VP apart'), labWeekBar(c), labWeekRows(c, 'favoured'),
+    labEl('span', 'lt-line', `${labFav(c).proj ? 'If it ended now · ' : ''}${labTimeLeft(c)}`)],
+  rowArrow: (c) => [labBig(labNum(c.gap), 'VP apart'), labSkBar(c), labWeekRows(c, '▲'),
+    labEl('span', 'lt-line', `▲ ${labFav(c).proj ? 'ahead if it ended now' : 'leads the week'} · ${labTimeLeft(c)}`)],
+  projRows: (c) => [labProjBig(c, 'VP apart if it ended now'), labWeekBar(c), labWeekRows(c, 'favoured'),
+    labEl('span', 'lt-line', `Week VP now · ${labTimeLeft(c)}`)],
+  projFoot: (c) => [labProjBig(c, 'apart if it ended now'), labSkBar(c), labWeekRows(c), labFavFoot(c, 'set to win')],
+  onTrack: (c) => [labBig(labNum(c.gap), 'VP apart'), labWeekBar(c), labWeekRows(c), labFavFoot(c, 'on track to win')],
 };
 function labClosestBody(c) {
   const v = labPrefs.closest;

@@ -5,23 +5,18 @@
 // wants boot.js last). Everything goes through textContent.
 
 const LAB_KEY = 'wvw-lab-v1';
-const LAB_VERSION = 15;          // bump when the defaults change: older saved choices are dropped
-// Round 12: the Closest match's variants, each with the two colours, their week VP, the favourite (who leads
-// the week if the skirmish ended now) and the time left, or part of them. Each setup is one of them on frame A;
-// the Fine-tune radios override the one picked.
+const LAB_VERSION = 16;          // bump when the defaults change: older saved choices are dropped
+// Round 13: the Closest match in round 9 and 10's frame, each row the team's week VP, with who would lead the
+// week if the skirmish ended now and the time left. Each setup is one of them on frame A; the Fine-tune radios
+// override the one picked.
 const LAB_CLOSE_OPTS = {
-  score: 'Scoreboard: two big VP, “Favoured”',
-  bar: 'The bar: VP at each end, “set to win”',
-  phrase: 'One sentence: “● Name is set to win”',
-  rows: 'Two rows, the favourite’s lit',
-  leader: 'The leader: “● Name leads by 41 VP”',
-  versus: 'Versus: “1,690 ● vs ● 1,649”',
-  colors: 'No names: colours and VP',
-  gap: 'One number: “36 VP ahead if it ended now”',
-  clock: 'The time as a bar that empties',
-  badge: 'A pill: “Likely winner ● Name”',
-  chips: 'Coloured chips, the favourite’s filled',
-  time: 'Time first: “57 minutes left”',
+  weekFav: 'Week bar, “● Name set to win” in the foot',
+  skFav: 'Skirmish bar, “● Name set to win” in the foot',
+  rowWord: 'Week bar, “favoured” on the row',
+  rowArrow: 'Skirmish bar, “▲” on the row',
+  projRows: '“36 VP apart if it ended now”, “favoured” on the row',
+  projFoot: '“36 apart if it ended now”, skirmish bar, the favourite in the foot',
+  onTrack: 'Week bar, “● Name on track to win” in the foot',
   alean: 'Round 10 (a), without the skirmish line',
   a: 'Round 10 (a)',
   today: 'Round 9: the week only',
@@ -29,11 +24,11 @@ const LAB_CLOSE_OPTS = {
 const LAB_SETUPS = Object.fromEntries(Object.entries(LAB_CLOSE_OPTS).map(([k, label]) => [k,
   { label, closest: k, frame: k === 'today' ? 'today' : 'a' }]));
 const LAB_ITEMS = [
-  { type: 'radio', key: 'setup', label: 'Setup', value: 'score',
+  { type: 'radio', key: 'setup', label: 'Setup', value: 'weekFav',
     options: Object.fromEntries(Object.entries(LAB_SETUPS).map(([k, x]) => [k, x.label])),
     apply: (k) => { labPrefs.closest = LAB_SETUPS[k].closest; labPrefs.frame = LAB_SETUPS[k].frame; } },
   { type: 'section', label: 'Fine-tune' },
-  { type: 'radio', key: 'closest', label: 'Closest match', value: 'score', options: LAB_CLOSE_OPTS },
+  { type: 'radio', key: 'closest', label: 'Closest match', value: 'weekFav', options: LAB_CLOSE_OPTS },
   { type: 'radio', key: 'frame', label: 'Frame of the middle panels', value: 'a', options: {
     today: 'Today: dark fill, no shadow',
     a: 'A · dark fill + the columns’ border, rules and shadows',
