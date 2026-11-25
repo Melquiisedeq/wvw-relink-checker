@@ -5,10 +5,7 @@
 CREATE TABLE note_group (
   note    TEXT    PRIMARY KEY,  -- the wiki's h2, 'Update - November 10, 2026'
   day     TEXT    NOT NULL,     -- its date, '2026-11-10'
-  page    TEXT    NOT NULL,     -- the wiki page it sits on, Game_updates/<page>
-  n       INTEGER NOT NULL,     -- lines kept from its last accepted reading
-  top     INTEGER NOT NULL,     -- the floor's measure: the most lines two readings in a row had
-  last    INTEGER NOT NULL      -- lines the last reading of its page had, 0 when it lacked the note
+  page    TEXT    NOT NULL      -- the wiki page it sits on, Game_updates/<page>
 ) WITHOUT ROWID;
 CREATE TABLE note_line (
   note    TEXT    NOT NULL,     -- note_group.note
