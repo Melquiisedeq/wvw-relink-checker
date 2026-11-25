@@ -114,8 +114,10 @@ test('the activity popover stays open, inside the screen, when the visible heigh
   await load(page, wvw);
   await phone(page, 360, { height: 700 });
   await wvw.settle();
-  const btn = page.locator('.activity-btn').first();
-  // The icon low on the screen: the popover sits above it and is lower than the shrunk window.
+  // The first icon far enough down the page to be scrolled to 650 px: the popover sits above it
+  // and is lower than the shrunk window.
+  const far = await page.evaluate(() => [...document.querySelectorAll('.activity-btn')].findIndex(b => b.getBoundingClientRect().top + scrollY > 700));
+  const btn = page.locator('.activity-btn').nth(far);
   await btn.evaluate(b => window.scrollTo(0, b.getBoundingClientRect().top + scrollY - 650));
   await wvw.settle();
   expect(await btn.evaluate(b => b.getBoundingClientRect().top), 'the icon low on the screen').toBeGreaterThan(600);

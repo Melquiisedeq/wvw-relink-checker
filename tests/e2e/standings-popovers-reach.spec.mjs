@@ -32,6 +32,9 @@ const OPEN = { pops: 1, backdrops: 0, expanded: false, active: true, aria: 'true
 
 test.describe('desktop', () => {
   test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
+  // A popover taller than the room above and below its icon is held inside the window and
+  // covers the icon, so a second click on it lands on the popover: these get the room.
+  const ROOM = { width: 1280, height: 2000 };
 
   test('a click outside closes the popover and keeps the caret; a click inside does not', async ({ page, wvw }) => {
     // Tall enough that the guild box needs no scrolling to be clicked: scrolling, the popover held at an edge could cover the box and the click would land inside it.
@@ -54,6 +57,7 @@ test.describe('desktop', () => {
   });
 
   test('the icon toggles, Escape closes and hands focus back, a reopen is a fresh popover', async ({ page, wvw }) => {
+    await page.setViewportSize(ROOM);
     const btn = await openGuilds(page, wvw);
     await btn.click();
     expect(await state(page, btn), 'the icon pressed again').toEqual(CLOSED);
@@ -65,6 +69,7 @@ test.describe('desktop', () => {
   });
 
   test('expand and shrink: the backdrop comes and goes, the popover goes back beside its icon', async ({ page, wvw }) => {
+    await page.setViewportSize(ROOM);
     const btn = await openGuilds(page, wvw);
     const expand = page.locator(`${POP} .info-popover-expand`);
     const aria = () => expand.getAttribute('aria-label');

@@ -330,20 +330,25 @@ function playSpot(tier, teamName, guild) {
   hangStrip(teamName, guild);
   const first = cardOfTeam(teamName);
   const col = tier.parentElement;
-  col.classList.add('tier-spot-col');
+  // The ring hangs beside the grid, not in it: a child the grid does not expect makes the next
+  // score rebuild the whole region instead of patching its cards (patchStandingsRegion).
+  const host = col.parentElement;
+  host.classList.add('tier-spot-col');
   const spot = el('span', 'tier-spot');
   spot.setAttribute('aria-hidden', 'true');
   const glow = first ? getComputedStyle(first).getPropertyValue('--side-glow').trim() : '';
   if (glow) spot.style.setProperty('--spot-c', glow);
   const w = tier.offsetWidth + 2 * SPOT_RING;
   const h = tier.offsetHeight + 2 * SPOT_RING;
-  spot.style.left = `${tier.offsetLeft - SPOT_RING}px`;
-  spot.style.top = `${tier.offsetTop - SPOT_RING}px`;
+  const at = tier.getBoundingClientRect();
+  const box = host.getBoundingClientRect();
+  spot.style.left = `${at.left - box.left - host.clientLeft - SPOT_RING}px`;
+  spot.style.top = `${at.top - box.top - host.clientTop - SPOT_RING}px`;
   spot.style.width = `${w}px`;
   spot.style.height = `${h}px`;
   spot.style.setProperty('--spot-ring', ringPath(w, h));
   spot.appendChild(el('span', 'tier-ring'));
-  col.appendChild(spot);
+  host.appendChild(spot);
   for (const m of col.children) if (m !== tier && m.classList.contains('standing-match')) m.classList.add('tier-dimmed');
   setTimeout(() => {
     dropMark();

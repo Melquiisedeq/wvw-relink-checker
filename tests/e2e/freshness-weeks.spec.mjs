@@ -328,7 +328,7 @@ test('a team whose match has ended: the answer has no tier', async ({ page, wvw 
   await answer(page, GAME + 'wvw/guilds/na', { [G]: ENDED });
   await answer(page, `${GAME}guild/${G}`, { id: G, name: 'Late Guild', tag: 'LTE' });
   const ended = await answer(page, `${GAME}wvw/matches?world=${ENDED}`, { ...live, all_worlds: { ...live.all_worlds, red: [ENDED] },
-    start_time: iso(Date.now() - 2 * WEEK), end_time: iso(Date.now() - WEEK) });
+    start_time: iso(wvw.opensAt - 2 * WEEK), end_time: iso(wvw.opensAt - WEEK) });
   await check(page, wvw, G);
   expect(ended.reads, 'the ended match was read').toBeGreaterThanOrEqual(1);
   await expect(card(page).locator('.search-team')).toHaveText(`Unknown team (ID ${ENDED})`);
