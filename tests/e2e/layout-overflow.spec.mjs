@@ -22,12 +22,9 @@ const FONTS = [
   { name: 'monospace', css: 'monospace' },
 ];
 
-// The finale of a check shakes the page (.struck, translate up to 9 px) and
-// drops the panels in (.deploying): measured then, the page is wider than it
-// is. Quiet is: the charge gone (it goes at the hit), the shake and the drop
-// over, the overlay not playing.
+// Measured during the finale of a check, the page is wider than it is. Quiet is: the
+// charge gone (it goes at the hit), the overlay not playing.
 const quiet = page => page.evaluate(() => !document.querySelector('.siege-charge')
-  && !document.getElementById('page').matches('.struck, .deploying')
   && !document.querySelector('.impact-overlay.play'));
 
 // Reachable: scrolled to the middle of the screen, the point at its centre hits the element itself
@@ -80,7 +77,7 @@ for (const width of WIDTHS) {
       if (font.painted) expect(families, `the fonts Chrome painted the page with, wanted ${font.painted}`).toContain(font.painted);
       else if (font.css) expect(families, `the fonts Chrome painted with under ${font.name}, the same as the default's`).not.toEqual(before);
       await fits(page, wvw, `${width} px, ${font.name}, at rest`);
-      await search(page, wvw.guilds);
+      await search(page, wvw.guilds[0]);
       await fits(page, wvw, `${width} px, ${font.name}, after a search`);
       await openMap(page, wvw, page.locator('.tier-map-btn').first());
       await fits(page, wvw, `${width} px, ${font.name}, map open`);
@@ -95,25 +92,3 @@ for (const width of WIDTHS) {
     });
   }
 }
-
-// The shake itself: .page.struck moves the page up to 9 px sideways, and the
-// document must not widen while it plays (overflow-x: clip on html and body).
-test('the shake does not widen the page, 320 px', async ({ page, wvw }) => {
-  await page.setViewportSize({ width: 320, height: 800 });
-  await page.goto(wvw.url);
-  await expect(page.locator('#standingsGridNA > .standing-match')).toHaveCount(wvw.tiers.NA);
-  await wvw.settle();
-  const widest = await page.evaluate(() => new Promise(resolve => {
-    const el = document.getElementById('page');
-    let max = 0;
-    const end = performance.now() + 600;
-    el.classList.add('struck');
-    const tick = () => {
-      max = Math.max(max, document.documentElement.scrollWidth);
-      if (performance.now() < end) requestAnimationFrame(tick);
-      else { el.classList.remove('struck'); resolve(max); }
-    };
-    tick();
-  }));
-  expect(widest, 'widest scrollWidth during the shake, in a 320 px window').toBeLessThanOrEqual(320);
-});

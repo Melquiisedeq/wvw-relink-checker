@@ -6,7 +6,7 @@ test.use({ viewport: { width: 1280, height: 800 } });
 const TIERS = '#standingsGridNA > .standing-match';
 
 // Scripts run in order and the page is usable before the last one: with one
-// held, Escape, a resize, the Check button, Ctrl+Enter and a click must raise
+// held, Escape, a resize, the Check button, Enter in the guild box and a click must raise
 // nothing (the fixture fails the test on an exception), and the page must work
 // once it is let go.
 for (const script of ['maps-early.js', 'trebuchet.js', 'boot.js']) {
@@ -18,7 +18,7 @@ for (const script of ['maps-early.js', 'trebuchet.js', 'boot.js']) {
     await page.evaluate(() => {
       window.dispatchEvent(new Event('resize'));
       if (window.visualViewport) window.visualViewport.dispatchEvent(new Event('resize'));
-      document.getElementById('guildInput').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+      document.getElementById('guildInput').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', clientX: 50, clientY: 50 }));
     });
     await page.locator('#runBtn').click();
@@ -28,7 +28,7 @@ for (const script of ['maps-early.js', 'trebuchet.js', 'boot.js']) {
     await expect(page.locator(TIERS)).toHaveCount(wvw.tiers.NA);
     await expect(page.locator('#standingsGridEU > .standing-match')).toHaveCount(wvw.tiers.EU);
     await wvw.settle();
-    expect(await page.evaluate(() => !document.getElementById('runBtn').disabled && !document.querySelector('#statusMsg .spinner')),
+    expect(await page.evaluate(() => !document.getElementById('runBtn').disabled && !document.querySelector('#searchAnswer .spinner')),
       'the Check button left disabled').toBe(true);
   });
 }

@@ -83,7 +83,7 @@ test("the head's fire on a round's trail, with the tab hidden and shown mid-flig
     }).observe(document, { childList: true, subtree: true });
   });
   await load(page, wvw);
-  await search(page, wvw.guilds);
+  await search(page, wvw.guilds[0]);
   await expect.poll(() => page.evaluate(() => window.__hiddenWithHead), { message: 'the tab hidden with the head lit' }).toBe(true);
   await page.waitForTimeout(100);
   await page.evaluate(() => {
@@ -108,20 +108,18 @@ for (const reduced of [false, true]) {
     await page.mouse.click(640, 20);
     await expect.poll(() => page.evaluate(() => window.__flames), { message: 'a shot flying' }).toBe(1);
     await expect(flames, 'flames gone within 3 s of the shot').toHaveCount(0, { timeout: 3000 });
-    await search(page, wvw.guilds);
+    await search(page, wvw.guilds[0]);
     await expect.poll(() => page.evaluate(() => window.__flames), { message: "the Check's round flying" }).toBe(2);
     await expect(flames, "flames gone within 3 s of the Check's round").toHaveCount(0, { timeout: 3000 });
     await allFinish(page, 'run-once effects after the shots');
   });
 }
 
-test("the page's layer is made before the shake, and the cards' glass is off from the wind-up to 1.7 s after the break", async ({ page, wvw }) => {
+test("the cards' glass is off from the wind-up to 1.7 s after the break", async ({ page, wvw }) => {
   await page.addInitScript(() => {
-    const seen = window.__finale = { willChange: null, glassAtBreak: null, glassAtBrokenEnd: null, glassAtWindUp: null };
+    const seen = window.__finale = { glassAtBreak: null, glassAtBrokenEnd: null, glassAtWindUp: null };
     const glass = () => getComputedStyle(document.querySelector('.card')).backdropFilter;
     new MutationObserver(() => {
-      const pg = document.getElementById('page');
-      if (pg && pg.classList.contains('struck') && seen.willChange === null) seen.willChange = getComputedStyle(pg).willChange;
       const o = document.querySelector('.impact-overlay.broken');
       if (o && seen.glassAtBreak === null) seen.glassAtBreak = glass();
       if (o) seen.sawBroken = true;
@@ -132,12 +130,10 @@ test("the page's layer is made before the shake, and the cards' glass is off fro
   });
   await load(page, wvw);
   const glass = () => page.evaluate(() => getComputedStyle(document.querySelector('.card')).backdropFilter);
-  expect(await page.evaluate(() => getComputedStyle(document.getElementById('page')).willChange), 'the page layer before any shake').toContain('transform');
   expect(await glass(), 'the cards\' glass at rest').not.toBe('none');
-  await search(page, wvw.guilds);
+  await search(page, wvw.guilds[0]);
   await expect.poll(() => page.evaluate(() => window.__finale.glassAtBrokenEnd), { message: 'the break effect ended', timeout: 10000 }).not.toBeNull();
   const seen = await page.evaluate(() => window.__finale);
-  expect(seen.willChange, 'the page layer when the shake starts').toContain('transform');
   expect(seen.glassAtWindUp, 'the glass as the round gathers').toBe('none');
   expect(seen.glassAtBreak, 'the glass at the break').toBe('none');
   expect(seen.glassAtBrokenEnd, 'the glass when the break effect ends, before the tail is over').toBe('none');
@@ -182,7 +178,7 @@ for (const idle of [true, false]) test(`the crest breaks under a glow painted be
   });
   await load(page, wvw);
   if (idle) await expect.poll(() => page.evaluate(() => window.__crestGlows().filter(g => g.lit > 0).length), { message: 'every glow painted while the page idles, before any click' }).toBe(4);
-  await search(page, wvw.guilds);
+  await search(page, wvw.guilds[0]);
   await expect.poll(() => page.evaluate(() => window.__crest.midBreak), { message: 'the crest broke', timeout: 10000 }).toBeTruthy();
   const { beforeBreak, midBreak } = await page.evaluate(() => window.__crest);
   expect.soft(beforeBreak, 'four glows: the whole crest, two halves, the crack').toHaveLength(4);

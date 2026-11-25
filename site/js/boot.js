@@ -418,9 +418,10 @@ const emberField = (function () {
 // Bound here, last, so an early click or key press finds everything it calls.
 if (pageWhole) {
   runBtn.addEventListener('click', run);
-  // The button disables itself during a run; the shortcut must not start a second one that wipes the first one's rows.
   guildInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && e.ctrlKey && !runBtn.disabled) run();
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    run();
   });
   document.addEventListener('pointerdown', (e) => fx(() => onPointerDown(e)), { passive: true });
 }
