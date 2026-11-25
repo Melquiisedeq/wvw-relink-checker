@@ -225,10 +225,30 @@ html .lt-calm .lt-num{color:var(--text);background:none;filter:none;text-shadow:
 /* A name that may be cut short ends in an ellipsis, said whole by the tile's aria-label. */
 .lt-cut{display:flex;align-items:baseline;min-width:0;}
 .lt-cut-nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-/* Round 13: the favourite's word beside its week VP, in its colour. */
-.lt-vp-right{display:inline-flex;align-items:baseline;gap:5px;flex:none;}
-.lt-fav-w{font-size:.66rem;font-weight:800;color:var(--side-glow);white-space:nowrap;}
-.lt-vprow.is-lead .lt-vp{color:var(--side-glow);}
+/* Round 14: each team's points if the skirmish ended now. */
+.lt-gain{font-weight:800;color:var(--side-glow);font-variant-numeric:tabular-nums;white-space:nowrap;}
+.lt-vp .lt-gain{font-size:.68rem;}
+.lt-gain-bar{display:flex;flex-direction:column;gap:1px;}
+.lt-gain-ends{display:flex;justify-content:space-between;font-size:.66rem;line-height:1.2;}
+.lt-gain-cap{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* barIn: the number on the lit segment is dark on the colour, on the dimmed one light on the colour mixed into
+   the dark (no opacity, which would fade the number). A segment too narrow for its number puts it beside the
+   seam on a dark chip, over the other segment. */
+.lt-split.lt-bar-in{height:16px;overflow:visible;margin:3px 0;}
+.lt-bar-in .lt-seg{position:relative;display:flex;align-items:center;container-type:inline-size;}
+.lt-bar-in .lt-seg-a{z-index:1;justify-content:flex-start;border-radius:3px 0 0 3px;}
+.lt-bar-in .lt-seg-b{justify-content:flex-end;border-radius:0 3px 3px 0;}
+.lt-bar-in .lt-seg-dim{opacity:1;}
+.lt-bar-in .lab-dot-red.lt-seg-dim{background:color-mix(in srgb,var(--red) 40%,#12161b);}
+.lt-bar-in .lab-dot-blue.lt-seg-dim{background:color-mix(in srgb,var(--blue) 40%,#12161b);}
+.lt-bar-in .lab-dot-green.lt-seg-dim{background:color-mix(in srgb,var(--green) 40%,#12161b);}
+.lt-seg-n{padding:0 5px;font-size:.68rem;font-weight:800;line-height:1;color:#0b0d10;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.lt-seg-dim .lt-seg-n{color:#e7ebf0;}
+@container (max-width:34px){
+  .lt-seg-n{position:absolute;top:50%;transform:translateY(-50%);padding:2px 4px;border-radius:3px;background:#0b0d10;color:#e7ebf0;}
+  .lt-seg-a .lt-seg-n{left:100%;margin-left:3px;}
+  .lt-seg-b .lt-seg-n{right:100%;margin-right:3px;}
+}
 .lt-vp{font-variant-numeric:tabular-nums;white-space:nowrap;flex:none;}
 .lt-vp .stat-label{color:#8d97a6;font-weight:400;font-size:.68rem;}
 /* Leaders: a box of its own above the tiles, the five stacked in one cell, one shown. */

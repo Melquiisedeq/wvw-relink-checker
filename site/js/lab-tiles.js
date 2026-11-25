@@ -381,8 +381,9 @@ function labClosestSaid(c) {
   const team = (x) => `${labCap(x.color)}, ${x.name}, ${labNum(x.vp)} VP`;
   let s = `Closest match, ${labTierTag(c.m.id)}: ${team(c.a)}; ${team(c.b)}; ${labNum(c.gap)} apart this week.`;
   if (f.proj) {
-    s += f.x === c.a ? ` If this skirmish ended now, ${c.a.name} would stay ahead, by ${labNum(f.by)}.`
-      : ` If this skirmish ended now, ${c.b.name} would pass ${c.a.name}, ahead by ${labNum(f.by)}.`;
+    s += ` If this skirmish ended now, ${c.a.name} would take ${c.sk.vp[c.a.color]} VP and ${c.b.name} ${c.sk.vp[c.b.color]},`;
+    s += f.x === c.a ? ` and ${c.a.name} would stay ahead, by ${labNum(f.by)}.`
+      : ` and ${c.b.name} would pass ${c.a.name}, ahead by ${labNum(f.by)}.`;
   } else s += ` ${c.a.name} leads the week.`;
   if (c.sk) s += c.sk.left > 0 ? ` ${labLeft(c.sk.left)} in this skirmish.` : ' This skirmish is ending now.';
   return `${s} Show them in the standings`;
@@ -425,65 +426,85 @@ function labCutName(x) {
   s.append(labDot(x.color), labEl('span', 'lt-cut-nm', x.name));
   return s;
 }
-// Round 13: round 9 and 10's frame (the big number, the bar, the two rows, the foot), each row the team's week VP.
+// Round 13 and 14: round 9 and 10's frame (the big number, the bar, the two rows, the foot), each row the team's
+// week VP; round 14 adds where each team's points if the skirmish ended now (c.sk.vp) go.
 const labWeekBar = (c) => labVpBar([c.a, c.b].map((x) => ({ color: x.color, n: x.vp })));
 const labSkBar = (c) => labVpBar([c.a, c.b].map((x) => ({ color: x.color, n: c.sk.sc[x.color], dim: c.lead && c.lead !== x })));
-// The two rows, "● Name … 1,690 VP"; with mark, the favourite's name lit and `mark` beside its number.
-function labWeekRows(c, mark) {
-  const f = labFav(c);
+const labGain = (c, x) => `+${c.sk.vp[x.color]}`;
+// The two rows, "● Name … 1,690 VP", or what `right` puts after the name.
+function labWeekRows(c, right) {
   const rows = labEl('span', 'lt-vprows');
   for (const x of [c.a, c.b]) {
-    const lit = mark && f.x === x;
-    const row = labEl('span', `lt-vprow side-${x.color}${lit ? ' is-lead' : ''}`);
-    const right = labEl('span', 'lt-vp-right');
-    if (lit) right.appendChild(labEl('span', 'lt-fav-w', mark));
-    right.appendChild(labWeekVp(x));
-    row.append(labCutName(x), right);
+    const row = labEl('span', `lt-vprow side-${x.color}`);
+    row.append(labCutName(x), right ? right(x) : labWeekVp(x));
     rows.appendChild(row);
   }
   return rows;
 }
 // The foot "● Name set to win · 57 min left"; the second passing the first is "set to pass".
-function labFavFoot(c, word) {
+function labFavFoot(c) {
   const f = labFav(c);
   const line = labEl('span', 'lt-line lt-sk-line');
-  const said = !f.proj ? 'leads the week' : (f.x === c.b ? 'set to pass' : word);
+  const said = !f.proj ? 'leads the week' : (f.x === c.b ? 'set to pass' : 'set to win');
   line.append(labTeamText(f.x.name, f.x.color), ` ${said} · ${labTimeLeft(c)}`);
   return line;
 }
-// The gap if it ended now as the big number, or the week's with no VP table.
-function labProjBig(c, unit) {
-  const f = labFav(c);
-  if (!f.proj) return labBig(labNum(c.gap), 'VP apart this week');
-  return labBig(labNum(f.by), f.x === c.a ? unit : `${unit}, ${c.b.name} ahead`);
+// The skirmish bar, thicker, each segment carrying its "+N". The lit segment's number is dark on the colour,
+// the dimmed one's light on the colour mixed into the tile's dark (css/lab-mid.css, .lt-bar-in).
+function labGainBar(c) {
+  const bar = labSkBar(c);
+  bar.classList.add('lt-bar-in');
+  [c.a, c.b].forEach((x, i) => {
+    const seg = bar.children[i];
+    seg.classList.add(i ? 'lt-seg-b' : 'lt-seg-a');
+    seg.appendChild(labEl('span', 'lt-seg-n', labGain(c, x)));
+  });
+  return bar;
 }
+const labGainSpan = (c, x, text) => labEl('span', `lt-gain side-${x.color}`, text);
+const labVpApart = (c) => labBig(labNum(c.gap), 'VP apart');
 const LAB_CLOSE = {
-  weekFav: (c) => [labBig(labNum(c.gap), 'VP apart'), labWeekBar(c), labWeekRows(c), labFavFoot(c, 'set to win')],
-  skFav: (c) => [labBig(labNum(c.gap), 'VP apart'), labSkBar(c), labWeekRows(c), labFavFoot(c, 'set to win')],
-  rowWord: (c) => [labBig(labNum(c.gap), 'VP apart'), labWeekBar(c), labWeekRows(c, 'favoured'),
-    labEl('span', 'lt-line', `${labFav(c).proj ? 'If it ended now · ' : ''}${labTimeLeft(c)}`)],
-  rowArrow: (c) => [labBig(labNum(c.gap), 'VP apart'), labSkBar(c), labWeekRows(c, '▲'),
-    labEl('span', 'lt-line', `▲ ${labFav(c).proj ? 'ahead if it ended now' : 'leads the week'} · ${labTimeLeft(c)}`)],
-  projRows: (c) => [labProjBig(c, 'VP apart if it ended now'), labWeekBar(c), labWeekRows(c, 'favoured'),
-    labEl('span', 'lt-line', `Week VP now · ${labTimeLeft(c)}`)],
-  projFoot: (c) => [labProjBig(c, 'apart if it ended now'), labSkBar(c), labWeekRows(c), labFavFoot(c, 'set to win')],
-  onTrack: (c) => [labBig(labNum(c.gap), 'VP apart'), labWeekBar(c), labWeekRows(c), labFavFoot(c, 'on track to win')],
+  weekFav: (c) => [labVpApart(c), labWeekBar(c), labWeekRows(c), labFavFoot(c)],
+  skFav: (c) => [labVpApart(c), labSkBar(c), labWeekRows(c), labFavFoot(c)],
+  barIn: (c) => [labVpApart(c), labGainBar(c), labWeekRows(c), labFavFoot(c)],
+  barTop: (c) => {
+    const top = labEl('span', 'lt-gain-ends');
+    top.append(labGainSpan(c, c.a, `${labGain(c, c.a)} VP`), labGainSpan(c, c.b, `${labGain(c, c.b)} VP`));
+    const wrap = labEl('span', 'lt-gain-bar');
+    wrap.append(top, labSkBar(c));
+    return [labVpApart(c), wrap, labWeekRows(c), labFavFoot(c)];
+  },
+  barCap: (c) => {
+    const cap = labEl('span', 'lt-line lt-gain-cap');
+    cap.append('This skirmish: ', labGainSpan(c, c.a, labGain(c, c.a)), ' · ', labGainSpan(c, c.b, labGain(c, c.b)), ' VP if it ended now');
+    const wrap = labEl('span', 'lt-gain-bar');
+    wrap.append(labSkBar(c), cap);
+    return [labVpApart(c), wrap, labWeekRows(c), labFavFoot(c)];
+  },
+  rowGain: (c) => [labVpApart(c), labSkBar(c), labWeekRows(c, (x) => {
+    const vp = labWeekVp(x);
+    vp.append(' ', labGainSpan(c, x, labGain(c, x)));
+    return vp;
+  }), labFavFoot(c)],
+  rowArrowTotal: (c) => [labVpApart(c), labSkBar(c), labWeekRows(c, (x) => {
+    const vp = labEl('span', 'lt-vp', `${labNum(x.vp)} → `);
+    vp.append(labGainSpan(c, x, labNum(x.vp + c.sk.vp[x.color])), labEl('span', 'stat-label', ' VP'));
+    return vp;
+  }), labFavFoot(c)],
 };
+// The variants that show the points: with no VP table to trust they are skFav.
+const LAB_CLOSE_GAIN = ['barIn', 'barTop', 'barCap', 'rowGain', 'rowArrowTotal'];
 function labClosestBody(c) {
   const v = labPrefs.closest;
   if (!c.sk || v === 'today') {
     return [labBig(labNum(c.gap), 'VP apart'), labVpBar([c.a, c.b].map((x) => ({ color: x.color, n: x.vp }))),
       labVpRows(c, labWeekVp), labEl('span', 'lt-line', 'Top two · this week')];
   }
+  if (LAB_CLOSE_GAIN.includes(v) && !c.sk.vp) return LAB_CLOSE.skFav(c);
   if (Object.prototype.hasOwnProperty.call(LAB_CLOSE, v)) return LAB_CLOSE[v](c);
   const gain = c.sk.vp;
   const skBar = () => labVpBar([c.a, c.b].map((x) => ({ color: x.color, n: c.sk.sc[x.color], dim: c.lead && c.lead !== x })));
   const rows = labVpRows(c, (x) => (gain ? labEl('span', 'lt-vp lt-sk-gain', `+${gain[x.color]} VP`) : labEl('span', 'lt-vp lt-sk-score', labNum(c.sk.sc[x.color]))));
-  // (a lean): round 10's without the skirmish's line, the time in the foot.
-  if (v === 'alean') {
-    return [labBig(labNum(c.gap), 'VP apart'), skBar(), rows,
-      labEl('span', 'lt-line', `${gain ? `If it ended now · ${labNextGap(c)}` : 'Skirmish score'} · ${labTimeLeft(c)}`)];
-  }
   // (a): the bar is the skirmish's, each row its points if it ended now.
   return [labBig(labNum(c.gap), 'VP apart'), labLeadLine(c), skBar(), rows,
     labEl('span', 'lt-line', gain ? `If it ended now · ${labNextGap(c)}` : 'Skirmish score · top two')];
