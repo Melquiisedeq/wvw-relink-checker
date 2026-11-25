@@ -62,31 +62,32 @@ test('the 2026 notes: a big update\'s lines only once the RSS has them, the hotf
   const w = setup();
   assert.equal(await w.push(wikiNotes()), 200);
   assert.deepEqual((await w.notes()).data.notes, [], 'nothing before the RSS is read');
+  w.advance(HOUR);
   const asked = await w.daily();
   assert.equal(asked.length, 1);
-  // A run reads the text of the newest two days with lines to confirm; the other three wait.
-  assert.deepEqual([...new Set((await w.notes()).data.notes.map((n) => n.day))], ['2026-11-10', '2026-09-29']);
-  await w.daily();
-  await w.daily();
+  // A run reads the text of the newest day with lines to confirm; the other four wait.
+  assert.deepEqual([...new Set((await w.notes()).data.notes.map((n) => n.day))], ['2026-11-10']);
+  for (let i = 0; i < 4; i++) await w.daily();
   assert.equal(asked[0].url, RSS_URL);
   assert.equal(asked[0].init.headers['user-agent'], USER_AGENT);
   const first = (await w.notes()).data;
   // The lab's lines of the RSS's days, but the one the wiki changed after the forum (not in the RSS),
-  // and those of a later h2 of the same day (Late Notes, Update 2: not in that day's RSS item).
+  // and those of a later h2 of the same day (Late Notes, Update 2: not in that day's RSS item, so hotfixes).
   const big = lab.filter((r) => RSS_DAYS.includes(dayOf(r.update)) && r.update.startsWith('Update - ') && !r.text.startsWith('Modified Ammunition'));
   assert.equal(big.length, 103);
   assert.deepEqual(new Set(texts(first)), new Set(big.map((r) => cut(r.text))));
   assert.ok(first.notes.every((n) => n.hotfix === false));
   assert.equal(first.wiki, Math.floor(START / 1000));
-  assert.equal(first.rss, Math.floor(START / 1000));
+  assert.equal(first.rss, Math.floor((START + HOUR) / 1000));
 
   w.advance(STABLE_S * 1000 + HOUR);
   assert.equal(await w.push(wikiNotes()), 200);
   const second = (await w.notes('?v=' + (await w.notes()).data.v)).data;
   const hot = second.notes.filter((n) => n.hotfix);
-  assert.deepEqual(hot.map((n) => n.day).sort(), ['2026-08-17', '2026-09-30', '2026-11-11', '2026-11-11', '2026-11-11', '2026-11-11',
+  assert.deepEqual(hot.map((n) => n.day).sort(), ['2026-07-14', '2026-08-17', '2026-09-30', '2026-11-11', '2026-11-11', '2026-11-11', '2026-11-11',
     '2026-11-12', '2026-11-12', '2026-11-12', '2026-11-12', '2026-11-12', '2026-11-16', '2026-11-16']);
-  assert.equal(second.notes.length, 116);
+  assert.equal(second.notes.length, 117);
+  assert.ok(hot.some((n) => n.update === 'Late Notes - July 14, 2026'), 'a later heading of an RSS day');
   // The link: built here, the page from its name, the line's from a checked page name.
   const n = second.notes.find((x) => x.text.startsWith('Splinter Weapon'));
   assert.deepEqual([n.page, n.link, n.sub, n.type, n.day], ['https://wiki.guildwars2.com/wiki/Game_updates/2026-04-14',
@@ -106,7 +107,8 @@ test('a wiki line changed from the forum\'s is not published; a truncated one ne
   const w = setup();
   const edit = (html, p) => (p === '2026-04-14' ? html.replace('from 0.35 to 0.25 in', 'from 0.35 to 0.95 in').replace('while any inner gates', 'while any outer gates') : html);
   await w.push(wikiNotes(edit));
-  for (let i = 0; i < 3; i++) await w.daily();
+  w.advance(HOUR);
+  for (let i = 0; i < 5; i++) await w.daily();
   const all = texts((await w.notes()).data);
   assert.ok(!all.some((t) => t.startsWith('Splinter Weapon')));
   assert.ok(!all.some((t) => t.startsWith('Keep and castle objectives')));
@@ -149,7 +151,9 @@ test('a hotfix line: published only from a reading 20 h or more after its first,
   await t.test('a second reading under 20 h on is not enough; one at 20 h is', async () => {
     const w = setup();
     await w.push(hotfix(LINE));
-    w.advance(STABLE_S * 1000 - 1000);
+    w.advance(HOUR);
+    await w.daily();
+    w.advance(STABLE_S * 1000 - HOUR - 1000);
     await w.push(hotfix(LINE));
     assert.deepEqual(texts((await w.notes('?v=' + (await w.notes()).data.v)).data), []);
     w.advance(1000);
@@ -162,18 +166,80 @@ test('a hotfix line: published only from a reading 20 h or more after its first,
     await w.push(hotfix(LINE));
     w.advance(10 * HOUR);
     await w.push(hotfix(LINE.replace('wall', 'gate')));
-    w.advance(12 * HOUR);
+    w.advance(HOUR);
+    await w.daily();
+    w.advance(11 * HOUR);
     await w.push(hotfix(LINE.replace('wall', 'gate')));
     assert.deepEqual(texts((await w.notes('?v=' + (await w.notes()).data.v)).data), []);
   });
   await t.test('a note the reading no longer had keeps the time of the last reading that had it', async () => {
     const w = setup();
     await w.push(hotfix(LINE));
-    w.advance(21 * HOUR);
-    await w.push(hotfix('Fixed a WvW sentry that did not respawn.', 'Update - November 16, 2026', '2026-11-16'));
+    w.advance(HOUR);
+    await w.daily();
     w.advance(20 * HOUR);
     await w.push(hotfix('Fixed a WvW sentry that did not respawn.', 'Update - November 16, 2026', '2026-11-16'));
+    w.advance(HOUR);
+    await w.daily();
+    w.advance(19 * HOUR);
+    await w.push(hotfix('Fixed a WvW sentry that did not respawn.', 'Update - November 16, 2026', '2026-11-16'));
     assert.deepEqual(texts((await w.notes('?v=' + (await w.notes()).data.v)).data), ['Fixed a WvW sentry that did not respawn.']);
+  });
+});
+
+test('a hotfix only once a good RSS read after the line\'s first reading did not have it', async (t) => {
+  // Two readings of the wiki 21 h apart; between them, `between` (or nothing).
+  const twice = async (notes, between = async () => {}) => {
+    const w = setup();
+    await w.push(notes);
+    w.advance(HOUR);
+    await between(w);
+    w.advance(20 * HOUR);
+    await w.push(notes);
+    return (await w.notes()).data.notes.map((n) => [n.text, n.hotfix]);
+  };
+  await t.test('the RSS never read: nothing', async () => {
+    assert.deepEqual(await twice(hotfix(LINE)), []);
+  });
+  for (const [name, answer] of [['403', () => new Response(RSS, { status: 403 })], ['no items', () => new Response('<rss><channel></channel></rss>')],
+    ['a failed fetch', () => { throw new TypeError('fetch failed'); }]]) {
+    await t.test('the RSS answering ' + name + ': nothing', async () => {
+      assert.deepEqual(await twice(hotfix(LINE), (w) => w.daily(answer)), []);
+    });
+  }
+  await t.test('a good RSS read only before the line was first read: nothing', async () => {
+    const w = setup();
+    await w.daily();
+    w.advance(HOUR);
+    await w.push(hotfix(LINE));
+    w.advance(21 * HOUR);
+    await w.push(hotfix(LINE));
+    assert.deepEqual((await w.notes()).data.notes, []);
+  });
+  await t.test('a good RSS read in the same second as the line\'s first reading: nothing', async () => {
+    const w = setup();
+    await w.push(hotfix(LINE));
+    await w.daily();
+    w.advance(21 * HOUR);
+    await w.push(hotfix(LINE));
+    assert.deepEqual((await w.notes()).data.notes, []);
+  });
+  await t.test('a good RSS read after it, without its day: a hotfix', async () => {
+    assert.deepEqual(await twice(hotfix(LINE), (w) => w.daily()), [[LINE, true]]);
+  });
+  // A later heading of a day the RSS has (Update 2, Late Notes): its line the day's item lacks is a hotfix;
+  // the same line under the day's first heading never is.
+  const late = (update) => [{ page: '2026-11-10', update, lines: [{ section: 'World vs. World', sub: '', text: LINE, link: null, icon: false }] }];
+  await t.test('a later heading of a day the RSS has, its line not in the item: a hotfix', async () => {
+    assert.deepEqual(await twice(late('Update 2 - November 10, 2026'), (w) => w.daily()), [[LINE, true]]);
+    assert.deepEqual(await twice(late('Late Notes - November 10, 2026'), (w) => w.daily()), [[LINE, true]]);
+  });
+  await t.test('a later heading of a day the RSS has, its item not yet asked (a newer day first): nothing', async () => {
+    const older = [{ page: '2026-09-29', update: 'Late Notes - September 29, 2026', lines: late('x')[0].lines }, ...late('Update - November 10, 2026')];
+    assert.deepEqual(await twice(older, (w) => w.daily()), []);
+  });
+  await t.test('the first heading of a day the RSS has, its line not in the item: nothing', async () => {
+    assert.deepEqual(await twice(late('Update - November 10, 2026'), (w) => w.daily()), []);
   });
 });
 
@@ -195,6 +261,20 @@ test('the last good copy stays: a gutted note, a failed or empty RSS change noth
     w2.advance(HOUR);
     await w2.push(wikiNotes().map((n) => (n.update === 'Update - November 10, 2026' ? { ...n, lines: n.lines.slice(0, 25) } : n)));
     assert.equal(w2.sql.prepare("SELECT n FROM note_group WHERE note = 'Update - November 10, 2026'").get().n, 25);
+  });
+  await t.test('cuts of under half, one a reading, stop at half of the most lines it ever had', async () => {
+    const w3 = setup();
+    const cutTo = (k) => wikiNotes().map((n) => (n.update === 'Update - November 10, 2026' ? { ...n, lines: n.lines.slice(0, k) } : n));
+    await w3.push(wikiNotes());
+    const n = () => w3.sql.prepare("SELECT n FROM note_group WHERE note = 'Update - November 10, 2026'").get().n;
+    for (const k of [26, 14, 8, 4]) {
+      w3.advance(HOUR);
+      await w3.push(cutTo(k));
+    }
+    assert.equal(n(), 26);
+    w3.advance(HOUR);
+    await w3.push(cutTo(25));
+    assert.equal(n(), 25, 'half of the most is still a reading');
   });
   await t.test('a note blanked to no line at all leaves it too', async () => {
     w.advance(HOUR);
@@ -253,10 +333,23 @@ test('what a line may carry: plain text, cut, a link only to a wiki page by a ch
   assert.ok(of12[1].body.endsWith('a…'));
   assert.equal(rows.filter((r) => r.body.startsWith('WvW line')).length, 60);
   assert.equal(plainText('a⁦b⁩c\ud800'), 'abc');
-  w.advance(STABLE_S * 1000);
+  w.advance(HOUR);
+  await w.daily();
+  w.advance(STABLE_S * 1000 - HOUR);
   await w.push([{ page: '2026-11-12', update: 'Update - November 12, 2026', lines: [line('WvW keep‮ evil​ text\u0000.', { link: 'javascript:alert(1)' }), line(long, { link: 'Stonemist Castle' })] }]);
   const out = (await w.notes()).data.notes;
   assert.deepEqual(out.map((n) => n.link), [null, 'https://wiki.guildwars2.com/wiki/Stonemist_Castle']);
+});
+
+test('a line\'s sub-heading: plain text in the wiki\'s mold, or the line is left out', async () => {
+  const w = setup();
+  const subs = ['Ritu\u200balist', 'Ritualist\u202e', '\u2066Ritualist\u2069', 'Spear (Ranger)', '<b>Ritualist</b>', 'Ritualist<', 'R'.repeat(61), 'R'.repeat(60),
+    'Necromancer: Reaper', 'Herald/Revenant', 'Ritualist "x"', '\u200b'];
+  await w.push([{ page: '2026-11-12', update: 'Update - November 12, 2026',
+    lines: subs.map((sub, i) => ({ section: 'Profession Skills', sub, text: 'WvW line ' + i, link: null, icon: false })) }]);
+  const rows = w.sql.prepare('SELECT sub, body FROM note_line ORDER BY pos').all().map((r) => [r.sub, r.body]);
+  assert.deepEqual(rows, [['Ritualist', 'WvW line 0'], ['Ritualist', 'WvW line 1'], ['Ritualist', 'WvW line 2'], ['Spear (Ranger)', 'WvW line 3'],
+    ['R'.repeat(60), 'WvW line 7']]);
 });
 
 test('a note out of shape is left out; a message out of shape is refused whole', async (t) => {
@@ -320,18 +413,23 @@ test('GET /api/notes: short-lived; by version, kept for good, and only the versi
   assert.equal(post.status, 405);
 });
 
-test('/api/latest names the notes\' version and times', async () => {
+test('/api/latest names the notes\' version and times, and without a version or the table is as before, byte for byte', async () => {
   const w = setup();
+  const at = Math.floor(w.now / 1000);
+  w.sql.prepare("INSERT INTO latest (id, start, score, at, reader, gz, sha, raw) VALUES ('1-1', 1, 1, ?1, 'x', '{}', 's', 2)").run(at);
+  const latest = async () => (await w.call(new Request('https://wvwrelink.com/api/latest'))).text();
+  const before = '{"at":' + at + ',"matches":[{"id":"1-1","start":1,"score":1,"at":' + at + ',"by":"x","v":2,"body":{}}]}';
+  assert.equal(await latest(), before, 'no version yet');
   await w.push(wikiNotes());
+  w.advance(HOUR);
   await w.daily();
-  w.sql.prepare("INSERT INTO latest (id, start, score, at, reader, gz, sha, raw) VALUES ('1-1', 1, 1, ?1, 'x', '{}', 's', 2)").run(Math.floor(w.now / 1000));
-  const r = await w.call(new Request('https://wvwrelink.com/api/latest'));
-  const data = JSON.parse(await r.text());
-  assert.deepEqual(data.notes, { v: (await w.notes()).data.v, wiki: Math.floor(START / 1000), rss: Math.floor(START / 1000) });
-  // Without the notes' table the copy answers as before.
+  w.sql.prepare('UPDATE latest SET at = ?1').run(Math.floor(w.now / 1000));
+  const now = Math.floor(w.now / 1000);
+  const v = (await w.notes()).data.v;
+  assert.equal(await latest(), '{"at":' + now + ',"matches":[{"id":"1-1","start":1,"score":1,"at":' + now + ',"by":"x","v":2,"body":{}}],' +
+    '"notes":{"v":"' + v + '","wiki":' + at + ',"rss":' + now + '}}');
   w.sql.exec('DROP TABLE note_feed');
-  const without = JSON.parse(await (await w.call(new Request('https://wvwrelink.com/api/latest'))).text());
-  assert.deepEqual(Object.keys(without), ['at', 'matches']);
+  assert.equal(await latest(), before.replaceAll(String(at), String(now)), 'no table');
 });
 
 test('the daily schedule: the kills cleanup runs as before, then the RSS; a notes failure does not touch the cleanup', async () => {

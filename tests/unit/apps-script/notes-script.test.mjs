@@ -32,7 +32,7 @@ test('the parser gives the lab\'s WvW lines of the 2026 pages, the wiki\'s later
   const got = PAGES.flatMap((p) => ctx.out.notes(fixture(p + '.html'), [p]).flatMap((n) => n.lines.map((l) => ({ ...l, update: n.update, page: n.page }))));
   const key = (r) => [r.section, r.sub, r.text].join('|');
   assert.deepEqual(got.map(key).sort(), lab.map(key).sort());
-  // Edited on the wiki after the lab read it (23/11): four lines now sit under another update of 10-11/11.
+  // Edited on the wiki after the lab read it: four lines now sit under another update of 10-11/11.
   const moved = ['Augury of Death: Fixed', 'Players can no longer glide', 'Players can no longer stand', 'The northern keep walls'];
   const where = (rows) => new Map(rows.filter((r) => !moved.some((m) => r.text.startsWith(m))).map((r) => [key(r), r.update]));
   assert.deepEqual(where(got), where(lab));

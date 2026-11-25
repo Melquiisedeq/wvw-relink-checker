@@ -6,9 +6,10 @@
 //     (acceptNotes); nothing it sends is trusted: every field is checked again here;
 //   - the daily schedule reads the forum's RSS itself (notesDaily) and marks each line of a
 //     day the RSS has whose text the RSS also has;
-//   - published: a line of a day the RSS has, only once marked; a line of any other day (a
-//     hotfix), only when a reading of the wiki at least STABLE_S after the first one that had it
-//     still had it, unchanged.
+//   - published: a line its day's RSS item holds; the first heading of a day the RSS has, nothing
+//     else. Any other line (a hotfix: a day the RSS lacks, or a later heading of a day it has) only
+//     when a good RSS read after the line's first reading did not have it, and a reading of the
+//     wiki at least STABLE_S after that first one still had it, unchanged.
 
 export const WIKI = 'https://wiki.guildwars2.com/wiki/';
 export const RSS_URL = 'https://en-forum.guildwars2.com/forum/6-game-release-notes.xml';
@@ -24,10 +25,10 @@ const PAGE_SKEW_DAYS = 3;
 export const KEEP_NOTE_DAYS = 400;
 const MAX_RSS_BYTES = 2 * 1024 * 1024;
 const RSS_TIMEOUT_MS = 15e3;
-export const RSS_DAYS_PER_RUN = 2;
+export const RSS_DAYS_PER_RUN = 1;
 export const FEED_MAX = 200;
-// A reading of a note with fewer than half the lines kept from it is refused for that note:
-// a blanked or gutted section never replaces the last good copy.
+// A reading of a note with fewer than half the most lines ever kept from it is refused for that
+// note: a blanked or gutted section never replaces the last good copy, nor do cuts one reading at a time.
 const SHRINK_FLOOR = 0.5;
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
@@ -69,7 +70,7 @@ export function cut(t) {
 // The form two texts are compared in: one kind of each quote and dash, one space, lower case.
 export function matchForm(s) {
   return s.normalize('NFKC').replace(/[‘’ʼ]/g, "'").replace(/[“”]/g, '"')
-    .replace(/[‐-―−]/g, '-').replace(/\s+/g, ' ').trim().toLowerCase();
+    .replace(/[‐-―−]/g, '-').replace(/\s\s+|[^\S ]/g, ' ').trim().toLowerCase();
 }
 
 const WORD = /[\p{L}\p{N}]/u;
@@ -225,14 +226,15 @@ function checkLine(l) {
   if (!l || typeof l !== 'object' || typeof l.icon !== 'boolean') return null;
   if (typeof l.section !== 'string' || typeof l.sub !== 'string') return null;
   const section = l.section.replace(/:$/, '');
-  if (!(SECTIONS.has(section) || EVENT_SECTION.test(section)) || !SUB_RE.test(l.sub)) return null;
+  const sub = l.sub === '' ? '' : plainText(l.sub);
+  if (!(SECTIONS.has(section) || EVENT_SECTION.test(section)) || sub === null || !SUB_RE.test(sub)) return null;
   const raw = plainText(l.text);
   if (!raw || !aboutWvw(raw, section)) return null;
   const text = cut(raw);
   return {
-    section, sub: l.sub, text, icon: l.icon,
+    section, sub, text, icon: l.icon,
     link: l.link === null ? null : (LINK_RE.test(l.link || '') ? l.link : null),
-    kind: labelOf(kindOf(raw, section, l.sub, l.icon))
+    kind: labelOf(kindOf(raw, section, sub, l.icon))
   };
 }
 
@@ -256,7 +258,7 @@ export async function acceptNotes(db, data, nowMs, claim) {
   const now = Math.floor(nowMs / 1000);
   const push = await sha16(JSON.stringify(checked.notes));
   const state = await db.prepare('SELECT push, wiki FROM note_feed WHERE id = 1').first();
-  const { results: groups } = await db.prepare('SELECT note, n, current FROM note_group').all();
+  const { results: groups } = await db.prepare('SELECT note, top FROM note_group').all();
   if (!await claim()) return null;
   const log = { notes: checked.notes.length, dropped: checked.dropped };
   if (state.push === push) {
@@ -268,7 +270,7 @@ export async function acceptNotes(db, data, nowMs, claim) {
     const shrunk = [];
     for (const n of checked.notes) {
       const before = kept.get(n.update);
-      if (before && before.n > 0 && n.lines.length < Math.ceil(before.n * SHRINK_FLOOR)) shrunk.push(n.update);
+      if (before && n.lines.length < Math.ceil(before.top * SHRINK_FLOOR)) shrunk.push(n.update);
       else take.push(n);
     }
     if (shrunk.length) log.shrunk = shrunk;
@@ -281,9 +283,10 @@ export async function acceptNotes(db, data, nowMs, claim) {
     // A note the last reading had and this one does not (or refused) keeps that reading's time.
     await db.prepare('UPDATE note_group SET current = 0, seen = ?1 WHERE current = 1 AND note NOT IN (SELECT value FROM json_each(?2))')
       .bind(state.wiki, names).run();
-    await db.prepare('INSERT INTO note_group (note, day, page, n, seen, current) ' +
-      "SELECT json_extract(j.value, '$[0]'), json_extract(j.value, '$[1]'), json_extract(j.value, '$[2]'), json_extract(j.value, '$[3]'), ?2, 1 FROM json_each(?1) j " +
-      'WHERE true ON CONFLICT (note) DO UPDATE SET day = excluded.day, page = excluded.page, n = excluded.n, seen = excluded.seen, current = 1')
+    await db.prepare('INSERT INTO note_group (note, day, page, n, top, seen, current) ' +
+      "SELECT json_extract(j.value, '$[0]'), json_extract(j.value, '$[1]'), json_extract(j.value, '$[2]'), json_extract(j.value, '$[3]'), json_extract(j.value, '$[3]'), ?2, 1 FROM json_each(?1) j " +
+      'WHERE true ON CONFLICT (note) DO UPDATE SET day = excluded.day, page = excluded.page, n = excluded.n, ' +
+      'top = max(note_group.top, excluded.n), seen = excluded.seen, current = 1')
       .bind(JSON.stringify(take.map((n) => [n.update, n.day, n.page, n.lines.length])), now).run();
     await db.prepare('DELETE FROM note_line WHERE note IN (SELECT value FROM json_each(?1)) AND ' +
       "note || '|' || id NOT IN (SELECT json_extract(j.value, '$[0]') || '|' || json_extract(j.value, '$[1]') FROM json_each(?2) j)")
@@ -315,17 +318,17 @@ export function decodeEntities(s) {
 
 // The text of an HTML fragment: each tag a space, the entities decoded.
 export function htmlText(html) {
-  let out = '';
+  const out = [];
   let at = 0;
   for (;;) {
     const lt = html.indexOf('<', at);
-    if (lt < 0) { out += html.slice(at); break; }
-    out += html.slice(at, lt) + ' ';
+    if (lt < 0) { out.push(html.slice(at)); break; }
+    out.push(html.slice(at, lt));
     const gt = html.indexOf('>', lt);
-    if (gt < 0) break;
+    if (gt < 0) { out.push(''); break; }
     at = gt + 1;
   }
-  return decodeEntities(out);
+  return decodeEntities(out.join(' '));
 }
 
 function between(s, open, close, from = 0) {
@@ -335,9 +338,11 @@ function between(s, open, close, from = 0) {
   return b < 0 ? null : s.slice(a + open.length, b);
 }
 
-// Each "Game Update Notes: <date>" item: {day, text()}, the text (in matchForm) made only when
-// asked: the whole feed's text costs more CPU than an invocation has.
-export function rssItems(xml) {
+// Each "Game Update Notes: <date>" item of the feed's bytes: {day, text()}. The feed is scanned
+// as one byte a character (its tags and titles are ASCII), and only an item whose text is asked
+// for is decoded as UTF-8 (in matchForm).
+export function rssItems(bytes) {
+  const xml = new TextDecoder('latin1').decode(bytes);
   const out = [];
   let at = 0;
   for (;;) {
@@ -351,11 +356,15 @@ export function rssItems(xml) {
     if (title === null) continue;
     const m = TITLE_RE.exec(decodeEntities(title).replace(/\s+/g, ' ').trim());
     const day = m && isoDay(m);
-    const desc = between(item, '<description>', '</description>');
-    if (!day || desc === null) continue;
+    const d = item.indexOf('<description>');
+    const de = d < 0 ? -1 : item.indexOf('</description>', d);
+    if (!day || de < 0) continue;
+    const from = s + d + 13;
+    const to = s + de;
     out.push({
       day,
       text() {
+        const desc = new TextDecoder().decode(bytes.subarray(from, to));
         const cdata = between(desc, '<![CDATA[', ']]>');
         return matchForm(htmlText(cdata === null ? decodeEntities(desc) : cdata));
       }
@@ -383,7 +392,7 @@ async function readRss(fetchFn) {
   const all = new Uint8Array(size);
   let o = 0;
   for (const p of parts) { all.set(p, o); o += p.byteLength; }
-  const items = rssItems(new TextDecoder().decode(all));
+  const items = rssItems(all);
   return items.length ? items : 'no items';
 }
 
@@ -413,7 +422,7 @@ export async function notesDaily(env, nowMs, fetchFn = fetch) {
       const { results } = await env.DB.prepare('SELECT l.note, l.id, l.body, g.day FROM note_line l JOIN note_group g ON g.note = l.note ' +
         'WHERE l.rss = 0 AND g.day IN (SELECT value FROM json_each(?1))').bind(days).all();
       // Only the items of a day with a line still to confirm are read as text, the newest
-      // RSS_DAYS_PER_RUN of them: the whole feed's text is more CPU than a run has; the rest wait a day.
+      // RSS_DAYS_PER_RUN of them: a patch day's item is most of the CPU a run has; the rest wait a day each.
       const byDay = new Map();
       for (const day of [...new Set(results.map((r) => r.day))].sort().reverse().slice(0, RSS_DAYS_PER_RUN)) {
         byDay.set(day, items.filter((it) => it.day === day).map((it) => it.text()).join(' \n '));
@@ -441,19 +450,25 @@ export async function notesDaily(env, nowMs, fetchFn = fetch) {
 // The published lines, newest day first, as one row: GET /api/notes reads that row alone.
 // `set` moves the reading times: {push, wiki} after a push, {rss} after a good RSS.
 async function rebuildFeed(db, set) {
-  const state = await db.prepare('SELECT wiki FROM note_feed WHERE id = 1').first();
+  const state = await db.prepare('SELECT wiki, rss FROM note_feed WHERE id = 1').first();
   const wikiAt = set.wiki || state.wiki;
+  const rssAt = set.rss || state.rss;
   const { results } = await db.prepare('SELECT l.note, l.section, l.sub, l.body, l.link, l.kind, l.first, l.rss, ' +
     'g.day, g.page, g.seen, g.current, d.day IS NOT NULL AS big FROM note_line l JOIN note_group g ON g.note = l.note ' +
     'LEFT JOIN note_day d ON d.day = g.day ORDER BY g.day DESC, g.note DESC, l.pos').all();
   const out = [];
   for (const r of results) {
-    const big = !!r.big;
-    const seen = r.current ? wikiAt : r.seen;
-    if (big ? r.rss !== 1 : seen - r.first < STABLE_S) continue;
+    const hotfix = r.rss !== 1;
+    if (hotfix) {
+      // The first heading of a day the RSS has is the forum's item: only its words.
+      if (r.big && r.note.startsWith('Update - ')) continue;
+      // No good RSS read since the line's first reading, or its day's item not yet asked: not a hotfix yet.
+      if (!(rssAt > r.first) || (r.big && r.rss !== -1)) continue;
+      if ((r.current ? wikiAt : r.seen) - r.first < STABLE_S) continue;
+    }
     out.push({
       day: r.day, update: r.note, section: r.section, sub: r.sub, text: r.body, type: r.kind,
-      hotfix: !big, page: WIKI + 'Game_updates/' + r.page, link: r.link === null ? null : wikiLink(r.link)
+      hotfix, page: WIKI + 'Game_updates/' + r.page, link: r.link === null ? null : wikiLink(r.link)
     });
     if (out.length >= FEED_MAX) break;
   }

@@ -7,6 +7,7 @@ CREATE TABLE note_group (
   day     TEXT    NOT NULL,     -- its date, '2026-11-10'
   page    TEXT    NOT NULL,     -- the wiki page it sits on, Game_updates/<page>
   n       INTEGER NOT NULL,     -- lines kept from its last accepted reading
+  top     INTEGER NOT NULL,     -- the most lines any accepted reading of it kept
   seen    INTEGER NOT NULL,     -- epoch s of the last reading that had it, while current = 0
   current INTEGER NOT NULL      -- 1: the last accepted reading had it (its time is note_feed.wiki)
 ) WITHOUT ROWID;

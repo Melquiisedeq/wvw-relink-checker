@@ -86,11 +86,10 @@ const HISTORY_MISS_MAX_AGE = 10;
 // The scripts make 128 hex characters; a short secret fails loudly rather than work weakly.
 const MIN_SECRET = 64;
 const NOTES_KEY = 'https://wvwrelink.com/api/notes';
-// The notes change a few times a month: the plain read is kept a few minutes; a version, for good.
+// The notes change a few times a month: the plain read is kept a few minutes; a version, for good
+// by the browser and LATEST_VERSION_MAX_AGE by a data centre.
 const NOTES_MAX_AGE = 300;
 const NOTES_VERSION_CACHE = 'public, max-age=31536000, immutable';
-// How long a data centre keeps a version before asking D1 again.
-const NOTES_VERSION_KEEP = 86400;
 // The daily cleanup deletes kills older than this: two weeks keeps the running match and the one before it.
 const KEEP_DAYS = 14;
 // What GET /api/kills carries in full: the page wants a reading at least ten minutes old, and the
