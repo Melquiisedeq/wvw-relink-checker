@@ -4,7 +4,6 @@
 const guildInput  = document.getElementById('guildInput');
 const runBtn      = document.getElementById('runBtn');
 const impactOverlay = document.getElementById('impactOverlay');
-const pageEl      = document.getElementById('page');
 const standingsGridNA   = document.getElementById('standingsGridNA');
 const standingsGridEU   = document.getElementById('standingsGridEU');
 // 'eu' when EU's column is on the left (js/region.js and the swap button).

@@ -179,18 +179,6 @@
   100%{transform:scale(calc(var(--grow,1) * 1.16 / var(--max)));}
 }
 
-/* The one moment big enough to move the whole viewport; it fires on the hit, not on
-   "done". */
-.page.struck{animation:page-shake .5s ease-in-out;}
-@keyframes page-shake{
-  0%,100%{transform:translate(0,0);}
-  15%{transform:translate(-9px,3px);}
-  32%{transform:translate(8px,-2px);}
-  50%{transform:translate(-6px,2px);}
-  70%{transform:translate(4px,-1px);}
-  86%{transform:translate(-2px,0);}
-}
-
 /* Cyan sparks off the button the moment a check starts. */
 .btn-spark{
   position:fixed;z-index:44;pointer-events:none;

@@ -449,7 +449,6 @@ function launchCharge(ball, startedAt, letGo) {
 
     clearImpactTimers();
     impactOverlay.classList.remove('play', 'broken');
-    pageEl.classList.remove('struck');
     void impactOverlay.offsetWidth;
     impactOverlay.classList.add('play');
 
@@ -482,12 +481,8 @@ function breakCrest() {
   spawnImpactShards();
   spawnEmberBlast();
 
-  pageEl.classList.remove('struck');
-  void pageEl.offsetWidth;
-  pageEl.classList.add('struck');
   clearImpactTimers();
   impactTimers = [
-    setTimeout(() => pageEl.classList.remove('struck'), 600),
     setTimeout(() => impactOverlay.classList.remove('play', 'broken'), 1200),
   ];
   finaleOff();
