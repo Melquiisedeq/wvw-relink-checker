@@ -69,8 +69,8 @@ history of each region's finished skirmishes. While the tab is visible the page 
 
 Six things are kept in your browser's own storage, and a seventh, an older
 version's, is deleted. None of them ever leave your device; three clear
-themselves out as they age, and the other three are a single value each that
-gets overwritten.
+themselves out as they age, the guilds you found keep only the newest eight,
+and the other two are a single value each that gets overwritten.
 
 | Key | What it holds |
 |---|---|

@@ -211,7 +211,7 @@ function sparksFrom(box) {
 
 // ---- where the finale lands ----------------------------------------------------------------
 // js/trebuchet.js asks where to throw: the answer card, or the bar if no answer is up. The
-// crest is sized to it (--aim-x/y/s, css/search.css), and the card is struck on the break.
+// crest is sized to it (--aim-x/y/s, css/search.css), and the card gets its sheen on the break.
 function finaleTarget() {
   const box = searchAnswer.querySelector('.search-card') || document.querySelector('.search-bar');
   if (!box) return null;
@@ -298,7 +298,7 @@ function dropStrip() {
 
 // ---- the tier spotlight ----------------------------------------------------------------------
 // The tier is brought into view (centred, or its top if taller than the screen); once 60 % of it
-// is in sight the other tiers of its column dim, it is ringed, and its team's card is struck.
+// is in sight the other tiers of its column dim, it is ringed, and its team's card gets its sheen.
 function goToTier(teamName, guild) {
   const card = cardOfTeam(teamName);
   const tier = card && card.closest('.standing-match');
