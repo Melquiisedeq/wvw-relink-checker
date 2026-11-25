@@ -5,30 +5,35 @@
 // wants boot.js last). Everything goes through textContent.
 
 const LAB_KEY = 'wvw-lab-v1';
-const LAB_VERSION = 14;          // bump when the defaults change: older saved choices are dropped
-// Named setups, each a Closest match and a frame for the middle's panels; the Fine-tune radios override
-// the one picked. Round 11: the Closest match's A, B and C, B the research's pick.
-const LAB_SETUPS = {
-  today: { label: 'Today (round 9)', closest: 'today', frame: 'today' },
-  round10: { label: 'Round 10 (Closest “a”)', closest: 'a', frame: 'a' },
-  rec: { label: 'Recommended: Closest B', closest: 'pb', frame: 'a' },
-  closeA: { label: 'Closest A: VP before the name', closest: 'pa', frame: 'a' },
-  closeC: { label: 'Closest C: two columns', closest: 'pc', frame: 'a' },
-  light: { label: 'Light from the top', closest: 'pb', frame: 'd' },
-  glass: { label: 'Glass, costly', closest: 'pb', frame: 'b' },
-  glassHi: { label: 'Glass on highlights only', closest: 'pb', frame: 'c' },
+const LAB_VERSION = 15;          // bump when the defaults change: older saved choices are dropped
+// Round 12: the Closest match's variants, each with the two colours, their week VP, the favourite (who leads
+// the week if the skirmish ended now) and the time left, or part of them. Each setup is one of them on frame A;
+// the Fine-tune radios override the one picked.
+const LAB_CLOSE_OPTS = {
+  score: 'Scoreboard: two big VP, “Favoured”',
+  bar: 'The bar: VP at each end, “set to win”',
+  phrase: 'One sentence: “● Name is set to win”',
+  rows: 'Two rows, the favourite’s lit',
+  leader: 'The leader: “● Name leads by 41 VP”',
+  versus: 'Versus: “1,690 ● vs ● 1,649”',
+  colors: 'No names: colours and VP',
+  gap: 'One number: “36 VP ahead if it ended now”',
+  clock: 'The time as a bar that empties',
+  badge: 'A pill: “Likely winner ● Name”',
+  chips: 'Coloured chips, the favourite’s filled',
+  time: 'Time first: “57 minutes left”',
+  alean: 'Round 10 (a), without the skirmish line',
+  a: 'Round 10 (a)',
+  today: 'Round 9: the week only',
 };
+const LAB_SETUPS = Object.fromEntries(Object.entries(LAB_CLOSE_OPTS).map(([k, label]) => [k,
+  { label, closest: k, frame: k === 'today' ? 'today' : 'a' }]));
 const LAB_ITEMS = [
-  { type: 'radio', key: 'setup', label: 'Setup', value: 'rec',
+  { type: 'radio', key: 'setup', label: 'Setup', value: 'score',
     options: Object.fromEntries(Object.entries(LAB_SETUPS).map(([k, x]) => [k, x.label])),
     apply: (k) => { labPrefs.closest = LAB_SETUPS[k].closest; labPrefs.frame = LAB_SETUPS[k].frame; } },
   { type: 'section', label: 'Fine-tune' },
-  { type: 'radio', key: 'closest', label: 'Closest match', value: 'pb', options: {
-    today: 'Round 9: the week only',
-    a: 'Today (a) · skirmish bar, “+51 / +37 VP”',
-    pa: 'A · “● 1,234 Name”, the “+51” over the bar',
-    pb: 'B · “● Name 1,234 +51”, thin bar (research pick)',
-    pc: 'C · columns “Now” and “If it ended now”' } },
+  { type: 'radio', key: 'closest', label: 'Closest match', value: 'score', options: LAB_CLOSE_OPTS },
   { type: 'radio', key: 'frame', label: 'Frame of the middle panels', value: 'a', options: {
     today: 'Today: dark fill, no shadow',
     a: 'A · dark fill + the columns’ border, rules and shadows',
@@ -45,6 +50,10 @@ const LAB_ITEMS = [
   { type: 'button', label: 'New map, beta until a date', run: () => { labSimNews('map'); labStatus('Example update: a new map in beta.'); } },
   { type: 'button', label: 'Lines without a sure type', run: () => { labSimNews('unsure'); labStatus('Example update: lines with no label.'); } },
   { type: 'button', label: 'Back to the real notes', run: () => { labSimNews(null); labStatus('The real notes.'); } },
+  { type: 'section', label: 'Simulate the Closest match' },
+  { type: 'button', label: 'Simulate: the second passes the first if it ended now', run: () => { labPassSim = true; labPaintTiles(); labStatus('Simulated, made-up numbers: the second team leads the skirmish and would pass the first if it ended now.'); } },
+  { type: 'button', label: 'Simulate: last minutes', run: () => { labLastSim = true; labPaintTiles(); labStatus('Simulated, made-up time: 3 minutes left in the skirmish.'); } },
+  { type: 'button', label: 'Back to live', run: () => { labPassSim = false; labLastSim = false; labPaintTiles(); labStatus('The live skirmish.'); } },
   { type: 'section', label: 'Simulate a changed VP table' },
   { type: 'button', label: 'The game changed its VP table', run: () => { labVpWrong = true; labPaintTiles(); labStatus('Simulated: the table no longer adds up to the week, so the Closest match shows the week’s totals and the skirmish leader, no “+N”.'); } },
   { type: 'button', label: 'Back to the real table', run: () => { labVpWrong = false; labPaintTiles(); labStatus('The real VP table.'); } },
