@@ -18,10 +18,10 @@
 //                              stores, as {matches: [{id, start, score, at}], version: "<at>.<tag>"}
 //                              (the Live object; no version without VERSION_KEY)
 //   POST /api/ingest/notes     the notes script, the wiki's update notes, every 6 hours
-//   GET  /api/notes            the WvW lines of the game's update notes, with when the wiki and
-//                              the forum's RSS were last read (worker/notes.mjs)
+//   GET  /api/notes            the WvW lines of the game's update notes, with when the wiki
+//                              was last read (worker/notes.mjs)
 //   GET  /api/notes?v=<16 hex>  the same lines, for the version /api/latest names; never changes
-//   daily, on a schedule       kills older than KEEP_DAYS are deleted; the forum's RSS is read
+//   daily, on a schedule       kills older than KEEP_DAYS are deleted
 //
 // A message is signed by its script with a secret of its own:
 //   x-wvw-time  epoch seconds
@@ -31,7 +31,7 @@
 // The latest entrance parses the plain JSON only to check it: it decides by the signed summary
 // and the match's score, never by a reader's clock.
 
-import { acceptNotes, notesDaily, notesFeed, NOTES_VERSION_RE } from './notes.mjs';
+import { acceptNotes, servedNotes, NOTES_VERSION_RE } from './notes.mjs';
 
 const MAX_BYTES = 64 * 1024;
 // The HMAC, each part's hash and the parse all run over the whole message, inside
@@ -162,18 +162,14 @@ export default {
   },
 
   async scheduled(event, env) {
-    try {
-      const r = await env.DB.prepare(cleanupSql)
-        .bind(Date.now() - KEEP_DAYS * 86400e3, ...MATCHES).run();
-      console.log(JSON.stringify({ cleanup: true, deleted: r.meta && r.meta.changes }));
-      // Only a cleanup that ran to here moves the mark; check-worker.mjs reads it.
-      await env.DB.prepare(
-        "INSERT INTO source (name, t, received) VALUES ('cleanup', 0, ?1) " +
-        'ON CONFLICT (name) DO UPDATE SET received = ?1'
-      ).bind(nowS()).run();
-    } finally {
-      await notesDaily(env, Date.now());
-    }
+    const r = await env.DB.prepare(cleanupSql)
+      .bind(Date.now() - KEEP_DAYS * 86400e3, ...MATCHES).run();
+    console.log(JSON.stringify({ cleanup: true, deleted: r.meta && r.meta.changes }));
+    // Only a cleanup that ran to here moves the mark; check-worker.mjs reads it.
+    await env.DB.prepare(
+      "INSERT INTO source (name, t, received) VALUES ('cleanup', 0, ?1) " +
+      'ON CONFLICT (name) DO UPDATE SET received = ?1'
+    ).bind(nowS()).run();
   }
 };
 
@@ -925,7 +921,7 @@ async function latestCopy(env) {
   try {
     // The notes' version rides in the one statement the copy already makes: one row more.
     ({ results } = await env.DB.prepare('SELECT id, start, score, at, reader, gz, ' +
-      "(SELECT json_object('v', version, 'wiki', wiki, 'rss', rss) FROM note_feed WHERE id = 1 AND version <> '') AS notes FROM latest").all());
+      "(SELECT json_object('v', version, 'wiki', wiki) FROM note_served WHERE id = 1 AND version <> '') AS notes FROM latest").all());
   } catch (e) {
     // Without the notes' table the copy still answers.
     console.log(JSON.stringify({ read: 'latest', notes: 'failed', why: String(e) }));
@@ -945,21 +941,20 @@ async function latestCopy(env) {
   return { newest, body: '{"at":' + newest + ',"matches":[' + live.map(entry).join(',') + ']' + notes + '}' };
 }
 
-// GET /api/notes: {v, wiki, rss, notes}, the published lines and when each source was last read
-// well. GET /api/notes?v=<v>: {v, notes}, only while v is the version held; it never changes, so
-// it is kept for good. Any other query is a 404 before D1.
+// GET /api/notes: {v, wiki, notes}, the published lines and when the wiki was last read.
+// GET /api/notes?v=<v>: {v, notes}, only while v is the version held; it never changes, so it is
+// kept for good. Any other query is a 404 before D1.
 async function readNotes(env, ctx, url) {
   if (url.search === '') {
     return cached(ctx, NOTES_KEY, async () => {
-      const f = await notesFeed(env.DB);
-      return json('{"v":' + JSON.stringify(f.version) + ',"wiki":' + f.wiki + ',"rss":' + f.rss +
-        ',"notes":' + f.body + '}', NOTES_MAX_AGE);
+      const f = await servedNotes(env.DB);
+      return json('{"v":' + JSON.stringify(f.version) + ',"wiki":' + f.wiki + ',"notes":' + f.body + '}', NOTES_MAX_AGE);
     });
   }
   const v = NOTES_VERSION_RE.exec(url.search);
   if (!v) return text(404, 'not found');
   const res = await cached(ctx, NOTES_KEY + '?v=' + v[1], async () => {
-    const f = await notesFeed(env.DB);
+    const f = await servedNotes(env.DB);
     // Not cached: a text answer is no-store.
     if (f.version !== v[1]) return text(404, 'not found');
     return json('{"v":"' + f.version + '","notes":' + f.body + '}', LATEST_VERSION_MAX_AGE);

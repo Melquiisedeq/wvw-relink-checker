@@ -7,9 +7,8 @@
  *
  * Every 6 hours it reads the wiki's Game_updates page, which holds every update since the
  * last big one, takes the lines about World vs. World, and sends them to wvwrelink.com/api,
- * signed. The Worker takes nothing on trust: it checks every field again, and publishes a
- * line only when the forum's own release notes say the same, or, for a hotfix, when a
- * reading at least 20 hours after the first one still has it unchanged.
+ * signed. The Worker takes nothing on trust: it checks every field again before it
+ * publishes a line.
  *
  * Why this script and not the Worker: the wiki refuses requests from Cloudflare's network.
  * Only /wiki/ is read (the wiki's robots.txt), under a User-Agent that says who we are.

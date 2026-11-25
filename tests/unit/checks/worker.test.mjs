@@ -28,7 +28,7 @@ function world(plan = {}) {
     kills: { rows: plan.rows ?? [row(NOW - 60), row(NOW - 60, '2-1')] },
     relink: 'relink' in plan ? plan.relink : { window: 1794016800, published: 1793823875 },
     latest: { x: 1 },
-    notes: plan.notes ?? { v: '0123456789abcdef', wiki: NOW - 6 * 3600, rss: NOW - 20 * 3600, notes: [] },
+    notes: plan.notes ?? { v: '0123456789abcdef', wiki: NOW - 6 * 3600, notes: [] },
     'latest/summary': plan.summary ?? { '1-1': sum(), '2-1': sum({ by: 'latest-supa-eu' }) },
   };
   const game = plan.game ?? [{ id: '1-1', start_time: new Date(START).toISOString(), scores: { red: 50, blue: 30, green: 20 } },
@@ -540,12 +540,11 @@ test('run as a script: it prints the log and exits with the code; a Worker it ca
   fs.rmSync(root, { recursive: true });
 });
 
-test('the notes: the wiki and the RSS each read well within 3 days, else red with where to look', async () => {
+test('the notes: the wiki read within 3 days, else red with where to look', async () => {
   await green({}, /^notes: wiki last read +6 h ago$/m);
-  await green({ notes: { wiki: NOW - 72 * 3600, rss: NOW - 72 * 3600 } }, /^notes: rss last read +72 h ago$/m);
-  await red({ notes: { wiki: NOW - 72 * 3600 - 1, rss: NOW - 3600 } }, /\/api\/notes last read wiki 72 hours ago \(limit 72\)\. Check the wiki: the notes script/);
-  await red({ notes: { wiki: NOW - 3600, rss: NOW - 80 * 3600 } }, /\/api\/notes last read rss 80 hours ago \(limit 72\)\. Check the forum's RSS/);
-  await red({ notes: { wiki: 0, rss: NOW } }, /\/api\/notes has never read the wiki/);
-  await red({ notes: { wiki: NOW } }, /\/api\/notes has never read the forum's RSS/);
+  await green({ notes: { wiki: NOW - 72 * 3600 } }, /^notes: wiki last read +72 h ago$/m);
+  await red({ notes: { wiki: NOW - 72 * 3600 - 1 } }, /\/api\/notes last read the wiki 72 hours ago \(limit 72\)\. Check the notes script/);
+  await red({ notes: { wiki: 0 } }, /\/api\/notes has never read the wiki\. Check the notes script/);
+  await red({ notes: {} }, /\/api\/notes has never read the wiki/);
   await red({ status: { [`${API}notes`]: 503 } }, /\/api\/notes: HTTP 503 after 3 attempts\./);
 });
