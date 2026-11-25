@@ -238,6 +238,29 @@ html .lt-calm .lt-num{color:var(--text);background:none;filter:none;text-shadow:
 .lt-ci-d{fill:#1b1f26;stroke:#1a1408;stroke-width:.9;}
 .lt-ci-s{fill:none;stroke:#e2c27a;stroke-width:1.1;stroke-linecap:round;}
 .lt-ci-h{fill:none;stroke:#e2c27a;stroke-width:1.6;stroke-linecap:round;}
+/* The scales (labCloseIcon): the beam turns on its pin, each pan hangs from its end and moves with it, the
+   favourite's side down (--s: -1 the left team, 1 the right). Frame 0 of each motion is its rest, the lean
+   toward the favourite: js/boot.js moves these animations with the embers' clock, so a hidden tab or reduced
+   motion holds them there. Only transform, on a 21 px icon. */
+.lt-sc{--s:-1;}
+.lt-sc-right{--s:1;}
+.lt-sc :is(.lt-sc-b,.lt-sc-l,.lt-sc-r){transform-box:view-box;}
+.lt-sc .lt-sc-b{transform-origin:12px 7.6px;}
+.lt-sc-still .lt-sc-b{transform:rotate(calc(var(--s) * 3deg));}
+.lt-sc-still .lt-sc-l{transform:translateY(calc(var(--s) * -0.387px));}
+.lt-sc-still .lt-sc-r{transform:translateY(calc(var(--s) * 0.387px));}
+.lt-sc-tip .lt-sc-b{animation:lt-sc-tip-b 2.8s infinite ease-in-out;}.lt-sc-tip .lt-sc-l{animation:lt-sc-tip-l 2.8s infinite ease-in-out;}.lt-sc-tip .lt-sc-r{animation:lt-sc-tip-r 2.8s infinite ease-in-out;}
+.lt-sc-sway .lt-sc-b{animation:lt-sc-sway-b 5.6s infinite ease-in-out;}.lt-sc-sway .lt-sc-l{animation:lt-sc-sway-l 5.6s infinite ease-in-out;}.lt-sc-sway .lt-sc-r{animation:lt-sc-sway-r 5.6s infinite ease-in-out;}
+.lt-sc-weigh .lt-sc-b{animation:lt-sc-weigh-b 5.6s infinite ease-in-out;}.lt-sc-weigh .lt-sc-l{animation:lt-sc-weigh-l 5.6s infinite ease-in-out;}.lt-sc-weigh .lt-sc-r{animation:lt-sc-weigh-r 5.6s infinite ease-in-out;}
+@keyframes lt-sc-tip-b{0%,6%{transform:rotate(calc(var(--s) * 3deg));}14%{transform:rotate(calc(var(--s) * 9deg));}22%{transform:rotate(calc(var(--s) * 1.5deg));}28%{transform:rotate(calc(var(--s) * 4.5deg));}34%,100%{transform:rotate(calc(var(--s) * 3deg));}}
+@keyframes lt-sc-tip-l{0%,6%{transform:translateY(calc(var(--s) * -0.387px));}14%{transform:translateY(calc(var(--s) * -1.158px));}22%{transform:translateY(calc(var(--s) * -0.194px));}28%{transform:translateY(calc(var(--s) * -0.581px));}34%,100%{transform:translateY(calc(var(--s) * -0.387px));}}
+@keyframes lt-sc-tip-r{0%,6%{transform:translateY(calc(var(--s) * 0.387px));}14%{transform:translateY(calc(var(--s) * 1.158px));}22%{transform:translateY(calc(var(--s) * 0.194px));}28%{transform:translateY(calc(var(--s) * 0.581px));}34%,100%{transform:translateY(calc(var(--s) * 0.387px));}}
+@keyframes lt-sc-sway-b{0%,100%{transform:rotate(calc(var(--s) * 4deg));}50%{transform:rotate(calc(var(--s) * -4deg));}}
+@keyframes lt-sc-sway-l{0%,100%{transform:translateY(calc(var(--s) * -0.516px));}50%{transform:translateY(calc(var(--s) * 0.516px));}}
+@keyframes lt-sc-sway-r{0%,100%{transform:translateY(calc(var(--s) * 0.516px));}50%{transform:translateY(calc(var(--s) * -0.516px));}}
+@keyframes lt-sc-weigh-b{0%{transform:rotate(calc(var(--s) * 4deg));}4%{transform:rotate(calc(var(--s) * -6deg));}10%{transform:rotate(calc(var(--s) * 9deg));}16%{transform:rotate(calc(var(--s) * 0deg));}22%{transform:rotate(calc(var(--s) * 6deg));}28%{transform:rotate(calc(var(--s) * 2.5deg));}34%{transform:rotate(calc(var(--s) * 4.8deg));}40%,100%{transform:rotate(calc(var(--s) * 4deg));}}
+@keyframes lt-sc-weigh-l{0%{transform:translateY(calc(var(--s) * -0.516px));}4%{transform:translateY(calc(var(--s) * 0.774px));}10%{transform:translateY(calc(var(--s) * -1.158px));}16%{transform:translateY(calc(var(--s) * -0.0px));}22%{transform:translateY(calc(var(--s) * -0.774px));}28%{transform:translateY(calc(var(--s) * -0.323px));}34%{transform:translateY(calc(var(--s) * -0.619px));}40%,100%{transform:translateY(calc(var(--s) * -0.516px));}}
+@keyframes lt-sc-weigh-r{0%{transform:translateY(calc(var(--s) * 0.516px));}4%{transform:translateY(calc(var(--s) * -0.774px));}10%{transform:translateY(calc(var(--s) * 1.158px));}16%{transform:translateY(calc(var(--s) * 0.0px));}22%{transform:translateY(calc(var(--s) * 0.774px));}28%{transform:translateY(calc(var(--s) * 0.323px));}34%{transform:translateY(calc(var(--s) * 0.619px));}40%,100%{transform:translateY(calc(var(--s) * 0.516px));}}
 .lt-vp{font-variant-numeric:tabular-nums;white-space:nowrap;flex:none;}
 .lt-vp .stat-label{color:#8d97a6;font-weight:400;font-size:.68rem;}
 /* Leaders: a box of its own above the tiles, the five stacked in one cell, one shown. */
@@ -310,7 +333,7 @@ html .lt-calm .lt-num{color:var(--text);background:none;filter:none;text-shadow:
 .lt-rot-edge{box-shadow:inset 0 2px 0 var(--side-rail);animation:lt-edge .5s ease-out 1 both;}
 @keyframes lt-edge{from{opacity:1;}to{opacity:0;}}
 /* A tile is rebuilt on every standings repaint, and with reduced motion no ember frame comes to take its loops (boot.js): held here. */
-@media (prefers-reduced-motion: reduce){.lt-hot .lt-num,.lt-shine,.lt-shine-in,.lt-pulse-ring,.lt-clash *{animation-play-state:paused !important;}}
+@media (prefers-reduced-motion: reduce){.lt-hot .lt-num,.lt-shine,.lt-shine-in,.lt-pulse-ring,.lt-clash *,.lt-sc *{animation-play-state:paused !important;}}
 
 /* ---- news ---- */
 .ln-panel{padding:0 14px 6px;}

@@ -476,29 +476,39 @@ function labClosestBody(c) {
 const LAB_SHIELD = 'M-4.4 -7.2 L0 -8.6 L4.4 -7.2 V-1.2 C4.4 3.2 2.2 6.2 0 8 C-2.2 6.2 -4.4 3.2 -4.4 -1.2 Z';
 const LAB_SHIELD_BAND = 'M-0.7 -7.9 h1.4 v15 h-1.4 Z';
 const LAB_CLOSE_ICONS = {
-  scales: [['M8 21.2 h8 v-1.8 h-8 Z', 'f'], ['M11.1 5 h1.8 v14.6 h-1.8 Z', 'f'], ['M3 7.1 L21 6.1 L21 7.7 L3 8.7 Z', 'f'],
-    ['M12 3 a1.9 1.9 0 1 0 0.01 0 Z', 'f'], ['M4.6 8.3 L2 13.6 M4.6 8.3 L7.2 13.6 M19.4 7.4 L16.8 12.9 M19.4 7.4 L22 12.9', 's'],
-    ['M1.2 13.4 h6.8 a3.4 2.6 0 0 1 -6.8 0 Z', 'f'], ['M16 12.7 h6.8 a3.4 2.6 0 0 1 -6.8 0 Z', 'f']],
+  // The beam (b) turns on its pin and each pan (l, r) hangs from an end: the parts' groups, moved by
+  // css/lab-mid.css (.lt-sc-*).
+  scales: [['M8 21.2 h8 v-1.8 h-8 Z', 'f'], ['M11.1 5 h1.8 v14.6 h-1.8 Z', 'f'],
+    ['M3 6.8 h18 v1.6 h-18 Z', 'f', null, 'b'], ['M12 3 a1.9 1.9 0 1 0 0.01 0 Z', 'f', null, 'b'],
+    ['M4.6 8.2 L2 13.4 M4.6 8.2 L7.2 13.4', 's', null, 'l'], ['M1.2 13.4 h6.8 a3.4 2.6 0 0 1 -6.8 0 Z', 'f', null, 'l'],
+    ['M19.4 8.2 L16.8 13.4 M19.4 8.2 L22 13.4', 's', null, 'r'], ['M16 13.4 h6.8 a3.4 2.6 0 0 1 -6.8 0 Z', 'f', null, 'r']],
   stopwatch: [['M10.3 1.8 h3.4 v2.8 h-3.4 Z', 'f'], ['M17.6 4.6 l1.9 1.9 -1.4 1.4 -1.9 -1.9 Z', 'f'],
     ['M12 5.4 a8 8 0 1 0 0.01 0 Z', 'f'], ['M12 7.6 a5.8 5.8 0 1 0 0.01 0 Z', 'd'], ['M12 13.4 V9.4 M12 13.4 L14.8 15.2', 'h']],
   flag: 'flag',
   shields: [[LAB_SHIELD, 'f', 'translate(7.4 12.4) rotate(10)'], [LAB_SHIELD_BAND, 'q', 'translate(7.4 12.4) rotate(10)'],
     [LAB_SHIELD, 'f', 'translate(16.6 12.4) rotate(-10)'], [LAB_SHIELD_BAND, 'q', 'translate(16.6 12.4) rotate(-10)']],
 };
-function labCloseIcon(kind) {
+// `right`: the favourite is the second team (c.b), so the scales lean right; `motion` names how they move.
+function labCloseIcon(kind, right, motion) {
   const parts = LAB_CLOSE_ICONS[kind];
   if (!parts) return null;
   const ns = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(ns, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('class', 'lt-ic lt-ci');
-  const add = (d, k, tf) => {
+  svg.setAttribute('class', `lt-ic lt-ci${kind === 'scales' ? ` lt-sc lt-sc-${motion || 'tip'}${right ? ' lt-sc-right' : ''}` : ''}`);
+  const groups = {};
+  const add = (d, k, tf, g) => {
     const p = document.createElementNS(ns, 'path');
+    if (g && !groups[g]) {
+      groups[g] = document.createElementNS(ns, 'g');
+      groups[g].setAttribute('class', `lt-sc-${g}`);
+      svg.appendChild(groups[g]);
+    }
     p.setAttribute('d', d);
     p.setAttribute('class', `lt-ci-${k}`);
     if (tf) p.setAttribute('transform', tf);
-    svg.appendChild(p);
+    (g ? groups[g] : svg).appendChild(p);
   };
   if (parts === 'flag') {
     // A chequered finish flag: a pole and 4 by 3 squares, the gold ones over a dark cloth.
@@ -507,14 +517,14 @@ function labCloseIcon(kind) {
     let sq = '';
     for (let r = 0; r < 3; r++) for (let q = 0; q < 4; q++) if ((r + q) % 2 === 0) sq += `M${5.2 + q * 3.9} ${3.2 + r * 3.667} h3.9 v3.667 h-3.9 Z `;
     add(sq.trim(), 'q');
-  } else for (const [d, k, tf] of parts) add(d, k, tf);
+  } else for (const [d, k, tf, g] of parts) add(d, k, tf, g);
   return svg;
 }
 function labClosestTile() {
   const c = labClosest();
   if (!c) return null;
   const v = c.sk ? labPrefs.closest : 'today';
-  return labTile({ cls: `lt-close lt-close-${v}`, icon: labCloseIcon(labPrefs.closeIcon), label: 'Closest match', chip: labChipOf(c.m.id),
+  return labTile({ cls: `lt-close lt-close-${v}`, icon: labCloseIcon(labPrefs.closeIcon, labFav(c).x === c.b, labPrefs.scalesMotion), label: 'Closest match', chip: labChipOf(c.m.id),
     body: labClosestBody(c),
     go: () => labGoToTier([c.a.name, c.b.name]),
     aria: labClosestSaid(c) });

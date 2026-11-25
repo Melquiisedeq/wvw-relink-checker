@@ -5,22 +5,23 @@
 // wants boot.js last). Everything goes through textContent.
 
 const LAB_KEY = 'wvw-lab-v1';
-const LAB_VERSION = 18;          // bump when the defaults change: older saved choices are dropped
-// Round 15: the Closest match's barTop, with round 10's "a" and round 9 to compare, and an icon for its title.
+const LAB_VERSION = 19;          // bump when the defaults change: older saved choices are dropped
+// Round 16: the Closest match's barTop, with round 10's "a" and round 9 to compare, an icon for its title and how
+// the scales move.
 const LAB_CLOSE_OPTS = {
   barTop: '“+18 VP” and “+23 VP” over the bar’s ends',
   a: 'Round 10 (a)',
   today: 'Round 9: the week only',
 };
 const LAB_SETUPS = {
-  barTop: { label: LAB_CLOSE_OPTS.barTop, closest: 'barTop', frame: 'a', icon: 'scales' },
+  barTop: { label: LAB_CLOSE_OPTS.barTop, closest: 'barTop', frame: 'a', icon: 'scales', motion: 'tip' },
   a: { label: LAB_CLOSE_OPTS.a, closest: 'a', frame: 'a', icon: 'none' },
   today: { label: LAB_CLOSE_OPTS.today, closest: 'today', frame: 'today', icon: 'none' },
 };
 const LAB_ITEMS = [
   { type: 'radio', key: 'setup', label: 'Setup', value: 'barTop',
     options: Object.fromEntries(Object.entries(LAB_SETUPS).map(([k, x]) => [k, x.label])),
-    apply: (k) => { labPrefs.closest = LAB_SETUPS[k].closest; labPrefs.frame = LAB_SETUPS[k].frame; labPrefs.closeIcon = LAB_SETUPS[k].icon; } },
+    apply: (k) => { labPrefs.closest = LAB_SETUPS[k].closest; labPrefs.frame = LAB_SETUPS[k].frame; labPrefs.closeIcon = LAB_SETUPS[k].icon; labPrefs.scalesMotion = LAB_SETUPS[k].motion || 'tip'; } },
   { type: 'section', label: 'Fine-tune' },
   { type: 'radio', key: 'closest', label: 'Closest match', value: 'barTop', options: LAB_CLOSE_OPTS },
   { type: 'radio', key: 'closeIcon', label: 'Closest match icon', value: 'scales', options: {
@@ -29,6 +30,11 @@ const LAB_ITEMS = [
     flag: 'A chequered finish flag',
     shields: 'Two shields face to face',
     none: 'No icon' } },
+  { type: 'radio', key: 'scalesMotion', label: 'Scales motion', value: 'tip', options: {
+    tip: 'Tip: on the swords’ beat the beam dips toward the favourite and back',
+    sway: 'Sway: a slow, steady rock to both sides',
+    weigh: 'Weigh: every 5.6 s the pans swing, then settle toward the favourite',
+    still: 'Still: leaning toward the favourite' } },
   { type: 'radio', key: 'frame', label: 'Frame of the middle panels', value: 'a', options: {
     today: 'Today: dark fill, no shadow',
     a: 'A · dark fill + the columns’ border, rules and shadows',
