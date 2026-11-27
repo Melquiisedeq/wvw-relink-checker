@@ -55,16 +55,16 @@ Discord, read only when you click a shield icon.
 **The search runs in your browser. The guild names you type go
 only to the game's own API (ArenaNet's), to be looked up; the visits are
 counted, as the table below shows.** There is one small server of mine, at `wvwrelink.com/api`. It receives game
-data from this project's own three Apps Scripts (one reads the game's update notes on its wiki, not a spreadsheet) and two Supabase readers, each signed, and the page reads four things
+data from this project's own three Apps Scripts (one reads the game's update notes on its wiki, not a spreadsheet) and two Supabase readers, each signed, and the page reads five things
 back from it — the kills history, whether the new teams are out (both fall
-back to the spreadsheets if it cannot answer), the newest match bodies and the
-history of each region's finished skirmishes. While the tab is visible the page also keeps a connection open to it, to hear when newer match bodies are in; it sends only `ping`. Nothing you type goes near it.
+back to the spreadsheets if it cannot answer), the newest match bodies, the
+history of each region's finished skirmishes and, once after the standings are in, the WvW lines of the game's update notes. While the tab is visible the page also keeps a connection open to it, to hear when newer match bodies are in; it sends only `ping`. Nothing you type goes near it.
 
 | Host | What for |
 |---|---|
 | `api.guildwars2.com` | The guild names you paste go here to be resolved — that request *is* the lookup. Also all match, objective and upgrade data. |
-| `render.guildwars2.com` | Guild emblem images, for objectives claimed by a guild. Images only. |
-| `wvwrelink.com/api` | This site's own server: the kills history when you open a tier's maps, whether the new teams are out (read only in the days before a relink), the newest match bodies, kept only when further along than the game's own answer, and the history of finished skirmishes. |
+| `render.guildwars2.com` | Guild emblem images, for objectives claimed by a guild, and the profession icons beside the balance lines of the update notes. Images only. |
+| `wvwrelink.com/api` | This site's own server: the kills history when you open a tier's maps, whether the new teams are out (read only in the days before a relink), the newest match bodies, kept only when further along than the game's own answer, the history of finished skirmishes and the WvW lines of the game's update notes, read once after the standings. |
 | `docs.google.com` | Three public spreadsheets, read-only: the community guild list when you click a shield icon, and the kills history and the new-teams notice when `/api` does not answer. |
 | `static.cloudflareinsights.com`, `cloudflareinsights.com` | Cloudflare Web Analytics: its script, and a report of each visit and how fast the page loaded. |
 

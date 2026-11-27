@@ -4,6 +4,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { pastEdge } from './support/edge.mjs';
 import { iso } from './support/steps.mjs';
+import { hidden, visible } from './support/scenarios.mjs';
 
 const WIKI = 'https://wiki.guildwars2.com/wiki/';
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -71,6 +72,8 @@ test.describe('the panel and its lines', () => {
     await expect(p.getByText('3 values changed, starting with Keep captures: 250 → 100 (T0)')).toBeVisible();
     const nerf = p.locator('.news-r').filter({ hasText: 'Blazing Barrage' });
     await expect(nerf.getByText('▼ Nerf')).toBeVisible();
+    // The triangle is a drawing; the word stays for a screen reader.
+    await expect(nerf.locator('.news-tag-nerf > [aria-hidden="true"]')).toHaveText('▼');
     await expect(nerf.getByText('WvW only')).toBeVisible();
     await expect(nerf.getByRole('img', { name: 'Elementalist' })).toHaveAttribute('src', /^https:\/\/render\.guildwars2\.com\/file\/[0-9A-F]+\/\d+\.png$/);
     await expect(nerf.getByRole('link', { name: 'Blazing Barrage' })).toHaveAttribute('href', WIKI + 'Blazing_Barrage');
@@ -227,6 +230,38 @@ test.describe('the clock', () => {
     await expect(supply.getByText('Rule', { exact: true })).toBeVisible();
     await expect(supply.getByText(/^Until /)).toHaveCount(0);
   });
+
+  test('a filter button holding the focus does not stop the countdown, and keeps the focus', async ({ page, wvw }) => {
+    await serveNotes(page, rich(wvw.opensAt));
+    await page.goto(wvw.url);
+    const p = panel(page);
+    const end = betaEnd(wvw.opensAt);
+    await expect(p.getByText('Beta ends in')).toBeVisible();
+    await p.getByRole('button', { name: 'All' }).click();
+    await expect(p.getByRole('button', { name: 'All' })).toBeFocused();
+    for (let t = 0; t < 60000; t += 3000) await page.clock.runFor(3000);
+    await expect(p.getByText('Beta ends in')).toHaveText(`Beta ends in ${span(end - wvw.opensAt - 60000)}`);
+    await expect(p.getByRole('button', { name: 'All' })).toBeFocused();
+    await expect(p.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('a beta that ends while the tab is hidden is gone from the panel when the tab is seen again', async ({ page, wvw }) => {
+    await serveNotes(page, rich(wvw.opensAt));
+    await page.goto(wvw.url);
+    const p = panel(page);
+    await expect(p.getByText('Beta ends in')).toBeVisible();
+    await hidden(page, wvw, betaEnd(wvw.opensAt) - wvw.opensAt + 5 * 60000);
+    for (let t = 0; t < 120000; t += 3000) await page.clock.runFor(3000);
+    await visible(page);
+    await expect(p.getByText('Beta ends in')).toHaveCount(0);
+    await expect(p.locator('.news-r').filter({ hasText: 'Supply camps' }).getByText(/^Until /)).toHaveCount(0);
+  });
+});
+
+test('a lone value row that heads the panel is titled with its before and after', async ({ page, wvw }) => {
+  await serveNotes(page, [line(wvw.opensAt, 3, 'Keep captures: 250 → 100 (T0)', 'wvw_rule')]);
+  await page.goto(wvw.url);
+  await expect(panel(page).getByRole('link', { name: 'Keep captures: 250 → 100 (T0)' })).toBeVisible();
 });
 
 for (const width of [390, 320]) {

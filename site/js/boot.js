@@ -1,7 +1,7 @@
 'use strict';
 // Boot (loads last): the first load, the background refreshes, the ember field, and idling when nobody is looking.
 
-// js/news.js is asked for after the first standings, never in the opening; it starts itself on load.
+// js/news.js is asked for after the first standings, never in the opening; this starts it once it has loaded.
 function loadNews() {
   const s = document.createElement('script');
   s.src = 'js/news.js';

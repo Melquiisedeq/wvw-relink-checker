@@ -14,7 +14,8 @@ const NEWS_MONTH_RE = NEWS_MONTHS.join('|');
 const NEWS_DAY_RE = /^(\d{4})-(\d\d)-(\d\d)$/;
 const NEWS_KIND_WEIGHT = { map: 6, rule: 4, buff: 3, nerf: 3, fix: 1 };
 const NEWS_KIND_OF_TYPE = { buff: 'buff', nerf: 'nerf', bug: 'fix', wvw_rule: 'rule' };
-const NEWS_TAGS = { buff: '▲ Buff', nerf: '▼ Nerf', map: 'Map', rule: 'Rule', fix: 'Fix' };
+const NEWS_TAGS = { buff: 'Buff', nerf: 'Nerf', map: 'Map', rule: 'Rule', fix: 'Fix' };
+const NEWS_ARROWS = { buff: '▲', nerf: '▼' };
 const NEWS_FILTERS = { wvw: 'WvW', all: 'All', fix: 'Fixes' };
 const NEWS_LEAD_DAYS = 45;
 const NEWS_MAX_ITEMS = 200;
@@ -62,6 +63,13 @@ function newsWikiHref(s) {
 const newsDay = (t) => `${new Date(t).getUTCDate()} ${NEWS_MONTHS[new Date(t).getUTCMonth()].slice(0, 3)}`;
 const newsSeconds = (s) => s.replace(/\s+seconds?$/, ' s').replace(/[.,]$/, '');
 
+// "until January 6" in a December note is the next year's.
+function newsUntil(at, m) {
+  const year = new Date(at).getUTCFullYear();
+  const t = Date.UTC(year, NEWS_MONTHS.indexOf(m[1]), Number(m[2]), 12);
+  return t < at ? Date.UTC(year + 1, NEWS_MONTHS.indexOf(m[1]), Number(m[2]), 12) : t;
+}
+
 function newsItem(r) {
   const day = NEWS_DAY_RE.exec(r.day);
   if (!day || typeof r.text !== 'string' || !r.text || r.text.length > NEWS_MAX_TEXT) return null;
@@ -94,7 +102,7 @@ function newsItem(r) {
     at, update: typeof r.update === 'string' ? r.update : '', kind, name, before, after, desc, text, prof,
     link: newsWikiHref(r.link) || newsWikiHref(r.page),
     only: /\bin WvW only\b/i.test(text),
-    until: until ? Date.UTC(new Date(at).getUTCFullYear(), NEWS_MONTHS.indexOf(until[1]), Number(until[2]), 12) : 0,
+    until: until ? newsUntil(at, until) : 0,
   };
 }
 
@@ -160,7 +168,11 @@ const NEWS_ICONS = {
 function newsTag(i) {
   if (!i.kind) return null;
   if (newsLive(i)) return newsEl('span', 'news-tag news-tag-date', `Until ${newsDay(i.until)}`);
-  return newsEl('span', `news-tag news-tag-${i.kind}`, NEWS_TAGS[i.kind]);
+  const tag = newsEl('span', `news-tag news-tag-${i.kind}`);
+  // The triangle is a drawing: a screen reader says the word.
+  if (NEWS_ARROWS[i.kind]) tag.appendChild(newsEl('span', null, NEWS_ARROWS[i.kind])).setAttribute('aria-hidden', 'true');
+  tag.append(`${NEWS_ARROWS[i.kind] ? ' ' : ''}${NEWS_TAGS[i.kind]}`);
+  return tag;
 }
 
 function newsLine(i) {
@@ -218,7 +230,7 @@ function newsLead(lead) {
   const body = newsEl('div', 'news-lead-body');
   body.appendChild(newsEl('span', 'news-dt', `${newsDay(lead.at)} · ${lead.kind === 'map' ? 'New map' : 'Rule change'}`));
   const sentences = lead.text.split(/(?<=[.!])\s+/);
-  const titleText = lead.name ? `${lead.name}: ${lead.desc}` : sentences[0].replace(/[.!]$/, '');
+  const titleText = lead.name ? `${lead.name}: ${lead.desc || `${lead.before} → ${lead.after}`}` : sentences[0].replace(/[.!]$/, '');
   body.appendChild(lead.link ? newsLink('news-lead-title', titleText, lead.link) : newsEl('span', 'news-lead-title', titleText));
   if (!lead.name && sentences[1]) body.appendChild(newsEl('p', 'news-lead-line', sentences[1]));
   if (newsLive(lead)) body.appendChild(newsEl('span', 'news-pill', `Beta ends in ${newsSpan(lead.until - Date.now())}`));
@@ -283,11 +295,16 @@ function newsPaint() {
   newsPanel.replaceChildren(...next.childNodes);
 }
 
-// The countdown and the "Until" tags follow the clock; the minute stops when no date is ahead.
+// The countdown and the "Until" tags follow the clock, a minute at a time. The panel is drawn again, and
+// what had the focus gets it back; a hidden tab skips the minute and is brought up to date when it is seen
+// again, and the timer stops only after a drawing that found no date ahead.
 function newsTick() {
-  if (!newsItems.some(newsLive)) { clearInterval(newsTimer); newsTimer = 0; }
-  if (document.hidden || newsPanel.contains(document.activeElement)) return;
+  if (document.hidden) return;
+  const spot = [...newsPanel.querySelectorAll('a, button')].indexOf(document.activeElement);
+  const live = newsItems.some(newsLive);
   newsPaint();
+  if (spot >= 0) newsPanel.querySelectorAll('a, button')[spot]?.focus();
+  if (!live) { clearInterval(newsTimer); newsTimer = 0; }
 }
 
 // The panel's styles are read with the panel, not with the page: the opening carries nothing of them.
@@ -298,7 +315,10 @@ function newsMount() {
   sheet.addEventListener('load', () => {
     newsPanel = newsBuild();
     matchPanelsContainer.after(newsPanel);
-    if (newsItems.some(newsLive)) newsTimer = setInterval(newsTick, NEWS_TICK_MS);
+    if (newsItems.some(newsLive)) {
+      newsTimer = setInterval(newsTick, NEWS_TICK_MS);
+      document.addEventListener('visibilitychange', () => { if (newsTimer && !document.hidden) newsTick(); });
+    }
   }, { once: true });
   document.head.appendChild(sheet);
 }

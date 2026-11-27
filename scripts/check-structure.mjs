@@ -200,9 +200,14 @@ export function checkScripts(problems, root = ROOT) {
 
 export function checkStyles(problems, root = ROOT) {
   const referenced = [...read(root, 'index.html').matchAll(/<link\b[^>]*href="([^"]+\.css)"/gi)].map((m) => m[1]);
-  // A sheet a script adds later (css/news.css, by js/news.js) is named there as a quoted path.
+  // A sheet a script adds later (css/news.css, by js/news.js) is named where it is set as a link's href.
+  const added = [];
   for (const name of filesIn(root, 'js', '.js')) {
-    for (const m of read(root, 'js/' + name).matchAll(/'(css\/[\w.-]+\.css)'/g)) referenced.push(m[1]);
+    for (const m of read(root, 'js/' + name).matchAll(/\.href = '(css\/[\w.-]+\.css)'/g)) added.push([name, m[1]]);
+  }
+  for (const [name, href] of added) {
+    if (exists(root, href)) referenced.push(href);
+    else problems.push(`js/${name} loads ${href}, which does not exist.`);
   }
   for (const href of referenced) {
     if (!exists(root, href)) problems.push(`index.html links ${href}, which does not exist.`);

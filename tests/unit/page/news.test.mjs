@@ -51,3 +51,13 @@ test('newsGroup: three rows of one update\'s value table are one line, two stay 
   assert.equal(p.call('newsRead', { notes: rows(2) }).length, 2, 'two rows are two lines, none lost');
   assert.equal(p.call('newsRead', { notes: [...rows(3), row('Fixed it.', 'bug'), ...rows(3)] }).length, 3);
 });
+
+test('newsItem: an "until" date before the note is the next year\'s (js/news.js)', () => {
+  const p = fresh();
+  const [dec, nov] = clone(p.call('newsRead', { notes: [
+    row('The beta will run until January 6.', 'wvw_rule', { day: '2026-12-20' }),
+    row('The beta will run until December 9.', 'wvw_rule', { day: '2026-11-20' }),
+  ] }));
+  assert.equal(dec.until, Date.UTC(2027, 0, 6, 12));
+  assert.equal(nov.until, Date.UTC(2026, 11, 9, 12));
+});
