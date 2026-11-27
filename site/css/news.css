@@ -1,0 +1,42 @@
+/* The news panel (js/news.js), read after the standings: its styles come with it, not with the opening. The frame is .frame-a (css/controls.css). */
+.news-panel{padding:0 14px 6px;margin-bottom:20px;min-width:0;}
+.news-src{display:flex;align-items:center;gap:8px;padding:9px 0 8px;border-bottom:1px solid var(--border);font-size:.66rem;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;min-width:0;}
+.news-src-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.news-src b{color:var(--text);font-weight:600;}
+.news-mark{width:16px;height:16px;flex:none;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.news-src-link{margin-left:auto;flex:none;color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:.78rem;}
+.news-tag{font-size:.58rem;font-weight:700;line-height:1;letter-spacing:.09em;text-transform:uppercase;border:1px solid #3a4350;border-radius:4px;padding:3px 5px;color:var(--muted);white-space:nowrap;align-self:center;}
+.news-tag-buff{color:var(--text);border-color:#6a7686;}
+.news-tag-nerf,.news-tag-date{color:var(--warn);border-color:#6b4a22;}
+.news-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 8px;min-width:0;}
+.news-name{font-weight:600;color:var(--text);text-decoration:none;overflow-wrap:anywhere;}
+.news-name:hover,.news-desc-link:hover{text-decoration:underline;}
+.news-ba{font-variant-numeric:tabular-nums;white-space:nowrap;font-size:.9rem;}
+.news-ba s{color:var(--muted);text-decoration:none;}
+.news-ba i{font-style:normal;color:var(--muted);margin:0 4px;}
+.news-ba b{font-weight:700;}
+.news-only{font-size:.68rem;color:#7e8899;}
+.news-prof{width:18px;height:18px;align-self:center;opacity:.9;}
+.news-desc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--muted);font-size:.8rem;line-height:1.35;margin-top:2px;overflow-wrap:anywhere;}
+.news-desc-link{color:var(--text);text-decoration:none;font-size:.86rem;}
+.news-tl .news-desc:not(.news-desc-link){-webkit-line-clamp:1;}
+.news-lead{display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;padding:12px 0;border-bottom:1px solid var(--border);}
+.news-lead-ic{width:40px;height:40px;border-radius:10px;border:1px solid #6b4a22;display:grid;place-items:center;color:var(--warn);}
+.news-lead-ic svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.news-lead-body{min-width:0;display:flex;flex-direction:column;gap:3px;align-items:flex-start;}
+.news-dt{font-size:.66rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;}
+.news-lead-title{font-weight:600;font-size:.98rem;line-height:1.3;color:var(--text);text-decoration:none;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.news-lead-title:hover{text-decoration:underline;}
+.news-lead-line{margin:0;color:var(--muted);font-size:.8rem;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.news-pill{margin-top:4px;border:1px solid #6b4a22;color:var(--warn);border-radius:999px;padding:2px 9px;font-size:.72rem;font-variant-numeric:tabular-nums;}
+.news-tl{position:relative;padding:2px 0 4px 22px;}
+.news-tl::before{content:'';position:absolute;left:6px;top:12px;bottom:10px;width:2px;background:#2b333d;}
+.news-d{position:relative;margin:9px 0 2px;}
+.news-d::before{content:'';position:absolute;left:-21px;top:1px;width:10px;height:10px;border-radius:50%;background:var(--bg);border:2px solid var(--accent);box-sizing:border-box;}
+.news-r{padding:4px 0;min-width:0;}
+.news-empty{margin:10px 0;color:var(--muted);font-size:.8rem;}
+.news-filters{display:flex;gap:6px;padding:8px 0 4px;border-top:1px solid var(--border);}
+button.news-filter{background:none;color:var(--muted);box-shadow:none;text-shadow:none;font:inherit;border:1px solid #3a4350;border-radius:999px;padding:3px 10px;font-size:.74rem;color:var(--muted);}
+button.news-filter[aria-pressed="true"]{color:var(--accent);border-color:#3b6a7a;}
+button.news-filter:active{transform:none;}
+button.news-filter:active::after{content:none;}
