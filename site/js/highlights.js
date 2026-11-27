@@ -188,11 +188,11 @@ function hlClosest() {
 const hlLeft = (n) => (n >= 60 ? `${Math.floor(n / 60)} h ${n % 60} min left` : (n > 0 ? `${n} min left` : 'ending now'));
 // Who has the better chance: the one ahead in the week if this skirmish ended now (c.next), or, with no VP table
 // to add it up, the one ahead in the week now (proj false: nothing may say "if it ended now"). `tied`: level if it
-// ended now; x is then only the first row, and nothing may name a winner.
+// ended now, or level in the week with no table; x is then only the first row, and nothing may name a winner.
 function hlFav(c) {
   const proj = !!(c.sk && c.sk.vp);
   const x = proj && c.next < 0 ? c.b : c.a;
-  return { x, by: proj ? Math.abs(c.next) : c.gap, proj, tied: proj && c.next === 0 };
+  return { x, by: proj ? Math.abs(c.next) : c.gap, proj, tied: proj ? c.next === 0 : c.gap === 0 };
 }
 const hlTierNo = (id) => String(id).split('-')[1] || '?';
 const hlTierTag = (id) => `${hlRegionOf(id)} · T${hlTierNo(id)}`;
@@ -205,7 +205,7 @@ function hlClosestSaid(c) {
     s += f.tied ? ' and the two would be tied.'
       : f.x === c.a ? ` and ${c.a.name} would stay ahead, by ${hlNum(f.by)}.`
       : ` and ${c.b.name} would pass ${c.a.name}, ahead by ${hlNum(f.by)}.`;
-  } else s += ` ${c.a.name} leads the week.`;
+  } else s += f.tied ? ' The two are tied this week.' : ` ${c.a.name} leads the week.`;
   if (c.sk) s += c.sk.left > 0 ? ` ${hlLeft(c.sk.left)} in this skirmish.` : ' This skirmish is ending now.';
   return `${s} Show them in the standings`;
 }
@@ -304,15 +304,20 @@ function hlFightTile(f) {
     go: () => hlOpenMap(f.m.id, f.type),
     aria: `Hottest fight, ${hlTierTag(f.m.id)}: ${hlNum(f.n)} kills per 10 minutes on ${where}, ${when.text}. Open the live map on it` });
 }
-// No kill rate: the site's spinner only until the first read of the kill history lands; after it, the map
-// corner's reason, shortened.
+// No kill rate: the site's spinner only until the first read of the kill history lands (null); after it, the map
+// corner's reason, shortened. No running match to read (`view` undefined) is the turn of the week, before its body.
+function hlWaitText(view) {
+  const wait = view && view.counting;
+  if (!killSheet) return null;
+  if (!view || view.noWindow === 'reset') return 'Counting starts about 10 min after the reset';
+  if (wait && wait.ready > steadyNow()) return `Counting since ${hlHhmm(wait.since)} · ready about ${hlHhmm(wait.ready)}`;
+  return 'Not enough kill data to count 10 minutes';
+}
 function hlFightWait(view) {
   const line = hlEl('span', 'hl-map hl-wait');
-  const wait = view && view.counting;
-  if (!killSheet) line.append(hlEl('span', 'spinner'), 'Reading the kills…');
-  else if (view && view.noWindow === 'reset') line.append('Counting starts about 10 min after the reset');
-  else if (wait && wait.ready > steadyNow()) line.append(`Counting since ${hlHhmm(wait.since)} · ready about ${hlHhmm(wait.ready)}`);
-  else line.append('Not enough kill data to count 10 minutes');
+  const text = hlWaitText(view);
+  if (text === null) line.append(hlEl('span', 'spinner'), 'Reading the kills…');
+  else line.append(text);
   return hlTile({ key: 'hot', cls: 'hl-hot hl-calm', icon: hlClash(), label: 'Hottest fight', body: [line] });
 }
 // The marker of the last objective taken, the map's capture ring round it pinging on each blow of the swords.
@@ -343,7 +348,7 @@ function hlBusyTile(flip) {
   return hlTile({ key: 'busy', cls: 'hl-busy', icon: hlPulse(flip.last.type, flip.last.color), label: 'Busiest map', chip: hlChip(flip.m.id),
     body: [hlBig(String(flip.n), flip.n === 1 ? 'objective taken' : 'objectives taken'), hlEl('span', 'hl-map', `${where} · last 2 h${hlDataFrom(flip.m)}`), bar, teams],
     go: () => hlOpenMap(flip.m.id, flip.type),
-    aria: `Busiest map, ${hlTierTag(flip.m.id)}: ${flip.n} objectives taken in the last 2 hours on ${where}, held now by ${said}. Open the live map on it` });
+    aria: `Busiest map, ${hlTierTag(flip.m.id)}: ${flip.n} ${flip.n === 1 ? 'objective' : 'objectives'} taken in the last 2 hours on ${where}, held now by ${said}. Open the live map on it` });
 }
 
 // No take in 2 h: the map of the newest take of the week and when, the marker still; none this week, the new week's line.
@@ -391,12 +396,13 @@ function hlWeekRows(c) {
   }
   return rows;
 }
-// "● Name set to win · 57 min left"; the second passing the first, "set to pass"; level, "Tied if it ended now".
+// "● Name set to win · 57 min left"; the second passing the first, "set to pass"; level, "Tied if it ended now",
+// or with no table "Tied this week".
 function hlFavFoot(c) {
   const f = hlFav(c);
   const line = hlEl('span', 'hl-line hl-sk-line');
   const tail = `${c.sk ? ` · ${hlLeft(c.sk.left)}` : ''}${hlDataFrom(c.m)}`;
-  if (f.tied) line.append(`Tied if it ended now${tail}`);
+  if (f.tied) line.append(`${f.proj ? 'Tied if it ended now' : 'Tied this week'}${tail}`);
   else line.append(hlTeamText(f.x.name, f.x.color), ` ${!f.proj ? 'leads the week' : f.x === c.b ? 'set to pass' : 'set to win'}${tail}`);
   return line;
 }

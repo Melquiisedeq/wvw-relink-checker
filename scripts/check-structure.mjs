@@ -200,7 +200,7 @@ export function checkScripts(problems, root = ROOT) {
 
 export function checkStyles(problems, root = ROOT) {
   const referenced = [...read(root, 'index.html').matchAll(/<link\b[^>]*href="([^"]+\.css)"/gi)].map((m) => m[1]);
-  // A sheet a script adds later (css/news.css, by js/news.js) is named there as a quoted path.
+  // A sheet a script adds later (css/highlights.css, by js/highlights.js) is named there as a quoted path.
   for (const name of filesIn(root, 'js', '.js')) {
     for (const m of read(root, 'js/' + name).matchAll(/'(css\/[\w.-]+\.css)'/g)) referenced.push(m[1]);
   }

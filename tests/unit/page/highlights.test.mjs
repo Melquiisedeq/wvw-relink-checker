@@ -41,6 +41,22 @@ test('the Closest match: level if it ended now names no winner', () => {
   const none = c(undefined, null);
   assert.equal(p.call('hlFav', none).tied, false);
   assert.match(p.call('hlClosestSaid', none), /Mosswood leads the week\./);
+  // Level in the week with no table: no leader picked by the sort's order.
+  const level = { m, gap: 0, a, b: { ...b, vp: a.vp }, sk: { left: 69, vp: null, sc: { red: 1, blue: 2, green: 0 } } };
+  assert.equal(p.call('hlFav', level).tied, true);
+  const saidLevel = p.call('hlClosestSaid', level);
+  assert.match(saidLevel, /0 apart this week\. The two are tied this week\. 1 h 9 min left in this skirmish\./);
+  assert.doesNotMatch(saidLevel, /leads the week/);
+});
+
+test('the Hottest fight with no rate: the spinner before the first read, the reset with no running match', () => {
+  const p = fresh();
+  p.set('killSheet', null);
+  assert.equal(p.call('hlWaitText', undefined), null);
+  p.set('killSheet', new Map());
+  assert.equal(p.call('hlWaitText', undefined), 'Counting starts about 10 min after the reset');
+  assert.equal(p.call('hlWaitText', { noWindow: 'reset' }), 'Counting starts about 10 min after the reset');
+  assert.equal(p.call('hlWaitText', { noWindow: 'data' }), 'Not enough kill data to count 10 minutes');
 });
 
 test('the Hottest fight\'s line follows the map corner\'s looks', () => {

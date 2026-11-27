@@ -56,13 +56,13 @@
    rastered once, not again at each size or sub-pixel offset. */
 .hl-clash .wvw-clash-flash{left:1px;top:.2px;width:11.6px;height:11.6px;animation-name:hl-clash-flash;}
 @keyframes hl-clash-flash{0%,15.89%{opacity:0;transform:scale(.275862);}16.46%{opacity:.85;transform:scale(.758621);}21.71%,100%{opacity:0;transform:scale(1);}}
-.hl-clash :is(.wvw-clash-sword,.wvw-clash-flash,.wvw-clash-shine,.wvw-clash-spark,.hl-clash-band),.hl-shine,.hl-shine-in{will-change:transform;}
+.hl-clash :is(.wvw-clash-sword,.wvw-clash-flash,.wvw-clash-spark,.hl-clash-band),.hl-shine,.hl-shine-in{will-change:transform;}
 .hl-clash-band{position:absolute;inset:0;background:linear-gradient(115deg,transparent 5%,rgba(255,240,200,.95) 50%,transparent 95%);
   transform:translateX(-100%);animation:hl-shine-band 2.8s infinite;}
 /* No swords lit, or a number that is not a pace of now: grey swords at rest, the number white. */
 .hl-calm .hl-num,.hl-hot.hl-calm .hl-num{color:var(--text);text-shadow:none;}
 .hl-calm .hl-unit,.hl-hot.hl-calm .hl-unit{color:var(--muted);}
-.hl-calm .hl-clash *{animation:none;}
+.hl-calm .hl-clash *{animation:none;will-change:auto;}
 .hl-calm .wvw-clash-flash,.hl-calm .wvw-clash-shine,.hl-calm .wvw-clash-spark{display:none;}
 .hl-calm .wvw-clash-sword{filter:grayscale(1) brightness(.75) drop-shadow(0 1px 1px rgba(0,0,0,.7));}
 .hl-wait{display:flex;align-items:center;gap:6px;color:var(--muted);}
