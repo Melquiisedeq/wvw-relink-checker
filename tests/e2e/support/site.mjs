@@ -53,12 +53,27 @@ function siteFiles() {
   return map;
 }
 
-// Starts the server for worker `index`; resolves to { url, close }.
+// The Worker's reads that go through the browser's HTTP cache, with the Worker's max-age
+// (worker/index.mjs). Answered here, through the network, only while a test hands an answer
+// (fixtures.mjs, `httpCache`): an answer the interception gives never enters the HTTP cache.
+const CACHED_API = new Set(['/api/kills', '/api/relink']);
+const CACHED_API_HEADERS = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=60' };
+
+// Starts the server for worker `index`; resolves to { url, close, answerApi }.
+// answerApi(fn): fn(path with query) resolves to { status, type, body, date } or null (a 404); null stops.
 export function startSite(index) {
   const headers = siteHeaders();
   const files = siteFiles();
-  const server = createServer((req, res) => {
-    const hit = files.get(req.url.split('?')[0]);
+  let api = null;
+  const server = createServer(async (req, res) => {
+    const path = req.url.split('?')[0];
+    if (api && CACHED_API.has(path) && req.method === 'GET') {
+      const a = await api(req.url).catch(() => null);
+      if (!a) { res.writeHead(404); return res.end(); }
+      res.writeHead(a.status, { ...CACHED_API_HEADERS, 'Content-Type': a.type, Date: new Date(a.date).toUTCString() });
+      return res.end(a.body);
+    }
+    const hit = files.get(path);
     if (!hit || (req.method !== 'GET' && req.method !== 'HEAD')) { res.writeHead(404); return res.end(); }
     res.writeHead(200, { ...headers, 'Content-Type': hit.type });
     res.end(req.method === 'HEAD' ? undefined : readFileSync(hit.file));
@@ -69,6 +84,8 @@ export function startSite(index) {
     server.listen(port, '127.0.0.1', () => ok({
       url: `http://127.0.0.1:${port}`,
       close: () => new Promise(done => { server.close(() => done()); server.closeAllConnections(); }),
+      answerApi: fn => { api = fn; },
+      cachedApi: url => url.startsWith(`http://127.0.0.1:${port}/`) && CACHED_API.has(new URL(url).pathname),
     }));
   });
 }
