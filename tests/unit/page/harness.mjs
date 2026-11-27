@@ -32,7 +32,7 @@ export function scriptFiles() {
   const listed = [...html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)]
     .map((m) => m[1])
     .filter((s) => s.startsWith('js/') && !SKIPPED.has(s));
-  const late = listed.flatMap((s) => [...fs.readFileSync(path.join(siteDir, s), 'utf8')
+  const late = [...listed, ...SKIPPED].flatMap((s) => [...fs.readFileSync(path.join(siteDir, s), 'utf8')
     .matchAll(/'(js\/[\w.-]+\.js)'/g)].map((m) => m[1]));
   return [...listed, ...new Set(late.filter((s) => !listed.includes(s)))];
 }

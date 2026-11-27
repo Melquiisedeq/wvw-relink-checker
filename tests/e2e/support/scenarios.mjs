@@ -44,6 +44,17 @@ export const playingHalfMinutes = (min = 40, id) => opened(id).advance(min, { ev
 // more of play.
 export const frozen = (min = 40, id) => opened(id).advance(4).freeze(min).advance(12);
 
+// The API stuck on one body in the middle of a fight: 4 min of play once the page is open, then the same body
+// for `min` minutes, with the kills' pace of the fight still in the history.
+export const frozenMidFight = (min = 20, id) => opened(id).advance(4).freeze(min);
+
+// A week's first minutes: the page open on the recorded week, the region turns (gw2.newWeek) and the focus
+// plays `min` minutes of it, every team still on 0 VP.
+export const weekAtZero = (min = 6, id = FOCUS) => opened(id).newWeek().advance(min);
+
+// Victory points by a table the site does not know (gw2.vpTableChanged), `min` minutes of play.
+export const vpTableChanged = (min = 10, id) => opened(id).vpTableChanged().advance(min);
+
 // A server group `lag` minutes behind answering every second minute, for
 // `min` minutes of play; /api/latest down, so that only the page's own guard
 // (keepNewestMatch) stands between the older group and the screen.
