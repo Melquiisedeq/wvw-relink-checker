@@ -6,7 +6,7 @@
 
 const RECENT_GUILDS_KEY = 'wvw-relink-checker:recent-guilds';
 const RECENT_GUILDS_MAX = 8;
-// The pasted list the search before this one kept; nothing reads it any more.
+// A key nothing writes: deleted where it is still found.
 const OLD_GUILDS_KEY = 'wvw-relink-checker:guilds';
 const MARK_MS = 8000;
 const SPOT_HIT_MS = 350;
@@ -89,6 +89,7 @@ async function run() {
   guildInput.blur();
   dropMark();
   dropStrip();
+  if (found.spot) { found.spot.disconnect(); found.spot = null; }
   paintAnswer({ asking: true });
   runBtn.disabled = true;
   runBtn.innerHTML = '<span class="btn-pips"><span></span><span></span><span></span></span>';
@@ -221,7 +222,8 @@ function finaleTarget() {
   const html = document.documentElement;
   html.style.setProperty('--aim-x', `${Math.round(x)}px`);
   html.style.setProperty('--aim-y', `${Math.round(y)}px`);
-  // The crest's stack is 178 px tall: it lands a little under the card's height.
+  // The crest is 178 px tall (150 px wide on its 160×190 viewBox, css/impact.css): it lands a
+  // little under the card's height.
   html.style.setProperty('--aim-s', Math.min(1, Math.max(0.45, (r.height * 0.9) / 178)).toFixed(3));
   return { x, y };
 }

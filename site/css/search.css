@@ -1,5 +1,5 @@
 /* The search (js/search.js): the panel, the bar, the answer card and its arrow, the mark on
-   the found team's card, the tier spotlight and where the finale lands. Drawn for 390 and 320 px first. */
+   the found team's card, the tier spotlight and where the finale lands. */
 
 /* The panel: an opaque fill with the columns' border, top light, bottom rule and shadows
    (.card in css/controls.css), no blur. */

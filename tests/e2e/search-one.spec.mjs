@@ -4,7 +4,7 @@
 // lands on the answer.
 import { test, expect } from './support/fixtures.mjs';
 import { answer, hold } from './support/faults.mjs';
-import { load, recordedJson, search } from './support/steps.mjs';
+import { answered, frames, load, recordedJson, search } from './support/steps.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 
@@ -70,6 +70,22 @@ test('the guilds offered: the game\'s spelling first, no repeats, eight at most'
   await wvw.settle();
 });
 
+test('a broken list of guilds found is read as empty, or as the names it holds', async ({ page, wvw }) => {
+  const KEY = 'wvw-relink-checker:recent-guilds';
+  const offered = () => page.locator('#recentGuilds option').evaluateAll(os => os.map(o => o.value));
+  await load(page, wvw);
+  for (const [kept, read] of [['{not json', []], ['{"a":"Kept"}', []], ['[1,"Kept",null]', ['Kept']]]) {
+    await page.evaluate(([k, v]) => localStorage.setItem(k, v), [KEY, kept]);
+    await page.reload();
+    await expect(field(page)).toBeVisible();
+    expect(await offered(), kept).toEqual(read);
+  }
+  await search(page, wvw.guilds[0]);
+  const guild = (await card(page).locator('.search-who').textContent()).replace(/ is on$/, '');
+  await expect.poll(offered, 'the search after it still kept').toEqual([guild, 'Kept']);
+  await wvw.settle();
+});
+
 // Check on an empty field asks nothing; Enter while a search is asking starts no second one.
 test('an empty field asks the game nothing, and Enter during a search does not ask again', async ({ page, wvw }) => {
   await load(page, wvw);
@@ -116,6 +132,29 @@ test("the arrow: the tier comes into view, the column's other tiers dim, the rin
   await expect(page.locator('.standing-side .found-mark')).toHaveCount(1);
   await expect(page.locator('.tier-spot'), 'the spotlight leaves by itself').toHaveCount(0, { timeout: 5000 });
   await expect(page.locator('.tier-dimmed')).toHaveCount(0);
+  await wvw.settle();
+});
+
+// The arrow's scroll cut short by the visitor leaves the tier waiting to be seen; a new search
+// forgets it, so reaching that tier later plays nothing.
+test('a new search forgets the tier an arrow was bringing into view', async ({ page, wvw }) => {
+  await load(page, wvw);
+  await search(page, wvw.guilds[0]);
+  const team = await card(page).locator('.search-team').textContent();
+  // The visitor's scroll back up, in the same task as the click: it cuts the smooth scroll
+  // before the tier is reached.
+  await page.getByRole('button', { name: new RegExp(`^Show ${team} in the standings`) }).evaluate(b => { b.click(); scrollTo(0, 0); });
+  await frames(page, 10);
+  expect(await page.locator('.guild-found-strip').count(), 'the scroll cut before the tier came in').toBe(0);
+  await field(page).fill(wvw.guilds[1]);
+  await page.getByRole('button', { name: 'Check' }).click();
+  await answered(page);
+  const { tier } = await tierOf(page, team);
+  await tier.scrollIntoViewIfNeeded();
+  await expect(tier).toBeInViewport({ ratio: 0.6 });
+  await frames(page, 10);
+  expect(await page.locator('.tier-spot').count(), 'no spotlight without the arrow').toBe(0);
+  expect(await page.locator('.guild-found-strip').count(), 'no strip without the arrow').toBe(0);
   await wvw.settle();
 });
 

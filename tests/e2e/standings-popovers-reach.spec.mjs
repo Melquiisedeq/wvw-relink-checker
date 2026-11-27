@@ -56,6 +56,14 @@ test.describe('desktop', () => {
     expect(await state(page, btn), 'after a click on the page margin').toEqual(CLOSED);
   });
 
+  test('at 1280×800, Escape closes and hands focus back', async ({ page, wvw }) => {
+    const btn = await openGuilds(page, wvw);
+    expect(await state(page, btn)).toEqual(OPEN);
+    await page.keyboard.press('Escape');
+    expect(await state(page, btn), 'Escape').toEqual(CLOSED);
+    expect(await btn.evaluate(b => b === document.activeElement), 'focus back on the icon').toBe(true);
+  });
+
   test('the icon toggles, Escape closes and hands focus back, a reopen is a fresh popover', async ({ page, wvw }) => {
     await page.setViewportSize(ROOM);
     const btn = await openGuilds(page, wvw);
