@@ -5,7 +5,7 @@ import { test, expect } from './support/fixtures.mjs';
 import { abort } from './support/faults.mjs';
 import { load, openMap, play } from './support/steps.mjs';
 import { triesPerRead } from './support/page.mjs';
-import { FOCUS, MIN, catchUpBehind, hidden, missed, stuckAway, visible } from './support/scenarios.mjs';
+import { FOCUS, HOUR, MIN, catchUpBehind, hidden, missed, missedLong, stuckAway, visible } from './support/scenarios.mjs';
 
 test.describe.configure({ timeout: 4 * 60 * 1000 });
 test.use({ clock: 'playwright', viewport: { width: 1280, height: 900 }, locale: 'en-US', timezoneId: 'UTC' });
@@ -196,5 +196,44 @@ test.describe('a group hours behind catching up', () => {
       await expect(page.locator('.info-popover .wvw-tab.is-lit'), `${i * 30 + 30} s after the catch-up`).toHaveCount(0);
       expect(big === '–' || Number(big) < 1000, `the count ${big}, ${i * 30 + 30} s after the catch-up`).toBe(true);
     }
+  });
+});
+
+// The page loaded again from the browser's history hours later (a tab restored with the browser, or one discarded
+// while hidden and shown again): Chromium answers the reads that load makes with the cache's 'default' mode from
+// its HTTP cache, however old, until its load event, held here by the analytics script as a slow network holds it.
+// The night's /api/kills would leave the corner counting from its own readings, "–".
+const AWAY = 8 * HOUR;
+const BEACON = /^https:\/\/static\.cloudflareinsights\.com\//;
+// Each answer of `path` the page got, with the servers' time it says it was made.
+const answers = (page, path) => {
+  const seen = [];
+  page.on('response', r => { if (new URL(r.url()).pathname === path) seen.push(Date.parse(r.headers().date)); });
+  return seen;
+};
+// `seen`: answers(), read again before the load event ends.
+const restored = async (page, wvw, seen) => {
+  await load(page, wvw);
+  await page.goto(wvw.url + 'robots.txt');
+  await wvw.skew(AWAY);
+  const release = wvw.hold(BEACON);
+  await page.goBack({ waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#standingsGridNA > .standing-match')).toHaveCount(wvw.tiers.NA);
+  await expect.poll(() => seen.length, { message: 'the state: read at the opening and at the restore' }).toBe(2);
+  release();
+  await wvw.settle();
+};
+test.describe('a page restored from the history hours later', () => {
+  test.use({ timeline: missedLong(500), httpCache: true });
+  test('the corner counts from the history of the return, not the one the cache kept', async ({ page, wvw }) => {
+    const kills = answers(page, '/api/kills');
+    await restored(page, wvw, kills);
+    await openMap(page, wvw, BUTTON(page));
+    await expect(BIG(page), 'the kills of the last ten minutes').toHaveText(/^\d+$/);
+  });
+  test('the teams notice reads the relink window of the return, not the one the cache kept', async ({ page, wvw }) => {
+    const relink = answers(page, '/api/relink');
+    await restored(page, wvw, relink);
+    expect(relink[1] - relink[0], 'the answer of the restore made at the return').toBeGreaterThanOrEqual(AWAY - MIN);
   });
 });

@@ -95,7 +95,10 @@ function floorClock() {
   const floor = Date.now() - latestHeldAt * 1000;
   if (floor < steadyClockLead - CLOCK_BAND_MS) moveClock(floor, false);
 }
-async function fetchOwnApi(url, cache = 'default', raw = false) {
+// 'no-cache' by default: in Chromium a page loaded from the history (a tab restored with the browser, or discarded and
+// shown again) gets every 'default' read made before its load event from the HTTP cache, however old. 'default' only
+// where a stale answer is read again (latestJoin); 'no-store' also sets the server clock from the answer's Date.
+async function fetchOwnApi(url, cache = 'no-cache', raw = false) {
   const sentAt = Date.now();
   return fetchWithTimeout(url, { cache }, OWN_API_TIMEOUT_MS, async (res) => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

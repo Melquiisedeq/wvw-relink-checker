@@ -19,6 +19,10 @@
 //   origin    null (default): the page at the test server's address. A URL
 //             (https://wvwrelink.com): the page opened there, answered the same,
 //             for code that runs only on the site's own address (the push).
+//   httpCache false (default): page.route answers, the browser's cache off. true:
+//             the same answers through DevTools' Fetch domain, the cache on, and
+//             /api/kills and /api/relink served by the site server with the
+//             Worker's max-age (support/faults.mjs's page.route turns it off again).
 // A device clock ahead of the servers': wvw.ahead(ms) jumps the page's clock
 // by ms and answers the timeline at the page's time minus the total, so the
 // servers' time stays what it was (wvw.skew moves both).
@@ -44,10 +48,34 @@ const clockShim = anchor => `(() => {
   });
 })();`;
 
+// A request paused by DevTools' Fetch domain, with the part of Playwright's Route that answerFrom uses.
+const devToolsRoute = (cdp, e) => {
+  const go = () => cdp.send('Fetch.continueRequest', { requestId: e.requestId });
+  return {
+    request: () => ({ url: () => e.request.url, method: () => e.request.method }),
+    continue: go,
+    fallback: go,
+    abort: reason => cdp.send('Fetch.failRequest', { requestId: e.requestId, errorReason: reason === 'blockedbyclient' ? 'BlockedByClient' : 'Failed' }),
+    fulfill: ({ status, headers = {}, body = '' }) => cdp.send('Fetch.fulfillRequest', {
+      requestId: e.requestId, responseCode: status, body: Buffer.from(body).toString('base64'),
+      responseHeaders: Object.entries(headers).map(([name, value]) => ({ name, value: String(value) })),
+    }),
+  };
+};
+// A Route that hands answerFrom's answer to `done` (null when it would not answer) instead of the browser.
+const capturedRoute = (url, done) => ({
+  request: () => ({ url: () => url, method: () => 'GET' }),
+  continue: async () => done(null),
+  fallback: async () => done(null),
+  abort: async () => done(null),
+  fulfill: async a => done(a),
+});
+
 export const test = base.extend({
   timeline: [null, { option: true }],
   clock: ['shim', { option: true }],
   origin: [null, { option: true }],
+  httpCache: [false, { option: true }],
 
   // One server per worker, on that worker's fixed port.
   site: [async ({}, use, workerInfo) => {
@@ -56,7 +84,7 @@ export const test = base.extend({
     await site.close();
   }, { scope: 'worker' }],
 
-  wvw: async ({ page, context, site, timeline, clock, origin }, use, testInfo) => {
+  wvw: async ({ page, context, site, timeline, clock, origin, httpCache }, use, testInfo) => {
     const problems = [];
     // One line each, whitespace folded: page text must never start a line.
     const problem = text => {
@@ -138,7 +166,31 @@ export const test = base.extend({
       else await page.clock.setSystemTime(await now() + ms);
     };
     let lead = 0;
-    await page.route('**/*', answerFrom(site.url, problem, server && (async url => server.answer(url, await now() - lead)), origin));
+    // Requests held unanswered (httpCache only): wvw.hold(re) returns what answers them.
+    const held = [];
+    const hold = re => {
+      const h = { re, routes: [] };
+      held.push(h);
+      return () => { held.splice(held.indexOf(h), 1); for (const r of h.routes.splice(0)) answer(r); };
+    };
+    const answer = answerFrom(site.url, problem, server && (async url => server.answer(url, await now() - lead)), origin);
+    if (!httpCache) await page.route('**/*', answer);
+    else {
+      // page.route turns the browser's cache off; DevTools' own interception, answering the same, leaves it on.
+      // /api/kills and /api/relink go on to the site server (support/site.mjs), so the cache keeps them.
+      site.answerApi(url => new Promise(done => answer(capturedRoute(site.url + url, done))).then(async a => a && {
+        status: a.status, type: a.headers['Content-Type'], body: a.body,
+        date: a.headers.Date ? Date.parse(a.headers.Date) : await now() - lead,
+      }));
+      cdp.on('Fetch.requestPaused', e => {
+        const route = devToolsRoute(cdp, e);
+        if (site.cachedApi(e.request.url)) return route.continue();
+        const hold = held.find(h => h.re.test(e.request.url));
+        if (hold) return hold.routes.push(route);
+        return answer(route);
+      });
+      await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
+    }
 
     const ahead = async ms => { lead += ms; await skew(ms); };
 
@@ -146,7 +198,7 @@ export const test = base.extend({
     const told = async () => (server ? server.told(await now() - lead) : null);
     // `told` without asking the page: from the last offset it gave, so a socket's greeting leaves at once.
     const toldNow = () => (server ? server.told(Date.now() + offset - lead) : null);
-    await use({ url: (origin || site.url) + '/', told, recordedAt, opensAt, guilds, tiers: expectedTiers(), toldNow, problems, problem, allowLog: re => allowed.push(re), settle, now, skew, ahead, timeline });
+    await use({ url: (origin || site.url) + '/', told, recordedAt, opensAt, guilds, tiers: expectedTiers(), toldNow, hold, problems, problem, allowLog: re => allowed.push(re), settle, now, skew, ahead, timeline });
 
     // A failure here must not hide the test's own: it joins the problems below.
     await addCoverage(covering).catch(e => problem('coverage: ' + (e?.message || e)));
@@ -155,6 +207,7 @@ export const test = base.extend({
     // test keeps its page: Playwright's error-context snapshot is taken from it later.
     if (!testInfo.errors.length) await page.close().catch(() => {});
     await page.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
+    site.answerApi(null);
     // The problems in the message's first line: the summary prints that line.
     expect(problems, `${problems.length} problem(s) on the page: ${problems.join(' | ')}`).toEqual([]);
   },
