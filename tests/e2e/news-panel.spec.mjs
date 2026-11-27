@@ -111,6 +111,18 @@ test.describe('event, reward and hotfix', () => {
     await expect(p.getByText('Hotfix · wiki')).toHaveCount(0);
   });
 
+  test('the event of a map\'s own update is not drawn beside the map', async ({ page, wvw }) => {
+    await serveNotes(page, [
+      line(wvw.opensAt, 60, 'The new Example Borderlands map has replaced the Seared Borderlands map in WvW!', 'wvw_rule'),
+      line(wvw.opensAt, 60, 'The Example Borderlands beta event begins.', 'event'),
+      line(wvw.opensAt, 62, 'The Other Festival returns to the Mists.', 'event'),
+    ]);
+    await page.goto(wvw.url);
+    const p = panel(page);
+    await expect(p.getByText('The Other Festival')).toBeVisible();
+    await expect(p.getByText('beta event begins')).toHaveCount(0);
+  });
+
   test('a hotfix alone is never a lead', async ({ page, wvw }) => {
     await serveNotes(page, [line(wvw.opensAt, 1, 'Fixed a bug with the gates.', 'bug', { hotfix: true })]);
     await page.goto(wvw.url);
