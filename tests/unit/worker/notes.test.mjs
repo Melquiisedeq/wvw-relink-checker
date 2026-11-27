@@ -8,7 +8,7 @@ import zlib from 'node:zlib';
 import { workerHarness } from './harness.mjs';
 import { signHeaders } from '../../worker-fakes/signed.mjs';
 import { readScript, loadScript } from '../apps-script/harness.mjs';
-import { cut, kindOf, labelOf, plainText, KEEP_NOTE_DAYS, MAX_SERVED } from '../../../worker/notes.mjs';
+import { checkNotes, cut, kindOf, labelOf, plainText, HOTFIX_WAIT_S, KEEP_NOTE_DAYS, MAX_SERVED } from '../../../worker/notes.mjs';
 
 const KEY = 'n'.repeat(128);
 const fixture = (name) => zlib.gunzipSync(fs.readFileSync(new URL('fixtures/notes/' + name + '.gz', import.meta.url))).toString('utf8');
@@ -39,18 +39,30 @@ function setup() {
 
 const texts = (data) => data.notes.map((n) => n.text);
 const lab = JSON.parse(fs.readFileSync(new URL('fixtures/notes/lab-lines-2026.json', import.meta.url)));
-const one = (text, update = 'Update - November 12, 2026', page = '2026-11-12') => [{ page, update, lines: [{ section: 'Bug Fixes', sub: '', text, link: null, icon: false }] }];
+// The lead the wiki writes under a release's heading.
+const NOTICE = 'Note to users of third-party programs: The game may not launch or work properly after we release a new build if you use a third-party program.';
+const one = (text, update = 'Update - November 12, 2026', page = '2026-11-12') => [{ page, update, lead: NOTICE, lines: [{ section: 'Bug Fixes', sub: '', text, link: null, icon: false }] }];
+// The recorded pages' releases.
+const RELEASES = ['Update - April 14, 2026', 'Update - July 14, 2026', 'Update - August 11, 2026', 'Update - September 29, 2026', 'Update - November 10, 2026'];
+const hotfixTexts = () => checkNotes({ v: 1, notes: wikiNotes() }, START).notes.filter((n) => n.hotfix).flatMap((n) => n.lines.map((l) => l.text));
 const LINE = 'Fixed an issue that let players into the WvW keep through its wall.';
 
-test('the 2026 notes: the lab\'s lines, published by the first reading as the wiki has them', async () => {
+test('the 2026 notes: the lab\'s lines as the wiki has them, a release\'s by the first reading, a hotfix\'s a day on', async () => {
   const w = setup();
   assert.deepEqual((await w.notes()).data, { v: '', wiki: 0, notes: [] }, 'nothing before a reading');
   assert.equal(await w.push(wikiNotes()), 200);
+  const hot = hotfixTexts();
+  assert.equal(hot.length, 14);
+  const first = (await w.notes()).data;
+  assert.equal(first.wiki, Math.floor(START / 1000));
+  assert.deepEqual(texts(first).sort(), lab.map((r) => cut(r.text)).filter((t) => !hot.includes(t)).sort());
+  assert.ok(first.notes.every((n) => n.hotfix === false));
+  for (let i = 0; i < 4; i++) { w.advance(6 * HOUR); await w.push(wikiNotes()); }
   const got = (await w.notes()).data;
-  assert.equal(got.wiki, Math.floor(START / 1000));
   assert.equal(got.notes.length, lab.length);
   assert.deepEqual(texts(got).sort(), lab.map((r) => cut(r.text)).sort());
-  assert.deepEqual(Object.keys(got.notes[0]), ['day', 'update', 'section', 'sub', 'text', 'type', 'page', 'link']);
+  assert.deepEqual(got.notes.filter((n) => n.hotfix === true).map((n) => n.text).sort(), [...hot].sort());
+  assert.deepEqual(Object.keys(got.notes[0]), ['day', 'update', 'section', 'sub', 'text', 'type', 'hotfix', 'page', 'link']);
   // Newest day first.
   assert.deepEqual(got.notes.map((n) => n.day), got.notes.map((n) => n.day).sort().reverse());
   // The link: built here, the page from its name, the line's from a checked page name.
@@ -66,17 +78,39 @@ test('a line changed on the wiki is published changed by the next reading, the o
   const edit = (html, p) => (p === '2026-04-14' ? html.replace('from 0.35 to 0.25 in', 'from 0.35 to 0.95 in') : html);
   await w.push(wikiNotes(edit));
   const all = texts((await w.notes()).data);
-  assert.equal(all.length, lab.length);
+  assert.equal(all.length, lab.length - hotfixTexts().length);
   assert.equal(all.filter((t) => t.startsWith('Splinter Weapon')).length, 1);
   assert.ok(all.some((t) => t.startsWith('Splinter Weapon') && t.includes('from 0.35 to 0.95 in')));
 });
 
-test('the type of each line is the lab\'s, and a type the rules are not sure of is no label', () => {
+// The lab's lines whose label the event and reward rules give; every other keeps the lab's.
+const RELABELLED = new Map([
+  ['Added placement-based skirmish rewards', 'reward'], ['Match rewards and skirmish rewards', 'reward'],
+  ['Added the Tenebral Armor set as a reward choice', 'reward'], ['New WvW Borderlands map beta event begins.', 'event'],
+  ['The new Seared Borderlands map has replaced', 'event']]);
+const relabel = (text) => [...RELABELLED].find(([start]) => text.startsWith(start))?.[1];
+
+test('the type of each line is the lab\'s but for an event or a reward of WvW, and a type the rules are not sure of is no label', () => {
+  let changed = 0;
   for (const r of lab) {
     const kind = kindOf(r.text, r.section.replace(/:$/, ''), r.sub, r.icon !== null);
+    const now = relabel(r.text);
+    if (now) { changed++; assert.equal(labelOf(kind), now, r.text); continue; }
     assert.equal(kind, r.type, r.text);
     assert.equal(labelOf(kind) !== null, r.sure, r.text);
   }
+  assert.equal(changed, RELABELLED.size);
+  // Lines of the 2026 notes the recorded pages lack.
+  for (const [text, section, want] of [
+    ['A new legendary accessory, Strife Unending, is now available for purchase from Dugan in WvW after players have completed the Mists Research: Strife Unending achievement.', 'Rewards', 'reward'],
+    ['Added the Forge Guard\'s armor set and Glimmering Resin weapon set to the Visions of Eternity Reward Track in PvP and WvW.', 'Items', 'reward'],
+    ['Added the Deal 50,000 Damage Using Siege Equipment objective to the WvW pool.', 'Wizard\'s Vault', null],
+    ['Several reward boxes obtained from the WvW and PvP reward tracks now use the new vendor UI, allowing several of these boxes to be opened at once.', 'Items', null],
+    ['Reward track boost items have been spread across the PvP Rush and WvW Rush Champion achievement tiers to reduce the amount gained in one tier.', 'Rewards', null],
+    ['Fixed an issue that prevented skirmish rewards from being enabled in WvW.', 'World vs. World', 'bug'],
+    ['Guards no longer give War Score during a War Score beta.', 'World vs. World', 'wvw_rule'],
+    ['Siege golems wear pumpkin heads in WvW until November 3.', 'Halloween', null]
+  ]) assert.equal(labelOf(kindOf(text, section, '', false)), want, text);
 });
 
 // Two readings of the recorded pages, 6 h apart: the same counts twice, as a page that has settled.
@@ -118,8 +152,8 @@ test('a note is what the wiki\'s last reading of its page had: gutted, blanked, 
 });
 
 test('an update the wiki deletes leaves with the next reading; one on a page the push lacks stays', async (t) => {
-  const FAKE = 'Update 2 - November 12, 2026';
-  const fake = { page: '2026-11-12', update: FAKE, lines: Array.from({ length: 60 }, (_, i) => WVW(i)) };
+  const FAKE = 'Update - November 13, 2026';
+  const fake = { page: '2026-11-12', update: FAKE, lead: NOTICE, lines: Array.from({ length: 60 }, (_, i) => WVW(i)) };
   const updates = async (w) => new Set((await w.notes()).data.notes.map((n) => n.update));
   await t.test('an invented update, published once, is gone the reading after the wiki deletes it', async () => {
     const w = await read();
@@ -168,7 +202,7 @@ test('what a line may carry: plain text, cut, a link only to a wiki page by a ch
   const long = 'WvW ' + 'a'.repeat(400);
   const many = Array.from({ length: 70 }, (_, i) => line('WvW line ' + i));
   await w.push([
-    { page: '2026-11-12', update: 'Update - November 12, 2026', lines: [
+    { page: '2026-11-12', update: 'Update - November 12, 2026', lead: NOTICE, lines: [
       line('WvW keep‮ evil​ text\u0000.', { link: 'javascript:alert(1)' }),
       line('WvW <script>alert(1)</script>'),
       line('WvW <img src=x onerror=alert(1)>'),
@@ -180,7 +214,7 @@ test('what a line may carry: plain text, cut, a link only to a wiki page by a ch
       line('A line about raids only.', { section: 'Raids' }),
       line('WvW', { icon: 'yes' })
     ] },
-    { page: '2026-11-16', update: 'Update - November 16, 2026', lines: many }
+    { page: '2026-11-16', update: 'Update - November 16, 2026', lead: NOTICE, lines: many }
   ]);
   const rows = w.sql.prepare('SELECT body, link FROM note_line ORDER BY note, pos').all().map((r) => ({ ...r }));
   const of12 = rows.filter((r) => !r.body.startsWith('WvW line'));
@@ -194,7 +228,7 @@ test('what a line may carry: plain text, cut, a link only to a wiki page by a ch
   assert.deepEqual(out.map((n) => n.link), [null, 'https://wiki.guildwars2.com/wiki/Stonemist_Castle', null, null]);
   // Over 2000 characters before the cut, it is not a note line.
   const w2 = setup();
-  await w2.push([{ page: '2026-11-12', update: 'Update - November 12, 2026', lines: [line('WvW ' + 'b'.repeat(1996)), line('WvW ' + 'c'.repeat(1997)),
+  await w2.push([{ page: '2026-11-12', update: 'Update - November 12, 2026', lead: NOTICE, lines: [line('WvW ' + 'b'.repeat(1996)), line('WvW ' + 'c'.repeat(1997)),
     line('WvW ' + 'd'.repeat(296)), line('WvW ' + 'e'.repeat(297))] }]);
   assert.deepEqual(texts((await w2.notes()).data).map((t) => [t[4], [...t].length, t.at(-1)]), [['b', 300, '…'], ['d', 300, 'd'], ['e', 300, '…']]);
   // A link that is not a string is none, whatever it reads as.
@@ -278,7 +312,7 @@ test('GET /api/notes: short-lived; by version, kept for good, and only the versi
 
 test('at most MAX_SERVED lines are published, the newest days\' first', async () => {
   const w = setup();
-  const note = (d) => ({ page: '2026-11-' + d, update: 'Update - November ' + d + ', 2026',
+  const note = (d) => ({ page: '2026-11-' + d, update: 'Update - November ' + d + ', 2026', lead: NOTICE,
     lines: Array.from({ length: 60 }, (_, i) => ({ section: 'World vs. World', sub: '', text: 'WvW line ' + d + '-' + i, link: null, icon: false })) });
   await w.push(['10', '11', '12', '13'].map(note));
   const got = (await w.notes()).data.notes;
@@ -322,4 +356,120 @@ test('/api/latest names the notes\' version and time, and without a version or t
     '"notes":{"v":"' + v + '","wiki":' + at + '}}');
   w.sql.exec('DROP TABLE note_served');
   assert.equal(await latest(), before.replaceAll(String(at), String(now)), 'no table');
+});
+
+test('a release is an "Update - " heading whose lead is the wiki\'s notice; every other update is a hotfix', async (t) => {
+  await t.test('the recorded pages and the index page', () => {
+    const releases = (notes) => checkNotes({ v: 1, notes }, START).notes.filter((n) => !n.hotfix).map((n) => n.update);
+    assert.deepEqual(releases(wikiNotes()), RELEASES);
+    assert.deepEqual(releases(script.notes(fixture('index-2026-11-24.html'))), ['Update - November 10, 2026']);
+  });
+  const hotfix = (n) => checkNotes({ v: 1, notes: [{ page: '2026-11-10', update: 'Update - November 10, 2026', lines: [], ...n }] }, START).notes[0].hotfix;
+  for (const [name, note, want] of [
+    ['the notice as the lead', { lead: NOTICE }, false],
+    ['the notice in spaces and a line break the wiki may write', { lead: '  Note to users of\nthird-party  programs: The game may not launch.' }, false],
+    ['the notice under an "Update 2" heading', { update: 'Update 2 - November 10, 2026', lead: NOTICE }, true],
+    ['the notice under a "Late Notes" heading', { update: 'Late Notes - November 10, 2026', lead: NOTICE }, true],
+    ['the notice after other text', { lead: 'Release Highlights: ' + NOTICE }, true],
+    ['no lead', {}, true],
+    ['a lead that is not text', { lead: [NOTICE] }, true],
+    ['a lead with markup', { lead: '<b>' + NOTICE }, true],
+    ['the message\'s own say, no notice', { hotfix: false }, true],
+    ['the message\'s own say, the notice', { hotfix: true, lead: NOTICE }, false]
+  ]) await t.test(name, () => assert.equal(hotfix(note), want));
+});
+
+// The index page as the script reads it: the release of 10/11 and five hotfixes.
+const indexNotes = (edit = (n) => n) => edit(script.notes(fixture('index-2026-11-24.html')));
+const NOV12 = 'Update - November 12, 2026';
+const published = async (w) => (await w.notes()).data.notes;
+const hotOf = async (w, update = NOV12) => (await published(w)).filter((n) => n.update === update);
+const ripe = (w) => w.sql.prepare('SELECT ripe FROM note_served').get().ripe;
+
+test('a hotfix\'s line is published once every reading of its page has held it for a day', async (t) => {
+  await t.test('held by same readings: out before the day is up, in at its end, by a reading that changes nothing', async () => {
+    const only = setup();
+    await only.push(one(LINE));
+    assert.equal(ripe(only), 0, 'a release\'s lines: nothing waits');
+    const w = setup();
+    await w.push(indexNotes());
+    const t0 = Math.floor(START / 1000);
+    assert.equal((await hotOf(w)).length, 0);
+    assert.equal((await hotOf(w, 'Update - November 10, 2026')).length, 50, 'a release\'s lines at once');
+    assert.equal(ripe(w), t0 + HOTFIX_WAIT_S);
+    const v = (await w.notes()).data.v;
+    for (const step of [6, 6, 6, 6 - 1 / 3600]) { w.advance(step * HOUR); await w.push(indexNotes()); }
+    assert.equal((await hotOf(w)).length, 0, 'a second short of the day');
+    assert.equal((await w.notes()).data.v, v);
+    w.advance(1000);
+    await w.push(indexNotes());
+    const hot = await hotOf(w);
+    assert.equal(hot.length, 5);
+    assert.ok(hot.every((n) => n.hotfix === true));
+    assert.notEqual((await w.notes()).data.v, v);
+    assert.equal(ripe(w), 0);
+    assert.equal((await published(w)).length, 61);
+  });
+  await t.test('held by readings that change other notes: in at the day\'s end all the same', async () => {
+    const w = setup();
+    const edited = (i) => indexNotes((ns) => ns.map((n) => (n.update === 'Update - November 10, 2026' ? { ...n, lines: [...n.lines, WVW(i)] } : n)));
+    await w.push(edited(0));
+    for (let i = 1; i <= 3; i++) { w.advance(6 * HOUR); await w.push(edited(i)); }
+    assert.equal((await hotOf(w)).length, 0);
+    w.advance(6 * HOUR);
+    await w.push(edited(4));
+    assert.equal((await hotOf(w)).length, 5);
+    const lasts = () => w.sql.prepare('SELECT DISTINCT last FROM note_line WHERE note = ?1').all(NOV12).map((r) => r.last);
+    const due = Math.floor(w.now / 1000);
+    assert.deepEqual(lasts(), [due]);
+    w.advance(6 * HOUR);
+    await w.push(edited(5));
+    assert.deepEqual(lasts(), [due], 'a line already due is not written again');
+  });
+  await t.test('a line that leaves a reading, or changes, starts its day again when it is back', async () => {
+    const w = setup();
+    const lines = [...indexNotes().find((n) => n.update === NOV12).lines];
+    const without = indexNotes((ns) => ns.map((n) => (n.update === NOV12 ? { ...n, lines: lines.slice(1) } : n)));
+    const changed = indexNotes((ns) => ns.map((n) => (n.update === NOV12 ? { ...n, lines: [{ ...lines[0], text: lines[0].text + ' Again.' }, ...lines.slice(1)] } : n)));
+    await w.push(indexNotes());
+    w.advance(12 * HOUR); await w.push(without);
+    w.advance(6 * HOUR); await w.push(indexNotes());
+    w.advance(6 * HOUR); await w.push(indexNotes());
+    assert.deepEqual((await hotOf(w)).map((n) => n.text), lines.slice(1).map((l) => l.text), 'the four held all day; the one back 6 h ago waits');
+    w.advance(6 * HOUR); await w.push(changed);
+    w.advance(12 * HOUR); await w.push(changed);
+    assert.deepEqual((await hotOf(w)).map((n) => n.text), lines.slice(1).map((l) => l.text), 'the changed one is a new line');
+    w.advance(12 * HOUR); await w.push(changed);
+    assert.equal((await hotOf(w)).length, 5, 'a day after the change');
+  });
+  await t.test('a note gone from its page, still read, starts again; a page the push lacks waits for a reading a day on', async () => {
+    const w = setup();
+    const NOV11B = 'Update 2 - November 11, 2026';
+    const unread = (ns) => ns.filter((n) => n.page !== '2026-11-16');
+    await w.push(indexNotes());
+    w.advance(6 * HOUR); await w.push(indexNotes((ns) => unread(ns).filter((n) => n.update !== NOV11B)));
+    w.advance(6 * HOUR); await w.push(indexNotes(unread));
+    w.advance(12 * HOUR); await w.push(indexNotes(unread));
+    assert.equal((await hotOf(w, NOV11B)).length, 0, 'back 18 h ago');
+    assert.equal((await hotOf(w)).length, 5, 'its page read all day');
+    assert.equal((await hotOf(w, 'Update - November 16, 2026')).length, 0, 'its page unread since the first reading');
+    assert.equal(ripe(w), Math.floor(START / 1000) + 12 * 3600 + HOTFIX_WAIT_S, 'due: the note back 18 h ago, not the unread page\'s');
+    w.advance(6 * HOUR); await w.push(indexNotes());
+    assert.equal((await hotOf(w, 'Update - November 16, 2026')).length, 2, 'read again, a day and more on');
+  });
+  await t.test('the due time counts only the lines of pages the reading had', async () => {
+    const w = setup();
+    await w.push(indexNotes((ns) => ns.filter((n) => n.page === '2026-11-16')));
+    w.advance(6 * HOUR); await w.push(indexNotes((ns) => ns.filter((n) => n.page !== '2026-11-16')));
+    assert.equal(ripe(w), Math.floor(START / 1000) + 6 * 3600 + HOTFIX_WAIT_S);
+  });
+  await t.test('a hotfix whose notice the wiki adds later is a release from that reading, at once', async () => {
+    const w = setup();
+    await w.push(indexNotes());
+    w.advance(6 * HOUR);
+    await w.push(indexNotes((ns) => ns.map((n) => (n.update === NOV12 ? { ...n, lead: NOTICE } : n))));
+    const now = await hotOf(w);
+    assert.equal(now.length, 5);
+    assert.ok(now.every((n) => n.hotfix === false));
+  });
 });
