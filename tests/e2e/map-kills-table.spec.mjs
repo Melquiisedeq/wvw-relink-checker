@@ -43,6 +43,7 @@ test.describe('a fight on the focus match all along', () => {
     const gaps = reads.slice(1).map((m, i) => m - reads[i]);
     expect(gaps.filter(g => g < 5), `never two reads under five minutes apart (reads at ${reads.join(', ')} min)`).toEqual([]);
     expect(reads.length, 'at most 12 reads an hour').toBeLessThanOrEqual(1 + 4 * 12);
+    expect(gaps.filter(g => g > 10), `never ten minutes without a read (reads at ${reads.join(', ')} min)`).toEqual([]);
   });
 
   test('hidden for hours: no read of the history while hidden; back, one read lights the swords at once', async ({ page, wvw }) => {

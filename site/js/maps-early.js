@@ -191,8 +191,8 @@ async function getKillSheet(maxAge = KILLS_SHEET_TTL_MS) {
 
 // The standings' reads of our copy never enter the fight log (its body is dated before the ask), and
 // readings past FIGHT_STALE_MS leave the count: with the tab visible the history is asked again once the last
-// ask, answered or not, is KILLS_SHEET_TTL_MS old, so at most one read per 5 min; hidden, none. Null when it
-// does not ask; else getKillSheet's promise.
+// ask, answered or not, is KILLS_SHEET_TTL_MS old; hidden, never. Null when it does not ask; else
+// getKillSheet's promise.
 function keepKillSheet() {
   if (document.visibilityState !== 'visible' || Date.now() - killSheetAskedAt < KILLS_SHEET_TTL_MS) return null;
   return getKillSheet();
@@ -882,8 +882,8 @@ function primeMapBadges() {
 }
 
 // After each answer of the standings (js/standings.js): only then, so the history read dates the bodies just
-// taken in (ageFromHistory); a read ahead of a return's bodies leaves them dated at the return. None runs
-// while a popover is open (refreshStandings), so an open map asks on its own terms (js/maps.js, pullFresh).
+// taken in (ageFromHistory); a read ahead of a return's bodies leaves them dated at the return. No standings
+// load starts while a popover is open (refreshStandings), so an open map asks on its own terms (js/maps.js, pullFresh).
 function keepMapBadges() {
   const read = keepKillSheet();
   if (read) read.then(() => paintMapBadges());
