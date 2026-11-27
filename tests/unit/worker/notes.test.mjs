@@ -419,6 +419,12 @@ test('a hotfix\'s line is published once every reading of its page has held it f
     w.advance(6 * HOUR);
     await w.push(edited(4));
     assert.equal((await hotOf(w)).length, 5);
+    const lasts = () => w.sql.prepare('SELECT DISTINCT last FROM note_line WHERE note = ?1').all(NOV12).map((r) => r.last);
+    const due = Math.floor(w.now / 1000);
+    assert.deepEqual(lasts(), [due]);
+    w.advance(6 * HOUR);
+    await w.push(edited(5));
+    assert.deepEqual(lasts(), [due], 'a line already due is not written again');
   });
   await t.test('a line that leaves a reading, or changes, starts its day again when it is back', async () => {
     const w = setup();
