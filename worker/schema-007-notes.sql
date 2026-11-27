@@ -18,6 +18,7 @@ CREATE TABLE note_line (
   link    TEXT,                 -- a wiki page name, checked
   kind    TEXT,                 -- its type, or NULL when the rules are not sure
   seen    INTEGER NOT NULL,     -- epoch s of the first reading in the run of readings that had it
+  last    INTEGER NOT NULL,     -- epoch s of the latest reading that had it (a hotfix's, until it is due)
   PRIMARY KEY (note, id)
 ) WITHOUT ROWID;
 CREATE TABLE note_served (

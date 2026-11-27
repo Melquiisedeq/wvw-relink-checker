@@ -42,7 +42,7 @@ const lab = JSON.parse(fs.readFileSync(new URL('fixtures/notes/lab-lines-2026.js
 // The lead the wiki writes under a release's heading.
 const NOTICE = 'Note to users of third-party programs: The game may not launch or work properly after we release a new build if you use a third-party program.';
 const one = (text, update = 'Update - November 12, 2026', page = '2026-11-12') => [{ page, update, lead: NOTICE, lines: [{ section: 'Bug Fixes', sub: '', text, link: null, icon: false }] }];
-// The recorded pages' releases: the forum's notes of those days hold their lines, and of no other update.
+// The recorded pages' releases.
 const RELEASES = ['Update - April 14, 2026', 'Update - July 14, 2026', 'Update - August 11, 2026', 'Update - September 29, 2026', 'Update - November 10, 2026'];
 const hotfixTexts = () => checkNotes({ v: 1, notes: wikiNotes() }, START).notes.filter((n) => n.hotfix).flatMap((n) => n.lines.map((l) => l.text));
 const LINE = 'Fixed an issue that let players into the WvW keep through its wall.';
@@ -436,7 +436,7 @@ test('a hotfix\'s line is published once every reading of its page has held it f
     w.advance(12 * HOUR); await w.push(changed);
     assert.equal((await hotOf(w)).length, 5, 'a day after the change');
   });
-  await t.test('a note gone from its page, still read, starts again; a page the push lacks keeps the count', async () => {
+  await t.test('a note gone from its page, still read, starts again; a page the push lacks waits for a reading a day on', async () => {
     const w = setup();
     const NOV11B = 'Update 2 - November 11, 2026';
     const unread = (ns) => ns.filter((n) => n.page !== '2026-11-16');
@@ -446,7 +446,16 @@ test('a hotfix\'s line is published once every reading of its page has held it f
     w.advance(12 * HOUR); await w.push(indexNotes(unread));
     assert.equal((await hotOf(w, NOV11B)).length, 0, 'back 18 h ago');
     assert.equal((await hotOf(w)).length, 5, 'its page read all day');
-    assert.equal((await hotOf(w, 'Update - November 16, 2026')).length, 2, 'its page unread, still a day held');
+    assert.equal((await hotOf(w, 'Update - November 16, 2026')).length, 0, 'its page unread since the first reading');
+    assert.equal(ripe(w), Math.floor(START / 1000) + 12 * 3600 + HOTFIX_WAIT_S, 'due: the note back 18 h ago, not the unread page\'s');
+    w.advance(6 * HOUR); await w.push(indexNotes());
+    assert.equal((await hotOf(w, 'Update - November 16, 2026')).length, 2, 'read again, a day and more on');
+  });
+  await t.test('the due time counts only the lines of pages the reading had', async () => {
+    const w = setup();
+    await w.push(indexNotes((ns) => ns.filter((n) => n.page === '2026-11-16')));
+    w.advance(6 * HOUR); await w.push(indexNotes((ns) => ns.filter((n) => n.page !== '2026-11-16')));
+    assert.equal(ripe(w), Math.floor(START / 1000) + 6 * 3600 + HOTFIX_WAIT_S);
   });
   await t.test('a hotfix whose notice the wiki adds later is a release from that reading, at once', async () => {
     const w = setup();

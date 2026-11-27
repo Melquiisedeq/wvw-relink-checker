@@ -234,9 +234,10 @@ async function sha16(text) {
 // A reading is one push; a page is read when the push has a note on it (the script sends every
 // update of each page it read, with or without WvW lines, and whole pages only). Each note of a
 // page read takes the reading's lines, and one the reading lacks is deleted. A note on a page the
-// push lacks (a page that failed, or left the index) keeps its lines. A line keeps the time of the
-// first reading that had it while every reading of its page has it, unchanged (a changed line is a
-// new one): a hotfix's line is published from HOTFIX_WAIT_S after it.
+// push lacks (a page that failed, or left the index) keeps its lines. A line keeps `seen`, the first
+// reading that had it, while every reading of its page has it, unchanged (a changed line is a new
+// one), and `last`, the latest: a hotfix's line is published once `last` is HOTFIX_WAIT_S past `seen`,
+// so one waiting on a page no longer read is never published.
 export async function acceptNotes(db, data, nowMs, claim) {
   const checked = checkNotes(data, nowMs);
   if (typeof checked === 'string') return checked;
@@ -251,7 +252,7 @@ export async function acceptNotes(db, data, nowMs, claim) {
     log.same = true;
     if (state.ripe && state.ripe <= now) {
       log.ripe = true;
-      await publish(db, push, now);
+      await publish(db, push, now, JSON.stringify(checked.notes.map((n) => n.update)));
     } else {
       await db.prepare('UPDATE note_served SET wiki = ?1 WHERE id = 1').bind(now).run();
     }
@@ -265,7 +266,7 @@ export async function acceptNotes(db, data, nowMs, claim) {
   const rows = [];
   for (const n of checked.notes) {
     let pos = 0;
-    for (const l of n.lines) rows.push([n.update, await lineId(n.update, l), pos++, l.section, l.sub, l.text, l.link, l.kind, now]);
+    for (const l of n.lines) rows.push([n.update, await lineId(n.update, l), pos++, l.section, l.sub, l.text, l.link, l.kind, now, now]);
   }
   const names = JSON.stringify([...read]);
   const oldest = new Date(nowMs - KEEP_NOTE_DAYS * 86400e3).toISOString().slice(0, 10);
@@ -280,30 +281,33 @@ export async function acceptNotes(db, data, nowMs, claim) {
   await db.prepare('DELETE FROM note_line WHERE note IN (SELECT value FROM json_each(?1)) AND ' +
     "note || '|' || id NOT IN (SELECT json_extract(j.value, '$[0]') || '|' || json_extract(j.value, '$[1]') FROM json_each(?2) j)")
     .bind(names, JSON.stringify(rows)).run();
-  await db.prepare('INSERT INTO note_line (note, id, pos, section, sub, body, link, kind, seen) ' +
+  await db.prepare('INSERT INTO note_line (note, id, pos, section, sub, body, link, kind, seen, last) ' +
     "SELECT json_extract(j.value, '$[0]'), json_extract(j.value, '$[1]'), json_extract(j.value, '$[2]'), json_extract(j.value, '$[3]'), " +
-    "json_extract(j.value, '$[4]'), json_extract(j.value, '$[5]'), json_extract(j.value, '$[6]'), json_extract(j.value, '$[7]'), json_extract(j.value, '$[8]') FROM json_each(?1) j " +
+    "json_extract(j.value, '$[4]'), json_extract(j.value, '$[5]'), json_extract(j.value, '$[6]'), json_extract(j.value, '$[7]'), json_extract(j.value, '$[8]'), json_extract(j.value, '$[9]') FROM json_each(?1) j " +
     'WHERE true ON CONFLICT (note, id) DO UPDATE SET pos = excluded.pos WHERE note_line.pos <> excluded.pos')
     .bind(JSON.stringify(rows)).run();
   log.lines = rows.length;
-  await publish(db, push, now);
+  await publish(db, push, now, names);
   return log;
 }
 
 // The published lines, newest day first, as one row: GET /api/notes reads that row alone. A hotfix's
-// line still waiting is left out, and `ripe` is when the first of them is due.
-async function publish(db, push, wiki) {
+// line still waiting is left out, and `ripe` is when the first of them a page read holds is due.
+// `read`: the notes of this reading, JSON; their lines are all in it.
+async function publish(db, push, wiki, read) {
   const held = wiki - HOTFIX_WAIT_S;
+  await db.prepare('UPDATE note_line SET last = ?1 WHERE note IN (SELECT value FROM json_each(?2)) AND last - seen < ?3')
+    .bind(wiki, read, HOTFIX_WAIT_S).run();
   const { results } = await db.prepare('SELECT l.note, l.section, l.sub, l.body, l.link, l.kind, g.day, g.page, g.hotfix ' +
-    'FROM note_line l JOIN note_group g ON g.note = l.note WHERE g.hotfix = 0 OR l.seen <= ?2 ' +
-    'ORDER BY g.day DESC, g.note DESC, l.pos LIMIT ?1').bind(MAX_SERVED, held).all();
+    'FROM note_line l JOIN note_group g ON g.note = l.note WHERE g.hotfix = 0 OR l.last - l.seen >= ?2 ' +
+    'ORDER BY g.day DESC, g.note DESC, l.pos LIMIT ?1').bind(MAX_SERVED, HOTFIX_WAIT_S).all();
   const body = JSON.stringify(results.map((r) => ({
     day: r.day, update: r.note, section: r.section, sub: r.sub, text: r.body, type: r.kind,
     hotfix: r.hotfix === 1, page: WIKI + 'Game_updates/' + r.page, link: r.link === null ? null : wikiLink(r.link)
   })));
   await db.prepare('UPDATE note_served SET body = ?1, version = ?2, push = ?3, wiki = ?4, ' +
-    'ripe = coalesce((SELECT min(l.seen) FROM note_line l JOIN note_group g ON g.note = l.note WHERE g.hotfix = 1 AND l.seen > ?5) + ?6, 0) WHERE id = 1')
-    .bind(body, await sha16(body), push, wiki, held, HOTFIX_WAIT_S).run();
+    'ripe = coalesce((SELECT min(l.seen) FROM note_line l JOIN note_group g ON g.note = l.note WHERE g.hotfix = 1 AND l.seen > ?5 AND l.note IN (SELECT value FROM json_each(?7))) + ?6, 0) WHERE id = 1')
+    .bind(body, await sha16(body), push, wiki, held, HOTFIX_WAIT_S, read).run();
 }
 
 // ---- the reads ---------------------------------------------------------------
