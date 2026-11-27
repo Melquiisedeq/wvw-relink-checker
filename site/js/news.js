@@ -81,7 +81,7 @@ function newsItem(r) {
   const name = head ? head[1] : '';
   const rest = head ? head[2] : text;
   let kind = NEWS_KIND_OF_TYPE[r.type] || '';
-  if (kind === 'rule' && /\bmap\b/i.test(text) && /Borderlands/.test(text) && /\b(new|replaced)\b/i.test(text)) kind = 'map';
+  if ((kind === 'rule' || kind === 'event') && /\bmap\b/i.test(text) && /Borderlands/.test(text) && /\b(new|replaced)\b/i.test(text)) kind = 'map';
   let before = '';
   let after = '';
   let desc = '';
@@ -130,9 +130,9 @@ function newsGroup(items) {
 function newsRead(body) {
   const list = body && Array.isArray(body.notes) ? body.notes.slice(0, NEWS_MAX_ITEMS) : [];
   const items = newsGroup(list.map((r) => (r && typeof r === 'object' ? newsItem(r) : null)).filter(Boolean));
-  // The map's own update already says its event.
+  // The map's own update already says its beta event; a festival of the same update stays.
   const maps = new Set(items.filter((i) => i.kind === 'map').map((i) => i.update));
-  return items.filter((i) => !(i.kind === 'event' && maps.has(i.update)));
+  return items.filter((i) => !(i.kind === 'event' && maps.has(i.update) && /\bmap\b|Borderlands|\bbeta\b/i.test(i.text)));
 }
 
 const newsScore = (i) => (NEWS_KIND_WEIGHT[i.kind] || 0) * 10 - (Date.now() - i.at) / (7 * 864e5);
@@ -163,7 +163,7 @@ function newsIcon(paths, cls) {
   }
   return svg;
 }
-// Our own drawings: a castle for a map, a shield for a rule, the notes' page for the header.
+// Our own drawings: a castle for a map, a flag for an event, a shield for a rule, the notes' page for the header.
 const NEWS_ICONS = {
   map: ['M4 20V9l4-3 4 3 4-3 4 3v11', 'M9 20v-5h6v5'],
   event: ['M5 21V4', 'M5 4h11l-2 4 2 4H5'],

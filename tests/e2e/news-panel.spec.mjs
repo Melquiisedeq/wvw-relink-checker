@@ -40,7 +40,7 @@ const panel = page => page.getByRole('region', { name: 'Game updates for WvW' })
 const rich = opens => {
   const end = betaEnd(opens);
   return [
-    line(opens, 2, `The new Example Borderlands map has replaced the Seared Borderlands map in WvW! The beta for this new map will run until ${untilText(end)}.`, 'wvw_rule', { link: WIKI + 'Example_Borderlands' }),
+    line(opens, 2, `The new Example Borderlands map has replaced the Seared Borderlands map in WvW! The beta for this new map will run until ${untilText(end)}.`, 'event', { link: WIKI + 'Example_Borderlands' }),
     line(opens, 2, 'Fixed an issue that caused the Example Borderlands garrison gate to stay closed after a capture.', 'bug', { section: 'Bug Fixes' }),
     line(opens, 2, 'Siege golems now take part in the War Score of the objective they were built in.', null),
     line(opens, 6, 'Keep captures: 250 → 100 (T0)', 'wvw_rule'),
@@ -53,7 +53,7 @@ const rich = opens => {
   ];
 };
 
-// Old enough for no lead, three days so that all show: what the Worker added: an event, a reward, a hotfix line, and a line whose `hotfix` is not a boolean.
+// Old enough for no lead, three days so that all show: an event, a reward, a hotfix line, a non-boolean hotfix.
 const extras = opens => [
   line(opens, 50, 'Match rewards and skirmish rewards that were previously beta tested will now be fully released as well!', 'reward'),
   line(opens, 50, 'Fixed a bug that prevented players from buying Heart of Thorns items from the Heroics Notary in WvW.', 'bug', { section: 'Bug Fixes', hotfix: true }),
@@ -113,14 +113,17 @@ test.describe('event, reward and hotfix', () => {
 
   test('the event of a map\'s own update is not drawn beside the map', async ({ page, wvw }) => {
     await serveNotes(page, [
-      line(wvw.opensAt, 60, 'The new Example Borderlands map has replaced the Seared Borderlands map in WvW!', 'wvw_rule'),
+      line(wvw.opensAt, 60, `The new Example Borderlands map has replaced the Seared Borderlands map in WvW! The beta for this new map will run until ${untilText(wvw.opensAt - 61 * DAY)}.`, 'event'),
       line(wvw.opensAt, 60, 'The Example Borderlands beta event begins.', 'event'),
+      line(wvw.opensAt, 60, 'The Mists Festival gives every guild a banner.', 'event'),
       line(wvw.opensAt, 62, 'The Other Festival returns to the Mists.', 'event'),
     ]);
     await page.goto(wvw.url);
     const p = panel(page);
     await expect(p.getByText('The Other Festival')).toBeVisible();
     await expect(p.getByText('beta event begins')).toHaveCount(0);
+    await expect(p.getByText('The Mists Festival')).toBeVisible();
+    await expect(p.locator('.news-r').filter({ hasText: 'Example Borderlands map has replaced' }).getByText('Map', { exact: true })).toBeVisible();
   });
 
   test('a hotfix alone is never a lead', async ({ page, wvw }) => {
