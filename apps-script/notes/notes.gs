@@ -52,6 +52,9 @@ var Notes_ = (function () {
   // is about WvW, its type); it refuses one over MAX_LINE, and keeps MAX_PER_NOTE lines of a note.
   var MAX_LINE = 2000;
   var MAX_PER_NOTE = 60;
+  // The text under an update's heading before its first section, enough for the Worker to tell a
+  // release from a hotfix by.
+  var MAX_LEAD = 200;
   // The Worker refuses a message over 64 KB.
   var MAX_BODY = 60000;
   var PAGE_SKEW_DAYS = 3;
@@ -81,19 +84,21 @@ var Notes_ = (function () {
 
   /**
    * Every list item of the page's article, with the headings above it: the wiki's
-   * structure, read as text. {rows: [{h2, h3, sub, text, link, icon, toc, parent}], pages: [names]}:
-   * sub is the deepest heading under the h3 (the elite specialization, else the profession).
+   * structure, read as text. {rows: [{h2, h3, sub, text, link, icon, toc, parent}], pages: [names],
+   * leads: {h2: text}}: sub is the deepest heading under the h3 (the elite specialization, else the
+   * profession); a lead, the text after an h2 and before the next heading, outside the lists.
    * Text only: tags are dropped, entities decoded; the article ends at the parser's report.
    */
   function parse(html) {
     var on = false, stop = false, inh = null, hbuf = '';
-    var hl = {}, lis = [], rows = [], pages = [];
+    var hl = {}, lis = [], rows = [], pages = [], leads = {}, lead = null;
     var at = 0;
     function data(d) {
       if (!on || stop) return;
       d = decode(d);
       if (inh) hbuf += d;
       if (lis.length) lis[lis.length - 1].text += d;
+      else if (lead !== null && !inh && leads[lead].length < MAX_LEAD * 2) leads[lead] += d;
     }
     while (at < html.length && !stop) {
       var lt = html.indexOf('<', at);
@@ -119,6 +124,11 @@ var Notes_ = (function () {
         if (name === inh) {
           hl[inh] = hbuf.trim();
           for (var l = Number(inh.charAt(1)) + 1; l <= 5; l++) delete hl['h' + l];
+          // An h2 repeated on the page keeps the first lead with text.
+          if (inh === 'h2' && !(Object.prototype.hasOwnProperty.call(leads, hl.h2) && leadText(leads[hl.h2]))) {
+            lead = hl.h2;
+            leads[lead] = '';
+          }
           inh = null;
         } else if (name === 'li' && lis.length) {
           var c = lis.pop();
@@ -139,6 +149,7 @@ var Notes_ = (function () {
       if ((a['class'] || '').indexOf('mw-parser-output') >= 0) on = true;
       if (!on || stop) continue;
       if (/^h[2-5]$/.test(name)) {
+        lead = null;
         inh = name;
         hbuf = '';
       } else if (name === 'li') {
@@ -151,7 +162,12 @@ var Notes_ = (function () {
         if ((a['class'] || '').indexOf('toc') >= 0) cur.toc = true;
       }
     }
-    return { rows: rows, pages: pages };
+    return { rows: rows, pages: pages, leads: leads };
+  }
+
+  // The section's own edit link, which a transcluded section shows after its heading, is not its text.
+  function leadText(s) {
+    return s.replace(/\s+/g, ' ').trim().replace(/^\[ ?edit ?\] ?/, '');
   }
 
   function dayOf(update) {
@@ -187,7 +203,7 @@ var Notes_ = (function () {
   }
 
   /**
-   * The notes of a page: [{page, update, lines: [{section, sub, text, link, icon}]}], one per
+   * The notes of a page: [{page, update, lead, lines: [{section, sub, text, link, icon}]}], one per
    * update (h2) in page order, each update's WvW lines. `pages`: the page names the notes may
    * sit on (the index's own list, or the one page read).
    */
@@ -204,7 +220,8 @@ var Notes_ = (function () {
       if (!byUpdate[r.h2]) {
         var page = pageOf(day, list);
         if (!page) return;
-        byUpdate[r.h2] = { page: page, update: r.h2, lines: [] };
+        var lead = Array.from(leadText(p.leads[r.h2] || '')).slice(0, MAX_LEAD).join('');
+        byUpdate[r.h2] = { page: page, update: r.h2, lead: lead, lines: [] };
         out.push(byUpdate[r.h2]);
       }
       var n = byUpdate[r.h2];

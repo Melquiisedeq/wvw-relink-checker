@@ -49,6 +49,27 @@ test('the index page: each update since the last big one, on its page, an update
     ['2026-11-11', 'Update - November 11, 2026', 1], ['2026-11-10', 'Update - November 10, 2026', 50]]);
 });
 
+test('each update\'s lead: the text under its heading before its first section, without the edit link, the first with text when the heading repeats', () => {
+  const { ctx } = load({ answer: () => null });
+  const lead = (notes, update) => notes.find((n) => n.update === update).lead;
+  const index = ctx.out.notes(fixture('index-2026-11-24.html'));
+  assert.match(lead(index, 'Update - November 10, 2026'), /^Note to users of third-party programs: The game may not launch/);
+  assert.equal([...lead(index, 'Update - November 10, 2026')].length, 200);
+  assert.equal(lead(index, 'Update - November 11, 2026'), '');
+  // Its list sits right under the heading, with no section: not its lead.
+  assert.equal(lead(ctx.out.notes(fixture('2026-04-14.html'), ['2026-04-14']), 'Late Notes - April 14, 2026'), 'Bug Fix:');
+  const h2 = (t) => '<div class="mw-heading mw-heading2"><h2>' + t + '</h2><span class="mw-editsection"><span class="mw-editsection-bracket">[</span>' +
+    '<a href="/w/index.php?title=Game_updates&amp;action=edit&amp;section=1">edit</a><span class="mw-editsection-bracket">]</span></span></div>';
+  const li = '<h3>World vs. World</h3><ul><li>A WvW line.</li></ul>';
+  const page = '<div class="mw-parser-output"><a href="/wiki/Game_updates/2026-11-10">x</a>' +
+    h2('Update - November 12, 2026') + li + '<p>Note to users of third-party programs: under a section.</p>' +
+    h2('Update - November 10, 2026') + li + h2('Update - November 10, 2026') + '<p><b>Note to users of third-party programs:</b> a release.</p>' + li +
+    h2('Update - November 10, 2026') + '<p>Later text.</p>' + li + '<!-- NewPP limit report --></div>';
+  const notes = ctx.out.notes(page);
+  assert.deepEqual(JSON.parse(JSON.stringify(notes.map((n) => [n.update, n.lead, n.lines.length]))), [
+    ['Update - November 12, 2026', '', 1], ['Update - November 10, 2026', 'Note to users of third-party programs: a release.', 3]]);
+});
+
 test('notesTick: one GET of the wiki\'s index with our User-Agent, then one signed push the Worker takes', async () => {
   const html = fixture('index-2026-11-24.html');
   const s = load({ answer: (url) => (url.endsWith('/api/ingest/notes') ? httpResponse(200, 'ok') : httpResponse(200, html)) });
