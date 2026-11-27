@@ -36,9 +36,12 @@
 .hl-map{font-size:.78rem;color:var(--text);line-height:1.3;}
 .hl-line{font-size:.7rem;color:var(--muted);line-height:1.3;}
 .hl-teams,.hl-takers{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 12px;font-size:.78rem;font-weight:600;line-height:1.3;}
-/* The live map's strike at 1.5 times its 14 px box, and its orange shine on the number. */
-.hl-clash{position:relative;width:14px;height:14px;flex:none;transform:scale(1.5);transform-origin:0 50%;margin-right:7px;}
-.hl-clash .wvw-clash{left:0;top:0;}
+/* The live map's strike at 1.5 times its 14 px box, grown from the box's left middle, and its orange shine on the
+   number. The scale and its shift sit on the strike, a layer already for its punch: on the box around it they make one
+   more layer. Painted above the tile's text (isolated in the tile), no text paints over its layers to need another. */
+.hl-clash{position:relative;width:14px;height:14px;flex:none;margin-right:7px;}
+.hl-clash .wvw-clash{left:0;top:0;translate:3.5px .7px;scale:1.5;z-index:1;}
+.hl-panel .hl-hot{isolation:isolate;}
 .hl-hot .hl-num{position:relative;display:inline-block;color:#ffb070;text-shadow:0 1px 1.5px rgba(0,0,0,.95);}
 .hl-hot .hl-unit{color:#f0b27a;}
 .hl-shine{position:absolute;inset:0;overflow:hidden;pointer-events:none;
