@@ -3,7 +3,8 @@
 // apps-script/notes reads the wiki's Game_updates page and pushes its lines, signed (acceptNotes).
 // Anyone can edit the wiki, so nothing it sends is trusted: every field is checked again here, a
 // line is plain text cut to a size, and its link is built here from a checked page name. A line is
-// published as the wiki has it: what the wiki shows, the next reading shows, and so does its undoing.
+// published as the wiki has it: what the wiki shows, the next reading shows, and so does its undoing,
+// but for a hotfix's line, published once the readings have held it unchanged for HOTFIX_WAIT_S.
 
 export const WIKI = 'https://wiki.guildwars2.com/wiki/';
 export const MAX_LINE = 300;
@@ -15,6 +16,12 @@ const MAX_RAW = 2000;
 const PAGE_SKEW_DAYS = 3;
 export const KEEP_NOTE_DAYS = 400;
 export const MAX_SERVED = 200;
+// A hotfix's line is published once it has been in every reading of its page for this long.
+export const HOTFIX_WAIT_S = 86400;
+// What the wiki writes under a release's own heading, and under no other update's. A note without it
+// is a hotfix: the ones between releases, and the release day's 'Update 2' and 'Late Notes'.
+const RELEASE_NOTICE = 'Note to users of third-party programs:';
+const RELEASE_RE = /^Update - /;
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
   'September', 'October', 'November', 'December'];
@@ -80,10 +87,13 @@ const LOW = 'cooldown|recharge|cast time|activation time|aftercast|delay|(?:init
 const AMB = /threshold|requirement|required|stack limit/;
 const UP = 'increased?|raised?|improved|extended|boosted|doubled';
 const DOWN = 'reduced|lowered|decreased|shortened|halved|cut';
+// An event or a reward of WvW the rules are sure of; any other is shown with no label.
+const EVENT_SURE = /\bbeta event (?:begins|ends)\b|\bbeta\b[^.]{0,40}\bwill run (?:until|through) (?:January|February|March|April|May|June|July|August|September|October|November|December) \d/;
+const REWARD_SURE = /^Added\b[^.]{0,120}\b(?:rewards?|armor set|weapon set)\b|\b(?:skirmish|match) rewards?\b[^.]{0,80}\b(?:released|enabled)\b|^A new legendary [a-z]+\b[^.]{0,80}\bis now available\b/;
 const WVW_WORDS = /WvW|World vs|War Score|Borderlands|Eternal Battlegrounds|skirmish|dolyak|\bsiege\b|Stonemist|\bkeeps?\b|\bsentry\b|Obsidian Sanctum|Edge of the Mists|\brelink/;
-// The types a reader can trust; any other is shown with no label (a map, an event, a reward: the
-// section's own title says it).
-const SURE = new Set(['bug', 'neutral', 'buff', 'nerf', 'mixed', 'wvw_rule']);
+// The types a reader can trust; any other is shown with no label (a map, an event or a reward the
+// rules are unsure of: the section's own title says it).
+const SURE = new Set(['bug', 'neutral', 'buff', 'nerf', 'mixed', 'wvw_rule', 'event', 'reward']);
 
 // Whether the line is about World vs. World: its words, or its section.
 export function aboutWvw(text, section) {
@@ -128,11 +138,13 @@ export function kindOf(text, section, sub, icon) {
     const p = polarity(body);
     return p === 'buff' || p === 'nerf' || p === 'mixed' ? p : 'balance_unsure';
   }
+  if (EVENT_SURE.test(body)) return 'event';
+  if (REWARD_SURE.test(body)) return 'reward';
   if (/^World vs\. World/.test(section) || /\b(War Score)\b/.test(text)) return 'wvw_rule';
   if (/(?<!\w)(Festival|Halloween|Lunar New Year|Dragon Bash|Wintersday|Extra Life|Summer Game Fest|Convergence|Incursion|Bonus Event|Release Highlights|Super Adventure)/.test(section) ||
-    /\b(until|through|from) (?:January|February|March|April|May|June|July|August|September|October|November|December) \d|\bbeta\b|\bwill (?:run|be available|begin|end|turn on)\b/.test(text)) return 'event';
+    /\b(until|through|from) (?:January|February|March|April|May|June|July|August|September|October|November|December) \d|\bbeta\b|\bwill (?:run|be available|begin|end|turn on)\b/.test(text)) return 'event_unsure';
   if (/\b(new map|maps?)\b|Borderlands|Battlegrounds|Mists/.test(text)) return 'map';
-  if (/^(Rewards|Wizard's Vault)/.test(section) || /\breward/i.test(text)) return 'reward';
+  if (/^(Rewards|Wizard's Vault)/.test(section) || /\breward/i.test(text)) return 'reward_unsure';
   if (/^(Items|Gem Store|Trading Post|Launcher|Fashion Templates)/.test(section)) return 'item';
   if (/^(Raids|Fractals|Open World|Personal Story|Dungeons|Convergences?|Player vs)/.test(section)) return 'content';
   if (/\b(UI|interface|button|tooltip|option|menu|now (?:shows|displays)|display)\b/.test(text)) return 'qol';
@@ -144,9 +156,10 @@ export const labelOf = (kind) => (SURE.has(kind) ? kind : null);
 
 // ---- the push --------------------------------------------------------------
 
-// The message: {v: 1, notes: [{page, update, lines: [{section, sub, text, link, icon}]}]}.
+// The message: {v: 1, notes: [{page, update, lead, lines: [{section, sub, text, link, icon}]}]}; lead,
+// the text under the update's heading before its first section.
 // A message out of shape is refused whole (a string, the reason); a note or a line out of shape
-// is left out and counted. Returns {notes: [{update, day, page, lines: [...]}], dropped}.
+// is left out and counted. Returns {notes: [{update, day, page, hotfix, lines: [...]}], dropped}.
 export function checkNotes(data, nowMs) {
   if (!data || typeof data !== 'object' || data.v !== 1) return 'version';
   if (!Array.isArray(data.notes) || !data.notes.length || data.notes.length > MAX_NOTES) return 'notes';
@@ -181,7 +194,10 @@ function checkNote(n, nowMs) {
     else dropped++;
   }
   dropped += Math.max(0, n.lines.length - MAX_PER_NOTE);
-  return { update: n.update, day, page: n.page, lines, dropped };
+  // Whether it is a hotfix is decided here, from the heading and the lead; nothing else the message says.
+  const lead = typeof n.lead === 'string' ? plainText(n.lead) : null;
+  const hotfix = !(RELEASE_RE.test(n.update) && lead !== null && lead.startsWith(RELEASE_NOTICE));
+  return { update: n.update, day, page: n.page, hotfix, lines, dropped };
 }
 
 function checkLine(l) {
@@ -218,31 +234,38 @@ async function sha16(text) {
 // A reading is one push; a page is read when the push has a note on it (the script sends every
 // update of each page it read, with or without WvW lines, and whole pages only). Each note of a
 // page read takes the reading's lines, and one the reading lacks is deleted. A note on a page the
-// push lacks (a page that failed, or left the index) keeps its lines.
+// push lacks (a page that failed, or left the index) keeps its lines. A line keeps the time of the
+// first reading that had it while every reading of its page has it, unchanged (a changed line is a
+// new one): a hotfix's line is published from HOTFIX_WAIT_S after it.
 export async function acceptNotes(db, data, nowMs, claim) {
   const checked = checkNotes(data, nowMs);
   if (typeof checked === 'string') return checked;
   const now = Math.floor(nowMs / 1000);
   const push = await sha16(JSON.stringify(checked.notes));
-  const state = await db.prepare('SELECT push FROM note_served WHERE id = 1').first();
+  const state = await db.prepare('SELECT push, ripe FROM note_served WHERE id = 1').first();
   const { results: groups } = await db.prepare('SELECT note, page FROM note_group').all();
   if (!await claim()) return null;
   const log = { notes: checked.notes.length, dropped: checked.dropped };
   if (state.push === push) {
-    // The same reading again: only its time moves.
+    // The same reading again: only its time moves, unless a hotfix's line is due by now.
     log.same = true;
-    await db.prepare('UPDATE note_served SET wiki = ?1 WHERE id = 1').bind(now).run();
+    if (state.ripe && state.ripe <= now) {
+      log.ripe = true;
+      await publish(db, push, now);
+    } else {
+      await db.prepare('UPDATE note_served SET wiki = ?1 WHERE id = 1').bind(now).run();
+    }
     return log;
   }
   const pages = new Set(checked.notes.map((n) => n.page));
   const read = new Set(checked.notes.map((n) => n.update));
   const gone = groups.filter((g) => pages.has(g.page) && !read.has(g.note)).map((g) => g.note);
-  const marks = checked.notes.map((n) => [n.update, n.day, n.page]);
+  const marks = checked.notes.map((n) => [n.update, n.day, n.page, n.hotfix ? 1 : 0]);
   if (gone.length) log.gone = gone;
   const rows = [];
   for (const n of checked.notes) {
     let pos = 0;
-    for (const l of n.lines) rows.push([n.update, await lineId(n.update, l), pos++, l.section, l.sub, l.text, l.link, l.kind]);
+    for (const l of n.lines) rows.push([n.update, await lineId(n.update, l), pos++, l.section, l.sub, l.text, l.link, l.kind, now]);
   }
   const names = JSON.stringify([...read]);
   const oldest = new Date(nowMs - KEEP_NOTE_DAYS * 86400e3).toISOString().slice(0, 10);
@@ -250,16 +273,16 @@ export async function acceptNotes(db, data, nowMs, claim) {
   await db.prepare('DELETE FROM note_line WHERE note IN (SELECT note FROM note_group WHERE day < ?1) OR note IN (SELECT value FROM json_each(?2))')
     .bind(oldest, drop).run();
   await db.prepare('DELETE FROM note_group WHERE day < ?1 OR note IN (SELECT value FROM json_each(?2))').bind(oldest, drop).run();
-  await db.prepare('INSERT INTO note_group (note, day, page) ' +
-    "SELECT json_extract(j.value, '$[0]'), json_extract(j.value, '$[1]'), json_extract(j.value, '$[2]') FROM json_each(?1) j " +
-    'WHERE true ON CONFLICT (note) DO UPDATE SET day = excluded.day, page = excluded.page')
+  await db.prepare('INSERT INTO note_group (note, day, page, hotfix) ' +
+    "SELECT json_extract(j.value, '$[0]'), json_extract(j.value, '$[1]'), json_extract(j.value, '$[2]'), json_extract(j.value, '$[3]') FROM json_each(?1) j " +
+    'WHERE true ON CONFLICT (note) DO UPDATE SET day = excluded.day, page = excluded.page, hotfix = excluded.hotfix')
     .bind(JSON.stringify(marks)).run();
   await db.prepare('DELETE FROM note_line WHERE note IN (SELECT value FROM json_each(?1)) AND ' +
     "note || '|' || id NOT IN (SELECT json_extract(j.value, '$[0]') || '|' || json_extract(j.value, '$[1]') FROM json_each(?2) j)")
     .bind(names, JSON.stringify(rows)).run();
-  await db.prepare('INSERT INTO note_line (note, id, pos, section, sub, body, link, kind) ' +
+  await db.prepare('INSERT INTO note_line (note, id, pos, section, sub, body, link, kind, seen) ' +
     "SELECT json_extract(j.value, '$[0]'), json_extract(j.value, '$[1]'), json_extract(j.value, '$[2]'), json_extract(j.value, '$[3]'), " +
-    "json_extract(j.value, '$[4]'), json_extract(j.value, '$[5]'), json_extract(j.value, '$[6]'), json_extract(j.value, '$[7]') FROM json_each(?1) j " +
+    "json_extract(j.value, '$[4]'), json_extract(j.value, '$[5]'), json_extract(j.value, '$[6]'), json_extract(j.value, '$[7]'), json_extract(j.value, '$[8]') FROM json_each(?1) j " +
     'WHERE true ON CONFLICT (note, id) DO UPDATE SET pos = excluded.pos WHERE note_line.pos <> excluded.pos')
     .bind(JSON.stringify(rows)).run();
   log.lines = rows.length;
@@ -267,16 +290,20 @@ export async function acceptNotes(db, data, nowMs, claim) {
   return log;
 }
 
-// The published lines, newest day first, as one row: GET /api/notes reads that row alone.
+// The published lines, newest day first, as one row: GET /api/notes reads that row alone. A hotfix's
+// line still waiting is left out, and `ripe` is when the first of them is due.
 async function publish(db, push, wiki) {
-  const { results } = await db.prepare('SELECT l.note, l.section, l.sub, l.body, l.link, l.kind, g.day, g.page ' +
-    'FROM note_line l JOIN note_group g ON g.note = l.note ORDER BY g.day DESC, g.note DESC, l.pos LIMIT ?1').bind(MAX_SERVED).all();
+  const held = wiki - HOTFIX_WAIT_S;
+  const { results } = await db.prepare('SELECT l.note, l.section, l.sub, l.body, l.link, l.kind, g.day, g.page, g.hotfix ' +
+    'FROM note_line l JOIN note_group g ON g.note = l.note WHERE g.hotfix = 0 OR l.seen <= ?2 ' +
+    'ORDER BY g.day DESC, g.note DESC, l.pos LIMIT ?1').bind(MAX_SERVED, held).all();
   const body = JSON.stringify(results.map((r) => ({
     day: r.day, update: r.note, section: r.section, sub: r.sub, text: r.body, type: r.kind,
-    page: WIKI + 'Game_updates/' + r.page, link: r.link === null ? null : wikiLink(r.link)
+    hotfix: r.hotfix === 1, page: WIKI + 'Game_updates/' + r.page, link: r.link === null ? null : wikiLink(r.link)
   })));
-  await db.prepare('UPDATE note_served SET body = ?1, version = ?2, push = ?3, wiki = ?4 WHERE id = 1')
-    .bind(body, await sha16(body), push, wiki).run();
+  await db.prepare('UPDATE note_served SET body = ?1, version = ?2, push = ?3, wiki = ?4, ' +
+    'ripe = coalesce((SELECT min(l.seen) FROM note_line l JOIN note_group g ON g.note = l.note WHERE g.hotfix = 1 AND l.seen > ?5) + ?6, 0) WHERE id = 1')
+    .bind(body, await sha16(body), push, wiki, held, HOTFIX_WAIT_S).run();
 }
 
 // ---- the reads ---------------------------------------------------------------
