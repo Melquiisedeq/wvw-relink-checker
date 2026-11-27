@@ -294,8 +294,7 @@ function upsertSql(taken) {
 async function takenRows(db, ms, rows, now) {
   let results;
   try {
-    // The body only for a row written before `owners` was.
-    ({ results } = await db.prepare('SELECT id, start, at, CASE WHEN owners IS NULL THEN gz END AS gz, ' + TAKEN_COLS.join(', ') +
+    ({ results } = await db.prepare('SELECT id, start, at, ' + TAKEN_COLS.join(', ') +
       ' FROM latest WHERE id IN (SELECT value FROM json_each(?1))').bind(JSON.stringify(rows.map((r) => r[0]))).all());
   } catch (e) {
     console.log(JSON.stringify({ taken: 'failed', why: String(e) }));
@@ -321,7 +320,9 @@ function takenNext(prev, m, now) {
   const counts = [0, 0, 0, 0, 0, 0];
   const owners = objectivesOf(m.stored.value);
   const own = JSON.stringify(owners.map((o) => [o.id, o.team, o.points]));
-  if (!prev || prev.start !== m.start) return [...counts, '{}', own];
+  // A row without `owners` (written before schema-008, or cleared by the undo in api.md) is a
+  // first reading too: its body is not parsed for the one beat of flips it would give.
+  if (!prev || prev.start !== m.start || typeof prev.owners !== 'string') return [...counts, '{}', own];
   TAKEN_COLS.slice(0, 6).forEach((c, i) => { counts[i] = prev[c] || 0; });
   const times = storedTimes(prev.flip_times);
   const before = new Map(storedOwners(prev));
@@ -358,11 +359,10 @@ function storedTimes(text) {
   return out;
 }
 
-// The stored reading's objectives as [id, {team, points}]: from `owners`, or from the body for a
-// row written before it; nothing when either is not what was written.
+// The stored reading's objectives as [id, {team, points}], from `owners`; nothing when it is not
+// what was written.
 function storedOwners(prev) {
   try {
-    if (typeof prev.owners !== 'string') return objectivesOf(JSON.parse(prev.gz)).map((o) => [o.id, o]);
     const list = JSON.parse(prev.owners);
     if (!Array.isArray(list)) return [];
     return list.slice(0, MAX_OBJECTIVES).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && isInt(e[1]) && isInt(e[2]))

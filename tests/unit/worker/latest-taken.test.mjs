@@ -202,14 +202,21 @@ test('without schema-008 the readings still go in and the copy is served, withou
   assert.ok(lines.some((l) => l.taken === 'failed'));
 });
 
-test('a row stored before the owners column compares against its body', async () => {
+test('a row without owners, from before the column or after the undo, starts the count over', async () => {
   const w = setup({ env: SUPA_ENV });
   await push(w, reading(0));
-  w.sql.exec("UPDATE latest SET owners = NULL, taken_red = NULL, flips_red = NULL, flip_times = NULL WHERE id = '1-1'");
   w.advance(10e3);
   await push(w, reading(10, { '38-20': { owner: 'Blue', points_capture: 4 } }));
-  assert.deepEqual([row(w).b, row(w).fb, row(w).r, row(w).fr], [40, 1, 0, 0]);
-  assert.ok(w.sql.prepare("SELECT owners FROM latest WHERE id = '1-1'").get().owners.includes('["38-20",1,4]'));
+  assert.equal(row(w).b, 40);
+  w.sql.exec("UPDATE latest SET owners = NULL WHERE id = '1-1'");
+  w.advance(10e3);
+  // The tower back to Red: a first reading counts nothing, and keeps nothing carried.
+  await push(w, reading(20));
+  assert.deepEqual(row(w), { r: 0, b: 0, g: 0, fr: 0, fb: 0, fg: 0, t: '{}' });
+  assert.ok(w.sql.prepare("SELECT owners FROM latest WHERE id = '1-1'").get().owners.includes('["38-20",0,40]'));
+  w.advance(10e3);
+  await push(w, reading(30, { '38-20': { owner: 'Green', points_capture: 4 } }));
+  assert.deepEqual([row(w).g, row(w).fg, row(w).b], [40, 1, 0]);
 });
 
 // What a stolen reader secret could list in a body: the bounds of objectivesOf.
