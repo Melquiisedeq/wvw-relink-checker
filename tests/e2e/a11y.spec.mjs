@@ -78,13 +78,3 @@ test('one heading per tier, the side and the arrow in words', async ({ page, wvw
   expect(arrows.length).toBeGreaterThan(0);
   for (const t of arrows) expect(t).toMatch(/Moves up next reset|Moves down next reset|Stays in this tier next reset|Already the (top|bottom) tier|Tied on VP/);
 });
-
-// Chromium keeps the table semantics under display:block, so this passes without the
-// explicit roles; they are for other engines, and this only guards them.
-test('the result table has four column headers at 390 px', async ({ page, wvw }) => {
-  await load(page, wvw);
-  await phone(page, 390);
-  await check(page, wvw, [wvw.guilds[0]]);
-  await expect(page.getByRole('columnheader')).toHaveCount(4);
-  await expect(page.getByRole('row').filter({ has: page.getByRole('cell') })).toHaveCount(1);
-});

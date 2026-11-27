@@ -171,11 +171,13 @@ for (const when of ['with reduced motion', 'without focus', 'in a hidden tab']) 
     await load(page, wvw);
     if (when === 'without focus') await watch(page, { focused: false });
     if (when === 'in a hidden tab') await watch(page, { hidden: true });
-    await search(page, wvw.guilds);
+    await search(page, wvw.guilds[0]);
+    await page.getByRole('button', { name: /^Show .+ in the standings/ }).click();
     const strip = page.locator('.guild-found-strip');
     await expect(strip).toBeAttached();
     await expect.poll(() => strip.evaluate(e => getComputedStyle(e).opacity), { message: 'the strip fading in' }).toBe('1');
-    await expect.poll(() => runOnce(page), { message: 'run-once animations not finished', timeout: 5000 }).toEqual({ pastEnd: [], left: [] });
+    // The longest of them is the found card's mark, MARK_MS (js/search.js).
+    await expect.poll(() => runOnce(page), { message: 'run-once animations not finished', timeout: 12000 }).toEqual({ pastEnd: [], left: [] });
   });
 }
 
@@ -185,9 +187,9 @@ test('without focus the loading indicators turn', async ({ page, wvw }) => {
   const held = new Promise(r => { release = r; });
   await page.route(/^https:\/\/api\.guildwars2\.com\/v2\/guild\/search\?/, async route => { await held; await route.fallback(); });
   await page.locator('#guildInput').focus();
-  await page.keyboard.insertText(wvw.guilds.join('\n'));
+  await page.keyboard.insertText(wvw.guilds[0]);
   await page.locator('#runBtn').click();
-  await expect(page.locator('#statusMsg .spinner')).toBeAttached();
+  await expect(page.locator('#searchAnswer .spinner')).toBeAttached();
   await watch(page, { focused: false });
   // A cancelled animation rejects its ready.
   await page.evaluate(() => Promise.all(document.getAnimations().map(a => a.ready.catch(() => {}))));
@@ -199,7 +201,7 @@ test('without focus the loading indicators turn', async ({ page, wvw }) => {
     .filter(a => a.effect && a.effect.target && a.effect.target.closest(sel) && a.playState !== 'paused').length, LOADERS);
   expect(onCss, 'loading indicators left on CSS while the clock runs').toBe(0);
   release();
-  await expect(page.locator('#statusMsg')).toHaveText(/^Done/, { timeout: 15000 });
+  await expect(page.locator('#searchAnswer .search-card, #searchAnswer .search-err')).toBeVisible({ timeout: 15000 });
 });
 
 for (const when of ['before the search', 'during the search']) {
@@ -211,10 +213,10 @@ for (const when of ['before the search', 'during the search']) {
     const held = new Promise(r => { release = r; });
     await page.route(/^https:\/\/api\.guildwars2\.com\/v2\/guild\/search\?/, async route => { await held; await route.fallback(); });
     await page.locator('#guildInput').focus();
-    await page.keyboard.insertText(wvw.guilds.join('\n'));
+    await page.keyboard.insertText(wvw.guilds[0]);
     await page.locator('#runBtn').click();
     await expect(page.locator('#runBtn .btn-pips')).toBeAttached();
-    await expect(page.locator('#statusMsg .spinner')).toBeAttached();
+    await expect(page.locator('#searchAnswer .spinner')).toBeAttached();
     if (when === 'during the search') {
       // Once the clock has taken them: the stop must hand them back to CSS.
       await expect.poll(() => page.evaluate(sel => document.getAnimations().filter(a => a.effect?.target?.closest(sel))
@@ -226,7 +228,7 @@ for (const when of ['before the search', 'during the search']) {
     expect(loaders.still, 'loading indicators standing still').toBe(0);
     expect((await looping(page)).moved, 'looping animations moving meanwhile').toBe(0);
     release();
-    await expect(page.locator('#statusMsg')).toHaveText(/^Done/, { timeout: 15000 });
+    await expect(page.locator('#searchAnswer .search-card, #searchAnswer .search-err')).toBeVisible({ timeout: 15000 });
   });
 }
 
@@ -257,7 +259,7 @@ function recordSurge(page) {
 }
 // A Check's round breaks the crest: the embers' blast.
 async function blast(page, wvw) {
-  await search(page, wvw.guilds);
+  await search(page, wvw.guilds[0]);
   await page.waitForFunction(() => window.__surgeAt !== null);
   return page.evaluate(() => window.__surgeAt);
 }
@@ -324,7 +326,7 @@ test('the surge brightens the embers as they are painted and only lifts the canv
     }).observe(document, { subtree: true, attributes: true, attributeFilter: ['class'] });
   });
   await load(page, wvw);
-  await search(page, wvw.guilds);
+  await search(page, wvw.guilds[0]);
   await page.waitForFunction(() => window.__surge?.done, null, { timeout: 15000 });
   const { t0, samples } = await page.evaluate(() => window.__surge);
   expect(samples.filter(([, f]) => f !== 'none'), 'a filter on the canvas during the surge').toEqual([]);

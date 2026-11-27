@@ -4,10 +4,10 @@
 
 # WvW Relink Checker
 
-**Find out which WvW team your alliance landed on — in one paste.**
+**Find out which WvW team your guild landed on after the relink.**
 
-A web tool for Guild Wars 2 World vs World. Paste a list of guild names
-and see which team each one landed on after a relink, plus tier
+A web tool for Guild Wars 2 World vs World. Type a guild's name
+and see which team it landed on after a relink, its tier and rivals, plus tier
 standings and live maps that show where the fighting is, for every NA and EU match.
 
 [![Live demo](https://img.shields.io/badge/demo-wvwrelink.com-7fd6f2?style=for-the-badge)](https://wvwrelink.com/)
@@ -25,8 +25,7 @@ standings and live maps that show where the fighting is, for every NA and EU mat
 
 |  |  |
 |---|---|
-| 🔍 | **Guild lookup** — paste names, get the team each one landed on |
-| 📋 | **One-click summaries** — sized for in-game chat, or for Discord |
+| 🔍 | **Guild lookup** — type a name, get its team, tier and rivals |
 | 📊 | **Standings** — every NA and EU tier, updating on their own |
 | 🗺️ | **Live maps** — all four battlegrounds, showing where the fighting is |
 | 📈 | **Match detail** — weekly skirmish scores, per-map K/D, alliances per server |
@@ -34,16 +33,16 @@ standings and live maps that show where the fighting is, for every NA and EU mat
 
 ## 🚀 How to use
 
-Open [wvwrelink.com](https://wvwrelink.com/), paste guild names (one per
-line) and read which team each landed on.
+Open [wvwrelink.com](https://wvwrelink.com/), type your guild's name and
+press Check; the arrow on the answer shows its tier in the standings.
 
 > [!NOTE]
 > Guild names must match **exactly**: the guild search is exact, not partial
-> and not by tag. A guild ID works too. Up to 20 per run. The alliance list
+> and not by tag. A guild ID works too. The alliance list
 > behind the shield icon is NA only.
 
-How it works: names are resolved to IDs through the API's guild search, then
-matched against live match data for each one's team, tier and side. Standings
+How it works: the name is resolved to an ID through the API's guild search, then
+matched against live match data for its team, tier and side. Standings
 load once and keep refreshing in the background. The page reads
 this project's own `/api` for the kills history, the new-teams notice, the
 newest match bodies and the history of finished skirmishes; the first two fall back to public Google Sheets when it
@@ -62,19 +61,21 @@ history of each region's finished skirmishes. While the tab is visible the page 
 
 | Host | What for |
 |---|---|
-| `api.guildwars2.com` | The guild names you paste go here to be resolved — that request *is* the lookup. Also all match, objective and upgrade data. |
+| `api.guildwars2.com` | The guild names you type go here to be resolved — that request *is* the lookup. Also all match, objective and upgrade data. |
 | `render.guildwars2.com` | Guild emblem images, for objectives claimed by a guild. Images only. |
 | `wvwrelink.com/api` | This site's own server: the kills history when you open a tier's maps, whether the new teams are out (read only in the days before a relink), the newest match bodies, kept only when further along than the game's own answer, and the history of finished skirmishes. |
 | `docs.google.com` | Three public spreadsheets, read-only: the community guild list when you click a shield icon, and the kills history and the new-teams notice when `/api` does not answer. |
 | `static.cloudflareinsights.com`, `cloudflareinsights.com` | Cloudflare Web Analytics: its script, and a report of each visit and how fast the page loaded. |
 
-Six things are kept in your browser's own storage. None of them ever
-leave your device; three clear themselves out as they age, and the other
-three are a single value each that gets overwritten.
+Six things are kept in your browser's own storage, and a seventh, an older
+version's, is deleted. None of them ever leave your device; three clear
+themselves out as they age, the guilds you found keep only the newest eight,
+and the other two are a single value each that gets overwritten.
 
 | Key | What it holds |
 |---|---|
-| `wvw-relink-checker:guilds` | The list you typed, so it is still there next time |
+| `wvw-relink-checker:recent-guilds` | The last eight guilds you found, offered as you type |
+| `wvw-relink-checker:guilds` | Nothing now: an older version kept your pasted list here, and the page deletes it |
 | `wvw-guilds-v1` | Name, tag and emblem of guilds already looked up, so the maps don't ask twice |
 | `wvw-fight-v1` | Recent kill counts per match — what puts the crossed swords on each map with a fight |
 | `wvw-weeks-v1` | The week's team line-up per tier, so a reload on a relink night does not bring back last week's while the API catches up |

@@ -406,20 +406,5 @@ export async function seedPeriodicRefresh(page, step) {
   };
 }
 
-// ---- storage ----------------------------------------------------------------
-// Storage that refuses every read and write, as with site data blocked; returns a reader of how many times
-// the page tried to save the typed list (that key only: the page saves other things on load).
-export async function refuseStorage(page) {
-  await page.addInitScript(() => {
-    window.__listSaves = 0;
-    Storage.prototype.getItem = () => { throw new DOMException('blocked', 'SecurityError'); };
-    Storage.prototype.setItem = function (key) {
-      if (key === 'wvw-relink-checker:guilds') window.__listSaves++;
-      throw new DOMException('blocked', 'SecurityError');
-    };
-  });
-  return () => page.evaluate(() => window.__listSaves);
-}
-
 // How many requests one read of the game makes when every try fails (fetchJson).
 export const triesPerRead = page => page.evaluate(() => MAX_RETRIES + 1);

@@ -53,14 +53,14 @@ test('a failed load tries again and paints without a reload', async ({ page, wvw
   await wvw.settle();
 
   const tables = await fail(page, wvw, /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/guilds\/(na|eu)$/);
-  await page.locator('#guildInput').fill(wvw.guilds.join('\n'));
+  await page.locator('#guildInput').fill(wvw.guilds[0]);
   await page.locator('#runBtn').click();
-  const again = page.locator('#statusMsg .retry-btn');
+  const again = page.getByRole('button', { name: 'Try again' });
   await expect(again, 'the guild search message with its Try again button').toBeVisible();
   await expect(page.locator('#runBtn')).toBeEnabled();
   tables.off();
   await again.click();
-  await expect(page.locator('#statusMsg'), 'the "Done" status after Try again').toHaveText(/^Done/, { timeout: 15000 });
+  await expect(page.locator('#searchAnswer .search-card'), 'the answer after Try again').toBeVisible({ timeout: 15000 });
   await wvw.settle();
 });
 
