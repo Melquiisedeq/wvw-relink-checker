@@ -12,9 +12,9 @@ const NEWS_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
   'October', 'November', 'December'];
 const NEWS_MONTH_RE = NEWS_MONTHS.join('|');
 const NEWS_DAY_RE = /^(\d{4})-(\d\d)-(\d\d)$/;
-const NEWS_KIND_WEIGHT = { map: 6, rule: 4, buff: 3, nerf: 3, fix: 1 };
-const NEWS_KIND_OF_TYPE = { buff: 'buff', nerf: 'nerf', bug: 'fix', wvw_rule: 'rule' };
-const NEWS_TAGS = { buff: 'Buff', nerf: 'Nerf', map: 'Map', rule: 'Rule', fix: 'Fix' };
+const NEWS_KIND_WEIGHT = { map: 6, event: 5, rule: 4, reward: 3, buff: 3, nerf: 3, fix: 1 };
+const NEWS_KIND_OF_TYPE = { buff: 'buff', nerf: 'nerf', bug: 'fix', wvw_rule: 'rule', event: 'event', reward: 'reward' };
+const NEWS_TAGS = { buff: 'Buff', nerf: 'Nerf', map: 'Map', rule: 'Rule', fix: 'Fix', event: 'Event', reward: 'Reward' };
 const NEWS_ARROWS = { buff: '▲', nerf: '▼' };
 const NEWS_FILTERS = { wvw: 'WvW', all: 'All', fix: 'Fixes' };
 const NEWS_LEAD_DAYS = 45;
@@ -103,6 +103,7 @@ function newsItem(r) {
     at, update: typeof r.update === 'string' ? r.update : '', kind, name, before, after, desc, text, prof,
     link: newsWikiHref(r.link) || newsWikiHref(r.page),
     only: /\bin WvW only\b/i.test(text),
+    hotfix: r.hotfix === true,
     until: until ? newsUntil(at, until) : 0,
   };
 }
@@ -128,7 +129,10 @@ function newsGroup(items) {
 
 function newsRead(body) {
   const list = body && Array.isArray(body.notes) ? body.notes.slice(0, NEWS_MAX_ITEMS) : [];
-  return newsGroup(list.map((r) => (r && typeof r === 'object' ? newsItem(r) : null)).filter(Boolean));
+  const items = newsGroup(list.map((r) => (r && typeof r === 'object' ? newsItem(r) : null)).filter(Boolean));
+  // The map's own update already says its event.
+  const maps = new Set(items.filter((i) => i.kind === 'map').map((i) => i.update));
+  return items.filter((i) => !(i.kind === 'event' && maps.has(i.update)));
 }
 
 const newsScore = (i) => (NEWS_KIND_WEIGHT[i.kind] || 0) * 10 - (Date.now() - i.at) / (7 * 864e5);
@@ -162,6 +166,7 @@ function newsIcon(paths, cls) {
 // Our own drawings: a castle for a map, a shield for a rule, the notes' page for the header.
 const NEWS_ICONS = {
   map: ['M4 20V9l4-3 4 3 4-3 4 3v11', 'M9 20v-5h6v5'],
+  event: ['M5 21V4', 'M5 4h11l-2 4 2 4H5'],
   rule: ['M12 3 5 6v6c0 4 3 7 7 9 4-2 7-5 7-9V6Z', 'M9 12l2 2 4-4'],
   notes: ['M6 3h9l4 4v14H6Z', 'M14 3v5h5', 'M9 12h7', 'M9 16h7'],
 };
@@ -196,6 +201,7 @@ function newsLine(i) {
     line.appendChild(ba);
   }
   if (i.only) line.appendChild(newsEl('span', 'news-only', 'WvW only'));
+  if (i.hotfix) line.appendChild(newsEl('span', 'news-hotfix', 'Hotfix · wiki'));
   return line;
 }
 function newsDesc(i) {
@@ -215,7 +221,7 @@ function newsHead() {
 }
 
 function newsLeadOf(items) {
-  const big = items.filter((i) => (i.kind === 'map' || i.kind === 'rule') && Date.now() - i.at < NEWS_LEAD_DAYS * 864e5);
+  const big = items.filter((i) => (i.kind === 'map' || i.kind === 'event' || i.kind === 'rule') && Date.now() - i.at < NEWS_LEAD_DAYS * 864e5);
   if (!big.length) return null;
   return big.sort((a, b) => b.at - a.at || NEWS_KIND_WEIGHT[b.kind] - NEWS_KIND_WEIGHT[a.kind])[0];
 }
@@ -225,12 +231,13 @@ function newsSpan(ms) {
   const h = Math.floor(m / 60);
   return h < 24 ? `${h}h ${m % 60}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
 }
-const newsPillText = (lead) => `Beta ends in ${newsSpan(lead.until - Date.now())}`;
+const newsPillText = (lead) => `${lead.kind === 'event' ? 'Event' : 'Beta'} ends in ${newsSpan(lead.until - Date.now())}`;
+const NEWS_LEAD_LABEL = { map: 'New map', event: 'Event', rule: 'Rule change' };
 function newsLead(lead) {
   const box = newsEl('div', `news-lead news-lead-${lead.kind}`);
   box.appendChild(newsEl('div', 'news-lead-ic')).appendChild(newsIcon(NEWS_ICONS[lead.kind], 'news-lead-svg'));
   const body = newsEl('div', 'news-lead-body');
-  body.appendChild(newsEl('span', 'news-dt', `${newsDay(lead.at)} · ${lead.kind === 'map' ? 'New map' : 'Rule change'}`));
+  body.appendChild(newsEl('span', 'news-dt', `${newsDay(lead.at)} · ${NEWS_LEAD_LABEL[lead.kind]}`));
   const sentences = lead.text.split(/(?<=[.!])\s+/);
   const titleText = lead.name ? `${lead.name}: ${lead.desc || `${lead.before} → ${lead.after}`}` : sentences[0].replace(/[.!]$/, '');
   body.appendChild(lead.link ? newsLink('news-lead-title', titleText, lead.link) : newsEl('span', 'news-lead-title', titleText));
@@ -242,7 +249,7 @@ function newsLead(lead) {
 
 function newsShown(items) {
   if (newsFilter === 'fix') return items.filter((i) => i.kind === 'fix');
-  if (newsFilter === 'wvw') return items.filter((i) => i.kind !== 'fix' && (i.kind === 'map' || i.kind === 'rule' || i.only));
+  if (newsFilter === 'wvw') return items.filter((i) => i.kind !== 'fix' && (i.kind === 'map' || i.kind === 'event' || i.kind === 'rule' || i.kind === 'reward' || i.only));
   return items;
 }
 function newsTimeline(items, days) {

@@ -15,7 +15,7 @@
 .news-ba s{color:var(--muted);text-decoration:none;}
 .news-ba i{font-style:normal;color:var(--muted);margin:0 4px;}
 .news-ba b{font-weight:700;}
-.news-only{font-size:.68rem;color:#7e8899;}
+.news-only,.news-hotfix{font-size:.68rem;color:#7e8899;}
 .news-prof{width:18px;height:18px;align-self:center;opacity:.9;}
 .news-desc{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--muted);font-size:.8rem;line-height:1.35;margin-top:2px;overflow-wrap:anywhere;}
 .news-desc-link{color:var(--text);text-decoration:none;font-size:.86rem;}

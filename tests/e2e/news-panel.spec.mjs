@@ -1,6 +1,6 @@
 // The news panel under the search: the WvW lines of the game's update notes, read from /api/notes once
 // the standings are painted. Every answer here is served by the spec, shaped as the Worker serves it
-// (worker/notes.mjs, publish): {v, wiki, notes: [{day, update, section, sub, text, type, page, link}]}.
+// (worker/notes.mjs, publish): {v, wiki, notes: [{day, update, section, sub, text, type, hotfix, page, link}]}.
 import { test, expect } from './support/fixtures.mjs';
 import { pastEdge } from './support/edge.mjs';
 import { iso } from './support/steps.mjs';
@@ -16,7 +16,7 @@ const line = (opens, ago, text, type, extra = {}) => {
   const d = new Date(opens - ago * DAY);
   return {
     day, update: `Update - ${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`,
-    section: 'World vs. World', sub: '', text, type, page: `${WIKI}Game_updates/${day}`, link: null, ...extra,
+    section: 'World vs. World', sub: '', text, type, hotfix: false, page: `${WIKI}Game_updates/${day}`, link: null, ...extra,
   };
 };
 // The 12:00 UTC of the first day that is still ahead of `opens` by under a day.
@@ -52,6 +52,76 @@ const rich = opens => {
     line(opens, 12, 'Keep waypoints now stay open for 30 seconds after the objective becomes contested.', 'wvw_rule'),
   ];
 };
+
+// What the Worker added: an event, a reward, a hotfix line, and a line whose `hotfix` is not a boolean.
+const extras = opens => [
+  line(opens, 4, 'Match rewards and skirmish rewards that were previously beta tested will now be fully released as well!', 'reward'),
+  line(opens, 5, 'Fixed a bug that prevented players from buying Heart of Thorns items from the Heroics Notary in WvW.', 'bug', { section: 'Bug Fixes', hotfix: true }),
+  line(opens, 7, 'The Example Festival returns to the Mists and unlocks a new title for every guild.', 'event'),
+  line(opens, 8, 'Hot gates now stay shut for 4 seconds after a capture.', 'wvw_rule', { hotfix: 'yes' }),
+  line(opens, 10, 'Odd camps now hold 7 supply more after a capture.', 'wvw_rule', { hotfix: 1 }),
+];
+
+test.describe('event, reward and hotfix', () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test('each is tagged, the hotfix is marked, and a hotfix that is no boolean is none', async ({ page, wvw }) => {
+    await serveNotes(page, [...rich(wvw.opensAt), ...extras(wvw.opensAt)]);
+    await page.goto(wvw.url);
+    const p = panel(page);
+    await expect(p).toBeVisible();
+    await p.getByRole('button', { name: 'All' }).click();
+    const row = t => p.locator('.news-r').filter({ hasText: t });
+    await expect(row('Match rewards and skirmish').getByText('Reward', { exact: true })).toBeVisible();
+    await expect(row('Example Festival').getByText('Event', { exact: true })).toBeVisible();
+    const fix = row('Heroics Notary');
+    await expect(fix.getByText('Fix', { exact: true })).toBeVisible();
+    await expect(fix.getByText('Hotfix · wiki')).toBeVisible();
+    await expect(p.getByText('Hotfix · wiki')).toHaveCount(1);
+    await expect(row('Hot gates').getByText('Rule', { exact: true })).toBeVisible();
+    await expect(row('Odd camps')).toBeVisible();
+  });
+
+  test('the filters: WvW keeps the event and the reward, Fixes shows the hotfix, a hotfix is never the lead', async ({ page, wvw }) => {
+    await serveNotes(page, [...rich(wvw.opensAt), ...extras(wvw.opensAt)]);
+    await page.goto(wvw.url);
+    const p = panel(page);
+    await expect(p).toBeVisible();
+    await p.getByRole('button', { name: 'Fixes' }).click();
+    await expect(p.getByText('Heroics Notary')).toBeVisible();
+    await expect(p.getByText('Hotfix · wiki')).toBeVisible();
+    await expect(p.getByText('Example Festival')).toHaveCount(0);
+    await p.getByRole('button', { name: 'WvW' }).click();
+    await expect(p.getByText('Heroics Notary')).toHaveCount(0);
+    await expect(p.getByText('Match rewards and skirmish')).toBeVisible();
+    await expect(p.getByText('Example Festival')).toBeVisible();
+    // The lead is still the newest map; the hotfix, newer than the event, did not take it.
+    await expect(p.getByText(/^\d+ \w+ · New map$/)).toBeVisible();
+  });
+
+  test('an event is the lead when it is the newest, with its countdown', async ({ page, wvw }) => {
+    const end = betaEnd(wvw.opensAt);
+    await serveNotes(page, [
+      line(wvw.opensAt, 1, `The Example Festival is on in WvW and will run until ${untilText(end)}.`, 'event'),
+      line(wvw.opensAt, 1, 'Fixed a bug with the festival banner.', 'bug', { hotfix: true }),
+    ]);
+    await page.goto(wvw.url);
+    const p = panel(page);
+    await expect(p.getByText(/^\d+ \w+ · Event$/)).toBeVisible();
+    await expect(p.getByText('Event ends in')).toHaveText(`Event ends in ${span(end - wvw.opensAt)}`);
+    await expect(p.getByText('Hotfix · wiki')).toHaveCount(0);
+  });
+
+  test('a hotfix alone is never a lead', async ({ page, wvw }) => {
+    await serveNotes(page, [line(wvw.opensAt, 1, 'Fixed a bug with the gates.', 'bug', { hotfix: true })]);
+    await page.goto(wvw.url);
+    const p = panel(page);
+    await expect(p).toBeVisible();
+    await expect(p.locator('.news-lead')).toHaveCount(0);
+    await p.getByRole('button', { name: 'Fixes' }).click();
+    await expect(p.getByText('Hotfix · wiki')).toBeVisible();
+  });
+});
 
 test.describe('the panel and its lines', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
