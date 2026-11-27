@@ -25,6 +25,7 @@ let newsItems = [];
 let newsFilter = 'wvw';
 let newsPanel = null;
 let newsTimer = 0;
+let newsPainted = 0;   // how many dates were ahead when the panel was last drawn
 
 // The profession icons are the game's own (/v2/professions, icon); the page picks one by the
 // profession's name, never by an address the answer carries. The elite specialisations name their profession.
@@ -63,11 +64,11 @@ function newsWikiHref(s) {
 const newsDay = (t) => `${new Date(t).getUTCDate()} ${NEWS_MONTHS[new Date(t).getUTCMonth()].slice(0, 3)}`;
 const newsSeconds = (s) => s.replace(/\s+seconds?$/, ' s').replace(/[.,]$/, '');
 
-// "until January 6" in a December note is the next year's.
+// "until January 6" in a December note is the next year's; a date a few days back is simply past.
 function newsUntil(at, m) {
   const year = new Date(at).getUTCFullYear();
   const t = Date.UTC(year, NEWS_MONTHS.indexOf(m[1]), Number(m[2]), 12);
-  return t < at ? Date.UTC(year + 1, NEWS_MONTHS.indexOf(m[1]), Number(m[2]), 12) : t;
+  return at - t > 180 * 864e5 ? Date.UTC(year + 1, NEWS_MONTHS.indexOf(m[1]), Number(m[2]), 12) : t;
 }
 
 function newsItem(r) {
@@ -224,6 +225,7 @@ function newsSpan(ms) {
   const h = Math.floor(m / 60);
   return h < 24 ? `${h}h ${m % 60}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
 }
+const newsPillText = (lead) => `Beta ends in ${newsSpan(lead.until - Date.now())}`;
 function newsLead(lead) {
   const box = newsEl('div', `news-lead news-lead-${lead.kind}`);
   box.appendChild(newsEl('div', 'news-lead-ic')).appendChild(newsIcon(NEWS_ICONS[lead.kind], 'news-lead-svg'));
@@ -233,7 +235,7 @@ function newsLead(lead) {
   const titleText = lead.name ? `${lead.name}: ${lead.desc || `${lead.before} → ${lead.after}`}` : sentences[0].replace(/[.!]$/, '');
   body.appendChild(lead.link ? newsLink('news-lead-title', titleText, lead.link) : newsEl('span', 'news-lead-title', titleText));
   if (!lead.name && sentences[1]) body.appendChild(newsEl('p', 'news-lead-line', sentences[1]));
-  if (newsLive(lead)) body.appendChild(newsEl('span', 'news-pill', `Beta ends in ${newsSpan(lead.until - Date.now())}`));
+  if (newsLive(lead)) body.appendChild(newsEl('span', 'news-pill', newsPillText(lead)));
   box.appendChild(body);
   return box;
 }
@@ -282,6 +284,7 @@ function newsTimeline(items, days) {
 }
 
 function newsBuild() {
+  newsPainted = newsItems.filter(newsLive).length;
   const panel = newsEl('section', 'news-panel frame-a');
   panel.setAttribute('aria-label', 'Game updates for WvW');
   panel.appendChild(newsHead());
@@ -295,15 +298,22 @@ function newsPaint() {
   newsPanel.replaceChildren(...next.childNodes);
 }
 
-// The countdown and the "Until" tags follow the clock, a minute at a time. The panel is drawn again, and
-// what had the focus gets it back; a hidden tab skips the minute and is brought up to date when it is seen
-// again, and the timer stops only after a drawing that found no date ahead.
+// The countdown follows the clock, a minute at a time, by its text alone: no node is replaced and the focus
+// is not touched. The panel is drawn again only when a date has passed since it was drawn, and then what
+// had the focus gets it back. A hidden tab skips its minute and is brought up to date when seen again; the
+// timer stops after a drawing that found no date ahead.
 function newsTick() {
   if (document.hidden) return;
-  const spot = [...newsPanel.querySelectorAll('a, button')].indexOf(document.activeElement);
-  const live = newsItems.some(newsLive);
-  newsPaint();
-  if (spot >= 0) newsPanel.querySelectorAll('a, button')[spot]?.focus();
+  const live = newsItems.filter(newsLive).length;
+  if (live < newsPainted) {
+    const spot = [...newsPanel.querySelectorAll('a, button')].indexOf(document.activeElement);
+    newsPaint();
+    if (spot >= 0) newsPanel.querySelectorAll('a, button')[spot]?.focus();
+  } else {
+    const lead = newsLeadOf(newsItems);
+    const pill = newsPanel.querySelector('.news-pill');
+    if (pill && lead && newsLive(lead)) pill.textContent = newsPillText(lead);
+  }
   if (!live) { clearInterval(newsTimer); newsTimer = 0; }
 }
 

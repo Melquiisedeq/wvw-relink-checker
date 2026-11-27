@@ -239,9 +239,11 @@ test.describe('the clock', () => {
     await expect(p.getByText('Beta ends in')).toBeVisible();
     await p.getByRole('button', { name: 'All' }).click();
     await expect(p.getByRole('button', { name: 'All' })).toBeFocused();
+    const all = await p.getByRole('button', { name: 'All' }).elementHandle();
     for (let t = 0; t < 60000; t += 3000) await page.clock.runFor(3000);
     await expect(p.getByText('Beta ends in')).toHaveText(`Beta ends in ${span(end - wvw.opensAt - 60000)}`);
-    await expect(p.getByRole('button', { name: 'All' })).toBeFocused();
+    // The same node, not one drawn again: a screen reader is not told of a new control every minute.
+    expect(await page.evaluate(b => document.activeElement === b && b.isConnected, all), 'the very button still holds the focus').toBe(true);
     await expect(p.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
   });
 

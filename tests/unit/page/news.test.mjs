@@ -60,4 +60,6 @@ test('newsItem: an "until" date before the note is the next year\'s (js/news.js)
   ] }));
   assert.equal(dec.until, Date.UTC(2027, 0, 6, 12));
   assert.equal(nov.until, Date.UTC(2026, 11, 9, 12));
+  const [past] = clone(p.call('newsRead', { notes: [row('The beta will run until November 18.', 'wvw_rule', { day: '2026-11-20' })] }));
+  assert.equal(past.until, Date.UTC(2026, 10, 18, 12), 'two days back is past, not a year ahead');
 });
