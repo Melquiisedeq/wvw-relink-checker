@@ -401,30 +401,31 @@ function hlFavFoot(c) {
   return line;
 }
 // The scales, drawn like the other tiles' game icons: the beam turns on its pin and each pan hangs from an end
-// (css/highlights.css, .hl-sc-*). `lean`: -1 toward the first team, 1 the second, 0 level.
+// (css/highlights.css, .hl-sc-*). Each moving part is an <svg> of its own over the whole box: a transform inside one
+// SVG lays the page out again on every frame it moves, one on the <svg> box runs on the compositor.
+// `lean`: -1 toward the first team, 1 the second, 0 level.
 const HL_SCALES = [['M8 21.2 h8 v-1.8 h-8 Z'], ['M11.1 5 h1.8 v14.6 h-1.8 Z'],
   ['M3 6.8 h18 v1.6 h-18 Z', 'f', 'b'], ['M12 3 a1.9 1.9 0 1 0 0.01 0 Z', 'f', 'b'],
   ['M4.6 8.2 L2 13.4 M4.6 8.2 L7.2 13.4', 's', 'l'], ['M1.2 13.4 h6.8 a3.4 2.6 0 0 1 -6.8 0 Z', 'f', 'l'],
   ['M19.4 8.2 L16.8 13.4 M19.4 8.2 L22 13.4', 's', 'r'], ['M16 13.4 h6.8 a3.4 2.6 0 0 1 -6.8 0 Z', 'f', 'r']];
 function hlScales(lean) {
   const ns = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('class', `hl-ci hl-sc${lean > 0 ? ' hl-sc-right' : lean === 0 ? ' hl-sc-even' : ''}`);
-  const groups = {};
-  for (const [d, k = 'f', g] of HL_SCALES) {
+  const box = hlEl('span', `hl-ci hl-sc${lean > 0 ? ' hl-sc-right' : lean === 0 ? ' hl-sc-even' : ''}`);
+  box.setAttribute('aria-hidden', 'true');
+  const parts = {};
+  for (const [d, k = 'f', g = 'fixed'] of HL_SCALES) {
+    if (!parts[g]) {
+      parts[g] = document.createElementNS(ns, 'svg');
+      parts[g].setAttribute('viewBox', '0 0 24 24');
+      parts[g].setAttribute('class', `hl-sc-${g}`);
+      box.appendChild(parts[g]);
+    }
     const p = document.createElementNS(ns, 'path');
     p.setAttribute('d', d);
     p.setAttribute('class', `hl-ci-${k}`);
-    if (g && !groups[g]) {
-      groups[g] = document.createElementNS(ns, 'g');
-      groups[g].setAttribute('class', `hl-sc-${g}`);
-      svg.appendChild(groups[g]);
-    }
-    (g ? groups[g] : svg).appendChild(p);
+    parts[g].appendChild(p);
   }
-  return svg;
+  return box;
 }
 function hlClosestTile(c) {
   if (c.fresh) {

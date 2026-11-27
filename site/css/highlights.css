@@ -41,7 +41,7 @@
    more layer. Painted above the tile's text (isolated in the tile), no text paints over its layers to need another. */
 .hl-clash{position:relative;width:14px;height:14px;flex:none;margin-right:7px;}
 .hl-clash .wvw-clash{left:0;top:0;translate:3.5px .7px;scale:1.5;z-index:1;}
-.hl-panel .hl-hot{isolation:isolate;}
+.hl-panel :is(.hl-hot,.hl-close){isolation:isolate;}
 .hl-hot .hl-num{position:relative;display:inline-block;color:#ffb070;text-shadow:0 1px 1.5px rgba(0,0,0,.95);}
 .hl-hot .hl-unit{color:#f0b27a;}
 .hl-shine{position:absolute;inset:0;overflow:hidden;pointer-events:none;
@@ -52,6 +52,11 @@
 @keyframes hl-shine-copy{0%,33.93%{transform:translateX(100%);animation-timing-function:ease-in-out;}62.5%,100%{transform:translateX(-100%);}}
 /* The swords' own shine the same way: the band slides inside the swords' mask (.wvw-clash-shine, css/maps.css). */
 .hl-clash .wvw-clash-shine{background:none;animation:none;overflow:hidden;}
+/* The flash at its widest (1.45 times the map's), shrunk from there, and every moving part on a will-change layer:
+   rastered once, not again at each size or sub-pixel offset. */
+.hl-clash .wvw-clash-flash{left:1px;top:.2px;width:11.6px;height:11.6px;animation-name:hl-clash-flash;}
+@keyframes hl-clash-flash{0%,15.89%{opacity:0;transform:scale(.275862);}16.46%{opacity:.85;transform:scale(.758621);}21.71%,100%{opacity:0;transform:scale(1);}}
+.hl-clash :is(.wvw-clash-sword,.wvw-clash-flash,.wvw-clash-shine,.wvw-clash-spark,.hl-clash-band),.hl-shine,.hl-shine-in{will-change:transform;}
 .hl-clash-band{position:absolute;inset:0;background:linear-gradient(115deg,transparent 5%,rgba(255,240,200,.95) 50%,transparent 95%);
   transform:translateX(-100%);animation:hl-shine-band 2.8s infinite;}
 /* No swords lit, or a number that is not a pace of now: grey swords at rest, the number white. */
@@ -65,8 +70,10 @@
    blow (16.5 % of their cycle, clash-punch in css/maps.css); then who holds what was taken. */
 .hl-pulse{position:relative;width:21px;height:21px;flex:none;display:grid;place-items:center;}
 .hl-pulse .hl-ic{position:relative;width:21px;height:21px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.7));}
-.hl-pulse-ring{position:absolute;inset:0;border-radius:50%;border:1.5px solid #fff;opacity:0;animation:hl-ping-beat 2.8s infinite;}
-@keyframes hl-ping-beat{0%,16.4%{opacity:0;transform:scale(.9);animation-timing-function:ease-out;}16.5%{opacity:.9;transform:scale(.9);animation-timing-function:ease-out;}60%,100%{opacity:0;transform:scale(2.1);}}
+/* A layer scaled up is rastered again at each size: the ring is drawn at its widest (2.1 times the marker) and only
+   shrinks, on a will-change layer rastered once. */
+.hl-pulse-ring{position:absolute;inset:-11.55px;border-radius:50%;border:3.15px solid #fff;opacity:0;will-change:transform;animation:hl-ping-beat 2.8s infinite;}
+@keyframes hl-ping-beat{0%,16.4%{opacity:0;transform:scale(.428571);animation-timing-function:ease-out;}16.5%{opacity:.9;transform:scale(.428571);animation-timing-function:ease-out;}60%,100%{opacity:0;transform:scale(1);}}
 .hl-taker{display:inline-flex;align-items:baseline;gap:5px;min-width:0;}
 .hl-taker-n{color:var(--side-glow);font-variant-numeric:tabular-nums;}
 .hl-split{display:flex;height:6px;gap:2px;border-radius:3px;overflow:hidden;margin:2px 0;}
@@ -85,21 +92,21 @@
 .hl-vp .stat-label{color:#8d97a6;font-weight:400;font-size:.68rem;}
 .hl-sk-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 4px;color:var(--text);}
 .hl-sk-line .hl-team{font-weight:700;}
-/* The scales (hlScales): 21 px like the swords, a 14 px box at 1.5. The beam turns on its pin, each pan hangs from
-   its end, and they settle with the favourite's side down (--s: -1 the first team, 1 the second, 0 level). */
-.hl-ci{width:14px;height:14px;flex:none;transform:scale(1.5);transform-origin:0 50%;margin-right:7px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.7));}
+/* The scales (hlScales): 21 px like the swords, the room of a 14 px box in the row. The beam turns on its pin, each pan
+   hangs from its end, and they settle with the favourite's side down (--s: -1 the first team, 1 the second, 0 level). */
+.hl-ci{position:relative;z-index:1;width:21px;height:21px;flex:none;margin:-3.5px 0;filter:drop-shadow(0 1.5px 1.5px rgba(0,0,0,.7));}
+.hl-ci svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;}
 .hl-ci-f{fill:#e2c27a;stroke:#1a1408;stroke-width:.9;stroke-linejoin:round;}
 .hl-ci-s{fill:none;stroke:#e2c27a;stroke-width:1.1;stroke-linecap:round;}
 .hl-sc{--s:-1;}
 .hl-sc-right{--s:1;}
 .hl-sc-even{--s:0;}
-.hl-sc :is(.hl-sc-b,.hl-sc-l,.hl-sc-r){transform-box:view-box;}
-.hl-sc .hl-sc-b{transform-origin:12px 7.6px;animation:hl-sc-b 5.6s infinite ease-in-out;}
+.hl-sc .hl-sc-b{transform-origin:10.5px 6.65px;animation:hl-sc-b 5.6s infinite ease-in-out;}
 .hl-sc .hl-sc-l{animation:hl-sc-l 5.6s infinite ease-in-out;}
 .hl-sc .hl-sc-r{animation:hl-sc-r 5.6s infinite ease-in-out;}
 @keyframes hl-sc-b{0%{transform:rotate(calc(var(--s) * 4deg));}4%{transform:rotate(calc(var(--s) * -6deg));}10%{transform:rotate(calc(var(--s) * 9deg));}16%{transform:rotate(0deg);}22%{transform:rotate(calc(var(--s) * 6deg));}28%{transform:rotate(calc(var(--s) * 2.5deg));}34%{transform:rotate(calc(var(--s) * 4.8deg));}40%,100%{transform:rotate(calc(var(--s) * 4deg));}}
-@keyframes hl-sc-l{0%{transform:translateY(calc(var(--s) * -0.516px));}4%{transform:translateY(calc(var(--s) * 0.774px));}10%{transform:translateY(calc(var(--s) * -1.158px));}16%{transform:translateY(0);}22%{transform:translateY(calc(var(--s) * -0.774px));}28%{transform:translateY(calc(var(--s) * -0.323px));}34%{transform:translateY(calc(var(--s) * -0.619px));}40%,100%{transform:translateY(calc(var(--s) * -0.516px));}}
-@keyframes hl-sc-r{0%{transform:translateY(calc(var(--s) * 0.516px));}4%{transform:translateY(calc(var(--s) * -0.774px));}10%{transform:translateY(calc(var(--s) * 1.158px));}16%{transform:translateY(0);}22%{transform:translateY(calc(var(--s) * 0.774px));}28%{transform:translateY(calc(var(--s) * 0.323px));}34%{transform:translateY(calc(var(--s) * 0.619px));}40%,100%{transform:translateY(calc(var(--s) * 0.516px));}}
+@keyframes hl-sc-l{0%{transform:translateY(calc(var(--s) * -0.4515px));}4%{transform:translateY(calc(var(--s) * 0.67725px));}10%{transform:translateY(calc(var(--s) * -1.01325px));}16%{transform:translateY(0);}22%{transform:translateY(calc(var(--s) * -0.67725px));}28%{transform:translateY(calc(var(--s) * -0.282625px));}34%{transform:translateY(calc(var(--s) * -0.541625px));}40%,100%{transform:translateY(calc(var(--s) * -0.4515px));}}
+@keyframes hl-sc-r{0%{transform:translateY(calc(var(--s) * 0.4515px));}4%{transform:translateY(calc(var(--s) * -0.67725px));}10%{transform:translateY(calc(var(--s) * 1.01325px));}16%{transform:translateY(0);}22%{transform:translateY(calc(var(--s) * 0.67725px));}28%{transform:translateY(calc(var(--s) * 0.282625px));}34%{transform:translateY(calc(var(--s) * 0.541625px));}40%,100%{transform:translateY(calc(var(--s) * 0.4515px));}}
 /* The tile clips its overflow, and with it the strip that keeps a pressed button under the cursor
    (button:active::after, css/controls.css): it does not sink. */
 .hl-panel button.hl-tile:active{transform:none;}
