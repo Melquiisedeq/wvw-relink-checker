@@ -32,7 +32,13 @@ const push = (w, r, source = 'latest-supa-us') => pushV2(w, source, [r]);
 const row = (w) => ({ ...w.sql.prepare("SELECT taken_red r, taken_blue b, taken_green g, flips_red fr, flips_blue fb, flips_green fg, flip_times t FROM latest WHERE id = '1-1'").get() });
 const served = async (w) => JSON.parse((await w.get('/api/latest')).body).matches.find((m) => m.id === '1-1');
 
+// The objectives the Worker counts in the recorded body: every id is "<its map>-<n>".
+const COUNTED = RECORDED.maps.flatMap((m) => m.objectives.filter((o) => ['Camp', 'Tower', 'Keep', 'Castle'].includes(o.type)));
+
 test('the recorded body holds what these tests flip', () => {
+  assert.ok(RECORDED.maps.every((m) => m.objectives.every((o) => o.id.startsWith(m.id + '-'))));
+  assert.equal(RECORDED.maps.length, 4);
+  assert.ok(COUNTED.length < 120, String(COUNTED.length));
   assert.deepEqual([objective(RECORDED, '38-20').owner, objective(RECORDED, '38-20').points_capture], ['Red', 40]);
   assert.deepEqual([objective(RECORDED, '38-10').owner, objective(RECORDED, '38-10').points_capture], ['Green', 2]);
 });
@@ -167,14 +173,16 @@ test('what counts: only objectives a capture pays for, each at most a top-tier k
   const all = RECORDED.maps.flatMap((m) => m.objectives);
   const spawn = all.find((o) => o.type === 'Spawn');
   const ruins = all.find((o) => o.type === 'Ruins');
-  assert.ok(spawn && ruins);
+  const merc = all.find((o) => o.type === 'Mercenary');
+  assert.ok(spawn && ruins && merc);
   await push(w, reading(0, { '38-10': { points_capture: 100000 } }));
   w.advance(10e3);
   await push(w, reading(10, {
     '38-10': { owner: 'Blue', points_capture: 2 },
     '38-20': { owner: 'Neutral' },
     [spawn.id]: { owner: spawn.owner === 'Red' ? 'Blue' : 'Red' },
-    [ruins.id]: { owner: ruins.owner === 'Red' ? 'Blue' : 'Red' }
+    [ruins.id]: { owner: ruins.owner === 'Red' ? 'Blue' : 'Red' },
+    [merc.id]: { owner: merc.owner === 'Red' ? 'Blue' : 'Red', points_capture: 10 }
   }));
   assert.deepEqual(row(w), { r: 0, b: 500, g: 0, fr: 0, fb: 1, fg: 0, t: '{"38":[' + Math.floor(w.now / 1000) + ']}' });
 });
@@ -202,4 +210,66 @@ test('a row stored before the owners column compares against its body', async ()
   await push(w, reading(10, { '38-20': { owner: 'Blue', points_capture: 4 } }));
   assert.deepEqual([row(w).b, row(w).fb, row(w).r, row(w).fr], [40, 1, 0, 0]);
   assert.ok(w.sql.prepare("SELECT owners FROM latest WHERE id = '1-1'").get().owners.includes('["38-20",1,4]'));
+});
+
+// What a stolen reader secret could list in a body: the bounds of objectivesOf.
+test('an objective counts once, only on its own map, and a body counts at most 120', async () => {
+  const w = setup({ env: SUPA_ENV });
+  const fake = (owner) => ({ id: 5000, type: 'Center', objectives: Array.from({ length: 200 }, (_, i) => ({ id: '5000-' + i, type: 'Camp', owner, points_capture: 25 })) });
+  const r0 = reading(0);
+  r0.live.maps.push(fake('Red'));
+  await push(w, r0);
+  w.advance(10e3);
+  const r1 = reading(10, { '38-20': { owner: 'Blue', points_capture: 4 } });
+  const center = r1.live.maps[0].objectives;
+  // The same id fifty times more, and another map's camp, both turned over.
+  for (let i = 0; i < 50; i++) center.push({ ...objective(r1.live, '38-20') });
+  center.unshift({ ...objective(r1.live, '1099-116'), owner: 'Green' });
+  r1.live.maps.push(fake('Blue'));
+  await push(w, r1);
+  const fake_flips = 120 - COUNTED.length;
+  assert.deepEqual([row(w).fb, row(w).b, row(w).fg], [1 + fake_flips, 40 + 25 * fake_flips, 0]);
+  assert.equal(JSON.parse(w.sql.prepare("SELECT owners FROM latest WHERE id = '1-1'").get().owners).length, 120, 'what the next message parses');
+});
+
+test('a map keeps its newest 300 flips', async () => {
+  const w = setup({ env: SUPA_ENV });
+  await push(w, reading(0));
+  const t = Math.floor(w.now / 1000);
+  const old = Array.from({ length: 300 }, (_, i) => t - 300 + i);
+  w.sql.exec("UPDATE latest SET flip_times = '" + JSON.stringify({ 38: old }) + "' WHERE id = '1-1'");
+  w.advance(10e3);
+  await push(w, reading(10, { '38-20': { owner: 'Blue', points_capture: 4 } }));
+  const list = JSON.parse(row(w).t)['38'];
+  assert.equal(list.length, 300);
+  assert.deepEqual([list[0], list[299]], [old[1], t + 10]);
+});
+
+test('stored flips or owners not as written, or too long, start over and never stop the write', async () => {
+  // Recent flips, past the bytes the Worker reads: dropped whole, not cut to the newest.
+  const big = JSON.stringify({ 38: Array.from({ length: 3300 }, () => Date.parse('2026-09-30T12:00:00Z') / 1000 - 100) });
+  assert.ok(big.length > 32 * 1024);
+  for (const [times, owners] of [['{"38":[1,', null], [big, null], ['null', null], [null, '{"x":'], [null, '[["38-20","x",5]]']]) {
+    const w = setup({ env: SUPA_ENV });
+    await push(w, reading(0));
+    w.sql.prepare("UPDATE latest SET flip_times = ?1, owners = COALESCE(?2, owners) WHERE id = '1-1'").run(times, owners);
+    w.advance(10e3);
+    const { r } = await quiet(() => push(w, reading(10, { '38-20': { owner: 'Blue', points_capture: 4 } })));
+    assert.equal(r, 200);
+    assert.equal(w.sql.prepare("SELECT score FROM latest WHERE id = '1-1'").get().score, 6010, 'written: ' + (times || owners));
+    const now = Math.floor(w.now / 1000);
+    if (owners) assert.deepEqual([row(w).fb, row(w).t], [0, '{}'], 'owners not as written count nothing: ' + owners);
+    else assert.deepEqual([row(w).fb, row(w).t], [1, '{"38":[' + now + ']}'], 'the flips start over: ' + times.slice(0, 20));
+  }
+});
+
+test('without the notes table the copy still carries what was taken', async () => {
+  const w = setup({ env: SUPA_ENV, skip: ['schema-007-notes.sql'] });
+  const { lines } = await quiet(async () => {
+    await push(w, reading(0));
+    w.advance(10e3);
+    await push(w, reading(10, { '38-20': { owner: 'Blue', points_capture: 4 } }));
+    assert.equal((await served(w)).taken.points.blue, 40);
+  });
+  assert.deepEqual(lines.filter((l) => l.without).map((l) => l.without), ['notes']);
 });

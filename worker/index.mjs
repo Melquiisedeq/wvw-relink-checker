@@ -86,6 +86,15 @@ const TEAMS = ['Red', 'Blue', 'Green'];
 const MAX_CAPTURE = 500;
 // The flips each map keeps, for the busiest map: those of the last two hours.
 const FLIPS_WINDOW_S = 2 * 3600;
+// A body's objectives counted, its maps, and the flips a map keeps: a match has 4 maps and
+// about 90 objectives, so a body that lists more is not the game's; 300 flips is about
+// twice a whole match's two hours at a busy pace, all on one map. They bound what a stolen
+// reader secret adds a message, and the stored lists every message parses.
+const MAX_OBJECTIVES = 120;
+const MAX_MAPS = 8;
+const MAX_MAP_FLIPS = 300;
+// Past this, or not the shape takenNext writes, the stored flips start over.
+const MAX_FLIP_TIMES_BYTES = 32 * 1024;
 const HISTORY_KEY = 'https://wvwrelink.com/api/history/';
 // A version whose every match is in: it never changes. One with a match missing or behind: a minute.
 const HISTORY_MAX_AGE = 4 * 3600;
@@ -304,19 +313,18 @@ async function takenRows(db, ms, rows, now) {
 
 // The counts after this body: [points of red, blue, green, flips of red, blue, green, flip
 // times, owners]. Each objective whose owner changed since the stored body gives its new owner
-// one flip and the capture value it had in the stored body: right after a flip the game shows
-// the objective at its lowest tier, and the value it was taken at is the one before. A new
-// week, or no stored body, starts from nothing.
+// one flip and the capture value it had in the stored body, not the one it has now: right after
+// a flip the game shows the objective at its lowest tier. That the game pays the tier before the
+// flip is not checked against it (api.md, "What each team took this week"). A new week, or no
+// stored body, starts from nothing.
 function takenNext(prev, m, now) {
   const counts = [0, 0, 0, 0, 0, 0];
   const owners = objectivesOf(m.stored.value);
   const own = JSON.stringify(owners.map((o) => [o.id, o.team, o.points]));
   if (!prev || prev.start !== m.start) return [...counts, '{}', own];
   TAKEN_COLS.slice(0, 6).forEach((c, i) => { counts[i] = prev[c] || 0; });
-  const times = new Map(Object.entries(typeof prev.flip_times === 'string' ? JSON.parse(prev.flip_times) : {}));
-  const before = new Map(typeof prev.owners === 'string'
-    ? JSON.parse(prev.owners).map(([id, team, points]) => [id, { team, points }])
-    : objectivesOf(JSON.parse(prev.gz)).map((o) => [o.id, o]));
+  const times = storedTimes(prev.flip_times);
+  const before = new Map(storedOwners(prev));
   for (const o of owners) {
     const was = before.get(o.id);
     if (!was || was.team === o.team || o.team < 0) continue;
@@ -327,19 +335,58 @@ function takenNext(prev, m, now) {
   const kept = [];
   for (const [map, list] of times) {
     const recent = list.filter((t) => t > now - FLIPS_WINDOW_S);
-    if (recent.length) kept.push(JSON.stringify(map) + ':' + JSON.stringify(recent));
+    if (recent.length) kept.push(JSON.stringify(map) + ':' + JSON.stringify(recent.slice(-MAX_MAP_FLIPS)));
   }
   return [...counts, '{' + kept.join(',') + '}', own];
 }
 
-// A body's objectives that a capture pays for: [{id, team (TEAMS, -1 for none), points, map}].
+// The stored flip times as a Map, or an empty one when they are too long or not the shape
+// written: a bad row must not stop the writes that would replace it.
+function storedTimes(text) {
+  const out = new Map();
+  if (typeof text !== 'string' || text.length > MAX_FLIP_TIMES_BYTES) return out;
+  let x;
+  try {
+    x = JSON.parse(text);
+  } catch {
+    return out;
+  }
+  if (!x || typeof x !== 'object' || Array.isArray(x)) return out;
+  for (const [map, list] of Object.entries(x).slice(0, MAX_MAPS)) {
+    if (Array.isArray(list) && list.every(isInt)) out.set(map, list);
+  }
+  return out;
+}
+
+// The stored reading's objectives as [id, {team, points}]: from `owners`, or from the body for a
+// row written before it; nothing when either is not what was written.
+function storedOwners(prev) {
+  try {
+    if (typeof prev.owners !== 'string') return objectivesOf(JSON.parse(prev.gz)).map((o) => [o.id, o]);
+    const list = JSON.parse(prev.owners);
+    if (!Array.isArray(list)) return [];
+    return list.slice(0, MAX_OBJECTIVES).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && isInt(e[1]) && isInt(e[2]))
+      .map(([id, team, points]) => [id, { team, points }]);
+  } catch {
+    return [];
+  }
+}
+
+// A body's objectives that a capture pays for: [{id, team (TEAMS, -1 for none), points, map}],
+// each id once and on its own map ("<map id>-<n>"), at most MAX_OBJECTIVES on MAX_MAPS maps.
 // Anything out of shape is skipped: the body is the readers', checked only for its id, week and scores.
 function objectivesOf(body) {
   const out = [];
-  for (const map of Array.isArray(body.maps) ? body.maps : []) {
+  const seen = new Set();
+  const maps = body && Array.isArray(body.maps) ? body.maps.slice(0, MAX_MAPS) : [];
+  for (const map of maps) {
     if (!map || !isInt(map.id) || !Array.isArray(map.objectives)) continue;
+    const prefix = map.id + '-';
     for (const o of map.objectives) {
-      if (!o || typeof o.id !== 'string' || !/^\d{1,5}-\d{1,5}$/.test(o.id) || !TAKEN_TYPES.has(o.type)) continue;
+      if (!o || typeof o.id !== 'string' || !/^\d{1,5}-\d{1,5}$/.test(o.id) || !o.id.startsWith(prefix)) continue;
+      if (!TAKEN_TYPES.has(o.type) || seen.has(o.id)) continue;
+      if (out.length === MAX_OBJECTIVES) return out;
+      seen.add(o.id);
       const points = isInt(o.points_capture) && o.points_capture > 0 ? Math.min(o.points_capture, MAX_CAPTURE) : 0;
       out.push({ id: o.id, team: TEAMS.indexOf(o.owner), points, map: String(map.id) });
     }
@@ -1012,16 +1059,22 @@ const READS = {
 async function latestCopy(env) {
   // The notes' version rides in the one statement the copy already makes: one row more.
   const withNotes = ", (SELECT json_object('v', version, 'wiki', wiki) FROM note_served WHERE id = 1 AND version <> '') AS notes";
-  const taken = ', ' + TAKEN_COLS.join(', ');
+  // What takenOf reads; `owners` is only the next message's.
+  const taken = ', ' + TAKEN_COLS.filter((c) => c !== 'owners').join(', ');
   let results;
-  // Without the notes' table, or schema-008, the copy still answers, without them.
-  for (const extra of [taken + withNotes, withNotes, '']) {
+  // Without the notes' table, or schema-008, the copy still answers, without what is missing:
+  // the error names the table or the column.
+  const want = { taken: true, notes: true };
+  for (;;) {
     try {
-      ({ results } = await env.DB.prepare('SELECT id, start, score, at, reader, gz' + extra + ' FROM latest').all());
+      ({ results } = await env.DB.prepare('SELECT id, start, score, at, reader, gz' +
+        (want.taken ? taken : '') + (want.notes ? withNotes : '') + ' FROM latest').all());
       break;
     } catch (e) {
-      console.log(JSON.stringify({ read: 'latest', without: extra === withNotes ? 'notes' : 'taken', failed: String(e) }));
-      if (!extra) throw e;
+      const drop = want.notes && (String(e).includes('note_served') || !want.taken) ? 'notes' : want.taken ? 'taken' : null;
+      if (!drop) throw e;
+      want[drop] = false;
+      console.log(JSON.stringify({ read: 'latest', without: drop, failed: String(e) }));
     }
   }
   // Two hours without an update: a tier that no longer exists.
