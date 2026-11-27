@@ -324,6 +324,9 @@ function takenNext(prev, m, now) {
   // first reading too: its body is not parsed for the one beat of flips it would give.
   if (!prev || prev.start !== m.start || typeof prev.owners !== 'string') return [...counts, '{}', own];
   TAKEN_COLS.slice(0, 6).forEach((c, i) => { counts[i] = prev[c] || 0; });
+  // No owner changed, the common case: the counts and the stored flips as they are. Flips past
+  // the window stay stored until the next flip prunes them; takenOf counts by the row's `at`.
+  if (prev.owners === own) return [...counts, typeof prev.flip_times === 'string' ? prev.flip_times : '{}', own];
   const times = storedTimes(prev.flip_times);
   const before = new Map(storedOwners(prev));
   for (const o of owners) {
@@ -1092,13 +1095,14 @@ async function latestCopy(env) {
 }
 
 // What the teams took this week, once one of them took something: {points, flips} by team, and
-// {map id: flips} in the two hours up to the row's write (takenNext keeps no older), not up to
-// now: a version's copy never changes.
+// {map id: flips} in the two hours up to the row's `at`, not up to now: a version's copy never
+// changes. Counted here, since the stored flips keep older ones until a flip prunes them.
 function takenOf(r) {
   const flips = [r.flips_red, r.flips_blue, r.flips_green];
   if (!flips.some((n) => n > 0)) return undefined;
   const team = (list) => ({ red: list[0], blue: list[1], green: list[2] });
-  const maps = Object.fromEntries(Object.entries(JSON.parse(r.flip_times || '{}')).map(([map, list]) => [map, list.length]));
+  const maps = Object.fromEntries([...storedTimes(r.flip_times)]
+    .map(([map, list]) => [map, list.filter((t) => t > r.at - FLIPS_WINDOW_S).length]).filter(([, n]) => n > 0));
   return { points: team([r.taken_red, r.taken_blue, r.taken_green]), flips: team(flips), maps };
 }
 

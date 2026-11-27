@@ -144,14 +144,15 @@ test('the busiest map: each map serves the flips of the two hours up to the row,
   await push(w, reading(20, { '38-20': { owner: 'Blue', points_capture: 4 }, '38-10': { owner: 'Red' }, '1099-116': { owner: 'Green' } }));
   const second = Math.floor(w.now / 1000);
   assert.deepEqual((await served(w)).taken.maps, { 38: 2, 1099: 1 });
-  // Two hours after the first flips, one more reading: theirs leave the window and the row.
+  // Two hours after the first flips, a reading with one more flip: theirs leave the window and the row.
   w.advance(3600e3);
-  await push(w, reading(30, { '38-20': { owner: 'Blue', points_capture: 4 }, '38-10': { owner: 'Red' }, '1099-116': { owner: 'Green' } }));
-  assert.ok(Math.floor(w.now / 1000) - first >= 7200);
-  assert.equal(row(w).t, '{"1099":[' + second + ']}');
-  assert.deepEqual((await served(w)).taken.maps, { 1099: 1 });
+  await push(w, reading(30, { '38-20': { owner: 'Blue', points_capture: 4 }, '38-10': { owner: 'Red' }, '1099-116': { owner: 'Blue' } }));
+  const third = Math.floor(w.now / 1000);
+  assert.ok(third - first >= 7200);
+  assert.equal(row(w).t, '{"1099":[' + second + ',' + third + ']}');
+  assert.deepEqual((await served(w)).taken.maps, { 1099: 2 });
   // The week's counts keep every flip.
-  assert.equal(row(w).fr + row(w).fb + row(w).fg, 3);
+  assert.equal(row(w).fr + row(w).fb + row(w).fg, 4);
 });
 
 test('a version is served the same whatever the clock: the window ends at the row, not at now', async () => {
@@ -279,4 +280,42 @@ test('without the notes table the copy still carries what was taken', async () =
     assert.equal((await served(w)).taken.points.blue, 40);
   });
   assert.deepEqual(lines.filter((l) => l.without).map((l) => l.without), ['notes']);
+});
+
+// takenNext skips the comparison when no owner changed: the same result as comparing.
+test('a reading with no flip keeps the counts and flips as they were, and the copy still windows them', async () => {
+  const w = setup({ env: SUPA_ENV });
+  await push(w, reading(0));
+  w.advance(10e3);
+  await push(w, reading(10, { '38-20': { owner: 'Blue', points_capture: 4 } }));
+  const flipped = row(w);
+  const seen = (await served(w)).taken;
+  w.advance(10e3);
+  // No owner changed, one value did: the stored owners move, the counts do not.
+  await push(w, reading(20, { '38-20': { owner: 'Blue', points_capture: 12 } }));
+  assert.deepEqual(row(w), flipped);
+  assert.deepEqual((await served(w)).taken, seen);
+  // Past two hours with no flip: the copy leaves the old flip out, though the row still holds it.
+  w.advance(7200e3);
+  await push(w, reading(30, { '38-20': { owner: 'Blue', points_capture: 12 } }));
+  assert.equal(row(w).t, flipped.t);
+  assert.deepEqual((await served(w)).taken.maps, {});
+  // The next flip after it prunes the stored list, and counts against the upgraded value.
+  w.advance(10e3);
+  await push(w, reading(40, { '38-20': { owner: 'Red', points_capture: 4 } }));
+  assert.equal(row(w).t, '{"38":[' + Math.floor(w.now / 1000) + ']}');
+  assert.deepEqual([row(w).r, row(w).fr, row(w).b], [12, 1, 40]);
+});
+
+test('stored flips not as written, carried by a reading with no flip, do not break the copy', async () => {
+  const w = setup({ env: SUPA_ENV });
+  await push(w, reading(0));
+  w.advance(10e3);
+  await push(w, reading(10, { '38-20': { owner: 'Blue', points_capture: 4 } }));
+  w.sql.exec("UPDATE latest SET flip_times = '{\"38\":[1,' WHERE id = '1-1'");
+  w.advance(10e3);
+  await push(w, reading(20, { '38-20': { owner: 'Blue', points_capture: 4 } }));
+  const r = await w.get('/api/latest');
+  assert.equal(r.status, 200);
+  assert.deepEqual(JSON.parse(r.body).matches.find((m) => m.id === '1-1').taken.maps, {});
 });
