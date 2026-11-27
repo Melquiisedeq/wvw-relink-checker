@@ -40,14 +40,17 @@ function labTeams(m) {
 // lit with the most kills per 10 min. With no swords lit in the region, the map with the most kills per
 // 10 min all the same, marked calm. Null while no match has a kill rate yet. The data holds the three
 // teams' kills together per map, not each team's over a window, so the number is the map's and the three
-// teams are named alike.
+// teams are named alike. With no rate anywhere, { wait } holds the first match's view, why there is none
+// (killView's counting and noWindow).
 function labHot() {
   if (typeof hotMapOf !== 'function') return null;
   let best = null;
   let calm = null;
+  let wait = null;
   for (const k of labKept()) {
     let v;
     try { v = hotMapOf(k.match); } catch { continue; }
+    if (v && !v.rates && !wait) wait = { wait: v.view };
     if (!v || !v.rates) continue;
     if (v.hot) {
       const n = v.rates.per.get(v.hot) || 0;
@@ -58,7 +61,7 @@ function labHot() {
       if (!calm || n > calm.n) calm = { m: k.match, type, n, silence: v.view.silence, calm: true };
     }
   }
-  return best || calm;
+  return best || calm || wait;
 }
 // Objectives that changed hands in the last 2 h, per map: what stands in for a fight with no readings. An
 // objective's owner now is the team that took it last, and an objective taken twice counts once: the API
@@ -243,10 +246,16 @@ function labFightTile(f) {
     go: () => labOpenMap(f.m.id, f.type),
     aria: `Hottest fight, ${labTierTag(f.m.id)}: ${labNum(f.n)} kills per 10 minutes on ${where}, ${when}. Open the live map on it` });
 }
-// No kill rate yet: the site's own spinner (.spinner, css/base.css).
-function labFightWait() {
+const labHhmm = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+// No kill rate: the site's own spinner (.spinner, css/base.css) only until the first read of the kill
+// history lands; after it, the live map's corner's reason (js/maps.js, paintKills), shortened.
+function labFightWait(view) {
   const line = labEl('span', 'lt-map lt-wait');
-  line.append(labEl('span', 'spinner'), 'Reading the kills…');
+  const wait = view && view.counting;
+  if (typeof killSheet === 'undefined' || !killSheet) line.append(labEl('span', 'spinner'), 'Reading the kills…');
+  else if (view && view.noWindow === 'reset') line.append('Counting starts about 10 min after the reset');
+  else if (wait && wait.ready > labNow()) line.append(`Counting since ${labHhmm(wait.since)} · ready about ${labHhmm(wait.ready)}`);
+  else line.append('Not enough kill data to count 10 minutes');
   return labTile({ cls: 'lt-hot lt-calm', icon: labClash(), label: 'Hottest fight', chip: labEl('span'), body: [line] });
 }
 // Who holds what was taken, as a bar and three counts in the teams' colours.
@@ -277,7 +286,7 @@ function labBusyTile(flip) {
 function labTopTiles() {
   const f = labHot();
   const flip = labFlips()[0];
-  return [f ? labFightTile(f) : labFightWait(), flip && labBusyTile(flip)].filter(Boolean);
+  return [f && !f.wait ? labFightTile(f) : labFightWait(f && f.wait), flip && labBusyTile(flip)].filter(Boolean);
 }
 // ---- the Closest match and its skirmish ----------------------------------------------------
 // The victory points of a skirmish [1st, 2nd, 3rd] by region (the id's first digit: 1 NA, 2 EU) and the UTC
@@ -337,6 +346,7 @@ function labSkirmishNow(m) {
 let labLongNames = false;
 // The panel's "Simulate": the second passing the first if it ended now, and the skirmish's last 3 minutes.
 let labPassSim = false;
+let labTieSim = false;
 let labLastSim = false;
 const LAB_LONG = ['Lutgardis Conservatory', 'Throne of Balthazar'];
 function labClosest() {
@@ -350,6 +360,13 @@ function labClosest() {
   if (labLongNames) [best.a.name, best.b.name] = LAB_LONG;
   const s = labSkirmishNow(best.m);
   if (s && labLastSim) s.left = 3;
+  if (s && labTieSim) {
+    // Made up: the second leads the skirmish by just enough to draw level if it ended now.
+    const { a, b } = best;
+    const o = COLORS.find((x) => x !== a.color && x !== b.color);
+    s.sc = { [a.color]: 310, [b.color]: 330, [o]: 180 };
+    s.vp = { [b.color]: 12 + best.gap, [a.color]: 12, [o]: 8 };
+  }
   if (s && labPassSim) {
     // Made up: the second leads the skirmish and takes enough to pass the first if it ended now.
     const { a, b } = best;
@@ -367,13 +384,14 @@ function labClosest() {
 }
 const labLeft = (n) => (n >= 60 ? `${Math.floor(n / 60)} h ${n % 60} min left` : (n > 0 ? `${n} min left` : 'ending now'));
 // The week's gap after the skirmish: "34 apart", or the second ahead of the first.
-const labNextGap = (c) => (c.next >= 0 ? `${labNum(c.next)} apart` : `${c.b.name} ahead by ${labNum(-c.next)}`);
+const labNextGap = (c) => (c.next === 0 ? 'tied' : c.next > 0 ? `${labNum(c.next)} apart` : `${c.b.name} ahead by ${labNum(-c.next)}`);
 // Who has the better chance: the one ahead in the week if this skirmish ended now (c.next), or, with no VP
 // table to add it up, the one ahead in the week now (proj false: nothing may say "if it ended now").
+// `tied`: level if it ended now; x is then only the first row, and nothing may name a winner.
 function labFav(c) {
   const proj = !!(c.sk && c.sk.vp);
   const x = proj && c.next < 0 ? c.b : c.a;
-  return { x, other: x === c.a ? c.b : c.a, by: proj ? Math.abs(c.next) : c.gap, proj };
+  return { x, other: x === c.a ? c.b : c.a, by: proj ? Math.abs(c.next) : c.gap, proj, tied: proj && c.next === 0 };
 }
 const labTimeLeft = (c) => (c.sk ? labLeft(c.sk.left) : '');
 function labClosestSaid(c) {
@@ -382,7 +400,8 @@ function labClosestSaid(c) {
   let s = `Closest match, ${labTierTag(c.m.id)}: ${team(c.a)}; ${team(c.b)}; ${labNum(c.gap)} apart this week.`;
   if (f.proj) {
     s += ` If this skirmish ended now, ${c.a.name} would take ${c.sk.vp[c.a.color]} VP and ${c.b.name} ${c.sk.vp[c.b.color]},`;
-    s += f.x === c.a ? ` and ${c.a.name} would stay ahead, by ${labNum(f.by)}.`
+    s += f.tied ? ` and the two would be tied.`
+      : f.x === c.a ? ` and ${c.a.name} would stay ahead, by ${labNum(f.by)}.`
       : ` and ${c.b.name} would pass ${c.a.name}, ahead by ${labNum(f.by)}.`;
   } else s += ` ${c.a.name} leads the week.`;
   if (c.sk) s += c.sk.left > 0 ? ` ${labLeft(c.sk.left)} in this skirmish.` : ' This skirmish is ending now.';
@@ -439,10 +458,14 @@ function labWeekRows(c) {
   }
   return rows;
 }
-// The foot "● Name set to win · 57 min left"; the second passing the first is "set to pass".
+// The foot "● Name set to win · 57 min left"; the second passing the first is "set to pass"; level, "Tied if it ended now".
 function labFavFoot(c) {
   const f = labFav(c);
   const line = labEl('span', 'lt-line lt-sk-line');
+  if (f.tied) {
+    line.append(`Tied if it ended now · ${labTimeLeft(c)}`);
+    return line;
+  }
   const said = !f.proj ? 'leads the week' : (f.x === c.b ? 'set to pass' : 'set to win');
   line.append(labTeamText(f.x.name, f.x.color), ` ${said} · ${labTimeLeft(c)}`);
   return line;
@@ -488,7 +511,7 @@ const LAB_CLOSE_ICONS = {
   shields: [[LAB_SHIELD, 'f', 'translate(7.4 12.4) rotate(10)'], [LAB_SHIELD_BAND, 'q', 'translate(7.4 12.4) rotate(10)'],
     [LAB_SHIELD, 'f', 'translate(16.6 12.4) rotate(-10)'], [LAB_SHIELD_BAND, 'q', 'translate(16.6 12.4) rotate(-10)']],
 };
-// `right`: the favourite is the second team (c.b), so the scales lean right; `motion` names how they move.
+// `right`: the favourite is the second team (c.b), so the scales lean right; null: level; `motion` names how they move.
 function labCloseIcon(kind, right, motion) {
   const parts = LAB_CLOSE_ICONS[kind];
   if (!parts) return null;
@@ -496,7 +519,7 @@ function labCloseIcon(kind, right, motion) {
   const svg = document.createElementNS(ns, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('class', `lt-ic lt-ci${kind === 'scales' ? ` lt-sc lt-sc-${motion || 'tip'}${right ? ' lt-sc-right' : ''}` : ''}`);
+  svg.setAttribute('class', `lt-ic lt-ci${kind === 'scales' ? ` lt-sc lt-sc-${motion || 'tip'}${right ? ' lt-sc-right' : right === null ? ' lt-sc-even' : ''}` : ''}`);
   const groups = {};
   const add = (d, k, tf, g) => {
     const p = document.createElementNS(ns, 'path');
@@ -524,7 +547,8 @@ function labClosestTile() {
   const c = labClosest();
   if (!c) return null;
   const v = c.sk ? labPrefs.closest : 'today';
-  return labTile({ cls: `lt-close lt-close-${v}`, icon: labCloseIcon(labPrefs.closeIcon, labFav(c).x === c.b, labPrefs.scalesMotion), label: 'Closest match', chip: labChipOf(c.m.id),
+  const f = labFav(c);
+  return labTile({ cls: `lt-close lt-close-${v}`, icon: labCloseIcon(labPrefs.closeIcon, f.tied ? null : f.x === c.b, labPrefs.scalesMotion), label: 'Closest match', chip: labChipOf(c.m.id),
     body: labClosestBody(c),
     go: () => labGoToTier([c.a.name, c.b.name]),
     aria: labClosestSaid(c) });

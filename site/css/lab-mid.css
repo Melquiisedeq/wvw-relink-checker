@@ -244,6 +244,7 @@ html .lt-calm .lt-num{color:var(--text);background:none;filter:none;text-shadow:
    motion holds them there. Only transform, on a 21 px icon. */
 .lt-sc{--s:-1;}
 .lt-sc-right{--s:1;}
+.lt-sc-even{--s:0;}
 .lt-sc :is(.lt-sc-b,.lt-sc-l,.lt-sc-r){transform-box:view-box;}
 .lt-sc .lt-sc-b{transform-origin:12px 7.6px;}
 .lt-sc-still .lt-sc-b{transform:rotate(calc(var(--s) * 3deg));}

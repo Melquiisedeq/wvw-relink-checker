@@ -54,7 +54,8 @@ const LAB_ITEMS = [
   { type: 'section', label: 'Simulate the Closest match' },
   { type: 'button', label: 'Simulate: the second passes the first if it ended now', run: () => { labPassSim = true; labPaintTiles(); labStatus('Simulated, made-up numbers: the second team leads the skirmish and would pass the first if it ended now.'); } },
   { type: 'button', label: 'Simulate: last minutes', run: () => { labLastSim = true; labPaintTiles(); labStatus('Simulated, made-up time: 3 minutes left in the skirmish.'); } },
-  { type: 'button', label: 'Back to live', run: () => { labPassSim = false; labLastSim = false; labPaintTiles(); labStatus('The live skirmish.'); } },
+  { type: 'button', label: 'Simulate: a tie if it ended now', run: () => { labTieSim = true; labPaintTiles(); labStatus('Simulated, made-up numbers: the two would be level on VP if the skirmish ended now.'); } },
+  { type: 'button', label: 'Back to live', run: () => { labPassSim = false; labTieSim = false; labLastSim = false; labPaintTiles(); labStatus('The live skirmish.'); } },
   { type: 'section', label: 'Simulate a changed VP table' },
   { type: 'button', label: 'The game changed its VP table', run: () => { labVpWrong = true; labPaintTiles(); labStatus('Simulated: the table no longer adds up to the week, so the Closest match shows the week’s totals and the skirmish leader, no “+N”.'); } },
   { type: 'button', label: 'Back to the real table', run: () => { labVpWrong = false; labPaintTiles(); labStatus('The real VP table.'); } },
@@ -113,7 +114,11 @@ function labPlaceParts() {
   }
 }
 let labHotKey = '';
-const labHotSig = () => { const f = labHot(); return f ? `${f.m.id}|${f.type}|${Math.round(f.n)}|${f.calm ? 'calm' : 'lit'}` : ''; };
+const labHotSig = () => {
+  const f = labHot();
+  if (f && f.wait) return `wait|${f.wait.noWindow}|${f.wait.counting ? `${f.wait.counting.since}|${f.wait.counting.ready > labNow()}` : ''}|${!!killSheet}`;
+  return f ? `${f.m.id}|${f.type}|${Math.round(f.n)}|${f.calm ? 'calm' : 'lit'}` : '';
+};
 function labPaintTiles() {
   const box = document.getElementById('labTiles');
   if (!box) return;
@@ -128,8 +133,19 @@ function labFollowBadges() {
   const own = paintMapBadges;
   paintMapBadges = function labBadges(...args) {
     own(...args);
+    labKeepKills();
     if (labHotSig() !== labHotKey) labPaintTiles();
   };
+  document.addEventListener('visibilitychange', labKeepKills);
+}
+// Only an open map asks the kill history again (js/maps.js), and readings past FIGHT_STALE_MS leave the
+// count: with the tab visible the tiles ask for it once it is KILLS_SHEET_TTL_MS old (asked, answered or
+// not), the corner's age, so at most one read per 5 min; hidden, none. The badges' 30 s timer and the
+// return to the tab are the only callers.
+function labKeepKills() {
+  if (document.visibilityState !== 'visible' || !labMid || typeof getKillSheet !== 'function' || !killSheet) return;
+  if (killSheetInFlight || Date.now() - killSheetAskedAt < KILLS_SHEET_TTL_MS) return;
+  getKillSheet().then(() => { if (labHotSig() !== labHotKey) labPaintTiles(); });
 }
 function labPaintNews() {
   const box = document.getElementById('labNews');
