@@ -590,6 +590,7 @@ async function loadStandings(origin = 'cycle') {
 
     // The fight log in js/maps-early.js keeps only bodies whose score rose since `asked`.
     recordFightSamples(answered, asked);
+    keepMapBadges();
 
     // Forget matches that no longer exist: a leftover "1-4" would keep
     // getMaxTierForRegion answering 4 and give tier 3 a relegation arrow. A tier
