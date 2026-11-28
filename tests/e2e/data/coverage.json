@@ -1,7 +1,7 @@
 {
   "site/js/api.js": {
-    "lines": 59.6,
-    "branches": 63.4
+    "lines": 60.1,
+    "branches": 64.3
   },
   "site/js/config.js": {
     "lines": 96.1,
@@ -16,8 +16,8 @@
     "branches": 0
   },
   "site/js/highlights.js": {
-    "lines": 27.1,
-    "branches": 42.2
+    "lines": 26.5,
+    "branches": 42.9
   },
   "site/js/maps-early.js": {
     "lines": 69.3,
@@ -76,7 +76,7 @@
     "branches": 97.4
   },
   "worker/index.mjs": {
-    "lines": 98.9,
+    "lines": 99.7,
     "branches": 99.7
   }
 }

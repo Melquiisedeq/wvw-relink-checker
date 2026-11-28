@@ -80,8 +80,10 @@ function hlFightWhen(f) {
 }
 
 // ---- the Busiest map ----
-// Objectives that changed hands in the last 2 h, per map. An objective's owner now is the team that took it
-// last, and one taken twice counts once: the API keeps only its last flip. The week's first minute is the reset.
+// Objectives taken per map in the last 2 h. A body from our copy brings the Worker's count (`taken.maps`, every
+// take, an objective taken twice twice); a body the game gave, or a copy with no count, is inferred from
+// `last_flipped`: an objective's owner now is the team that took it last, and one taken twice counts once. Either
+// way the bar says who holds those objectives now. The week's first minute is the reset.
 const HL_FLIPS_MS = 2 * 60 * HL_MIN;
 // hlNewest: the newest take of the week in the region, whatever its age, for a Busiest map with none in 2 h.
 let hlNewest = null;
@@ -91,6 +93,7 @@ function hlFlips() {
   hlNewest = null;
   for (const m of hlLive()) {
     const week = Date.parse(m.start_time) || 0;
+    const taken = hlTaken(m);
     for (const map of m.maps) {
       const by = { red: 0, blue: 0, green: 0 };
       let n = 0;
@@ -106,7 +109,9 @@ function hlFlips() {
         n += 1;
         if (!last || at > last.at) last = { at, type: o.type, color: c };
       }
-      if (n) out.push({ m, type: map.type, n, by, last });
+      // `held`: the page sees a take of its own on this map; the server's count alone gives no owners to show.
+      if (taken) n = Object.hasOwn(taken.maps, String(map.id)) ? taken.maps[String(map.id)] : 0;
+      if (n) out.push({ m, type: map.type, n, by, held: !!last, last: last || { at: 0, type: 'Camp', color: null } });
     }
   }
   return out.sort((a, b) => b.n - a.n);
@@ -331,6 +336,12 @@ const hlDataFrom = (m) => (hlOldAt(m) ? ` · data from ${hlHhmm(hlOldAt(m))}` : 
 // Who holds what was taken, as a bar and three counts in the teams' colours.
 function hlBusyTile(flip) {
   const where = hlMapName(flip.type);
+  if (!flip.held) {
+    return hlTile({ key: 'busy', cls: 'hl-busy', icon: hlPulse(flip.last.type, flip.last.color), label: 'Busiest map', chip: hlChip(flip.m.id),
+      body: [hlBig(String(flip.n), flip.n === 1 ? 'objective taken' : 'objectives taken'), hlEl('span', 'hl-map', `${where} · last 2 h${hlDataFrom(flip.m)}`)],
+      go: () => hlOpenMap(flip.m.id, flip.type),
+      aria: `Busiest map, ${hlTierTag(flip.m.id)}: ${flip.n} ${flip.n === 1 ? 'objective' : 'objectives'} taken in the last 2 hours on ${where}. Open the live map on it` });
+  }
   const order = COLORS.slice().sort((a, b) => flip.by[b] - flip.by[a]);
   const bar = hlEl('span', 'hl-split');
   const teams = hlEl('span', 'hl-takers');
@@ -456,18 +467,8 @@ const HL_TURN_MS = 5000;
 // The K/D leader needs this many deaths: a team that has barely played is no record.
 const HL_KD_MIN_DEATHS = 500;
 const HL_BOLT = ['M13 2 L4 14 h6 l-1 8 l9 -12 h-6 Z'];
-const HL_TREND = ['M3 17 L9 10 L14 14 L21 5'];
-// Points per tick: what each colour's objectives are worth now, summed over the maps (tallyMaps, js/maps.js).
-function hlPpt(m) {
-  const by = { red: 0, blue: 0, green: 0 };
-  for (const map of m.maps) {
-    for (const ob of (map && map.objectives) || []) {
-      const c = String(ob.owner || '').toLowerCase();
-      if (c in by) by[c] += Number(ob.points_tick || 0);
-    }
-  }
-  return by;
-}
+// What the teams of `m` took this week, from the copy's count (latestTaken, js/api.js); undefined when the body has none.
+const hlTaken = (m) => latestTaken.get(m);
 function hlSvg(paths, cls) {
   const ns = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(ns, 'svg');
@@ -482,13 +483,14 @@ function hlSvg(paths, cls) {
   return svg;
 }
 // The metrics with a value: the best team of each over the running matches of the region, none for a metric every
-// team is still at 0 on (the week's first minutes).
+// team is still at 0 on (the week's first minutes). Objective points come only from the copy's count: with none
+// there is no such metric, and its slide says the week is new only while no objective has been taken at all.
 function hlLeaders() {
   const rows = [];
   for (const m of hlLive()) {
-    const ppt = hlPpt(m);
+    const taken = hlTaken(m);
     for (const c of COLORS) {
-      rows.push({ m, color: c, name: hlTeamName(m, c), ppt: ppt[c], kills: Number((m.kills || {})[c]) || 0,
+      rows.push({ m, color: c, name: hlTeamName(m, c), obj: taken ? taken.points[c] : 0, kills: Number((m.kills || {})[c]) || 0,
         deaths: Number((m.deaths || {})[c]) || 0, vp: Number((m.victory_points || {})[c]) || 0 });
     }
   }
@@ -519,22 +521,27 @@ function hlLeaders() {
   const list = [
     { label: 'Most kills', short: 'Kills', icon: () => hlImg('Event_Swords', 'hl-mk hl-mk-img', 16), r: top((r) => r.kills), val: (r) => r.kills, big: (r) => hlNum(r.kills), unit: 'kills', period: 'this week' },
     { label: 'Most VP', short: 'VP', icon: () => hlEl('span', 'hl-mk hl-mk-vp', 'VP'), r: top((r) => r.vp, undefined, nowVp), val: (r) => r.vp, big: (r) => hlNum(r.vp), unit: 'VP', period: 'this week' },
-    { label: 'Highest PPT', short: 'PPT', icon: () => hlSvg(HL_TREND, 'hl-mk hl-mk-svg'), r: top((r) => r.ppt), val: (r) => r.ppt, big: (r) => hlNum(r.ppt), unit: 'points per tick', period: 'now' },
+    { label: 'Objective points', short: 'Objectives', icon: () => hlImg('Event_Keep', 'hl-mk hl-mk-img', 16), r: top((r) => r.obj), val: (r) => r.obj, big: (r) => hlNum(r.obj),
+      unit: 'points · the value of each objective when taken', period: 'this week' },
     { label: 'Most active', short: 'Active', icon: () => hlSvg(HL_BOLT, 'hl-mk hl-mk-svg'), r: top((r) => r.kills + r.deaths), val: (r) => r.kills + r.deaths, big: (r) => hlNum(r.kills + r.deaths), unit: 'kills + deaths', period: 'this week' },
     { label: 'Best K/D', short: 'K/D', kd: true, r: top((r) => r.kills / r.deaths, (r) => r.deaths >= HL_KD_MIN_DEATHS),
       val: (r) => r.kills / r.deaths, big: (r) => (r.kills / r.deaths).toFixed(2), unit: 'kills per death', period: 'this week' },
   ];
-  return list.filter((x) => x.r && x.val(x.r) > 0);
+  // A tier with no count would enter with 0 and name the wrong leader of the region: no metric while any is without.
+  const counted = hlLive().every(hlTaken);
+  const shown = list.filter((x) => x.r && x.val(x.r) > 0 && (counted || x.short !== 'Objectives'));
+  // No objective points yet and none taken this week by what the page can see: the slide says so, in the place of its number.
+  if (shown.length && !shown.some((x) => x.short === 'Objectives') && !hlLive().some(hlTaken)) {
+    hlFlips();
+    if (!hlNewest) shown.splice(Math.min(2, shown.length), 0, { ...list[2], r: { color: 'new' }, wait: true });
+  }
+  return shown;
 }
 // A VP tie broken by the skirmish under way says so.
 const hlTied = (x) => (x.r.ahead ? ` Tied on VP · ${x.r.ahead} VP ahead this skirmish.` : '');
-// "now" is only true of a body that is still moving; an old one says its hour, as the other tiles do.
-const hlWhen = (x) => {
-  if (x.period !== 'now') return x.period;
-  const at = hlOldAt(x.r.m);
-  return at ? `data from ${hlHhmm(at)}` : 'now';
-};
-const hlLeadersSaid = (list) => list.map((x) => `${x.label}, ${hlWhen(x)}: ${x.r.name}, ${x.big(x.r)} ${x.unit}, ${hlTierTag(x.r.m.id)}.${hlTied(x)}`).join(' ');
+const hlLeadersSaid = (list) => list.map((x) => (x.wait ? `${x.label}, ${x.period}: ${HL_NEW_WEEK}.`
+  : `${x.label}, ${x.period}: ${x.r.name}, ${x.big(x.r)} ${x.unit}, ${hlTierTag(x.r.m.id)}.${hlTied(x)}`)).join(' ');
+const HL_NEW_WEEK = 'New week · counted from the first objective taken';
 
 // The turning. hlRot outlives the box: a repaint builds a new one that carries on from the same metric and the same
 // instant of its 5 s. `paused`: null follows the reduced-motion setting, true or false is what the button said.
@@ -657,8 +664,12 @@ function hlLeaderSlide(x, k, n) {
   const head = hlEl('span', 'hl-mt-head');
   const title = hlEl('span', 'hl-mt-title');
   if (x.icon) title.appendChild(x.icon());
-  title.appendChild(hlEl('span', null, x.period === 'now' ? `${x.label} · ${hlWhen(x)}` : x.label));
+  title.appendChild(hlEl('span', null, x.label));
   head.append(title, hlEl('span', 'hl-mt-note', `Leaders · ${k + 1}/${n} · this week`));
+  if (x.wait) {
+    s.append(head, hlEl('span', 'hl-map hl-mt-wait', HL_NEW_WEEK));
+    return s;
+  }
   const team = hlEl('span', `hl-mt-team side-${x.r.color}`);
   const name = hlTeamText(x.r.name, x.r.color);
   name.classList.add('hl-lead-name');
