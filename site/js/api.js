@@ -265,7 +265,7 @@ const TAKEN_MAPS_MAX = 12;
 function latestTakenOf(t) {
   const count = (o, max) => !!o && typeof o === 'object' && COLORS.every((c) => Number.isSafeInteger(o[c]) && o[c] >= 0 && o[c] <= max);
   if (!t || !count(t.points, 1e9) || !count(t.flips, 1e9) || !t.maps || typeof t.maps !== 'object' || Array.isArray(t.maps)) return null;
-  const maps = {};
+  const maps = Object.create(null);
   for (const [id, n] of Object.entries(t.maps).slice(0, TAKEN_MAPS_MAX)) {
     if (/^\d{1,5}$/.test(id) && Number.isSafeInteger(n) && n > 0 && n <= 1e4) maps[id] = n;
   }

@@ -98,6 +98,13 @@ test('a copy with no count: no objective points, the four others turn', async ({
   await expect(leaders(page).getByText('New week · counted from the first objective taken'), 'the week is not new: objectives were taken').toHaveCount(0);
 });
 
+test('one tier of the region with no count: no objective points, the others turn', async ({ page, wvw }) => {
+  await copyTaken(page, wvw, { count: (e, taken) => (e.id.endsWith('-1') && e.id[0] === '1' ? undefined : taken) });
+  await load(page, wvw);
+  await expect(leaders(page).getByRole('button', { name: 'Most kills' })).toBeVisible();
+  await expect(leaders(page).getByRole('button', { name: 'Objective points' })).toHaveCount(0);
+});
+
 test.describe('what holds the turning', () => {
   test('the pause button: first in the box, holds until Play, and the Tab order goes on to the segments', async ({ page, wvw }) => {
     await opened(page, wvw);

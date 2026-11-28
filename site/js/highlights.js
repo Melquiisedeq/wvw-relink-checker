@@ -109,8 +109,9 @@ function hlFlips() {
         n += 1;
         if (!last || at > last.at) last = { at, type: o.type, color: c };
       }
-      if (taken) n = taken.maps[String(map.id)] || 0;
-      if (n) out.push({ m, type: map.type, n, by, last: last || { at: 0, type: 'Camp', color: null } });
+      // `held`: the page sees a take of its own on this map; the server's count alone gives no owners to show.
+      if (taken) n = Object.hasOwn(taken.maps, String(map.id)) ? taken.maps[String(map.id)] : 0;
+      if (n) out.push({ m, type: map.type, n, by, held: !!last, last: last || { at: 0, type: 'Camp', color: null } });
     }
   }
   return out.sort((a, b) => b.n - a.n);
@@ -335,6 +336,12 @@ const hlDataFrom = (m) => (hlOldAt(m) ? ` · data from ${hlHhmm(hlOldAt(m))}` : 
 // Who holds what was taken, as a bar and three counts in the teams' colours.
 function hlBusyTile(flip) {
   const where = hlMapName(flip.type);
+  if (!flip.held) {
+    return hlTile({ key: 'busy', cls: 'hl-busy', icon: hlPulse(flip.last.type, flip.last.color), label: 'Busiest map', chip: hlChip(flip.m.id),
+      body: [hlBig(String(flip.n), flip.n === 1 ? 'objective taken' : 'objectives taken'), hlEl('span', 'hl-map', `${where} · last 2 h${hlDataFrom(flip.m)}`)],
+      go: () => hlOpenMap(flip.m.id, flip.type),
+      aria: `Busiest map, ${hlTierTag(flip.m.id)}: ${flip.n} ${flip.n === 1 ? 'objective' : 'objectives'} taken in the last 2 hours on ${where}. Open the live map on it` });
+  }
   const order = COLORS.slice().sort((a, b) => flip.by[b] - flip.by[a]);
   const bar = hlEl('span', 'hl-split');
   const teams = hlEl('span', 'hl-takers');
@@ -520,7 +527,9 @@ function hlLeaders() {
     { label: 'Best K/D', short: 'K/D', kd: true, r: top((r) => r.kills / r.deaths, (r) => r.deaths >= HL_KD_MIN_DEATHS),
       val: (r) => r.kills / r.deaths, big: (r) => (r.kills / r.deaths).toFixed(2), unit: 'kills per death', period: 'this week' },
   ];
-  const shown = list.filter((x) => x.r && x.val(x.r) > 0);
+  // A tier with no count would enter with 0 and name the wrong leader of the region: no metric while any is without.
+  const counted = hlLive().every(hlTaken);
+  const shown = list.filter((x) => x.r && x.val(x.r) > 0 && (counted || x.short !== 'Objectives'));
   // No objective points yet and none taken this week by what the page can see: the slide says so, in the place of its number.
   if (shown.length && !shown.some((x) => x.short === 'Objectives') && !hlLive().some(hlTaken)) {
     hlFlips();
