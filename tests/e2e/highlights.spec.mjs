@@ -142,6 +142,7 @@ async function showsItsTier(page) {
   await expect(tier).not.toHaveClass(/tier-dimmed/);
   await expect(tier.locator('.found-mark'), 'the card of the team sheened, in that tier').toHaveCount(1);
   await expect(page.locator('.standing-side .found-mark')).toHaveCount(1);
+  await expect(tier.locator('.guild-found-strip'), 'no "from your search" strip without a search').toHaveCount(0);
 }
 
 test.describe('team names the table does not hold', () => {

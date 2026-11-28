@@ -333,7 +333,8 @@ function ringPath(w, h) {
 function playSpot(tier, teamName, guild, matchId) {
   for (const old of document.querySelectorAll('.tier-spot')) old.remove();
   for (const m of document.querySelectorAll('.tier-dimmed')) m.classList.remove('tier-dimmed');
-  hangStrip(teamName, guild, matchId);
+  // The "from your search" strip only for a search: the Closest match's tap names no guild.
+  if (guild) hangStrip(teamName, guild, matchId);
   const first = cardOfTeam(teamName, matchId);
   const col = tier.parentElement;
   // The ring hangs beside the grid, not in it: a child the grid does not expect makes the next
