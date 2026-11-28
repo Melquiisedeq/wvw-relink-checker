@@ -257,6 +257,20 @@ const newestMatches = new Map();
 // Body from /api/latest -> when our readers saw its score go up (ms). A body
 // of our copy can be older than the moment it wins here.
 const latestBodyAt = new WeakMap();
+// Body from /api/latest -> what its teams took this week, {points, flips} by colour and {map id: objectives
+// taken in the 2 h up to the body's `at`}: the Worker's count, kept only when it has the shape written. A body the
+// game gave, and one the copy gave with no count, has none.
+const latestTaken = new WeakMap();
+const TAKEN_MAPS_MAX = 12;
+function latestTakenOf(t) {
+  const count = (o, max) => !!o && typeof o === 'object' && COLORS.every((c) => Number.isSafeInteger(o[c]) && o[c] >= 0 && o[c] <= max);
+  if (!t || !count(t.points, 1e9) || !count(t.flips, 1e9) || !t.maps || typeof t.maps !== 'object' || Array.isArray(t.maps)) return null;
+  const maps = {};
+  for (const [id, n] of Object.entries(t.maps).slice(0, TAKEN_MAPS_MAX)) {
+    if (/^\d{1,5}$/.test(id) && Number.isSafeInteger(n) && n > 0 && n <= 1e4) maps[id] = n;
+  }
+  return { points: t.points, flips: t.flips, maps };
+}
 // When this page last got an answer for each match, any body, a frozen repeat
 // included (newestMatches keeps only when the score rose).
 const matchAnsweredAt = new Map();
@@ -808,6 +822,8 @@ async function latestRead(url = LATEST_URL) {
           || typeof body.scores !== 'object' || !body.scores || !Array.isArray(body.maps)) continue;
         if (!Number.isFinite(e.start) || Date.parse(body.start_time) !== e.start) continue;
         if (Number.isFinite(e.at) && e.at > 0) latestBodyAt.set(body, e.at * 1000);
+        const taken = latestTakenOf(e.taken);
+        if (taken) latestTaken.set(body, taken);
         out.push(body);
       } catch { /* this match has no data */ }
     }

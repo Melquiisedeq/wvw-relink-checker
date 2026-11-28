@@ -884,12 +884,10 @@ function buildMapCorners(wrap, matchId) {
   const paintKills = (view, type, isStale, at) => {
     const rates = view && view.rates;
     const line = rates && type ? fightCount(rates, type) : null;
-    const odd = !!line && !!view.clock && (isStale || !!view.strange);
-    const old = !!line && !!view.clock && (odd || view.silence > KILLS_QUIET_MS);
+    const { odd, old, unproven } = line ? killLook(view, isStale) : { odd: false, old: false, unproven: false };
     // A window over 15 min takes two lines too: no data reached us for a while.
     const two = old || (!!line && view.long);
     const hole = !!line && view.longOk && !old;
-    const unproven = old && !odd && (!view.alive || view.silence <= KILLS_STEP_MS);
     put(big, line ? String(line.kills) : '–');
     smallTail.hidden = !line;
     left.classList.toggle('is-dim', odd);
@@ -3231,6 +3229,7 @@ function renderTierMapsContent(popover, match, regionName, tierNum, catalogue,
   const opening = swap && available.includes(swap.type) ? swap.type : available[0];
   show(opening, true);
   if (swap && swap.focus) tabByType.get(opening).focus();
+  if (typeof highlightsMapOpened === 'function') highlightsMapOpened(match.id, goTo); // a highlight's map tab
 
   // And once, right now, rather than waiting out the first poll.
   // This popover opens with the match the standings panel is holding, and that panel refreshes every five

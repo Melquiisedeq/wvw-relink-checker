@@ -44,6 +44,33 @@ export const playingHalfMinutes = (min = 40, id) => opened(id).advance(min, { ev
 // more of play.
 export const frozen = (min = 40, id) => opened(id).advance(4).freeze(min).advance(12);
 
+// The API stuck on one body in the middle of a fight: 4 min of play once the page is open, then the same body
+// for `min` minutes, with the kills' pace of the fight still in the history.
+export const frozenMidFight = (min = 20, id) => opened(id).advance(4).freeze(min);
+
+// Kills no two teams share, so that no metric is tied at the top (the Leaders leave a tie out).
+const UNEVEN_KILLS = { Center: [12, 11, 10] };
+
+// A week's first minutes: the page open on the recorded week, the region turns (gw2.newWeek) and the focus
+// plays `min` minutes of it, every team still on 0 VP.
+export const weekAtZero = (min = 6, id = FOCUS) => opened(id).newWeek().advance(min, { kills: UNEVEN_KILLS });
+
+// A week's first minutes with nothing happening (`quiet` of them: no kill, no score), then `min` minutes of play.
+export const weekFirstKill = (quiet = 2, min = 4, id = FOCUS) => opened(id).newWeek().advance(quiet, { kills: {}, score: {} }).advance(min, { kills: UNEVEN_KILLS });
+
+// Victory points by a table the site does not know (gw2.vpTableChanged), `min` minutes of play.
+export const vpTableChanged = (min = 10, id) => opened(id).vpTableChanged().advance(min);
+
+// Teams the table does not name, each with a long id so that the name the page makes of it ("Unknown team (ID …)")
+// is long (gw2.teams), `min` minutes of play.
+export const longTeams = (min = 10, id) => opened(id).teams({ red: '999999991', blue: '999999992', green: '999999993' }).advance(min);
+
+// The region's matches with no team listed on any side (gw2.teams), `min` minutes of play.
+export const noTeams = (min = 10, id) => opened(id).teams({ red: null, blue: null, green: null }).advance(min);
+
+// Only the red side keeps its team (gw2.teams), `min` minutes of play.
+export const redOnly = (min = 10, id) => opened(id).teams({ blue: null, green: null }).advance(min);
+
 // A server group `lag` minutes behind answering every second minute, for
 // `min` minutes of play; /api/latest down, so that only the page's own guard
 // (keepNewestMatch) stands between the older group and the screen.
@@ -356,4 +383,35 @@ export async function copyAltered(page, wvw, alter) {
       headers: { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store',
         Date: new Date(Math.floor(now / 1000) * 1000).toUTCString() } });
   });
+}
+
+// Our copy with the Worker's `taken` count on each match (worker/index.mjs, takenOf), as `count` makes it from the
+// body: by default the objectives flipped since the week's first minute, each worth its `points_capture`, and the
+// maps' takes in the 2 h up to the entry's `at`, plus `extra` takes on each map with one. A stand-in for the
+// accumulator, which counts at the Worker: the specs check what the page shows of a count, not how it is made.
+// Returns what it served, { id: taken }, as of the last answer.
+export async function copyTaken(page, wvw, { extra = 0, count = null } = {}) {
+  const served = {};
+  await copyAltered(page, wvw, data => {
+    for (const e of data.matches) {
+      const start = Date.parse(e.body.start_time);
+      const taken = { points: { red: 0, blue: 0, green: 0 }, flips: { red: 0, blue: 0, green: 0 }, maps: {} };
+      for (const map of e.body.maps) {
+        for (const o of map.objectives) {
+          const t = Date.parse(o.last_flipped);
+          const c = String(o.owner).toLowerCase();
+          if (!(o.points_capture > 0) || !(c in taken.points) || !(t > start + MIN)) continue;
+          taken.points[c] += o.points_capture;
+          taken.flips[c] += 1;
+          if (t > e.at * 1000 - 2 * HOUR) taken.maps[map.id] = (taken.maps[map.id] || 0) + 1;
+        }
+        if (taken.maps[map.id]) taken.maps[map.id] += extra;
+      }
+      // None before the first take of the week, as the Worker leaves it out.
+      served[e.id] = count ? count(e, taken) : (Object.values(taken.flips).some(n => n > 0) ? taken : undefined);
+      if (served[e.id]) e.taken = served[e.id];
+    }
+    return data;
+  });
+  return served;
 }

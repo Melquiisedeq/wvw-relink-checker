@@ -622,6 +622,8 @@ async function loadStandings(origin = 'cycle') {
     if (euMatches) standingsRegions.add('2');
     showRegion(standingsGridNA, standingsStatusNA, naMatches, 'NA', syncedAt, failed);
     showRegion(standingsGridEU, standingsStatusEU, euMatches, 'EU', syncedAt, failed);
+    // js/highlights.js, once loaded; after the cards' slide has started (a microtask, js/panels.js), which it waits out.
+    if (typeof paintHighlights === 'function') queueMicrotask(paintHighlights);
     primeMapBadges();
   } catch {
     // The id list failed: what is on screen stays; only a skeleton goes.

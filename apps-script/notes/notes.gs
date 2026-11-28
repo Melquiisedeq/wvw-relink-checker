@@ -5,18 +5,20 @@
  * time-driven trigger on notesTick() every 6 hours. Its one scope, external requests, is
  * pinned in appsscript.json (check-structure.mjs).
  *
- * Every 6 hours it reads the wiki's Game_updates page, which holds every update since the
- * last big one, takes the lines about World vs. World, and sends them to wvwrelink.com/api,
- * signed. The Worker takes nothing on trust: it checks every field again before it
- * publishes a line.
+ * Every 6 hours it reads the wiki's Game_updates page, which shows its five newest update pages,
+ * takes the lines about World vs. World, and sends them to wvwrelink.com/api, signed. The
+ * Worker takes nothing on trust: it checks every field again before it publishes a line.
+ * Once, by hand, notesSeed() adds the pages the index no longer lists: the month pages the index
+ * links (Game_updates/November_2026) hold every update of their month.
  *
  * Why this script and not the Worker: the wiki refuses requests from Cloudflare's network.
  * Only /wiki/ is read (the wiki's robots.txt), under a User-Agent that says who we are.
  *
- * Exactly three names are global, two only because they are run by name:
+ * Exactly four names are global, three only because they are run by name:
  *
  *   notesTick    the function the trigger calls
  *   notesSecret  the function you run once, by hand
+ *   notesSeed    the function you run once more, by hand, after notesSecret
  *   Notes_       everything else, private inside it
  * ---------------------------------------------------------------------------
  */
@@ -34,6 +36,15 @@ function notesTick() {
  */
 function notesSecret() {
   Notes_.secret();
+}
+
+/**
+ * Run once by hand, after notesSecret() and the secret is in the Worker: sends the index's pages
+ * together with the older update pages of the last SEED_DAYS days, which the index no longer lists
+ * and notesTick() will never read. Safe to run again.
+ */
+function notesSeed() {
+  Notes_.seed();
 }
 
 
@@ -57,11 +68,15 @@ var Notes_ = (function () {
   var MAX_LEAD = 200;
   // The Worker refuses a message over 64 KB.
   var MAX_BODY = 60000;
+  // The Worker refuses a message of more notes than this.
+  var MAX_NOTES = 20;
+  var SEED_DAYS = 60;
   var PAGE_SKEW_DAYS = 3;
   var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
     'September', 'October', 'November', 'December'];
   var UPDATE_RE = /^(?:Update(?: [2-9])?|Late Notes) - ([A-Z][a-z]+) (\d{1,2}), (20\d\d)$/;
   var PAGE_HREF_RE = /^\/wiki\/Game_updates\/(20\d\d-\d\d-\d\d)$/;
+  var MONTH_HREF_RE = /^\/wiki\/Game_updates\/([A-Z][a-z]+)_(20\d\d)$/;
   var WVW_RE = /\bWvW\b|World vs\. World|World vs|War Score|Borderlands|Eternal Battlegrounds|skirmish|dolyak|\bsiege\b|Stonemist|\bkeeps?\b|\bsentry\b|Obsidian Sanctum|Edge of the Mists|\brelink/;
   var ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
 
@@ -84,14 +99,14 @@ var Notes_ = (function () {
 
   /**
    * Every list item of the page's article, with the headings above it: the wiki's
-   * structure, read as text. {rows: [{h2, h3, sub, text, link, icon, toc, parent}], pages: [names],
+   * structure, read as text. {rows: [{h2, h3, sub, text, link, icon, toc, parent}], pages: [names], months: [hrefs],
    * leads: {h2: text}}: sub is the deepest heading under the h3 (the elite specialization, else the
    * profession); a lead, the text after an h2 and before the next heading, outside the lists.
    * Text only: tags are dropped, entities decoded; the article ends at the parser's report.
    */
   function parse(html) {
     var on = false, stop = false, inh = null, hbuf = '';
-    var hl = {}, lis = [], rows = [], pages = [], leads = {}, lead = null;
+    var hl = {}, lis = [], rows = [], pages = [], months = [], leads = {}, lead = null;
     var at = 0;
     function data(d) {
       if (!on || stop) return;
@@ -146,6 +161,7 @@ var Notes_ = (function () {
       }
       var a = attrs(tag);
       if (name === 'a' && a.href && PAGE_HREF_RE.test(a.href)) pages.push(PAGE_HREF_RE.exec(a.href)[1]);
+      if (name === 'a' && a.href && MONTH_HREF_RE.test(a.href) && months.indexOf(a.href) < 0) months.push(a.href);
       if ((a['class'] || '').indexOf('mw-parser-output') >= 0) on = true;
       if (!on || stop) continue;
       if (/^h[2-5]$/.test(name)) {
@@ -162,7 +178,7 @@ var Notes_ = (function () {
         if ((a['class'] || '').indexOf('toc') >= 0) cur.toc = true;
       }
     }
-    return { rows: rows, pages: pages, leads: leads };
+    return { rows: rows, pages: pages, months: months, leads: leads };
   }
 
   // The section's own edit link, which a transcluded section shows after its heading, is not its text.
@@ -230,7 +246,8 @@ var Notes_ = (function () {
       n.lines.push({ section: r.h3, sub: r.sub, text: cut(r.text), link: linkName(r.link), icon: r.icon });
     });
     // An update with no WvW line is sent too: the Worker deletes an update the pages it was sent
-    // no longer have, and keeps those of a page it was not sent.
+    // no longer have, and keeps those of a page it was not sent only when that page is older than
+    // every page sent (fit leaves out the oldest first).
     return out;
   }
 
@@ -253,11 +270,11 @@ var Notes_ = (function () {
     return last;
   }
 
-  // The message, at most MAX_BODY bytes: the oldest pages leave first (they were sent in earlier
-  // runs), each one whole, or the Worker would delete the updates left out of a page it was sent.
+  // The message, at most MAX_NOTES notes and MAX_BODY bytes: the oldest pages leave first (they were
+  // sent in earlier runs), each one whole, or the Worker would delete the updates left out of a page it was sent.
   function fit(list) {
     var body = JSON.stringify({ v: 1, notes: list });
-    while (Utilities.newBlob(body).getBytes().length > MAX_BODY) {
+    while (list.length > MAX_NOTES || Utilities.newBlob(body).getBytes().length > MAX_BODY) {
       var oldest = list[list.length - 1].page;
       var rest = list.filter(function (n) { return n.page !== oldest; });
       if (!rest.length) break;
@@ -267,25 +284,28 @@ var Notes_ = (function () {
     return { list: list, body: body };
   }
 
-  function tick() {
+  function ingestSecret() {
     var secret = PropertiesService.getScriptProperties().getProperty('ingest');
-    if (!secret) {
-      Logger.log('No "ingest" property: run notesSecret() first.');
-      return;
-    }
-    var res = fetchTried(INDEX, {
+    if (!secret) Logger.log('No "ingest" property: run notesSecret() first.');
+    return secret;
+  }
+
+  // A wiki page's HTML; thrown when the wiki does not give it, so the trigger's failure e-mail says so.
+  function wikiPage(url) {
+    var res = fetchTried(url, {
       headers: { 'User-Agent': USER_AGENT },
       muteHttpExceptions: true,
       followRedirects: false
     });
     if (!res || typeof res.getResponseCode !== 'function' || res.getResponseCode() !== 200) {
-      // Thrown, so the trigger's failure e-mail says so; the Worker keeps the last good copy.
       throw new Error('wiki: ' + (res && res.getResponseCode ? 'HTTP ' + res.getResponseCode() : res));
     }
-    var list = notes(res.getContentText());
-    if (!list.length) throw new Error('wiki: no update found on ' + INDEX);
+    return res.getContentText();
+  }
+
+  // One signed message to the Worker, the list cut to fit; the number of notes it carried.
+  function send(list, secret) {
     var fitted = fit(list);
-    list = fitted.list;
     var body = fitted.body;
     var t = Math.floor(Date.now() / 1000);
     var sig = hex(Utilities.computeHmacSha256Signature(
@@ -301,7 +321,50 @@ var Notes_ = (function () {
     });
     var code = sent && sent.getResponseCode ? sent.getResponseCode() : String(sent);
     if (code !== 200) throw new Error('push: ' + code);
-    Logger.log('sent ' + list.length + ' updates');
+    return fitted.list.length;
+  }
+
+  function tick() {
+    var secret = ingestSecret();
+    if (!secret) return;
+    var list = notes(wikiPage(INDEX));
+    if (!list.length) throw new Error('wiki: no update found on ' + INDEX);
+    Logger.log('sent ' + send(list, secret) + ' updates');
+  }
+
+  // The last day of a month page ('/wiki/Game_updates/November_2026'), 'yyyy-mm-dd', or null.
+  function monthEnd(href) {
+    var m = MONTH_HREF_RE.exec(href);
+    var mo = m ? MONTHS.indexOf(m[1]) : -1;
+    return mo < 0 ? null : new Date(Date.UTC(Number(m[2]), mo + 1, 0)).toISOString().slice(0, 10);
+  }
+
+  // The Worker keeps a page it was not sent only when it is older than every page sent, so the
+  // seed sends the index's pages whole together with the older ones: one message, the oldest
+  // pages cut by fit when the Worker's limits do not take them all.
+  function seed() {
+    var secret = ingestSecret();
+    if (!secret) return;
+    var indexHtml = wikiPage(INDEX);
+    var list = notes(indexHtml);
+    if (!list.length) throw new Error('wiki: no update found on ' + INDEX);
+    var cutoff = new Date(Date.now() - SEED_DAYS * 864e5).toISOString().slice(0, 10);
+    var have = {};
+    list.forEach(function (n) { have[n.update] = true; });
+    parse(indexHtml).months.forEach(function (href) {
+      var end = monthEnd(href);
+      if (end === null || end < cutoff) return;
+      notes(wikiPage(WIKI + href)).forEach(function (n) {
+        if (n.page < cutoff || have[n.update]) return;
+        have[n.update] = true;
+        list.push(n);
+      });
+    });
+    // fit takes the oldest page from the end.
+    list = list.map(function (n, i) { return { n: n, i: i }; })
+      .sort(function (a, b) { return a.n.page < b.n.page ? 1 : a.n.page > b.n.page ? -1 : a.i - b.i; })
+      .map(function (x) { return x.n; });
+    Logger.log('seeded ' + send(list, secret) + ' updates, the index\'s and those since ' + cutoff);
   }
 
   function secret() {
@@ -324,5 +387,5 @@ var Notes_ = (function () {
   }
 
 
-  return { tick: tick, secret: secret, notes: notes, fit: fit };
+  return { tick: tick, secret: secret, seed: seed, notes: notes, fit: fit };
 })();

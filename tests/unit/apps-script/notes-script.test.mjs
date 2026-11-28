@@ -1,5 +1,5 @@
 // The Apps Script apps-script/notes/notes.gs in a node:vm: its parser over the recorded wiki pages
-// (tests/unit/worker/fixtures/notes/), and notesTick() whole, its push handed to the real Worker.
+// (tests/unit/worker/fixtures/notes/), and notesTick() and notesSeed() whole, its push handed to the real Worker.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -24,7 +24,7 @@ function load({ props = { ingest: KEY }, answer } = {}) {
     Utilities: fakeUtilities({ sleeps }), Logger: logger, Date: clock.Date,
     PropertiesService: { getScriptProperties: () => fakeProps(props) }
   }, 'Notes_');
-  return { ctx, calls, sleeps, logger, run: () => ctx.notesTick() };
+  return { ctx, calls, sleeps, logger, clock, run: () => ctx.notesTick() };
 }
 
 test('the parser gives the lab\'s WvW lines of the 2026 pages, the wiki\'s later moves of one update apart', () => {
@@ -40,7 +40,7 @@ test('the parser gives the lab\'s WvW lines of the 2026 pages, the wiki\'s later
   assert.equal(got.find((r) => r.text.startsWith('Splinter Weapon')).icon, true);
 });
 
-test('the index page: each update since the last big one, on its page, an update with no WvW line included', () => {
+test('the index page: each update of the five pages it shows, on its page, an update with no WvW line included', () => {
   const { ctx } = load({ answer: () => null });
   const notes = ctx.out.notes(fixture('index-2026-11-24.html'));
   assert.deepEqual(JSON.parse(JSON.stringify(notes.map((n) => [n.page, n.update, n.lines.length]))), [
@@ -131,4 +131,119 @@ test('notesSecret: 128 hex characters in the ingest property, made once', () => 
   assert.match(v, /^[0-9a-f]{128}$/);
   ctx.notesSecret();
   assert.equal(fake.getProperty('ingest'), v);
+});
+
+// ---- notesSeed: the pages the wiki's index no longer lists --------------------------------
+
+const NOW_SEED = Date.parse('2026-11-28T12:00:00Z');
+const MONTHS_URL = 'https://wiki.guildwars2.com/wiki/Game_updates/';
+// The wiki as recorded: its index shows five pages, 2026-11-10 not among them; each month
+// page shows every update of its month.
+function wiki({ index = fixture('index-2026-11-28.html'), months = {} } = {}) {
+  const pages = { [MONTHS_URL.slice(0, -1)]: index, [MONTHS_URL + 'November_2026']: fixture('month-2026-11.html'),
+    [MONTHS_URL + 'October_2026']: fixture('month-2026-10.html'), [MONTHS_URL + 'September_2026']: fixture('month-2026-09.html'), ...months };
+  return (url) => {
+    if (url.endsWith('/api/ingest/notes')) return httpResponse(200, 'ok');
+    return typeof pages[url] === 'string' ? httpResponse(200, pages[url]) : httpResponse(typeof pages[url] === 'number' ? pages[url] : 404, 'no');
+  };
+}
+function seeded(opt) {
+  const s = load({ answer: wiki(opt) });
+  s.clock.now = NOW_SEED;
+  s.ctx.notesSeed();
+  return s;
+}
+const sentNotes = (s) => JSON.parse(s.calls.at(-1).opt.payload).notes;
+const plain = (x) => JSON.parse(JSON.stringify(x));
+
+test('notesSeed: one signed push of the index\'s pages and the month pages\' updates of the last 60 days, the newest page first', () => {
+  const s = seeded();
+  assert.deepEqual(s.calls.map((c) => c.url), [MONTHS_URL.slice(0, -1), MONTHS_URL + 'November_2026', MONTHS_URL + 'October_2026',
+    MONTHS_URL + 'September_2026', 'https://wvwrelink.com/api/ingest/notes']);
+  assert.ok(s.calls.slice(0, 4).every((c) => c.opt.headers['User-Agent'] === 'wvwrelink-notes (+https://wvwrelink.com)' && c.opt.followRedirects === false));
+  const notes = sentNotes(s);
+  assert.deepEqual(notes.map((n) => n.page), notes.map((n) => n.page).sort().reverse());
+  assert.equal(new Set(notes.map((n) => n.update)).size, notes.length);
+  assert.deepEqual(notes.map((n) => [n.page, n.update.replace(/, 2026$/, '')]), [
+    ['2026-11-24', 'Update - November 24'], ['2026-11-17', 'Update - November 17'], ['2026-11-16', 'Update - November 16'],
+    ['2026-11-12', 'Update - November 12'], ['2026-11-11', 'Update - November 11'], ['2026-11-10', 'Update 2 - November 10'],
+    ['2026-11-10', 'Update - November 10'], ['2026-10-20', 'Update - October 20'], ['2026-10-15', 'Update - October 15'],
+    ['2026-10-14', 'Update - October 14'], ['2026-10-13', 'Late Notes - October 13'], ['2026-10-13', 'Update - October 13'],
+    ['2026-10-01', 'Update - October 1'], ['2026-09-30', 'Update - September 30'], ['2026-09-30', 'Late Notes - September 30'],
+    ['2026-09-29', 'Update 2 - September 29'], ['2026-09-29', 'Update - September 29']]);
+  assert.equal(notes.find((n) => n.update === 'Update - November 10, 2026').lines.length, 50);
+  assert.deepEqual(s.logger.lines, ['seeded 17 updates, the index\'s and those since 2026-09-29']);
+});
+
+test('notesSeed: a month that ended before the window is not read, nor a name that is no month; a wiki that fails, or an index with no update, sends nothing', () => {
+  const index = fixture('index-2026-11-28.html').replace('<a href="/wiki/Game_updates/September_2026"', '<a href="/wiki/Game_updates/November_2026">n</a><a href="/wiki/Game_updates/August_2026">a</a><a href="/wiki/Game_updates/Smarch_2026">b</a>$&');
+  const s = seeded({ index });
+  assert.ok(s.calls.every((c) => !/August|Smarch/.test(c.url)));
+  assert.equal(s.calls.length, 5);
+  const down = load({ answer: wiki({ months: { [MONTHS_URL + 'October_2026']: 503 } }) });
+  down.clock.now = NOW_SEED;
+  assert.throws(() => down.ctx.notesSeed(), /wiki: HTTP 503/);
+  assert.ok(down.calls.every((c) => !c.url.endsWith('/api/ingest/notes')));
+  const empty = load({ answer: wiki({ index: '<html></html>' }) });
+  assert.throws(() => empty.ctx.notesSeed(), /no update found/);
+  assert.equal(empty.calls.length, 1);
+  const none = load({ props: {}, answer: wiki() });
+  none.ctx.notesSeed();
+  assert.equal(none.calls.length, 0);
+});
+
+test('notesSeed: a page the month page has newer than the index\'s newest still comes first, an update both show once, from the index', () => {
+  const s = seeded({ index: fixture('index-2026-11-24.html') });
+  const notes = sentNotes(s);
+  assert.equal(notes[0].page, '2026-11-24');
+  assert.deepEqual(notes.map((n) => n.page), notes.map((n) => n.page).sort().reverse());
+  assert.equal(new Set(notes.map((n) => n.update)).size, notes.length);
+  // The index's own copy of the update, with its lead, not a second one.
+  assert.equal(notes.filter((n) => n.update === 'Update - November 10, 2026').length, 1);
+  assert.equal(notes.find((n) => n.update === 'Update - November 11, 2026').lines.length, 1);
+});
+
+test('a message of more than 20 notes loses its oldest page, whole', () => {
+  const { ctx } = load({ answer: () => null });
+  const day = (i) => '2026-11-' + String(30 - i).padStart(2, '0');
+  const list = Array.from({ length: 19 }, (_, i) => ({ page: day(i), update: 'Update - November ' + (30 - i) + ', 2026', lead: '', lines: [] }));
+  // The oldest page has two notes: both leave, not one.
+  list.push({ page: '2026-11-10', update: 'Update 2 - November 10, 2026', lead: '', lines: [] }, { page: '2026-11-10', update: 'Update - November 10, 2026', lead: '', lines: [] });
+  const got = ctx.out.fit(list);
+  assert.equal(got.list.length, 19);
+  assert.deepEqual(plain(got.list.map((n) => n.page)), list.slice(0, 19).map((n) => n.page));
+  assert.equal(ctx.out.fit(list.slice(0, 20)).list.length, 20);
+});
+
+test('notesSeed, then notesTick: the Worker serves 2026-11-10, the release\'s lines at once, the beta of the new map an event; without the seed it never sees it', async () => {
+  const w = workerHarness({ start: NOW_SEED, secrets: { INGEST_NOTES: KEY } });
+  const deliver = async (call) => {
+    const r = await w.call(new Request(call.url, { method: 'POST', body: call.opt.payload, headers: call.opt.headers }));
+    return r.status;
+  };
+  const served = async () => JSON.parse(await (await w.call(new Request('https://wvwrelink.com/api/notes'))).text());
+  // A tick alone: the index has lost the update.
+  const plainTick = load({ answer: wiki() });
+  plainTick.clock.now = NOW_SEED;
+  plainTick.run();
+  assert.equal(await deliver(plainTick.calls.at(-1)), 200);
+  assert.ok(!(await served()).notes.some((n) => n.update === 'Update - November 10, 2026'));
+  w.advance(6 * 3600e3);
+  const seed = load({ answer: wiki() });
+  seed.clock.now = w.now;
+  seed.ctx.notesSeed();
+  assert.equal(await deliver(seed.calls.at(-1)), 200);
+  const own = (data) => data.notes.filter((n) => n.update === 'Update - November 10, 2026');
+  const first = own(await served());
+  assert.ok(first.length > 0 && first.every((n) => n.hotfix === false));
+  const beta = first.find((n) => /beta/i.test(n.text) && n.type === 'event');
+  assert.ok(beta, 'the beta line is an event');
+  // The next ordinary reading, six hours on, the same index as before.
+  w.advance(6 * 3600e3);
+  const tick = load({ answer: wiki() });
+  tick.clock.now = w.now;
+  tick.run();
+  assert.equal(await deliver(tick.calls.at(-1)), 200);
+  assert.deepEqual(own(await served()), first);
+  assert.ok((await served()).notes.some((n) => n.update === 'Update - September 29, 2026'));
 });

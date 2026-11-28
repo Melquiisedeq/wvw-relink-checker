@@ -453,6 +453,15 @@ function killView(match, types, now = steadyNow()) {
   return view;
 }
 
+// The kills corner's looks (js/maps.js, paintKills), which the highlights read too. `isStale`: the score has not
+// risen for HUD_STALE_MS. odd: the data stopped (the game's API behind, or the map frozen); old: no new kills past
+// KILLS_QUIET_MS, or odd; unproven: old with no proof yet that the map is quiet rather than the API behind.
+function killLook(view, isStale) {
+  const odd = !!view.clock && (isStale || !!view.strange);
+  const old = !!view.clock && (odd || view.silence > KILLS_QUIET_MS);
+  return { odd, old, unproven: old && !odd && (!view.alive || view.silence <= KILLS_STEP_MS) };
+}
+
 // killView's pick and window, under the name the tab and the badge call.
 function hotMapOf(match, types) {
   const view = killView(match, types);
@@ -861,6 +870,7 @@ function paintMapBadges(matchId) {
     const info = tierMapButtons.get(btn);
     if (info && (!matchId || info.match.id === matchId)) paintMapBadge(btn);
   }
+  if (!matchId && typeof paintHighlights === 'function') paintHighlights(); // js/highlights.js, once loaded
 }
 
 // Once, after the first standings: the badge needs the shared history.
