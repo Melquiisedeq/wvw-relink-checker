@@ -55,6 +55,13 @@ export const weekAtZero = (min = 6, id = FOCUS) => opened(id).newWeek().advance(
 // Victory points by a table the site does not know (gw2.vpTableChanged), `min` minutes of play.
 export const vpTableChanged = (min = 10, id) => opened(id).vpTableChanged().advance(min);
 
+// Teams the table does not name, each with a long id so that the name the page makes of it ("Unknown team (ID …)")
+// is long (gw2.teams), `min` minutes of play.
+export const longTeams = (min = 10, id) => opened(id).teams({ red: '999999991', blue: '999999992', green: '999999993' }).advance(min);
+
+// The region's matches with no team listed on any side (gw2.teams), `min` minutes of play.
+export const noTeams = (min = 10, id) => opened(id).teams({ red: null, blue: null, green: null }).advance(min);
+
 // A server group `lag` minutes behind answering every second minute, for
 // `min` minutes of play; /api/latest down, so that only the page's own guard
 // (keepNewestMatch) stands between the older group and the screen.

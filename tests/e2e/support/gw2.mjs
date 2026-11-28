@@ -290,6 +290,12 @@ class Timeline {
     return this.#with([{ kind: 'vp-changed' }]);
   }
 
+  // For the whole timeline the team of each colour in `teams` is the id given with the match's tier number after it (so that no two matches share a team, and no table names it) or, with
+  // null, none at all: the match lists only the old world numbers on that side. Every match of the focus region.
+  teams(teams) {
+    return this.#with([{ kind: 'teams', teams }]);
+  }
+
   // For the whole timeline the kills sheet as kills.gs writes it (apps-script/kills/kills.gs):
   // each minute in which the score its read gets rose, a row stamped with that minute, the
   // kills, start and score of that body; each write drops the rows over 2 h older than it.
@@ -422,7 +428,7 @@ class Timeline {
     for (const id of ids) roll(id, horizon);
     for (const list of frames.values()) list.sort((a, b) => a.at - b.at);
     const windows = kind => this.#ops.filter(o => o.kind === kind).sort((a, b) => a.at - b.at);
-    this.#compiled = { anchor, base, bodyOf, ids, frames, pools: windows('pool'), statuses: windows('status'), latest: windows('latest'), history: windows('history'), held: windows('held'), stalls: windows('stall'), workerKills: this.#ops.some(o => o.kind === 'worker-kills'), vpChanged: this.#ops.some(o => o.kind === 'vp-changed'), sheetKills: this.#ops.find(o => o.kind === 'sheet-kills') || null };
+    this.#compiled = { anchor, base, bodyOf, ids, frames, pools: windows('pool'), statuses: windows('status'), latest: windows('latest'), history: windows('history'), held: windows('held'), stalls: windows('stall'), workerKills: this.#ops.some(o => o.kind === 'worker-kills'), vpChanged: this.#ops.some(o => o.kind === 'vp-changed'), sheetKills: this.#ops.find(o => o.kind === 'sheet-kills') || null, teams: Object.assign({}, ...this.#ops.filter(o => o.kind === 'teams').map(o => o.teams)) };
     return this.#compiled;
   }
 
@@ -518,6 +524,12 @@ class Timeline {
     const { state } = this.#frame(id, t);
     const b = materialise(this.#compile().bodyOf(id, state.week), state);
     if (this.#compile().vpChanged) b.victory_points.red += 1;
+    if (id[0] === this.#focus[0]) {
+      for (const [color, team] of Object.entries(this.#compile().teams)) {
+        const rest = (b.all_worlds[color] || []).filter(n => Number(n) < 10000);
+        b.all_worlds[color] = team === null ? rest : [...rest, Number(`${team}${id.split('-')[1]}`)];
+      }
+    }
     return b;
   }
 
