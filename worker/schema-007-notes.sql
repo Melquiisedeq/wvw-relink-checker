@@ -25,10 +25,9 @@ CREATE TABLE note_served (
   id      INTEGER PRIMARY KEY CHECK (id = 1),
   push    TEXT    NOT NULL,     -- 16 hex of the last accepted push: the same one again writes no line
   wiki    INTEGER NOT NULL,     -- epoch s of the last accepted wiki reading, 0 never
-  version TEXT    NOT NULL,     -- 16 hex of body: GET /api/notes?v=
   body    TEXT    NOT NULL,     -- the published lines, JSON
   ripe    INTEGER NOT NULL      -- epoch s when a hotfix's line left out of body is due, 0 none
 );
-INSERT INTO note_served (id, push, wiki, version, body, ripe) VALUES (1, '', 0, '', '[]', 0);
+INSERT INTO note_served (id, push, wiki, body, ripe) VALUES (1, '', 0, '[]', 0);
 -- The notes script's replay guard (POST /api/ingest/notes), also in /api/health.
 INSERT INTO source (name, t, received) VALUES ('notes', 0, 0);

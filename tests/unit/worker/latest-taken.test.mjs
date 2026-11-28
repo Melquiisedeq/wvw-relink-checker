@@ -190,7 +190,6 @@ test('what counts: only objectives a capture pays for, each at most a top-tier k
 
 test('without schema-008 the readings still go in and the copy is served, without the counts', async () => {
   const w = setup({ env: SUPA_ENV, skip: ['schema-008-taken.sql'] });
-  w.sql.exec("UPDATE note_served SET version = '0123456789abcdef', wiki = 1790000000");
   const { lines } = await quiet(async () => {
     assert.equal(await push(w, reading(0)), 200);
     w.advance(10e3);
@@ -198,7 +197,6 @@ test('without schema-008 the readings still go in and the copy is served, withou
     const m = await served(w);
     assert.equal(m.score, 6010);
     assert.equal(m.taken, undefined);
-    assert.deepEqual(JSON.parse((await w.get('/api/latest')).body).notes, { v: '0123456789abcdef', wiki: 1790000000 }, 'the notes stay');
   });
   assert.ok(lines.some((l) => l.taken === 'failed'));
 });
@@ -269,17 +267,6 @@ test('stored flips or owners not as written, or too long, start over and never s
     if (owners) assert.deepEqual([row(w).fb, row(w).t], [0, '{}'], 'owners not as written count nothing: ' + owners);
     else assert.deepEqual([row(w).fb, row(w).t], [1, '{"38":[' + now + ']}'], 'the flips start over: ' + times.slice(0, 20));
   }
-});
-
-test('without the notes table the copy still carries what was taken', async () => {
-  const w = setup({ env: SUPA_ENV, skip: ['schema-007-notes.sql'] });
-  const { lines } = await quiet(async () => {
-    await push(w, reading(0));
-    w.advance(10e3);
-    await push(w, reading(10, { '38-20': { owner: 'Blue', points_capture: 4 } }));
-    assert.equal((await served(w)).taken.points.blue, 40);
-  });
-  assert.deepEqual(lines.filter((l) => l.without).map((l) => l.without), ['notes']);
 });
 
 // takenNext skips the comparison when no owner changed: the same result as comparing.

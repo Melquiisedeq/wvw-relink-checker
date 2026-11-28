@@ -21,7 +21,6 @@
 //   POST /api/ingest/notes     the notes script, the wiki's update notes, every 6 hours
 //   GET  /api/notes            the WvW lines of the game's update notes, with when the wiki
 //                              was last read (worker/notes.mjs)
-//   GET  /api/notes?v=<16 hex>  the same lines, for the version /api/latest names; never changes
 //   daily, on a schedule       kills older than KEEP_DAYS are deleted
 //
 // A message is signed by its script with a secret of its own:
@@ -32,7 +31,7 @@
 // The latest entrance parses the plain JSON only to check it: it decides by the signed summary
 // and the match's score, never by a reader's clock.
 
-import { acceptNotes, servedNotes, NOTES_VERSION_RE } from './notes.mjs';
+import { acceptNotes, servedNotes } from './notes.mjs';
 
 const MAX_BYTES = 64 * 1024;
 // The HMAC, each part's hash and the parse all run over the whole message, inside
@@ -104,10 +103,8 @@ const HISTORY_MISS_MAX_AGE = 10;
 // The scripts make 128 hex characters; a short secret fails loudly rather than work weakly.
 const MIN_SECRET = 64;
 const NOTES_KEY = 'https://wvwrelink.com/api/notes';
-// The notes change a few times a month: the plain read is kept a few minutes; a version, for good
-// by the browser and LATEST_VERSION_MAX_AGE by a data centre.
+// The notes change a few times a month: the read is kept a few minutes.
 const NOTES_MAX_AGE = 300;
-const NOTES_VERSION_CACHE = 'public, max-age=31536000, immutable';
 // The daily cleanup deletes kills older than this: two weeks keeps the running match and the one before it.
 const KEEP_DAYS = 14;
 // What GET /api/kills carries in full: the page wants a reading at least ten minutes old, and the
@@ -1060,25 +1057,15 @@ const READS = {
 
 // The copy /api/latest serves, and its newest `at`; null when it is stale.
 async function latestCopy(env) {
-  // The notes' version rides in the one statement the copy already makes: one row more.
-  const withNotes = ", (SELECT json_object('v', version, 'wiki', wiki) FROM note_served WHERE id = 1 AND version <> '') AS notes";
   // What takenOf reads; `owners` is only the next message's.
   const taken = ', ' + TAKEN_COLS.filter((c) => c !== 'owners').join(', ');
   let results;
-  // Without the notes' table, or schema-008, the copy still answers, without what is missing:
-  // the error names the table or the column.
-  const want = { taken: true, notes: true };
-  for (;;) {
-    try {
-      ({ results } = await env.DB.prepare('SELECT id, start, score, at, reader, gz' +
-        (want.taken ? taken : '') + (want.notes ? withNotes : '') + ' FROM latest').all());
-      break;
-    } catch (e) {
-      const drop = want.notes && (String(e).includes('note_served') || !want.taken) ? 'notes' : want.taken ? 'taken' : null;
-      if (!drop) throw e;
-      want[drop] = false;
-      console.log(JSON.stringify({ read: 'latest', without: drop, failed: String(e) }));
-    }
+  // Without schema-008 the copy still answers, without the counts.
+  try {
+    ({ results } = await env.DB.prepare('SELECT id, start, score, at, reader, gz' + taken + ' FROM latest').all());
+  } catch (e) {
+    console.log(JSON.stringify({ read: 'latest', without: 'taken', failed: String(e) }));
+    ({ results } = await env.DB.prepare('SELECT id, start, score, at, reader, gz FROM latest').all());
   }
   // Two hours without an update: a tier that no longer exists.
   const live = results.filter((r) => nowS() - r.at <= LATEST_KEEP_S);
@@ -1089,9 +1076,7 @@ async function latestCopy(env) {
     const head = JSON.stringify({ id: r.id, start: r.start, score: r.score, at: r.at, by: r.reader, v: 2, taken: takenOf(r) }).slice(0, -1);
     return head + ',"body":' + r.gz + '}';
   };
-  // json_object of our own hex and integers.
-  const notes = typeof live[0].notes === 'string' ? ',"notes":' + live[0].notes : '';
-  return { newest, body: '{"at":' + newest + ',"matches":[' + live.map(entry).join(',') + ']' + notes + '}' };
+  return { newest, body: '{"at":' + newest + ',"matches":[' + live.map(entry).join(',') + ']}' };
 }
 
 // What the teams took this week, once one of them took something: {points, flips} by team, and
@@ -1106,26 +1091,14 @@ function takenOf(r) {
   return { points: team([r.taken_red, r.taken_blue, r.taken_green]), flips: team(flips), maps };
 }
 
-// GET /api/notes: {v, wiki, notes}, the published lines and when the wiki was last read.
-// GET /api/notes?v=<v>: {v, notes}, only while v is the version held; it never changes, so it is
-// kept for good. Any other query is a 404 before D1.
+// GET /api/notes: {wiki, notes}, the published lines and when the wiki was last read. Any query is a 404
+// before D1.
 async function readNotes(env, ctx, url) {
-  if (url.search === '') {
-    return cached(ctx, NOTES_KEY, async () => {
-      const f = await servedNotes(env.DB);
-      return json('{"v":' + JSON.stringify(f.version) + ',"wiki":' + f.wiki + ',"notes":' + f.body + '}', NOTES_MAX_AGE);
-    });
-  }
-  const v = NOTES_VERSION_RE.exec(url.search);
-  if (!v) return text(404, 'not found');
-  const res = await cached(ctx, NOTES_KEY + '?v=' + v[1], async () => {
+  if (url.search !== '') return text(404, 'not found');
+  return cached(ctx, NOTES_KEY, async () => {
     const f = await servedNotes(env.DB);
-    // Not cached: a text answer is no-store.
-    if (f.version !== v[1]) return text(404, 'not found');
-    return json('{"v":"' + f.version + '","notes":' + f.body + '}', LATEST_VERSION_MAX_AGE);
+    return json('{"wiki":' + f.wiki + ',"notes":' + f.body + '}', NOTES_MAX_AGE);
   });
-  if (res.status === 200) res.headers.set('cache-control', NOTES_VERSION_CACHE);
-  return res;
 }
 
 // GET /api/latest?v=<at>.<tag>: the copy whose newest `at` is that, kept under the version's
