@@ -1,9 +1,9 @@
 // The highlights' rules in js/highlights.js, run in Node (page/harness.mjs): the skirmish victory point table
 // against the e2e factory's, the table checked against a week, the Closest match's favourite and its tie, and
-// the Hottest fight's line by the map corner's looks.
+// the Hottest fight's line by the map corner's looks, and which metrics the Leaders have a value for.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { matches, MIN, clone, fresh } from './harness.mjs';
+import { matches, MIN, clone, fresh, openMatch } from './harness.mjs';
 import { WAR_VP } from '../../e2e/support/gw2.mjs';
 
 test('the site\'s skirmish VP table is the factory\'s WAR_VP', () => {
@@ -163,4 +163,37 @@ test('the map badges\' repaint of every tier repaints the highlights; of one tie
   assert.equal(p.run('__painted'), 0);
   p.call('paintMapBadges');
   assert.equal(p.run('__painted'), 1);
+});
+
+test('the Leaders: only a metric with a value, and K/D from 500 deaths', () => {
+  const p = fresh();
+  const shorts = (m) => {
+    p.run('newestMatches.clear()');
+    p.call('keepNewestMatch', m);
+    return [...p.call('hlLeaders')].map((x) => x.short);
+  };
+  assert.deepEqual(shorts(clone(openMatch)), ['Kills', 'VP', 'PPT', 'Active', 'K/D']);
+  // A week's first minutes: no kill, no VP, and the objectives not yet worth a tick: nothing to lead.
+  const zero = clone(openMatch);
+  for (const k of ['kills', 'deaths', 'victory_points']) for (const c of ['red', 'blue', 'green']) zero[k][c] = 0;
+  for (const map of zero.maps) for (const o of map.objectives) o.points_tick = 0;
+  assert.deepEqual(shorts(zero), []);
+  // Kills and deaths are in, VP and PPT not: the two metrics that have a value, K/D under its floor.
+  const some = clone(zero);
+  some.kills.red = 5;
+  some.deaths.red = 499;
+  assert.deepEqual(shorts(some), ['Kills', 'Active']);
+  some.deaths.red = 500;
+  assert.deepEqual(shorts(some), ['Kills', 'Active', 'K/D']);
+  // Every team over the floor but none with a kill: K/D 0 is no leader.
+  some.kills.red = 0;
+  assert.deepEqual(shorts(some), ['Active']);
+});
+
+test('the Leaders turn only with two metrics or more', () => {
+  const p = fresh();
+  p.run('hlRot.list = [{}]');
+  assert.equal(p.call('hlHeld'), true);
+  p.run('hlRot.list = [{}, {}]');
+  assert.equal(p.call('hlHeld'), false);
 });

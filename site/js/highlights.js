@@ -1,6 +1,6 @@
 'use strict';
-// The highlights panel above the search: the Hottest fight, the Busiest map and the Closest match of one
-// region, from what the page already holds (newestMatches, the kill readings of js/maps-early.js). js/boot.js
+// The highlights panel above the search: the Leaders, then the Hottest fight, the Busiest map and the Closest match
+// of one region, from what the page already holds (newestMatches, the kill readings of js/maps-early.js). js/boot.js
 // asks for it after the first standings, and its sheet comes with it; it is painted again after each answer of
 // the standings and each repaint of the map badges. Team names are strangers' text: textContent only.
 
@@ -445,6 +445,254 @@ function hlClosestTile(c) {
     body, go: () => goToTier(c.a.name), aria: hlClosestSaid(c) });
 }
 
+// ---- the Leaders ----
+// One metric at a time for 5 s in a box above the tiles, the leader of the week in the region on show, with a
+// pause button first in the box and in the Tab order. The pointer over the box, the keyboard focus in it, a touch
+// on it and the pause hold the turning; reduced motion starts it held, and the Play button turns it.
+const HL_TURN_MS = 5000;
+// The K/D leader needs this many deaths: a team that has barely played is no record.
+const HL_KD_MIN_DEATHS = 500;
+const HL_BOLT = ['M13 2 L4 14 h6 l-1 8 l9 -12 h-6 Z'];
+const HL_TREND = ['M3 17 L9 10 L14 14 L21 5'];
+// Points per tick: what each colour's objectives are worth now, summed over the maps (tallyMaps, js/maps.js).
+function hlPpt(m) {
+  const by = { red: 0, blue: 0, green: 0 };
+  for (const map of m.maps) {
+    for (const ob of (map && map.objectives) || []) {
+      const c = String(ob.owner || '').toLowerCase();
+      if (c in by) by[c] += Number(ob.points_tick || 0);
+    }
+  }
+  return by;
+}
+function hlSvg(paths, cls) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', cls);
+  for (const d of paths) {
+    const p = document.createElementNS(ns, 'path');
+    p.setAttribute('d', d);
+    svg.appendChild(p);
+  }
+  return svg;
+}
+// The metrics with a value: the best team of each over the running matches of the region, none for a metric every
+// team is still at 0 on (the week's first minutes).
+function hlLeaders() {
+  const rows = [];
+  for (const m of hlLive()) {
+    const ppt = hlPpt(m);
+    for (const c of COLORS) {
+      rows.push({ m, color: c, name: hlTeamName(m, c), ppt: ppt[c], kills: Number((m.kills || {})[c]) || 0,
+        deaths: Number((m.deaths || {})[c]) || 0, vp: Number((m.victory_points || {})[c]) || 0 });
+    }
+  }
+  const top = (f, ok = () => true) => rows.filter(ok).reduce((b, r) => (!b || f(r) > f(b) ? r : b), null);
+  const list = [
+    { label: 'Most kills', short: 'Kills', icon: () => hlImg('Event_Swords', 'hl-mk hl-mk-img', 16), r: top((r) => r.kills), val: (r) => r.kills, big: (r) => hlNum(r.kills), unit: 'kills', period: 'this week' },
+    { label: 'Most VP', short: 'VP', icon: () => hlEl('span', 'hl-mk hl-mk-vp', 'VP'), r: top((r) => r.vp), val: (r) => r.vp, big: (r) => hlNum(r.vp), unit: 'VP', period: 'this week' },
+    { label: 'Highest PPT', short: 'PPT', icon: () => hlSvg(HL_TREND, 'hl-mk hl-mk-svg'), r: top((r) => r.ppt), val: (r) => r.ppt, big: (r) => hlNum(r.ppt), unit: 'points per tick', period: 'now' },
+    { label: 'Most active', short: 'Active', icon: () => hlSvg(HL_BOLT, 'hl-mk hl-mk-svg'), r: top((r) => r.kills + r.deaths), val: (r) => r.kills + r.deaths, big: (r) => hlNum(r.kills + r.deaths), unit: 'kills + deaths', period: 'this week' },
+    { label: 'Best K/D', short: 'K/D', kd: true, r: top((r) => r.kills / r.deaths, (r) => r.deaths >= HL_KD_MIN_DEATHS),
+      val: (r) => r.kills / r.deaths, big: (r) => (r.kills / r.deaths).toFixed(2), unit: 'kills per death', period: 'this week' },
+  ];
+  return list.filter((x) => x.r && x.val(x.r) > 0);
+}
+const hlLeadersSaid = (list) => list.map((x) => `${x.label}, ${x.period}: ${x.r.name}, ${x.big(x.r)} ${x.unit}, ${hlTierTag(x.r.m.id)}.`).join(' ');
+
+// The turning. hlRot outlives the box: a repaint builds a new one that carries on from the same metric and the same
+// instant of its 5 s. `paused`: null follows the reduced-motion setting, true or false is what the button said.
+const hlRot = { idx: 0, key: '', ms: 0, last: 0, asked: false, hover: false, focus: false, paused: null, shown: false, list: [] };
+const hlReduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const hlStopped = () => (hlRot.paused === null ? hlReduced() : hlRot.paused);
+const hlHeld = () => hlStopped() || hlRot.hover || hlRot.focus || document.visibilityState === 'hidden' || hlRot.list.length < 2;
+const hlRotBox = () => document.querySelector('.hl-rot');
+
+// On the embers' frames (emberField.nextFrame, js/boot.js), so it stands still where the page's looping animations
+// do: a hidden tab, reduced motion. A frame back after a hidden tab or a slow one moves the fill one frame's worth,
+// not the time away.
+function hlTurnAsk() {
+  if (hlRot.asked) return;
+  hlRot.asked = true;
+  hlRot.last = 0;
+  emberField.nextFrame(hlTurnTick);
+}
+function hlTurnTick(now) {
+  hlRot.asked = false;
+  const box = hlRotBox();
+  if (!box || hlHeld()) return;
+  if (hlRot.last) hlRot.ms += Math.min(100, Math.max(0, now - hlRot.last));
+  if (hlRot.ms >= HL_TURN_MS) {
+    hlRotShow((hlRot.idx + 1) % hlRot.list.length);
+    return;
+  }
+  hlFillPaint(box);
+  hlTurnAsk();
+  hlRot.last = now;
+}
+function hlFillPaint(box) {
+  const fill = box.querySelector('.hl-step[aria-pressed="true"] .hl-step-fill');
+  if (fill) fill.style.transform = `scaleX(${Math.min(1, hlRot.ms / HL_TURN_MS)})`;
+}
+// The box as the state says: the shown slide, the segments, the pause button and the position the screen reader reads.
+function hlRotSync(box = hlRotBox()) {
+  if (!box) return;
+  const { idx, list } = hlRot;
+  box.querySelectorAll('.hl-slide').forEach((s, k) => s.classList.toggle('is-on', k === idx));
+  box.querySelectorAll('.hl-step').forEach((b, k) => {
+    b.setAttribute('aria-pressed', k === idx ? 'true' : 'false');
+    b.classList.toggle('is-done', k < idx);
+    b.querySelector('.hl-step-fill').style.transform = '';
+  });
+  hlFillPaint(box);
+  box.querySelector('.hl-rot-pos').textContent = `${list[idx].label}, ${idx + 1} of ${list.length}`;
+  const pause = box.querySelector('.hl-rot-pause');
+  if (pause) {
+    const stopped = hlStopped();
+    if (pause.dataset.stopped !== String(stopped)) {
+      pause.dataset.stopped = String(stopped);
+      pause.setAttribute('aria-label', stopped ? 'Play the leaders' : 'Pause the leaders');
+      pause.replaceChildren(hlSvg(stopped ? ['M8 6l10 6-10 6Z'] : ['M8 6v12', 'M16 6v12'], 'hl-rot-svg'));
+    }
+  }
+  hlRotHold(box);
+}
+function hlRotHold(box = hlRotBox()) {
+  const held = hlHeld();
+  if (box) box.classList.toggle('is-held', held);
+  if (!held && box) hlTurnAsk();
+}
+// A turn: the next metric, its number counting up and the box's top rule lit in the leader's colour, once and with
+// reduced motion too (the site's run-once effects play).
+function hlRotShow(i) {
+  const box = hlRotBox();
+  hlRot.idx = i;
+  hlRot.key = hlRot.list[i].short;
+  hlRot.ms = 0;
+  hlRotSync(box);
+  if (!box) return;
+  const slide = box.querySelectorAll('.hl-slide')[i];
+  for (const e of box.querySelectorAll('.hl-rot-edge')) e.remove();
+  const edge = hlEl('span', `hl-rot-edge side-${hlRot.list[i].r.color}`);
+  edge.addEventListener('animationend', () => edge.remove());
+  box.appendChild(edge);
+  for (const s of box.querySelectorAll('.hl-slide.is-in')) s.classList.remove('is-in');
+  slide.classList.add('is-in');
+  hlCountUp(slide.querySelector('.hl-mt-num .hl-num'), hlRot.list[i]);
+}
+// The number from 85% of the value to it in 600 ms, easing out; K/D in its two decimals.
+let hlCounting = 0;
+function hlCountUp(el, x) {
+  const id = ++hlCounting;
+  if (!el) return;
+  const end = x.val(x.r);
+  const say = (v) => (x.kd ? v.toFixed(2) : hlNum(v));
+  const t0 = performance.now();
+  const step = (now) => {
+    if (id !== hlCounting || !el.isConnected) return;
+    const p = Math.min(1, (now - t0) / 600);
+    el.textContent = p < 1 ? say(end * (0.85 + 0.15 * (1 - (1 - p) ** 3))) : x.big(x.r);
+    if (p < 1) emberField.nextFrame(step);
+  };
+  el.textContent = say(end * 0.85);
+  emberField.nextFrame(step);
+}
+matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => hlRotSync());
+document.addEventListener('visibilitychange', () => hlRotHold());
+
+// K/D as the card writes it: "K/D" before the number, green above 1 and red below.
+function hlKdBig(x, cls) {
+  const big = hlEl('span', `hl-big hl-kd ${cls}`);
+  const n = hlEl('span', 'hl-num', x.big(x.r));
+  if (x.r.kills !== x.r.deaths) n.classList.add(x.r.kills > x.r.deaths ? 'kd-good' : 'kd-bad');
+  big.append(hlEl('span', 'stat-label', 'K/D'), n);
+  return big;
+}
+// "Metric as title": the metric heads the slide with where it sits in the turn; team and number centred under it.
+// The metric's own mark big and faint at the right edge, and a soft glow in the leader's colour: each the slide's own.
+function hlLeaderSlide(x, k, n) {
+  const s = hlEl('div', `hl-slide hl-mt side-${x.r.color}`);
+  const deco = hlEl('span', 'hl-deco-ic');
+  if (x.kd) deco.appendChild(hlEl('span', 'hl-mk hl-mk-vp', 'K/D'));
+  else deco.appendChild(x.icon());
+  s.append(hlEl('span', 'hl-deco-glow'), deco);
+  const head = hlEl('span', 'hl-mt-head');
+  const title = hlEl('span', 'hl-mt-title');
+  if (x.icon) title.appendChild(x.icon());
+  title.appendChild(hlEl('span', null, x.period === 'now' ? `${x.label} · now` : x.label));
+  head.append(title, hlEl('span', 'hl-mt-note', `Leaders · ${k + 1}/${n} · this week`));
+  const team = hlEl('span', `hl-mt-team side-${x.r.color}`);
+  const name = hlTeamText(x.r.name, x.r.color);
+  name.classList.add('hl-lead-name');
+  team.append(name, hlChip(x.r.m.id));
+  const num = x.kd ? hlKdBig(x, 'hl-mt-num') : hlBig(x.big(x.r), x.unit);
+  num.classList.add('hl-mt-num');
+  s.append(head, team, num);
+  return s;
+}
+function hlLeadersBox(list) {
+  if (!list.length) return null;
+  hlRot.list = list;
+  const at = list.findIndex((x) => x.short === hlRot.key);
+  if (at < 0) hlRot.ms = 0;
+  hlRot.idx = Math.max(0, at);
+  hlRot.key = list[hlRot.idx].short;
+  const box = hlEl('section', 'hl-tile hl-rot');
+  box.setAttribute('aria-roledescription', 'carousel');
+  box.setAttribute('aria-label', 'Leaders this week');
+  if (list.length > 1) {
+    const pause = hlEl('button', 'hl-rot-pause');
+    pause.type = 'button';
+    pause.dataset.hl = 'rot-pause';
+    pause.addEventListener('click', () => { hlRot.paused = !hlStopped(); hlRotSync(); });
+    box.appendChild(pause);
+  }
+  // Said whole, and its position, outside the slides that the reader skips.
+  box.append(hlEl('span', 'sr-only', hlLeadersSaid(list)), hlEl('span', 'sr-only hl-rot-pos'));
+  const slides = hlEl('div', 'hl-slides');
+  slides.setAttribute('aria-hidden', 'true');
+  list.forEach((x, k) => slides.appendChild(hlLeaderSlide(x, k, list.length)));
+  box.appendChild(slides);
+  if (list.length > 1) {
+    const steps = hlEl('div', 'hl-steps');
+    list.forEach((x, k) => {
+      const b = hlEl('button', 'hl-step');
+      b.type = 'button';
+      b.dataset.hl = `rot-${x.short}`;
+      b.setAttribute('aria-label', x.label);
+      b.append(hlEl('span', 'hl-step-fill'), hlEl('span', 'hl-step-name', x.short));
+      // A press goes to the metric and holds it there; the Play button turns again.
+      b.addEventListener('click', () => { hlRot.paused = true; hlRotShow(k); });
+      steps.appendChild(b);
+    });
+    box.appendChild(steps);
+  }
+  box.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') { hlRot.hover = true; hlRotHold(); } });
+  box.addEventListener('pointerleave', () => { hlRot.hover = false; hlRotHold(); });
+  // A touch has no hover to end: it holds the turning as the button does.
+  box.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' || e.target.closest('button') || hlStopped()) return;
+    hlRot.paused = true;
+    hlRotSync();
+  });
+  // Only the keyboard's focus holds: a press with the mouse leaves the focus on its button.
+  box.addEventListener('focusin', (e) => { hlRot.focus = e.target.matches(':focus-visible'); hlRotHold(); });
+  box.addEventListener('focusout', () => { hlRot.focus = false; hlRotHold(); });
+  return box;
+}
+// Once the box is in the page: its state laid on it (kept out of what decides a repaint), and on the first sight of
+// it the faint mark's entrance.
+function hlRotArrive() {
+  const box = hlRotBox();
+  if (!box) return;
+  hlRotSync(box);
+  if (hlRot.shown) return;
+  hlRot.shown = true;
+  box.querySelectorAll('.hl-slide')[hlRot.idx].classList.add('is-in');
+}
+
 function hlRegionSwitch(region) {
   const group = hlEl('div', 'hl-reg');
   group.setAttribute('role', 'group');
@@ -481,7 +729,8 @@ function hlPanel() {
   grid.append(f && !f.wait ? hlFightTile(f) : hlFightWait(f && f.wait));
   grid.append(flip ? hlBusyTile(flip) : hlQuietBusyTile(hlNewest));
   if (c) grid.append(hlClosestTile(c));
-  panel.append(head, grid);
+  const leaders = hlLeadersBox(hlLeaders());
+  panel.append(head, ...(leaders ? [leaders] : []), grid);
   return panel;
 }
 
@@ -504,7 +753,10 @@ function paintHighlights() {
   if (said === hlSaid) return;
   hlSaid = said;
   const was = hlBox.contains(document.activeElement) ? document.activeElement.dataset.hl : null;
+  // A focused control that is replaced says nothing: the focus it held is gone, and comes back with the control.
+  if (was) hlRot.focus = false;
   hlBox.replaceChildren(...(panel ? [panel] : []));
+  hlRotArrive();
   const again = was && hlBox.querySelector(`[data-hl="${was}"]`);
   if (again) again.focus({ preventScroll: true });
 }
