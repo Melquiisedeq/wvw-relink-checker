@@ -17,6 +17,9 @@
 //   GET  /api/ws               a WebSocket that carries nothing in: each newer copy the ingest
 //                              stores, as {matches: [{id, start, score, at}], version: "<at>.<tag>"}
 //                              (the Live object; no version without VERSION_KEY)
+//   POST /api/ingest/notes     the notes script, the wiki's update notes, every 6 hours
+//   GET  /api/notes            the WvW lines of the game's update notes, with when the wiki
+//                              was last read (worker/notes.mjs)
 //   daily, on a schedule       kills older than KEEP_DAYS are deleted
 //
 // A message is signed by its script with a secret of its own:
@@ -26,6 +29,8 @@
 //
 // The latest entrance parses the plain JSON only to check it: it decides by the signed summary
 // and the match's score, never by a reader's clock.
+
+import { acceptNotes, servedNotes } from './notes.mjs';
 
 const MAX_BYTES = 64 * 1024;
 // The HMAC, each part's hash and the parse all run over the whole message, inside
@@ -37,7 +42,8 @@ const MAX_LIVE = 64 * 1024;
 const MAX_HIST = 64 * 1024;
 const SOURCES = {
   kills: 'INGEST_KILLS', relink: 'INGEST_RELINK',
-  'latest-supa-us': 'INGEST_LATEST_SUPA_US', 'latest-supa-eu': 'INGEST_LATEST_SUPA_EU'
+  'latest-supa-us': 'INGEST_LATEST_SUPA_US', 'latest-supa-eu': 'INGEST_LATEST_SUPA_EU',
+  notes: 'INGEST_NOTES'
 };
 // When a region's weekly match starts, UTC (day 0 = Sunday).
 const RESET = { 1: { day: 6, hour: 2 }, 2: { day: 5, hour: 18 } };
@@ -78,6 +84,9 @@ const HISTORY_PARTIAL_MAX_AGE = 60;
 const HISTORY_MISS_MAX_AGE = 10;
 // The scripts make 128 hex characters; a short secret fails loudly rather than work weakly.
 const MIN_SECRET = 64;
+const NOTES_KEY = 'https://wvwrelink.com/api/notes';
+// The notes change a few times a month: the read is kept a few minutes.
+const NOTES_MAX_AGE = 300;
 // The daily cleanup deletes kills older than this: two weeks keeps the running match and the one before it.
 const KEEP_DAYS = 14;
 // What GET /api/kills carries in full: the page wants a reading at least ten minutes old, and the
@@ -113,6 +122,15 @@ export default {
         return await readLatestVersion(env, ctx, url);
       } catch (e) {
         console.log(JSON.stringify({ read: 'latest version', failed: String(e) }));
+        return text(503, 'unavailable');
+      }
+    }
+    if (url.pathname === '/api/notes') {
+      if (request.method !== 'GET') return text(405, 'method');
+      try {
+        return await readNotes(env, ctx, url);
+      } catch (e) {
+        console.log(JSON.stringify({ read: 'notes', failed: String(e) }));
         return text(503, 'unavailable');
       }
     }
@@ -188,6 +206,13 @@ async function accept(request, env, ctx, source, path) {
     data = JSON.parse(new TextDecoder().decode(body));
   } catch {
     return refuse(400, source, 'not JSON');
+  }
+  if (source === 'notes') {
+    const done = await acceptNotes(env.DB, data, Date.now(), () => claimTime(env.DB, source, Number(t), now));
+    if (typeof done === 'string') return refuse(422, source, done);
+    if (!done) return refuse(409, source, 'replay or out of order');
+    console.log(JSON.stringify({ source, ok: true, ...done }));
+    return text(200, 'ok');
   }
   const statement = source === 'kills'
     ? killsStatement(env.DB, data, Number(t), Date.now())
@@ -900,6 +925,16 @@ async function latestCopy(env) {
     return head + ',"v":2,"body":' + r.gz + '}';
   };
   return { newest, body: '{"at":' + newest + ',"matches":[' + live.map(entry).join(',') + ']}' };
+}
+
+// GET /api/notes: {wiki, notes}, the published lines and when the wiki was last read. Any query is a 404
+// before D1.
+async function readNotes(env, ctx, url) {
+  if (url.search !== '') return text(404, 'not found');
+  return cached(ctx, NOTES_KEY, async () => {
+    const f = await servedNotes(env.DB);
+    return json('{"wiki":' + f.wiki + ',"notes":' + f.body + '}', NOTES_MAX_AGE);
+  });
 }
 
 // GET /api/latest?v=<at>.<tag>: the copy whose newest `at` is that, kept under the version's

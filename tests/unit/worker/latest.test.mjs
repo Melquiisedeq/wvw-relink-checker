@@ -84,7 +84,7 @@ test('each reader has its own door and its own replay clock', async () => {
   for (const s of Object.keys(SOURCES)) {
     assert.equal(await w.post(s, body([match('1-1')]), { t: t - 1 }), 200, s);
   }
-  assert.equal(w.count('source'), 4);
+  assert.equal(w.count('source'), 5);
   assert.deepEqual({ ...w.sql.prepare("SELECT t FROM source WHERE name = 'latest-supa-eu'").get() }, { t: t - 1 });
 });
 

@@ -230,3 +230,8 @@ test('checkAppsScriptScopes: the manifest is not JSON', () => {
 test('checkAppsScriptScopes: the scopes differ', () => {
   fails((r) => write(r, 'apps-script/kills/appsscript.json', '{"oauthScopes":["a"]}'), /oauthScopes must be exactly \['https:\/\/www\.googleapis\.com\/auth\/spreadsheets\.currentonly', /);
 });
+test('checkAppsScriptScopes: the notes project asks for more than external requests', () => {
+  fails((r) => write(r, 'apps-script/notes/appsscript.json', '{"oauthScopes":["https://www.googleapis.com/auth/spreadsheets.currentonly","https://www.googleapis.com/auth/script.external_request"]}'),
+    /apps-script\/notes\/appsscript\.json: oauthScopes must be exactly \['https:\/\/www\.googleapis\.com\/auth\/script\.external_request'\]/);
+  fails((r) => write(r, 'apps-script/notes/appsscript.json', '{'), /apps-script\/notes\/appsscript\.json: missing or not JSON/);
+});

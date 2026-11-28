@@ -18,6 +18,10 @@
 // fresh and made of known sources, and it must not run ahead of the game's own
 // API - which only a stolen signing secret can do.
 //
+// The update notes: the wiki read by the notes script every 6 hours; /api/notes says when it was
+// last read, and older than NOTES_STALE is a problem (the Worker keeps serving the last good copy,
+// so nothing else shows it).
+//
 // And the push routes (/api/ingest/*) that must stay shut, each a status and no
 // judgement: they take no GET and no unsigned POST, and the Worker has no workers.dev
 // address (`workers_dev: false` in worker/wrangler.jsonc).
@@ -46,6 +50,8 @@ const LATEST_REQUIRED = ['latest-supa-us', 'latest-supa-eu'];
 const LATEST_STALE = 90 * 60;
 // The cleanup runs daily (worker/wrangler.jsonc, crons); 2 h of slack.
 const CLEANUP_STALE = 26 * 3600;
+// Twelve missed runs of the notes script.
+const NOTES_STALE = 3 * 86400;
 // The summary may lead a stale read of the game's API by at most 600 points a
 // minute for the 70 minutes the API can lag; past it, a score the game never
 // had, which only a stolen signing secret could send.
@@ -250,6 +256,24 @@ export function checkCleanup(data, now, problems, notes) {
     problems.push(`The daily cleanup last ran ${floor((now - at) / 3600)} hours ago (limit ${floor(CLEANUP_STALE / 3600)}). Check its cron on the Worker wvwrelink-api.`);
   } else {
     notes.push(`${label('cleanup last ran')} ${floor((now - at) / 3600)} h ago`);
+  }
+}
+
+export async function checkNotes(ctx, problems, notes) {
+  const [data, why] = await ctx.getJson(`${API}notes`);
+  if (why) {
+    problems.push(`/api/notes: ${why}.`);
+    return;
+  }
+  const now = ctx.seconds();
+  const what = 'the notes script, its 6-hour trigger, its ingest property, or the Worker secret INGEST_NOTES';
+  const at = data?.wiki;
+  if (!isInt(at) || at === 0) {
+    problems.push(`/api/notes has never read the wiki. Check ${what}.`);
+  } else if (now - at > NOTES_STALE) {
+    problems.push(`/api/notes last read the wiki ${floor((now - at) / 3600)} hours ago (limit ${floor(NOTES_STALE / 3600)}). Check ${what}.`);
+  } else {
+    notes.push(`${label('notes: wiki last read')} ${floor((now - at) / 3600)} h ago`);
   }
 }
 
@@ -462,6 +486,7 @@ export async function main(deps = {}) {
   const notes = [];
   await checkFeeds(ctx, problems, notes);
   await checkReads(ctx, problems, notes);
+  await checkNotes(ctx, problems, notes);
   await checkLatest(ctx, problems, notes);
   await checkDoors(ctx, problems, notes);
   const out = [...notes, ...problems.map((p) => `::error::${escape(p)}`)];

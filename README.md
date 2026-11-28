@@ -54,7 +54,7 @@ Discord, read only when you click a shield icon.
 **The search runs in your browser. The guild names you type go
 only to the game's own API (ArenaNet's), to be looked up; the visits are
 counted, as the table below shows.** There is one small server of mine, at `wvwrelink.com/api`. It receives game
-data from this project's own two Apps Scripts and two Supabase readers, each signed, and the page reads four things
+data from this project's own three Apps Scripts (one reads the game's update notes on its wiki, not a spreadsheet) and two Supabase readers, each signed, and the page reads four things
 back from it — the kills history, whether the new teams are out (both fall
 back to the spreadsheets if it cannot answer), the newest match bodies and the
 history of each region's finished skirmishes. While the tab is visible the page also keeps a connection open to it, to hear when newer match bodies are in; it sends only `ping`. Nothing you type goes near it.
