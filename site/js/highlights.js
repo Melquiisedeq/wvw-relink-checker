@@ -355,10 +355,13 @@ function hlBusyTile(flip) {
     aria: `Busiest map, ${hlTierTag(flip.m.id)}: ${flip.n} ${flip.n === 1 ? 'objective' : 'objectives'} taken in the last 2 hours on ${where}, held now by ${said}. Open the live map on it` });
 }
 
+// The new week's line, in every tile that has no number yet.
+const hlFirstNumbers = () => hlEl('span', 'hl-map', 'New week · first numbers soon');
+
 // No take in 2 h: the map of the newest take of the week and when, the marker still; none this week, the new week's line.
 function hlQuietBusyTile(last) {
   if (!last) {
-    return hlTile({ key: 'busy', cls: 'hl-busy', icon: hlPulse('Camp', null, true), label: 'Busiest map', body: [hlEl('span', 'hl-map', 'New week · first numbers soon')] });
+    return hlTile({ key: 'busy', cls: 'hl-busy', icon: hlPulse('Camp', null, true), label: 'Busiest map', body: [hlFirstNumbers()] });
   }
   const where = hlMapName(last.type);
   const when = `Last capture ${hlHhmm(last.at)}`;
@@ -439,14 +442,14 @@ function hlScales(lean) {
 }
 function hlClosestTile(c) {
   if (c.fresh) {
-    return hlTile({ key: 'close', cls: 'hl-close', icon: hlScales(0), label: 'Closest match', body: [hlEl('span', 'hl-map', 'New week · first numbers soon')] });
+    return hlTile({ key: 'close', cls: 'hl-close', icon: hlScales(0), label: 'Closest match', body: [hlFirstNumbers()] });
   }
   const f = hlFav(c);
   const body = [hlBig(hlNum(c.gap), 'VP apart')];
   if (c.sk) body.push(hlSkBar(c));
   body.push(hlWeekRows(c), hlFavFoot(c));
   return hlTile({ key: 'close', cls: 'hl-close', icon: hlScales(f.tied ? 0 : f.x === c.b ? 1 : -1), label: 'Closest match', chip: hlChip(c.m.id),
-    body, go: () => goToTier(c.a.name), aria: hlClosestSaid(c) });
+    body, go: () => goToTier(getTeamName(matchTeamId(c.m, c.a.color)), undefined, c.m.id), aria: hlClosestSaid(c) });
 }
 
 // ---- the Leaders ----
@@ -484,10 +487,33 @@ function hlLeaders() {
         deaths: Number((m.deaths || {})[c]) || 0, vp: Number((m.victory_points || {})[c]) || 0 });
     }
   }
-  const top = (f, ok = () => true) => rows.filter(ok).reduce((b, r) => (!b || f(r) > f(b) ? r : b), null);
+  // The best team of a metric; none when two share the first place: a tie names no leader, and the metric stays out
+  // of the turning until it breaks. `then` breaks it (the VP): a value for each team tied, none to give up.
+  const top = (f, ok = () => true, then = null) => {
+    let best = null;
+    let tied = [];
+    for (const r of rows.filter(ok)) {
+      if (!best || f(r) > f(best)) { best = r; tied = [r]; } else if (f(r) === f(best)) tied.push(r);
+    }
+    if (tied.length < 2) return best;
+    const next = then ? tied.map(then) : [null];
+    if (next.includes(null)) return null;
+    const at = Math.max(...next);
+    const first = tied.filter((r, k) => next[k] === at);
+    if (first.length > 1) return null;
+    const rest = Math.max(...next.filter((n) => n !== at));
+    first[0].ahead = at - rest;
+    return first[0];
+  };
+  // What a team's VP would be if the skirmish under way ended now (the Closest match's own count), none without a
+  // table that holds.
+  const nowVp = (r) => {
+    const sk = hlSkirmishNow(r.m);
+    return sk && sk.vp ? r.vp + sk.vp[r.color] : null;
+  };
   const list = [
     { label: 'Most kills', short: 'Kills', icon: () => hlImg('Event_Swords', 'hl-mk hl-mk-img', 16), r: top((r) => r.kills), val: (r) => r.kills, big: (r) => hlNum(r.kills), unit: 'kills', period: 'this week' },
-    { label: 'Most VP', short: 'VP', icon: () => hlEl('span', 'hl-mk hl-mk-vp', 'VP'), r: top((r) => r.vp), val: (r) => r.vp, big: (r) => hlNum(r.vp), unit: 'VP', period: 'this week' },
+    { label: 'Most VP', short: 'VP', icon: () => hlEl('span', 'hl-mk hl-mk-vp', 'VP'), r: top((r) => r.vp, undefined, nowVp), val: (r) => r.vp, big: (r) => hlNum(r.vp), unit: 'VP', period: 'this week' },
     { label: 'Objective points', short: 'Objectives', icon: () => hlImg('Event_Keep', 'hl-mk hl-mk-img', 16), r: top((r) => r.obj), val: (r) => r.obj, big: (r) => hlNum(r.obj),
       unit: 'points · the value of each objective when taken', period: 'this week' },
     { label: 'Most active', short: 'Active', icon: () => hlSvg(HL_BOLT, 'hl-mk hl-mk-svg'), r: top((r) => r.kills + r.deaths), val: (r) => r.kills + r.deaths, big: (r) => hlNum(r.kills + r.deaths), unit: 'kills + deaths', period: 'this week' },
@@ -502,20 +528,24 @@ function hlLeaders() {
   }
   return shown;
 }
+// A VP tie broken by the skirmish under way says so.
+const hlTied = (x) => (x.r.ahead ? ` Tied on VP · ${x.r.ahead} VP ahead this skirmish.` : '');
 const hlLeadersSaid = (list) => list.map((x) => (x.wait ? `${x.label}, ${x.period}: ${HL_NEW_WEEK}.`
-  : `${x.label}, ${x.period}: ${x.r.name}, ${x.big(x.r)} ${x.unit}, ${hlTierTag(x.r.m.id)}.`)).join(' ');
+  : `${x.label}, ${x.period}: ${x.r.name}, ${x.big(x.r)} ${x.unit}, ${hlTierTag(x.r.m.id)}.${hlTied(x)}`)).join(' ');
 const HL_NEW_WEEK = 'New week · counted from the first objective taken';
 
 // The turning. hlRot outlives the box: a repaint builds a new one that carries on from the same metric and the same
 // instant of its 5 s. `paused`: null follows the reduced-motion setting, true or false is what the button said.
 const hlRot = { idx: 0, key: '', ms: 0, last: 0, asked: false, hover: false, focus: false, paused: null, shown: false, list: [] };
-const hlReduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const hlReducedMq = matchMedia('(prefers-reduced-motion: reduce)');
+const hlReduced = () => hlReducedMq.matches;
 const hlStopped = () => (hlRot.paused === null ? hlReduced() : hlRot.paused);
 const hlHeld = () => hlStopped() || hlRot.hover || hlRot.focus || document.visibilityState === 'hidden' || hlRot.list.length < 2;
 const hlRotBox = () => document.querySelector('.hl-rot');
 
-// On the embers' frames (emberField.nextFrame, js/boot.js), so it stands still where the page's looping animations
-// do: a hidden tab, reduced motion. A frame back after a hidden tab or a slow one moves the fill one frame's worth,
+// On the embers' frames (emberField.nextFrame, js/boot.js), which keeps it off the page's own frame loop; what holds
+// it is hlHeld (hidden tab, reduced motion, pause, pointer, focus), and with the embers still the frames come from
+// requestAnimationFrame. A frame back after a hidden tab or a slow one moves the fill one frame's worth,
 // not the time away.
 function hlTurnAsk() {
   if (hlRot.asked) return;
@@ -603,7 +633,7 @@ function hlCountUp(el, x) {
   el.textContent = say(end * 0.85);
   emberField.nextFrame(step);
 }
-matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => hlRotSync());
+hlReducedMq.addEventListener('change', () => hlRotSync());
 document.addEventListener('visibilitychange', () => hlRotHold());
 
 // K/D as the card writes it: "K/D" before the number, green above 1 and red below.
@@ -638,10 +668,20 @@ function hlLeaderSlide(x, k, n) {
   const num = x.kd ? hlKdBig(x, 'hl-mt-num') : hlBig(x.big(x.r), x.unit);
   num.classList.add('hl-mt-num');
   s.append(head, team, num);
+  if (x.r.ahead) s.appendChild(hlEl('span', 'hl-mt-note', hlTied(x).trim().slice(0, -1)));
   return s;
 }
+// Every metric still at 0 (the week's first minutes): the box stays, so that the first number does not push the tiles.
+function hlLeadersQuiet() {
+  hlRot.list = [];
+  hlRot.shown = false;
+  const box = hlEl('section', 'hl-tile hl-rot-quiet');
+  box.setAttribute('aria-label', 'Leaders this week');
+  box.append(hlEl('span', 'hl-mt-title', 'Leaders'), hlFirstNumbers());
+  return box;
+}
 function hlLeadersBox(list) {
-  if (!list.length) return null;
+  if (!list.length) return hlLeadersQuiet();
   hlRot.list = list;
   const at = list.findIndex((x) => x.short === hlRot.key);
   if (at < 0) hlRot.ms = 0;
@@ -738,7 +778,7 @@ function hlPanel() {
   grid.append(flip ? hlBusyTile(flip) : hlQuietBusyTile(hlNewest));
   if (c) grid.append(hlClosestTile(c));
   const leaders = hlLeadersBox(hlLeaders());
-  panel.append(head, ...(leaders ? [leaders] : []), grid);
+  panel.append(head, leaders, grid);
   return panel;
 }
 
@@ -761,7 +801,8 @@ function paintHighlights() {
   if (said === hlSaid) return;
   hlSaid = said;
   const was = hlBox.contains(document.activeElement) ? document.activeElement.dataset.hl : null;
-  // A focused control that is replaced says nothing: the focus it held is gone, and comes back with the control.
+  // The focusout of a control that is replaced may never come, and its hold would stay: the focus is let go here, and
+  // held again when it comes back to the new control.
   if (was) hlRot.focus = false;
   hlBox.replaceChildren(...(panel ? [panel] : []));
   hlRotArrive();

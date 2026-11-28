@@ -259,3 +259,51 @@ test('the Leaders count the copy\'s objective points, and the Busiest its takes;
   takenFor(p, list[2], { points: { red: 1, blue: -1, green: 1 }, flips: { red: 1, blue: 1, green: 1 }, maps: {} });
   assert.equal(p.run('latestTaken.has(__b)'), false);
 });
+
+test('the Leaders: a tie for first place leaves the metric out; on VP the skirmish under way breaks it', () => {
+  const p = fresh();
+  const read = (m) => {
+    p.run('newestMatches.clear()');
+    p.call('keepNewestMatch', m);
+    return [...p.call('hlLeaders')];
+  };
+  const m = clone(openMatch);
+  m.start_time = '2026-09-26T02:00:00Z';
+  // Skirmish 1 ended with Red and Blue level on 43 VP (the first place's points to both), Green 21.
+  m.skirmishes = [{ id: 1, scores: { red: 100, blue: 100, green: 50 } }, { id: 2, scores: { red: 10, blue: 5, green: 1 } }];
+  m.victory_points = { red: 43, blue: 43, green: 21 };
+  m.kills = { red: 7, blue: 7, green: 1 };
+  const kills = (list) => list.map((x) => x.short);
+  let list = read(m);
+  assert.ok(!kills(list).includes('Kills'), 'a tie on kills: no leader');
+  const vp = list.find((x) => x.short === 'VP');
+  assert.ok(vp, 'a tie on VP is broken by the skirmish');
+  assert.equal(vp.r.color, 'red');
+  assert.equal(vp.r.ahead, 7, 'Red would take 31 VP, Blue 24');
+  assert.match(p.call('hlLeadersSaid', list), /Tied on VP · 7 VP ahead this skirmish\./);
+  // The same VP in a match with no table that holds: the tie cannot be broken across the two.
+  const other = clone(m);
+  other.id = '1-2';
+  other.skirmishes = [];
+  p.run('newestMatches.clear()');
+  p.call('keepNewestMatch', m);
+  p.call('keepNewestMatch', other);
+  assert.ok(![...p.call('hlLeaders')].some((x) => x.short === 'VP'), 'a team with no count to break it with');
+  // The skirmish level too: the tie stands, and the metric is out.
+  m.skirmishes[1].scores = { red: 10, blue: 10, green: 1 };
+  assert.ok(!kills(read(m)).includes('VP'));
+  // A table that does not hold (VP the finished skirmishes do not add up to): nothing to break it with.
+  m.skirmishes[1].scores = { red: 10, blue: 5, green: 1 };
+  m.victory_points = { red: 44, blue: 44, green: 21 };
+  assert.ok(!kills(read(m)).includes('VP'));
+  // One ahead on kills: the leader again.
+  m.kills.red = 8;
+  assert.ok(kills(read(m)).includes('Kills'));
+});
+
+test('the Leaders ask the reduced-motion setting once, not on every frame', () => {
+  const p = fresh();
+  const before = p.run('__mediaQueries');
+  p.run('hlReduced(); hlReduced(); hlReduced()');
+  assert.equal(p.run('__mediaQueries'), before);
+});

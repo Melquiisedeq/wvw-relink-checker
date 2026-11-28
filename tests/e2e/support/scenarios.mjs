@@ -48,12 +48,28 @@ export const frozen = (min = 40, id) => opened(id).advance(4).freeze(min).advanc
 // for `min` minutes, with the kills' pace of the fight still in the history.
 export const frozenMidFight = (min = 20, id) => opened(id).advance(4).freeze(min);
 
+// Kills no two teams share, so that no metric is tied at the top (the Leaders leave a tie out).
+const UNEVEN_KILLS = { Center: [12, 11, 10] };
+
 // A week's first minutes: the page open on the recorded week, the region turns (gw2.newWeek) and the focus
 // plays `min` minutes of it, every team still on 0 VP.
-export const weekAtZero = (min = 6, id = FOCUS) => opened(id).newWeek().advance(min);
+export const weekAtZero = (min = 6, id = FOCUS) => opened(id).newWeek().advance(min, { kills: UNEVEN_KILLS });
+
+// A week's first minutes with nothing happening (`quiet` of them: no kill, no score), then `min` minutes of play.
+export const weekFirstKill = (quiet = 2, min = 4, id = FOCUS) => opened(id).newWeek().advance(quiet, { kills: {}, score: {} }).advance(min, { kills: UNEVEN_KILLS });
 
 // Victory points by a table the site does not know (gw2.vpTableChanged), `min` minutes of play.
 export const vpTableChanged = (min = 10, id) => opened(id).vpTableChanged().advance(min);
+
+// Teams the table does not name, each with a long id so that the name the page makes of it ("Unknown team (ID …)")
+// is long (gw2.teams), `min` minutes of play.
+export const longTeams = (min = 10, id) => opened(id).teams({ red: '999999991', blue: '999999992', green: '999999993' }).advance(min);
+
+// The region's matches with no team listed on any side (gw2.teams), `min` minutes of play.
+export const noTeams = (min = 10, id) => opened(id).teams({ red: null, blue: null, green: null }).advance(min);
+
+// Only the red side keeps its team (gw2.teams), `min` minutes of play.
+export const redOnly = (min = 10, id) => opened(id).teams({ blue: null, green: null }).advance(min);
 
 // A server group `lag` minutes behind answering every second minute, for
 // `min` minutes of play; /api/latest down, so that only the page's own guard

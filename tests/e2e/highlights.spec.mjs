@@ -2,9 +2,9 @@
 // switch, the focus kept through a repaint, and the states the factory names: the API stuck in the middle of a
 // fight, a week's first minutes, a victory point table the site does not know, and hours with the tab visible.
 import { test, expect } from './support/fixtures.mjs';
-import { load, phone } from './support/steps.mjs';
+import { load, phone, search } from './support/steps.mjs';
 import { loadNow, loadSettled } from './support/page.mjs';
-import { MIN, copyTaken, frozenMidFight, playing, vpTableChanged, weekAtZero } from './support/scenarios.mjs';
+import { MIN, copyTaken, frozenMidFight, longTeams, noTeams, playing, redOnly, vpTableChanged, weekAtZero } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 
@@ -149,5 +149,88 @@ test.describe('hours with the tab visible and no map open', () => {
     for (let t = 0; t < 240; t += 5) await readAgain(page, wvw, 5 * MIN);
     await expect(hot(page)).toHaveAccessibleName(/ kills per 10 minutes on .+, now\. /);
     await expect(panel(page).getByText('Reading the kills…')).toHaveCount(0);
+  });
+});
+
+// The tap on the Closest match: its tier is the one the label names, in the first column.
+async function showsItsTier(page) {
+  const no = (await closest(page).getAttribute('aria-label')).match(/NA · T(\d)/)[1];
+  await closest(page).click();
+  const tier = page.locator(`.standing-match[data-match-id="1-${no}"]`);
+  await expect(tier).toBeInViewport({ ratio: 0.5 });
+  await expect(page.locator('.tier-spot'), 'the ring on the tier').toHaveCount(1);
+  await expect(tier).not.toHaveClass(/tier-dimmed/);
+  await expect(tier.locator('.found-mark'), 'the card of the team sheened, in that tier').toHaveCount(1);
+  await expect(page.locator('.standing-side .found-mark')).toHaveCount(1);
+  await expect(tier.locator('.guild-found-strip'), 'no "from your search" strip without a search').toHaveCount(0);
+}
+
+test.describe('team names the table does not hold', () => {
+  test.describe('long ones', () => {
+    test.use({ timeline: longTeams(10) });
+
+    test('at 320 the Closest match cuts the names inside the box, the whole name is in its label', async ({ page, wvw }) => {
+      await load(page, wvw);
+      await phone(page, 320);
+      await wvw.settle();
+      await expect(closest(page)).toBeVisible();
+      const names = closest(page).locator('.hl-vprow .hl-cut-nm');
+      await expect(names).toHaveCount(2);
+      const tile = await closest(page).boundingBox();
+      for (const nm of await names.all()) {
+        const text = await nm.textContent();
+        expect(text, 'a long name').toMatch(/^Unknown team \(ID 99999999\d{2,3}\)$/);
+        const fits = await nm.evaluate(n => {
+          const css = getComputedStyle(n);
+          return { cut: n.scrollWidth > n.clientWidth && css.overflowX === 'hidden' && css.textOverflow === 'ellipsis', right: n.getBoundingClientRect().right };
+        });
+        expect(fits.cut, `${text} is cut with an ellipsis`).toBe(true);
+        expect(fits.right, `${text} ends inside the tile`).toBeLessThanOrEqual(tile.x + tile.width);
+        expect(await closest(page).getAttribute('aria-label'), 'the whole name is said').toContain(text);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth), 'no sideways scroll').toBeLessThanOrEqual(320);
+      const box = await panel(page).boundingBox();
+      expect(box.x + box.width, 'the panel inside 320').toBeLessThanOrEqual(320);
+    });
+
+    test('the Closest match brings its tier into view and rings it', async ({ page, wvw }) => {
+      await load(page, wvw);
+      await showsItsTier(page);
+    });
+  });
+
+  test.describe('no team on a side', () => {
+    test.use({ timeline: noTeams(10) });
+
+    test('the tiles name the side by its colour', async ({ page, wvw }) => {
+      await load(page, wvw);
+      await expect(closest(page)).toHaveAccessibleName(/^Closest match, NA · T\d: (Red|Blue|Green), (Red|Blue|Green), [\d,]+ VP; (Red|Blue|Green), (Red|Blue|Green), [\d,]+ VP;/);
+      const rows = await closest(page).locator('.hl-vprow .hl-cut-nm').allTextContents();
+      expect(rows, 'the two rows').toHaveLength(2);
+      for (const r of rows) expect(r).toMatch(/^(Red|Blue|Green)$/);
+      await expect(hot(page)).toBeVisible();
+      await expect(busy(page)).toBeVisible();
+    });
+
+    test('the Closest match brings its tier into view and rings it', async ({ page, wvw }) => {
+      await load(page, wvw);
+      await showsItsTier(page);
+    });
+  });
+
+  test.describe('the red side only', () => {
+    test.use({ timeline: redOnly(10) });
+
+    test('the Closest match moves the ring a search left on another tier', async ({ page, wvw }) => {
+      await load(page, wvw);
+      await search(page, wvw.guilds[0]);
+      const team = await page.locator('#searchAnswer .search-team').textContent();
+      await page.getByRole('button', { name: new RegExp(`^Show ${team} in the standings`) }).click();
+      await expect(page.locator('.tier-spot')).toHaveCount(1);
+      const ringed = await page.locator('.standing-match:not(.tier-dimmed)').evaluateAll(l => l.map(t => t.dataset.matchId));
+      await showsItsTier(page);
+      const now = await page.locator('.standing-match:not(.tier-dimmed)').evaluateAll(l => l.map(t => t.dataset.matchId));
+      expect(now, 'the ring left the search\'s tier').not.toEqual(ringed);
+    });
   });
 });
