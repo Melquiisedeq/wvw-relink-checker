@@ -7,7 +7,7 @@ import { abort } from './support/faults.mjs';
 
 const RELOAD = "Part of the page didn't load. Reload to fix it.";
 const NEEDED = ['config', 'dom', 'api', 'relink', 'sheet', 'popover', 'guilds-popover', 'popover-parts',
-  'stat-popovers', 'standings', 'maps-early', 'panels', 'summary', 'run', 'boot'];
+  'stat-popovers', 'standings', 'maps-early', 'panels', 'search', 'boot'];
 
 test('every script index.html loads in order is in this spec', async ({ page, wvw }) => {
   await page.goto(wvw.url);
@@ -24,21 +24,22 @@ for (const file of NEEDED) {
     });
     const down = await abort(page, wvw, new RegExp(`/js/${file}\\.js$`));
     await page.goto(wvw.url);
-    for (const id of ['#statusMsg', '#standingsStatusNA', '#standingsStatusEU']) {
+    for (const id of ['#searchAnswer', '#standingsStatusNA', '#standingsStatusEU']) {
       await expect(page.locator(id)).toHaveText(RELOAD);
     }
-    await expect(page.locator('#statusMsg')).toHaveClass(/\bstatus-err\b/);
+    await expect(page.getByText(RELOAD).first(), 'said where it is seen, above the field').toBeVisible();
+    await expect(page.locator('#searchAnswer .search-err')).toHaveText(RELOAD);
     expect(down.reads, 'reads cut off').toBeGreaterThan(0);
     await page.locator('#guildInput').fill(wvw.guilds[0]);
     await page.locator('#runBtn').click();
-    await page.locator('#guildInput').press('Control+Enter');
+    await page.locator('#guildInput').press('Enter');
     await wvw.settle();
     await expect(page.locator('#runBtn')).toBeEnabled();
     await expect(page.locator('#runBtn')).toHaveText('Check');
-    for (const id of ['#statusMsg', '#standingsStatusNA', '#standingsStatusEU']) {
+    for (const id of ['#searchAnswer', '#standingsStatusNA', '#standingsStatusEU']) {
       await expect(page.locator(id), 'nothing started writes over it').toHaveText(RELOAD);
     }
-    await expect(page.locator('#resultBody tr')).toHaveCount(0);
+    await expect(page.locator('#searchAnswer .search-card')).toHaveCount(0);
   });
 }
 
@@ -53,7 +54,7 @@ for (const [file, pattern] of [['', null], ['js/trebuchet.js', /\/js\/trebuchet\
     await page.locator('#guildInput').fill(wvw.guilds[0]);
     await page.locator('#runBtn').click();
     if (down) expect(down.reads, 'reads cut off').toBeGreaterThan(0);
-    await expect(page.locator('#statusMsg')).toContainText('Done, checked 1 guild');
+    await expect(page.locator('#searchAnswer .search-card')).toBeVisible();
     await expect(page.locator('#runBtn'), 'Check is not left off').toBeEnabled();
     await expect(page.locator('#runBtn')).toHaveText('Check');
     await expect(page.locator('body')).not.toContainText('Reload');

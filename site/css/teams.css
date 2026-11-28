@@ -5,9 +5,7 @@
    --side-fill is opaque, not a wash: the team colours are light, so layering them raises
    the page's brightness and swallows the text. Each is its hue mixed 12% into the card's
    dark base at 62% alpha; the other 38% lets the team edge and the artwork through. */
-.side-red,.col-red{--side-edge:rgba(225,92,92,.45);--side-fill:rgba(47,35,35,.62);--side-rail:var(--red);--side-glow:rgba(255,150,150,.9);}
-.side-blue,.col-blue{--side-edge:rgba(91,143,240,.45);--side-fill:rgba(31,41,56,.62);--side-rail:var(--blue);--side-glow:rgba(160,195,255,.9);}
-.side-green,.col-green{--side-edge:rgba(76,175,125,.45);--side-fill:rgba(29,45,44,.62);--side-rail:var(--green);--side-glow:rgba(150,235,195,.9);}
+.side-red{--side-edge:rgba(225,92,92,.45);--side-fill:rgba(47,35,35,.62);--side-rail:var(--red);--side-glow:rgba(255,150,150,.9);}
+.side-blue{--side-edge:rgba(91,143,240,.45);--side-fill:rgba(31,41,56,.62);--side-rail:var(--blue);--side-glow:rgba(160,195,255,.9);}
+.side-green{--side-edge:rgba(76,175,125,.45);--side-fill:rgba(29,45,44,.62);--side-rail:var(--green);--side-glow:rgba(150,235,195,.9);}
 
-/* Weight, not colour: cyan means touchable, and a team name is not a control. */
-.team-col.is-yours .team-name{font-weight:800;}

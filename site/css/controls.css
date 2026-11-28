@@ -28,19 +28,6 @@
 }
 /* The compositor re-blurs every card each frame of the finale (js/trebuchet.js). */
 html.finale .card{-webkit-backdrop-filter:none;backdrop-filter:none;}
-label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:8px;}
-textarea{
-  width:100%;min-height:130px;resize:vertical;
-  background:#0c0f13;border:1px solid var(--border);border-radius:10px;
-  color:var(--text);padding:12px;font-size:.95rem;font-family:inherit;line-height:1.5;
-}
-textarea:focus{outline:2px solid var(--accent);}
-.row{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap;}
-/* Both start hidden and JS sets style.display. ID selectors, not a class: .row above
-   sets display:flex, and at equal specificity the later file would win. An inline style
-   still beats an id. */
-#resultCard{display:none;}
-#copyRow{padding-top:14px;border-top:1px solid var(--border);display:none;}
 /* The most raised surface on the page, in the accent's hue: a flat button on a lifted
    card reads as painted onto it. */
 button{

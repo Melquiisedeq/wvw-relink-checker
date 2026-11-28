@@ -75,11 +75,10 @@ function deduceLineup(matches, allTeams, tierCount) {
 }
 
 // A tier between weeks: rows without anything that would read as a standing
-// (rank, colour, points, stats, bar). `yoursByColor` comes only from the match
-// panel. A line-up only (match.lineupOnly) is this week's: same rows, its own line.
+// (rank, colour, points, stats, bar). A line-up only (match.lineupOnly) is this week's: same rows, its own line.
 const LINEUP_NOTE = "This week's line-up \u00b7 scores not in yet";
 
-function buildStandingsStale(match, yoursByColor) {
+function buildStandingsStale(match) {
   const wrap = document.createElement('div');
   const isNA = match.id.startsWith('1-');
   for (const color of COLORS) {
@@ -102,14 +101,6 @@ function buildStandingsStale(match, yoursByColor) {
     }
     // The community sheet is NA only.
     if (isNA) row.appendChild(buildServerGuildsButton(name));
-    const yours = (yoursByColor && yoursByColor[color]) || [];
-    if (yours.length) {
-      row.classList.add('is-yours');
-      const pin = document.createElement('span');
-      pin.className = 'pin-badge';
-      pin.textContent = `📍 ${yours.join(', ')}`;
-      row.appendChild(pin);
-    }
     wrap.appendChild(row);
   }
   const note = document.createElement('p');
@@ -161,11 +152,9 @@ document.addEventListener('animationend', (e) => {
   else if (e.animationName === 'side-pulse') t.classList.remove('side-pulse');
 });
 
-// After a guild search: the team's card blinks, the page scrolls to it and a
-// strip with the guild's name hangs from it. A refresh rebuilds the cards, so
-// what was found is painted again after every refresh until `until`.
-const GUILD_FOUND_MS = 8000;
-const GUILD_FOUND_FLASH_MS = 2600;
+// After the search's arrow (js/search.js): a strip with the guild's name hangs from
+// its team's card. A refresh rebuilds the cards, so it is painted again after every
+// refresh until `until`.
 let guildFound = null; // { teamName, guildName, until }
 
 function paintGuildFound(root, fresh) {
@@ -191,37 +180,11 @@ function paintGuildFound(root, fresh) {
   note.textContent = ' \u00b7 from your search';
   strip.append(who, note);
   card.after(strip);
-  if (fresh) {
-    card.classList.remove('guild-found-flash');
-    void card.offsetWidth; // restart the blink
-    card.classList.add('guild-found-flash');
-    setTimeout(() => card.classList.remove('guild-found-flash'), GUILD_FOUND_FLASH_MS);
-  }
   setTimeout(() => {
     strip.classList.add('is-leaving');
     setTimeout(() => strip.remove(), 300);
   }, left);
   return card;
-}
-
-// Called once, by the search, with the team and guild it chose.
-function showGuildFound(teamId, guildName) {
-  guildFound = { teamName: getTeamName(teamId), guildName, until: Date.now() + GUILD_FOUND_MS };
-  const card = paintGuildFound(document, true);
-  if (!card) return;
-  const b = card.getBoundingClientRect();
-  if (b.top >= 0 && b.bottom <= window.innerHeight) return;
-  // Any input while the page is still travelling stops the scroll.
-  const yield_ = () => {
-    window.scrollTo({ top: window.scrollY, behavior: 'instant' });
-    drop();
-  };
-  const types = ['wheel', 'touchstart', 'keydown', 'mousedown'];
-  const drop = () => types.forEach((t) => window.removeEventListener(t, yield_));
-  types.forEach((t) => window.addEventListener(t, yield_, { passive: true }));
-  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  if ('onscrollend' in window) window.addEventListener('scrollend', drop, { once: true });
-  setTimeout(drop, 2000);
 }
 
 const RESET_NOTE = 'Weekly reset \u00b7 new matchups arriving';
@@ -266,6 +229,7 @@ function showRegion(gridEl, statusEl, matches, label, syncedAt, failed) {
   if (matches && (matches.length || !resetting)) {
     renderStandingsRegion(gridEl, matches);
     paintGuildFound(gridEl, false);
+    markAfterRepaint();
   } else clearSkeleton(gridEl);
   const ok = !!matches && matches.length > 0;
   if (ok) return setStandingsStatus(statusEl, true, syncedAt);
@@ -626,6 +590,7 @@ async function loadStandings(origin = 'cycle') {
 
     // The fight log in js/maps-early.js keeps only bodies whose score rose since `asked`.
     recordFightSamples(answered, asked);
+    keepMapBadges();
 
     // Forget matches that no longer exist: a leftover "1-4" would keep
     // getMaxTierForRegion answering 4 and give tier 3 a relegation arrow. A tier
@@ -928,7 +893,7 @@ function buildStatsLine(pairs, className) {
   return container;
 }
 
-// The "Skirmish · Activity · K/D" line, shared by the rails and the match panel.
+// The "Skirmish · Activity · K/D" line of a rail card.
 function buildStandingStats(match, color, stats, className) {
   const { kills, deaths, kd, skirmish, serverName, leaders } = stats;
 
@@ -985,21 +950,19 @@ function queueSideFlashes({ prev, vpNum, skirmish, skirmishId }, vpValue, skirmi
   }
 }
 
-// Rank, dot, name, the guilds button (NA) and VP, into `head`. `spoken`: the dot carries its side for a screen reader.
-function appendSideHead(head, match, color, rank, serverName, vp, nameClass, spoken) {
+// Rank, dot (its side said for a screen reader), name, the guilds button (NA) and VP, into `head`.
+function appendSideHead(head, match, color, rank, serverName, vp) {
   const badge = document.createElement('span');
   badge.className = `rank-badge rank-${rank}`;
   badge.textContent = String(rank);
   const dot = document.createElement('span');
   dot.className = `dot dot-${color}`;
-  if (spoken) {
-    const side = document.createElement('span');
-    side.className = 'sr-only';
-    side.textContent = `${color[0].toUpperCase()}${color.slice(1)} side`;
-    dot.appendChild(side);
-  }
+  const side = document.createElement('span');
+  side.className = 'sr-only';
+  side.textContent = `${color[0].toUpperCase()}${color.slice(1)} side`;
+  dot.appendChild(side);
   const name = document.createElement('span');
-  name.className = nameClass;
+  name.className = 'standing-side-name';
   name.textContent = serverName;
   head.append(badge, dot, name);
   const [regionCode, tierNum] = match.id.split('-');
@@ -1022,7 +985,7 @@ function renderStandingSide(match, color, rankByColor, leaders, leaderScore) {
   top.className = 'standing-side-top';
 
   const rank = rankByColor[color];
-  appendSideHead(top, match, color, rank, serverName, vpNum.toLocaleString(), 'standing-side-name', true);
+  appendSideHead(top, match, color, rank, serverName, vpNum.toLocaleString());
 
   const statsLine = buildStandingStats(match, color,
     { kills, deaths, kd, skirmish, serverName, leaders }, 'standing-side-stats');

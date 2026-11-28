@@ -1,6 +1,6 @@
 'use strict';
-// The standings board, the per-guild result rows, the match panel and their formatters,
-// and the board's arithmetic: order by victory points, movement arrows, K/D.
+// The standings board and its formatters, and the board's arithmetic: order by
+// victory points, movement arrows, K/D.
 
 function standingsBoard(matches) {
   // A late tier among live ones shows the teams left over (deduceLineup); a body behind
@@ -314,77 +314,6 @@ function buildLineupTier(line) {
   return box;
 }
 
-// textContent only: guild names are never parsed as markup.
-function renderRow({ originalName, tag, region, server, error }) {
-  const tr = document.createElement('tr');
-  tr.setAttribute('role', 'row');
-
-  const nameCell = document.createElement('td');
-  nameCell.setAttribute('role', 'cell');
-  nameCell.textContent = originalName;
-  tr.appendChild(nameCell);
-
-  if (error) {
-    const tagCell = document.createElement('td');
-    tagCell.setAttribute('role', 'cell');
-    tagCell.className = 'muted';
-    tagCell.textContent = '—';
-    tr.appendChild(tagCell);
-
-    const regionCell = document.createElement('td');
-    regionCell.setAttribute('role', 'cell');
-    regionCell.className = 'muted';
-    regionCell.textContent = '—';
-    tr.appendChild(regionCell);
-
-    const errorCell = document.createElement('td');
-    errorCell.setAttribute('role', 'cell');
-    errorCell.className = 'status-err';
-    errorCell.textContent = error;
-    tr.appendChild(errorCell);
-  } else {
-    const tagCell = document.createElement('td');
-    tagCell.setAttribute('role', 'cell');
-    const tagSpan = document.createElement('span');
-    tagSpan.className = 'tag';
-    tagSpan.textContent = `[${tag}]`;
-    tagCell.appendChild(tagSpan);
-    tr.appendChild(tagCell);
-
-    const regionCell = document.createElement('td');
-    regionCell.setAttribute('role', 'cell');
-    regionCell.textContent = region;
-    tr.appendChild(regionCell);
-
-    const serverCell = document.createElement('td');
-    serverCell.setAttribute('role', 'cell');
-    // The flex lives on a span inside the cell, never on the cell
-    // itself - see .server-cell in css/panels.css for why.
-    const serverInner = document.createElement('span');
-    serverInner.className = 'server-cell';
-
-    const dot = document.createElement('span');
-    dot.className = 'dot dot-pending';
-    dot.title = 'Working out which side this is…';
-
-    const serverText = document.createElement('span');
-    serverText.className = 'status-ok';
-    serverText.textContent = server;
-
-    serverInner.appendChild(dot);
-    serverInner.appendChild(serverText);
-    if (region === 'NA') serverInner.appendChild(buildServerGuildsButton(server));
-    serverCell.appendChild(serverInner);
-    tr.appendChild(serverCell);
-
-    resultBody.appendChild(tr);
-    return dot;
-  }
-
-  resultBody.appendChild(tr);
-  return null;
-}
-
 function getSkirmishScore(match, color) {
   if (Array.isArray(match.skirmishes) && match.skirmishes.length > 0) {
     const last = match.skirmishes[match.skirmishes.length - 1];
@@ -547,76 +476,3 @@ function formatCompact(n) {
   return n.toLocaleString();
 }
 
-// yourGuildsByColor maps each color to the queried guilds on that side.
-function renderMatchPanel(match, yourGuildsByColor) {
-  const [regionCode, tierNum] = match.id.split('-');
-  const regionName = REGION_NAMES[regionCode] || `Region ${regionCode}`;
-
-  const panel = document.createElement('div');
-  panel.className = 'match-panel';
-
-  const header = document.createElement('div');
-  header.className = 'match-panel-header';
-  const tierEl = document.createElement('span');
-  tierEl.className = 'match-tier';
-  tierEl.textContent = `Tier ${tierNum || '?'}`;
-  // The maps button takes the space of the region and match id; its tooltip carries what the text said.
-  header.appendChild(tierEl);
-  if (!match.fromMemory) header.appendChild(buildTierMapButton(match, regionName, tierNum || '?'));
-  panel.appendChild(header);
-
-  // As the standings rail: the three teams and guild lists stay, standings go. The pin
-  // stays: the team comes from wvw/guilds, which turns over with the relink.
-  if (match.fromMemory || !matchIsLive(match)) {
-    panel.appendChild(buildStandingsStale(match, yourGuildsByColor));
-    return panel;
-  }
-
-  const cols = document.createElement('div');
-  cols.className = 'team-cols';
-
-  const rankByColor = rankMatchByVictoryPoints(match);
-  const orderedColors = [...COLORS].sort((a, b) => rankByColor[a] - rankByColor[b]);
-  const leaders = getStatLeaders(match);
-  const leaderScore = getSkirmishLeaderScore(match);
-
-  for (const color of orderedColors) {
-    const teamId = matchTeamId(match, color);
-    const serverName = getTeamName(teamId);
-    const yours = yourGuildsByColor[color] || [];
-
-    const kills = Number(match.kills?.[color] ?? 0);
-    const deaths = Number(match.deaths?.[color] ?? 0);
-    const kd = formatKd(kills, deaths);
-    const vp = Number(match.victory_points?.[color] ?? 0).toLocaleString();
-    const skirmish = getSkirmishScore(match, color);
-
-    const col = document.createElement('div');
-    col.className = `team-col col-${color}` + (yours.length ? ' is-yours' : '');
-
-    const head = document.createElement('div');
-    head.className = 'team-head';
-    appendSideHead(head, match, color, rankByColor[color], serverName, vp, 'team-name', false);
-    col.appendChild(head);
-
-    if (yours.length) {
-      const pin = document.createElement('span');
-      pin.className = 'pin-badge';
-      pin.textContent = `📍 ${yours.join(', ')}`;
-      col.appendChild(pin);
-    }
-
-    const statsLine = buildStandingStats(match, color,
-      { kills, deaths, kd, skirmish, serverName, leaders }, 'team-stats');
-    col.appendChild(statsLine);
-
-    if (skirmish !== null && leaderScore !== null) {
-      col.appendChild(buildSkirmishBar(color, skirmish, leaderScore));
-    }
-
-    cols.appendChild(col);
-  }
-
-  panel.appendChild(cols);
-  return panel;
-}

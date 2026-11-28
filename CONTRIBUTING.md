@@ -80,7 +80,7 @@ reduce` what moves on its own and never stops (the embers, the sweeping rule, th
 the sheen, the skeleton rows, the live dots) stands still: the media query in `site/css/base.css`
 pauses those animations one by one, and `idleWhenUnwatched` in `site/js/boot.js` stops the
 canvas and follows the setting if it changes. The loading indicator keeps turning, since
-stopped it looks stuck. The animations that run once (the shake after a search, the
+stopped it looks stuck. The animations that run once (the
 trebuchet, the click effects) are not changed by it, except that the ember blast still
 plays, with the rising embers moving for its two seconds.
 

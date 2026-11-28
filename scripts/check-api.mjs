@@ -280,7 +280,7 @@ export async function checkGuildPipeline(get, problems, notes) {
 
   const [found, error2] = await get(`/guild/search?name=${quote(show(guild.name))}`);
   if (error2) {
-    problems.push(`/guild/search did not answer (${error2}). This is the lookup the site is for: it is how a pasted name becomes a team.`);
+    problems.push(`/guild/search did not answer (${error2}). This is the lookup the site is for: it is how a guild name becomes a team.`);
     return;
   }
   if (!Array.isArray(found) || !found.includes(guid)) {
