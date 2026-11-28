@@ -311,18 +311,18 @@ test.describe('the week turns over', () => {
 test.describe('the API stuck', () => {
   test.use({ timeline: frozen(40) });
 
-  test('no slide says "now" over a body that stopped, and the week\'s count keeps "this week"', async ({ page, wvw }) => {
+  test('no slide says "now" or an hour over a body that stopped: every metric is the week\'s', async ({ page, wvw }) => {
     await load(page, wvw);
     await expect(leaders(page)).toBeVisible();
     await wvw.skew(30 * MIN);
     await loadNow(page);
     await loadSettled(page);
     await wvw.settle();
-    await expect(leaders(page).getByText(/Objective points, this week/)).toHaveCount(1);
-    await expect(leaders(page).getByText(/, now:|· now/)).toHaveCount(0);
-    await leaders(page).getByRole('button', { name: 'Objective points' }).click();
-    await expect(leaders(page).getByText(/^Objective points$/)).toBeVisible();
-    await expect(leaders(page).getByText(/data from|· now/)).toHaveCount(0);
+    await expect(leaders(page).getByText(/Most kills, this week/)).toHaveCount(1);
+    await expect(leaders(page).getByText(/, now:|· now|data from/)).toHaveCount(0);
+    await leaders(page).getByRole('button', { name: 'Most VP' }).click();
+    await expect(leaders(page).getByText(/^Most VP$/)).toBeVisible();
+    await expect(leaders(page).getByText(/· now|data from/)).toHaveCount(0);
   });
 });
 
