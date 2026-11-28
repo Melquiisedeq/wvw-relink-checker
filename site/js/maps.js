@@ -543,6 +543,22 @@ function waypointChat(poiId) {
   return `[&${btoa(String.fromCharCode(...b))}]`;
 }
 
+// navigator.clipboard may be missing or refused; execCommand('copy') is the fallback.
+function legacyCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.top = '-1000px';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { ok = false; }
+  ta.remove();
+  return ok;
+}
+
 // Straight to the clipboard, with the old way behind it: the modern API needs a secure context and permission.
 function copyChatLink(text) {
   const legacy = () => {

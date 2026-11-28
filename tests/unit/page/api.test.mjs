@@ -395,17 +395,20 @@ test('retryAfterMs: seconds, an HTTP date, the cap, and anything unusable (js/ap
   }
 });
 
-test('our copy and its summary are read past the browser cache; the other /api reads are not (js/api.js, js/standings.js)', async () => {
+test('our copy and its summary are read past the browser cache, the kills and the relink window revalidated (js/api.js, js/standings.js)', async () => {
   const page = fresh();
   const seen = new Map();
   page.ctx.AbortController = AbortController;
   page.ctx.fetch = (url, init) => { seen.set(String(url), init && init.cache); return Promise.reject(new TypeError('offline')); };
   await page.run('latestRead()');
   await page.run('peekLatest()');
-  await page.run('fetchOwnApi(OWN_KILLS_URL)').catch(() => {});
+  await page.run('readOwnKills()').catch(() => {});
+  await page.run('readOwnRelink()').catch(() => {});
   assert.equal(seen.get('/api/latest'), 'no-store', '/api/latest');
   assert.equal(seen.get('/api/latest/summary'), 'no-store', '/api/latest/summary');
-  assert.notEqual(seen.get(page.run('OWN_KILLS_URL')), 'no-store', '/api/kills keeps the cache');
+  // Not 'no-store': only the copy and the summary set the server clock.
+  assert.equal(seen.get(page.run('OWN_KILLS_URL')), 'no-cache', '/api/kills');
+  assert.equal(seen.get(page.run('OWN_RELINK_URL')), 'no-cache', '/api/relink');
 });
 
 test('latestSummaryLearn: keeps a number start and score under a match id, nothing else (js/api.js)', () => {

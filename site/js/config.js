@@ -69,15 +69,12 @@ const SHEET_URL = (tab) =>
 const SHEET_HUMAN_URL =
   `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit?usp=sharing`;
 
-const MAX_ENTRIES = 20;        // hard cap so a pasted wall of text can't hammer a public API
-const MAX_NAME_LENGTH = 64;    // real guild names and GUIDs are well under this
 const REQUEST_TIMEOUT_MS = 10000;
 // The first standings load and the guild-to-team table wait this long; every standings refresh keeps the short deadline.
 const SLOW_REQUEST_TIMEOUT_MS = 30000;
 // After a failed standings load: the window, in ms, of each extra try, with full
 // jitter (a random point inside it). Then the ordinary cycle takes over.
 const STANDINGS_RETRY_WINDOWS_MS = [[5000, 15000], [15000, 40000]];
-const THROTTLE_MS = 200;       // gap between sequential lookups, to stay well under rate limits
 const MAX_RETRIES = 2;         // for 429 / transient network errors
 
 // The visitor's choice of which standings column goes left, 'na' or 'eu'.

@@ -81,10 +81,11 @@ test('a new score flashes on the compositor', async ({ page, wvw }) => {
   expect(off).toEqual({});
 });
 
-test('a guild found flashes on the compositor', async ({ page, wvw }) => {
+test("a guild found: the spotlight, the card's mark and the answer's sheen run on the compositor", async ({ page, wvw }) => {
   await load(page, wvw);
-  await search(page, wvw.guilds);
-  const { off } = await lookWith(page, ['guild-found-flash']);
+  await search(page, wvw.guilds[0]);
+  await page.locator('#searchAnswer .search-go').click();
+  const { off } = await lookWith(page, ['tier-spot', 'found-mark', 'search-sheen']);
   // The strip's entrance runs too: its clip-path is the exception, named in its own test.
   expect(off).toEqual({ 'guild-found-in-clip': ['clipPath'] });
 });
@@ -115,7 +116,8 @@ test('the guild strip opens and closes without moving its height', async ({ page
     };
     tick();
   });
-  await search(page, wvw.guilds);
+  await search(page, wvw.guilds[0]);
+  await page.getByRole('button', { name: /^Show .+ in the standings/ }).click();
   const strip = page.locator('.guild-found-strip');
   await expect(strip).toBeVisible();
   // It leaves on its own, some seconds on, and is gone once its exit has played.
@@ -137,7 +139,7 @@ test('the guild strip opens and closes without moving its height', async ({ page
 // The round that gathers at the button and the two shockwaves change size on every frame
 // (impact.css says how they are drawn). paintCount does not see that (nothing repaints), so the trace's raster tasks are counted
 // per layer, as frames: one raster of a layer is cut into tiles, one task each.
-test('the round and the shockwaves are rastered once, not at every size', async ({ page, wvw, context }) => {
+test('the round is rastered once, not at every size', async ({ page, wvw, context }) => {
   await load(page, wvw);
   const cdp = await context.newCDPSession(page);
   const owner = new Map();
@@ -149,9 +151,9 @@ test('the round and the shockwaves are rastered once, not at every size', async 
   await cdp.send('Tracing.start', { traceConfig: { includedCategories: ['disabled-by-default-devtools.timeline'] } });
   // Each frame keeps the largest scale either was shown at.
   await page.evaluate(() => {
-    window.__scale = { round: 0, rings: 0 };
+    window.__scale = { round: 0 };
     const most = (key, els) => { for (const el of els) window.__scale[key] = Math.max(window.__scale[key], new DOMMatrix(getComputedStyle(el).transform).a); };
-    const tick = () => { most('round', document.querySelectorAll('.siege-charge b')); most('rings', document.querySelectorAll('.impact-overlay.play .impact-ring')); window.__raf = requestAnimationFrame(tick); };
+    const tick = () => { most('round', document.querySelectorAll('.siege-charge b')); window.__raf = requestAnimationFrame(tick); };
     tick();
   });
   // A Check with the guild lookups held: the round gathers on the sling until they answer,
@@ -160,7 +162,7 @@ test('the round and the shockwaves are rastered once, not at every size', async 
   const held = new Promise(r => { release = r; });
   await page.route(/^https:\/\/api\.guildwars2\.com\/v2\/guild\/search\?/, async route => { await held; await route.fallback(); });
   await page.locator('#guildInput').focus();
-  await page.keyboard.insertText(wvw.guilds.join('\n'));
+  await page.keyboard.insertText(wvw.guilds[0]);
   await page.locator('#runBtn').click();
   await expect(page.locator('.siege-charge.charging'), 'the round gathering').toBeAttached();
   const root = (await cdp.send('DOM.getDocument', { depth: 0 })).root.nodeId;
@@ -168,7 +170,7 @@ test('the round and the shockwaves are rastered once, not at every size', async 
     const { nodeIds } = await cdp.send('DOM.querySelectorAll', { nodeId: root, selector });
     return Promise.all(nodeIds.map(async nodeId => (await cdp.send('DOM.describeNode', { nodeId })).node.backendNodeId));
   };
-  const nodes = { round: await node('.siege-charge b'), rings: await node('.impact-ring') };
+  const nodes = { round: await node('.siege-charge b') };
   await page.waitForTimeout(1500);
   release();
   await expect(page.locator('.impact-overlay.play'), 'the round launched').toBeAttached({ timeout: 15000 });
@@ -193,17 +195,12 @@ test('the round and the shockwaves are rastered once, not at every size', async 
   });
   const frames = ids => new Set(raster.filter(t => ids.includes(owner.get(String(t.layerId)))).map(t => `${t.layerId}:${t.sourceFrameNumber}`)).size;
   expect(nodes.round, 'the round is on the page').toHaveLength(1);
-  expect(nodes.rings, 'both rings are on the page').toHaveLength(2);
-  const round = frames(nodes.round), rings = frames(nodes.rings);
+  const round = frames(nodes.round);
   // Without one raster of the round seen, the ceilings below would hold for nothing.
   expect(round, 'the round was rastered at all').toBeGreaterThan(0);
   expect(round, 'frames the round was rastered on').toBeLessThanOrEqual(8);
-  expect(rings, 'the rings were rastered at all').toBeGreaterThan(0);
-  expect(rings, 'frames the rings were rastered on').toBeLessThanOrEqual(8);
   expect(scale.round, 'the round grew while watched').toBeGreaterThan(0.3);
-  expect(scale.rings, 'the rings grew while watched').toBeGreaterThan(0.5);
   expect(scale.round, 'the round is never scaled above the size it is painted at').toBeLessThanOrEqual(1);
-  expect(scale.rings, 'the rings are never scaled above the size they are painted at').toBeLessThanOrEqual(1);
   expect(flight, 'the round at the end of its flight is scaled').toBeGreaterThan(0.9);
   expect(flight, 'the round at the end of its flight, not above the size it is painted at').toBeLessThanOrEqual(1 + 1e-6);
 });

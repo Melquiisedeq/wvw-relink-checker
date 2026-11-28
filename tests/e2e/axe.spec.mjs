@@ -41,7 +41,7 @@ test.describe('axe', { tag: '@advisory' }, () => {
 
   test('after a search', async ({ page, wvw }) => {
     await load(page, wvw);
-    await check(page, wvw, wvw.guilds);
+    await check(page, wvw, wvw.guilds[0]);
     const result = await scan(page);
     const { violations } = result;
     report('after a search', result);

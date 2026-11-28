@@ -23,16 +23,19 @@
 // The <body> scripts that did not download. Any one leaves the page broken, so the
 // notice is written here as it happens (boot.js may be the one missing), and
 // js/boot.js starts nothing while the list has one. Two go unsaid: js/trebuchet.js is
-// effects only (js/run.js's fx()), and js/maps.js reads the game when js/wvw-static.js is missing.
+// effects only (js/search.js's fx()), and js/maps.js reads the game when js/wvw-static.js is missing.
 const scriptsMissing = [];
 window.addEventListener('error', (e) => {
   const s = e.target;
   // Async ones stand outside the page's order: js/maps.js has its own fallback, and a blocked analytics beacon costs nothing.
   if (!(s instanceof HTMLScriptElement) || s.async || /\/js\/(trebuchet|wvw-static)\.js$/.test(s.src)) return;
   scriptsMissing.push(s.src);
-  // The three lines sit above every <body> script in index.html.
-  for (const id of ['statusMsg', 'standingsStatusNA', 'standingsStatusEU']) {
+  // The search's answer and the two standings lines sit above every <body> script in index.html.
+  const said = document.createElement('p');
+  said.className = 'search-err';
+  said.textContent = "Part of the page didn't load. Reload to fix it.";
+  document.getElementById('searchAnswer').replaceChildren(said);
+  for (const id of ['standingsStatusNA', 'standingsStatusEU']) {
     document.getElementById(id).textContent = "Part of the page didn't load. Reload to fix it.";
   }
-  document.getElementById('statusMsg').classList.add('status-err');
 }, true);

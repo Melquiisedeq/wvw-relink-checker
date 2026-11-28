@@ -30,6 +30,14 @@ test('the Synced lines are not live regions; the notice stays rendered, empty, b
     .toEqual({ display: 'block', empty: true, role: 'status', border: '0px', height: 0 });
 });
 
+test('the title says fan site and the footer carries the ArenaNet trademark notice', async ({ page, wvw }) => {
+  await load(page, wvw);
+  await expect(page).toHaveTitle(/\(Fan Site\)$/);
+  await expect(page.locator('.gw2-band-fine')).toContainText('Unofficial fan site, not affiliated with or endorsed by ArenaNet.');
+  await expect(page.locator('.gw2-band-fine')).toContainText(
+    '© ArenaNet LLC. All rights reserved. NCSOFT, ArenaNet, Guild Wars, Guild Wars 2, GW2, Heart of Thorns, Path of Fire, End of Dragons, Secrets of the Obscure, Janthir Wilds, Visions of Eternity, and all associated logos, designs, and composite marks are trademarks or registered trademarks of NCSOFT Corporation. All other trademarks are the property of their respective owners.');
+});
+
 test('a region that cannot load says so in its alert', async ({ page, wvw }) => {
   await answer(page, ALL, []);
   await answer(page, EU_ONLY, []);
@@ -69,14 +77,4 @@ test('one heading per tier, the side and the arrow in words', async ({ page, wvw
   const arrows = await page.locator('.movement-indicator').evaluateAll(a => a.map(e => e.textContent));
   expect(arrows.length).toBeGreaterThan(0);
   for (const t of arrows) expect(t).toMatch(/Moves up next reset|Moves down next reset|Stays in this tier next reset|Already the (top|bottom) tier|Tied on VP/);
-});
-
-// Chromium keeps the table semantics under display:block, so this passes without the
-// explicit roles; they are for other engines, and this only guards them.
-test('the result table has four column headers at 390 px', async ({ page, wvw }) => {
-  await load(page, wvw);
-  await phone(page, 390);
-  await check(page, wvw, [wvw.guilds[0]]);
-  await expect(page.getByRole('columnheader')).toHaveCount(4);
-  await expect(page.getByRole('row').filter({ has: page.getByRole('cell') })).toHaveCount(1);
 });

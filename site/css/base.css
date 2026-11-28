@@ -26,9 +26,6 @@
   --green-ink:#3fbd83;
 }
 *{box-sizing:border-box;}
-/* The shake (.page.struck) would widen the document by up to 9 px; clip on both, html
-   alone does not hold (tests/e2e/layout-overflow.spec.mjs). */
-html,body{overflow-x:clip;}
 body{
   margin:0;
   padding:0;
@@ -143,9 +140,8 @@ body{
 /* ---- The browser's own chrome in the OS palette. Bare selectors on purpose: scoping
    them lets the next input get the white one back. ---- */
 
-/* The one scoped rule: `resize` is on two unalike elements. The textarea keeps the
-   browser's grip; on the popover the narrowed scrollbar leaves that corner 9px wide, where
-   anything drawn is a smudge. */
+/* The one scoped rule: on the guilds popover the narrowed scrollbar leaves the resize
+   corner 9px wide, where anything drawn is a smudge. */
 .info-popover--guilds::-webkit-resizer{background:none;}
 
 /* Background only, never a colour: a colour means a team on this page (see

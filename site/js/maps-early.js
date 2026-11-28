@@ -140,8 +140,8 @@ function recordFightSamples(matches, asked) {
 
 
 // The shared half of the fight log, taken whether or not anyone was looking:
-// how a first-ever visitor learns which map is busy. Cached, never refetched
-// by tab switches, nor by the poll unless an open map is counting from its own readings.
+// how a first-ever visitor learns which map is busy. Cached; asked again by an
+// open map counting from its own readings (js/maps.js, pullFresh) and by keepKillSheet.
 let killSheet = null;
 let killSheetAt = 0;
 let killSheetInFlight = null;
@@ -187,6 +187,15 @@ async function getKillSheet(maxAge = KILLS_SHEET_TTL_MS) {
     return killSheet;
   })();
   return killSheetInFlight;
+}
+
+// The standings' reads of our copy never enter the fight log (its body is dated before the ask), and
+// readings past FIGHT_STALE_MS leave the count: with the tab visible the history is asked again once the last
+// ask, answered or not, is KILLS_SHEET_TTL_MS old; hidden, never. Null when it does not ask; else
+// getKillSheet's promise.
+function keepKillSheet() {
+  if (document.visibilityState !== 'visible' || Date.now() - killSheetAskedAt < KILLS_SHEET_TTL_MS) return null;
+  return getKillSheet();
 }
 
 // One reading into the map both sources fill: match id to samples.
@@ -854,11 +863,10 @@ function paintMapBadges(matchId) {
   }
 }
 
-// Once, after the first standings: the badge needs the shared history,
-// which is otherwise read only when a map opens. Cached and with its own
-// fallback, so this is the one extra read of /api/kills. Then repainted
-// every 30 s from what the page already holds - the rate's window moves
-// and the data ages without a new reading - with no request of its own.
+// Once, after the first standings: the badge needs the shared history.
+// Then repainted every 30 s from what the page holds - the rate's window
+// moves and the data ages without a new reading - with no request of its
+// own; the history is kept up by keepMapBadges.
 // Started here, so one timer however many times the table is rebuilt.
 // Also where js/maps.js is first asked for: right away, not when the
 // browser is idle, because the ember canvas keeps it from ever being idle
@@ -871,6 +879,14 @@ function primeMapBadges() {
     paintMapBadges();
     setInterval(() => paintMapBadges(), MAP_REFRESH_MS);
   });
+}
+
+// After each answer of the standings (js/standings.js): only then, so the history read dates the bodies just
+// taken in (ageFromHistory); a read ahead of a return's bodies leaves them dated at the return. No standings
+// load starts while a popover is open (refreshStandings), so an open map asks on its own terms (js/maps.js, pullFresh).
+function keepMapBadges() {
+  const read = keepKillSheet();
+  if (read) read.then(() => paintMapBadges());
 }
 
 // The first map's terrain picture, asked for when the mouse reaches a map
