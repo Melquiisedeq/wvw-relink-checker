@@ -1,6 +1,6 @@
 {
   "_note": "Ceilings for perf-budget.spec.mjs, reviewed by hand. One number per metric: a measure plus a margin (bytes +1 KB, rounded up to 100; requests and blocking scripts none, so one more fails; nodes and listeners +10 %). No fonts today: a font would fail until it gets a ceiling here. If a rise is on purpose, raise the number in the same PR. The paint block is perf-paint.spec.mjs's (1280x800, recorded data): layers and layers per compositing reason, the higher of the cloud's and CI's measure +10 % (none for a count of 5 or fewer), except the highlights panel's own layers, added to the old ceilings at their measure with no margin. The raster tasks per 2 s are not a ceiling: a count of time is only reported, in perf-paint.spec.mjs's summary line.",
-  "bytes": { "html": 6400, "js": 161000, "css": 41500, "image": 102200 },
+  "bytes": { "html": 6400, "js": 161600, "css": 41500, "image": 102200 },
   "requests": 43,
   "blockingScripts": 17,
   "nodes": 3100,

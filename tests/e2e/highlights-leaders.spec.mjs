@@ -4,14 +4,18 @@
 import { test, expect } from './support/fixtures.mjs';
 import { load, play } from './support/steps.mjs';
 import { loadNow, loadSettled } from './support/page.mjs';
-import { MIN, hidden, playing, visible, wake, weekAtZero } from './support/scenarios.mjs';
+import { MIN, copyTaken, hidden, playing, visible, wake, weekAtZero } from './support/scenarios.mjs';
 
-test.use({ viewport: { width: 1280, height: 800 }, clock: 'playwright' });
+test.use({ viewport: { width: 1280, height: 800 }, clock: 'playwright', timeline: playing(40) });
+
+// Our copy carries the Worker's count, so the five metrics are there; the cases without it say so.
+let served;
+test.beforeEach(async ({ page, wvw }) => { served = await copyTaken(page, wvw); });
 
 const leaders = page => page.getByRole('region', { name: 'Leaders this week' });
 const shown = (page, name) => leaders(page).getByRole('button', { name, pressed: true });
 const pause = page => leaders(page).getByRole('button', { name: /^(Pause|Play) the leaders$/ });
-const NAMES = ['Most kills', 'Most VP', 'Highest PPT', 'Most active', 'Best K/D'];
+const NAMES = ['Most kills', 'Most VP', 'Objective points', 'Most active', 'Best K/D'];
 const which = async page => {
   for (const n of NAMES) if (await shown(page, n).count()) return n;
   return null;
@@ -58,7 +62,7 @@ test('five metrics, one every 5 s, round to the first again; the screen reader h
   const place = leaders(page).getByText('Most VP, 2 of 5');
   await expect(place).toHaveCount(1);
   await expect(place.locator('xpath=ancestor-or-self::*[@aria-hidden="true"]'), '"2 of 5" outside what the reader skips').toHaveCount(0);
-  for (const name of ['Highest PPT', 'Most active', 'Best K/D', 'Most kills', 'Most VP']) {
+  for (const name of ['Objective points', 'Most active', 'Best K/D', 'Most kills', 'Most VP']) {
     await play(page, 5200);
     await expect(shown(page, name)).toBeVisible();
   }
@@ -71,6 +75,27 @@ test('a number counts up on a turn, and is whole after', async ({ page, wvw }) =
   await expect(leaders(page).getByText(final, { exact: true }), 'counting: not the whole number yet').toHaveCount(0);
   await page.clock.runFor(700);
   await expect(leaders(page).getByText(final, { exact: true })).toBeVisible();
+});
+
+test('Objective points: the best team\'s sum over the copy\'s counts, saying what is summed; none without a count', async ({ page, wvw }) => {
+  await opened(page, wvw, 'Objective points');
+  // The sum made apart, from the counts the copy served: the best colour of the region on show.
+  const best = Math.max(...Object.entries(served).filter(([id, t]) => id[0] === '1' && t).flatMap(([, t]) => Object.values(t.points)));
+  expect(best, 'objectives taken in the recording').toBeGreaterThan(0);
+  const said = await leaders(page).getByText(/^Most kills, this week: /).textContent();
+  const mine = said.match(/Objective points, this week: .+?, ([\d,]+) points · the value of each objective when taken, /);
+  expect(Number(mine[1].replace(/,/g, ''))).toBe(best);
+  await page.clock.runFor(700);
+  await expect(leaders(page).getByText(mine[1], { exact: true })).toBeVisible();
+  await expect(leaders(page).getByText('points · the value of each objective when taken').first()).toBeVisible();
+});
+
+test('a copy with no count: no objective points, the four others turn', async ({ page, wvw }) => {
+  await copyTaken(page, wvw, { count: () => undefined });
+  await load(page, wvw);
+  await expect(leaders(page).getByRole('button', { name: 'Most kills' })).toBeVisible();
+  await expect(leaders(page).getByRole('button', { name: 'Objective points' })).toHaveCount(0);
+  await expect(leaders(page).getByText('New week · counted from the first objective taken'), 'the week is not new: objectives were taken').toHaveCount(0);
 });
 
 test.describe('what holds the turning', () => {
@@ -242,7 +267,8 @@ test.describe('a week\'s first minutes', () => {
     await loadSettled(page);
     await wvw.settle();
     await expect(vp, 'no leader on 0 VP: the segment is gone with its focus').toHaveCount(0);
-    await expect(leaders(page).getByRole('button', { name: 'Highest PPT' })).toHaveCount(0);
+    // Nothing taken yet: the metric's slide says the week is new, in the place of a number.
+    await expect(leaders(page).getByText('New week · counted from the first objective taken')).toHaveCount(2);
     await expect(leaders(page).getByRole('button', { name: 'Most kills' })).toBeVisible();
     await expect(page.getByRole('region', { name: /^Highlights, / }).getByText(/\b0 VP\b/)).toHaveCount(0);
     await play(page, 5200);

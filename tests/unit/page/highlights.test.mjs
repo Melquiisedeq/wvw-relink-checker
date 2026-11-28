@@ -172,13 +172,13 @@ test('the Leaders: only a metric with a value, and K/D from 500 deaths', () => {
     p.call('keepNewestMatch', m);
     return [...p.call('hlLeaders')].map((x) => x.short);
   };
-  assert.deepEqual(shorts(clone(openMatch)), ['Kills', 'VP', 'PPT', 'Active', 'K/D']);
+  assert.deepEqual(shorts(clone(openMatch)), ['Kills', 'VP', 'Active', 'K/D']);
   // A week's first minutes: no kill, no VP, and the objectives not yet worth a tick: nothing to lead.
   const zero = clone(openMatch);
   for (const k of ['kills', 'deaths', 'victory_points']) for (const c of ['red', 'blue', 'green']) zero[k][c] = 0;
   for (const map of zero.maps) for (const o of map.objectives) o.points_tick = 0;
   assert.deepEqual(shorts(zero), []);
-  // Kills and deaths are in, VP and PPT not: the two metrics that have a value, K/D under its floor.
+  // Kills and deaths are in, VP not: the two metrics that have a value, K/D under its floor.
   const some = clone(zero);
   some.kills.red = 5;
   some.deaths.red = 499;
@@ -196,4 +196,66 @@ test('the Leaders turn only with two metrics or more', () => {
   assert.equal(p.call('hlHeld'), true);
   p.run('hlRot.list = [{}, {}]');
   assert.equal(p.call('hlHeld'), false);
+});
+
+// A copy's count as the Worker serves it (taken: {points, flips, maps}), kept by the body it came with.
+const takenFor = (p, body, taken) => {
+  p.ctx.__b = body;
+  p.ctx.__t = taken;
+  p.run('latestTaken.delete(__b); if (latestTakenOf(__t)) latestTaken.set(__b, latestTakenOf(__t))');
+};
+test('the Leaders count the copy\'s objective points, and the Busiest its takes; with no count, as before', () => {
+  const p = fresh();
+  const now = p.clock.now;
+  const list = na();
+  const iso = (t) => new Date(t).toISOString();
+  for (const m of list) {
+    m.start_time = iso(now - 5 * 60 * MIN);
+    m.end_time = iso(now + 7 * 24 * 60 * MIN);
+    for (const map of m.maps) for (const o of map.objectives) { o.owner = 'Red'; o.last_flipped = m.start_time; }
+  }
+  const shorts = () => p.call('hlLeaders').filter((x) => !x.wait).map((x) => x.short);
+  // Nothing at all yet, kills and VP included: no box, no sentence alone in it.
+  const quiet = clone(list);
+  for (const m of quiet) for (const k of ['kills', 'deaths', 'victory_points']) for (const c of ['red', 'blue', 'green']) m[k][c] = 0;
+  keep(p, quiet);
+  assert.equal(p.call('hlLeaders').length, 0);
+  keep(p, list);
+  // The week's first minutes: the others have a value, no objective was taken; its slide says the week is new.
+  assert.equal(p.call('hlLeaders').find((x) => x.short === 'Objectives').wait, true);
+  assert.equal(shorts().includes('Objectives'), false, 'no count, no such metric');
+  // A take the page sees in `last_flipped` with no count: the metric stays out, with no sentence either.
+  const camp = list[0].maps[0].objectives.find((o) => o.type === 'Camp');
+  camp.last_flipped = iso(now - 10 * MIN);
+  keep(p, list);
+  assert.equal(shorts().includes('Objectives'), false);
+  camp.last_flipped = list[0].start_time;
+  // A count (flips, no points yet) is no new week either, though the page sees no take: no metric, no sentence.
+  list.forEach((m) => takenFor(p, m, { points: { red: 0, blue: 0, green: 0 }, flips: { red: 1, blue: 0, green: 0 }, maps: {} }));
+  keep(p, list);
+  assert.equal(p.call('hlLeaders').filter((x) => x.short === 'Objectives').length, 0);
+  list.forEach((m) => takenFor(p, m, undefined));
+  // The counts of three matches, the sum made apart: each team's points over the matches it is in, the best row.
+  const counts = [{ red: 300, blue: 75, green: 125 }, { red: 10, blue: 900, green: 0 }, { red: 0, blue: 0, green: 40 }];
+  list.slice(0, 3).forEach((m, i) => takenFor(p, m, { points: counts[i], flips: { red: 1, blue: 1, green: 1 }, maps: { [m.maps[0].id]: 4 + i, [m.maps[1].id]: 1 } }));
+  keep(p, list);
+  const best = Math.max(...counts.flatMap((c) => Object.values(c)));
+  const top = p.call('hlLeaders').find((x) => x.short === 'Objectives');
+  assert.equal(top.wait, undefined);
+  assert.equal(top.val(top.r), best);
+  assert.equal(top.r.m.id, list[1].id);
+  assert.equal(top.r.color, 'blue');
+  // The Busiest: the server's count, not the owners the page infers (none flipped here).
+  const flips = p.call('hlFlips');
+  assert.deepEqual(JSON.parse(JSON.stringify(flips.slice(0, 3).map((f) => [f.m.id, f.type, f.n]))), [[list[2].id, list[2].maps[0].type, 6], [list[1].id, list[1].maps[0].type, 5], [list[0].id, list[0].maps[0].type, 4]]);
+  assert.equal(flips.length, 6, 'a map the count has no take on is not there');
+  assert.equal(flips[0].last.color, null);
+  // Only the maps with a take, by a plain id.
+  takenFor(p, list[2], { points: { red: 1, blue: 1, green: 1 }, flips: { red: 1, blue: 1, green: 1 }, maps: { abc: 2, 7: 0, 8: 3, '123456': 1 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(p.run('latestTaken.get(__b).maps'))), { 8: 3 });
+  // A count with the wrong shape is no count.
+  takenFor(p, list[2], { points: { red: 1, blue: 1 }, flips: { red: 1, blue: 1, green: 1 }, maps: {} });
+  assert.equal(p.run('latestTaken.has(__b)'), false);
+  takenFor(p, list[2], { points: { red: 1, blue: -1, green: 1 }, flips: { red: 1, blue: 1, green: 1 }, maps: {} });
+  assert.equal(p.run('latestTaken.has(__b)'), false);
 });

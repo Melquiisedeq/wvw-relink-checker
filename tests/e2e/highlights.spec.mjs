@@ -4,7 +4,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { load, phone } from './support/steps.mjs';
 import { loadNow, loadSettled } from './support/page.mjs';
-import { MIN, frozenMidFight, playing, vpTableChanged, weekAtZero } from './support/scenarios.mjs';
+import { MIN, copyTaken, frozenMidFight, playing, vpTableChanged, weekAtZero } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 
@@ -68,6 +68,26 @@ test('at 320 and 390 the panel fits, long names cut with the whole name said', a
     const box = await panel(page).boundingBox();
     expect(box.x + box.width, `the panel inside ${w}`).toBeLessThanOrEqual(w);
   }
+});
+
+// Our copy's count (taken.maps) is what the Busiest map says, not what the owners' dates would give.
+test.describe('our copy with the Worker\'s count', () => {
+  test.use({ timeline: playing(40) });
+
+  test('the Busiest map counts the copy\'s takes of the last 2 h', async ({ page, wvw }) => {
+    const served = await copyTaken(page, wvw, { extra: 3 });
+    await load(page, wvw);
+    const most = Math.max(...Object.entries(served).filter(([id, t]) => id[0] === '1' && t).flatMap(([, t]) => Object.values(t.maps)));
+    expect(most, 'a take on some map to count').toBeGreaterThan(3);
+    await expect(busy(page)).toHaveAccessibleName(new RegExp(`^Busiest map, NA · T\\d: ${most} objectives taken in the last 2 hours on `));
+    await expect(busy(page).getByText(String(most), { exact: true })).toBeVisible();
+  });
+
+  test('a count with no take on any map of the last 2 h: the Busiest map says none, whatever the owners\' dates', async ({ page, wvw }) => {
+    await copyTaken(page, wvw, { count: (e, taken) => ({ ...taken, maps: {} }) });
+    await load(page, wvw);
+    await expect(busy(page)).toHaveAccessibleName(/^Busiest map, NA · T\d: no objective taken in the last 2 hours; /);
+  });
 });
 
 test('2 h with no objective taken: the Busiest map names the last capture and still opens its map', async ({ page, wvw }) => {

@@ -368,3 +368,34 @@ export async function copyAltered(page, wvw, alter) {
         Date: new Date(Math.floor(now / 1000) * 1000).toUTCString() } });
   });
 }
+
+// Our copy with the Worker's `taken` count on each match (worker/index.mjs, takenOf), as `count` makes it from the
+// body: by default the objectives flipped since the week's first minute, each worth its `points_capture`, and the
+// maps' takes in the 2 h up to the entry's `at`, plus `extra` takes on each map with one. A stand-in for the
+// accumulator, which counts at the Worker: the specs check what the page shows of a count, not how it is made.
+// Returns what it served, { id: taken }, as of the last answer.
+export async function copyTaken(page, wvw, { extra = 0, count = null } = {}) {
+  const served = {};
+  await copyAltered(page, wvw, data => {
+    for (const e of data.matches) {
+      const start = Date.parse(e.body.start_time);
+      const taken = { points: { red: 0, blue: 0, green: 0 }, flips: { red: 0, blue: 0, green: 0 }, maps: {} };
+      for (const map of e.body.maps) {
+        for (const o of map.objectives) {
+          const t = Date.parse(o.last_flipped);
+          const c = String(o.owner).toLowerCase();
+          if (!(o.points_capture > 0) || !(c in taken.points) || !(t > start + MIN)) continue;
+          taken.points[c] += o.points_capture;
+          taken.flips[c] += 1;
+          if (t > e.at * 1000 - 2 * HOUR) taken.maps[map.id] = (taken.maps[map.id] || 0) + 1;
+        }
+        if (taken.maps[map.id]) taken.maps[map.id] += extra;
+      }
+      // None before the first take of the week, as the Worker leaves it out.
+      served[e.id] = count ? count(e, taken) : (Object.values(taken.flips).some(n => n > 0) ? taken : undefined);
+      if (served[e.id]) e.taken = served[e.id];
+    }
+    return data;
+  });
+  return served;
+}
