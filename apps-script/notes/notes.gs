@@ -229,7 +229,8 @@ var Notes_ = (function () {
       n.lines.push({ section: r.h3, sub: r.sub, text: cut(r.text), link: linkName(r.link), icon: r.icon });
     });
     // An update with no WvW line is sent too: the Worker deletes an update the pages it was sent
-    // no longer have, and keeps those of a page it was not sent.
+    // no longer have, and keeps those of a page it was not sent only when that page is older than
+    // every page sent (fit leaves out the oldest first).
     return out;
   }
 

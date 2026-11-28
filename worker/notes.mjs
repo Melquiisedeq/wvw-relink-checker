@@ -112,7 +112,8 @@ function clauses(t) {
 function polarity(t) {
   if (/\b(now|no longer|reworked|renamed|moved|instead|will|has been|is now|are now)\b/.test(t)) return null;
   if (!/\d/.test(t)) return null;
-  // A digit before '%', not '\d+%': after '[^.;]*' that backtracks on a long run of digits.
+  // A digit before '%', not '\d+%': after '[^.;]*' that backtracks on a long run of digits (the
+  // test "a line built to make the type's rules backtrack").
   if (new RegExp('(?:' + LOW + ')[^.;]*\\d%').test(t)) return null;
   const cl = clauses(t);
   if (!cl.length) return null;
