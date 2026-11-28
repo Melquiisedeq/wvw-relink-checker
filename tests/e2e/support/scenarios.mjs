@@ -48,9 +48,15 @@ export const frozen = (min = 40, id) => opened(id).advance(4).freeze(min).advanc
 // for `min` minutes, with the kills' pace of the fight still in the history.
 export const frozenMidFight = (min = 20, id) => opened(id).advance(4).freeze(min);
 
+// Kills no two teams share, so that no metric is tied at the top (the Leaders leave a tie out).
+const UNEVEN_KILLS = { Center: [12, 11, 10] };
+
 // A week's first minutes: the page open on the recorded week, the region turns (gw2.newWeek) and the focus
 // plays `min` minutes of it, every team still on 0 VP.
-export const weekAtZero = (min = 6, id = FOCUS) => opened(id).newWeek().advance(min);
+export const weekAtZero = (min = 6, id = FOCUS) => opened(id).newWeek().advance(min, { kills: UNEVEN_KILLS });
+
+// A week's first minutes with nothing happening (`quiet` of them: no kill, no score), then `min` minutes of play.
+export const weekFirstKill = (quiet = 2, min = 4, id = FOCUS) => opened(id).newWeek().advance(quiet, { kills: {}, score: {} }).advance(min, { kills: UNEVEN_KILLS });
 
 // Victory points by a table the site does not know (gw2.vpTableChanged), `min` minutes of play.
 export const vpTableChanged = (min = 10, id) => opened(id).vpTableChanged().advance(min);

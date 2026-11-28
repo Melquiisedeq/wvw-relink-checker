@@ -106,7 +106,8 @@ const iso = ms => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
 const sum = o => COLORS.reduce((n, c) => n + (Number(o && o[c]) || 0), 0);
 const byId = (a, b) => a.localeCompare(b, 'en', { numeric: true });
 // n split over the three colours, the remainder to the first.
-const thirds = n => { const b = Math.floor(n / 3); return [n - 2 * b, b, b]; };
+// A map's kills given as [red, blue, green] go as they are.
+const thirds = n => { if (Array.isArray(n)) return n; const b = Math.floor(n / 3); return [n - 2 * b, b, b]; };
 
 // The recorded bodies, the furthest along of ?ids=all and ?id= for each match
 // (the recording's ?id=2-5 is behind its ?ids=all).
@@ -211,7 +212,7 @@ class Timeline {
   get end() { return this.#cursor; }
 
   // `min` minutes of play on the focus match, one state a minute. kills: per
-  // map type and minute, split over the colours, each kill a death of the next
+  // map type and minute, split over the colours (or [red, blue, green] as given), each kill a death of the next
   // colour. flips: how many objectives change hands, spread over the span, or
   // the objective ids. score: per colour and minute, on EBG and the skirmish.
   // `every`: minutes between states (0.5: one each 30 s, kills and score split
@@ -219,9 +220,9 @@ class Timeline {
   advance(min, { kills = DEFAULT_KILLS, flips = 0, score = DEFAULT_SCORE, every = 1 } = {}) {
     if (!(min > 0)) throw new Error('gw2: advance needs minutes');
     const steps = Math.round(min / every);
-    const part = o => Object.fromEntries(Object.entries(o).map(([k, n]) => [k, n * every]));
+    const part = o => Object.fromEntries(Object.entries(o).map(([k, n]) => [k, Array.isArray(n) ? n.map(x => x * every) : n * every]));
     if (!(every > 0 && every <= 1) || !Number.isInteger(1 / every) || Math.abs(steps * every - min) > 1e-9
-      || ![...Object.values(kills), ...Object.values(score)].every(n => Number.isInteger(n * every))) {
+      || ![...Object.values(kills).flat(), ...Object.values(score)].every(n => Number.isInteger(n * every))) {
       throw new Error('gw2: advance needs `every` to split the minutes, kills and score whole');
     }
     const list = typeof flips === 'number' ? Array.from({ length: flips }, () => null) : [...flips];

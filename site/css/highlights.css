@@ -113,3 +113,59 @@
 /* Reduced motion: drawn after the embers stopped, these never reach their clock (js/boot.js). */
 @media (prefers-reduced-motion: reduce){.hl-shine,.hl-shine-in,.hl-clash-band,.hl-pulse-ring,.hl-sc :is(.hl-sc-b,.hl-sc-l,.hl-sc-r){animation-play-state:paused;}}
 .hl-last{font-size:1rem;font-weight:800;}
+/* The Leaders (hlLeadersBox): a box of its own above the tiles, the slides stacked in one cell, one shown. Its 5 s
+   fill (.hl-step-fill) is moved by js/highlights.js on the embers' frames, on its own layer. */
+.hl-panel .hl-rot{margin:0 0 8px;padding:9px 12px 0;gap:4px;isolation:isolate;}
+.hl-panel .hl-rot-quiet{margin:0 0 8px;padding:9px 12px;gap:4px;align-items:center;justify-content:center;min-height:132px;}
+@media (min-width:360px){.hl-panel .hl-rot-quiet{min-height:140px;}}
+.hl-slides{display:grid;}
+.hl-slide{position:relative;grid-area:1 / 1;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;opacity:0;transform:translateY(5px);transition:opacity .35s ease,transform .35s ease;visibility:hidden;}
+.hl-slide.is-on{opacity:1;transform:none;visibility:visible;}
+.hl-slide > *{position:relative;}
+.hl-mk{width:18px;height:18px;flex:none;}
+.hl-mk-svg{fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.hl-mk-vp{width:auto;height:auto;font-size:.62rem;font-weight:700;color:#8d97a6;letter-spacing:.02em;}
+.hl-kd{gap:0 6px;}
+.hl-kd .stat-label{font-size:.8rem;font-weight:700;color:#8d97a6;}
+.hl-panel button.hl-rot-pause{position:absolute;z-index:2;top:-4px;right:0;width:44px;height:44px;min-width:0;min-height:0;padding:0;border-radius:50%;display:grid;place-items:center;color:var(--muted);}
+.hl-rot-svg{width:12px;height:12px;fill:currentColor;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;}
+.hl-lead-name{font-weight:800;color:var(--side-glow);overflow-wrap:anywhere;min-width:0;}
+.hl-mt-team{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px 7px;min-width:0;margin-top:4px;}
+.hl-mt-team .hl-lead-name{font-size:1.05rem;}
+.hl-mt-team .hl-tier{font-size:.56rem;padding:1px 4px;}
+.hl-steps{display:flex;gap:4px;margin:2px -2px 0;}
+.hl-panel button.hl-step{position:relative;flex:1 1 0;min-width:0;min-height:0;height:24px;padding:0 2px;display:flex;align-items:center;}
+.hl-step::after{content:'';position:absolute;left:2px;right:2px;top:50%;height:3px;margin-top:-1.5px;border-radius:2px;background:#3a4350;}
+.hl-step-fill{position:relative;z-index:1;display:block;width:100%;height:3px;border-radius:2px;background:var(--accent);transform:scaleX(0);transform-origin:0 50%;}
+.hl-step.is-done .hl-step-fill{transform:none;background:#6b7584;}
+.hl-step[aria-pressed="true"] .hl-step-fill{will-change:transform;}
+.hl-panel button.hl-step:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+/* The slide's head: the metric as the title with where it sits in the turn, clear of the pause in the corner. */
+.hl-mt-head{align-self:stretch;display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;min-height:24px;padding-right:34px;}
+.hl-mt-title{display:flex;align-items:center;gap:6px;font-size:.8rem;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:.08em;}
+.hl-mt-note{font-size:.64rem;color:var(--muted);font-weight:600;}
+.hl-mt-num{justify-content:center;}
+.hl-mt-num .hl-num{font-size:1.75rem;line-height:1.1;}
+/* The leader's mark, big and faint at the right edge, and a glow in the leader's colour; the tile cuts what leaves it.
+   On a turn the mark comes in from 16 px to the right (.is-in, once, with reduced motion too). */
+.hl-slide > .hl-deco-ic,.hl-slide > .hl-deco-glow{position:absolute;pointer-events:none;}
+.hl-slide > .hl-deco-ic{display:grid;place-items:center;width:112px;height:112px;right:-38px;top:50%;margin-top:-56px;opacity:.08;}
+.hl-deco-ic .hl-mk{width:100%;height:100%;}
+.hl-deco-ic .hl-mk-img{filter:grayscale(1) brightness(1.6);}
+.hl-deco-ic .hl-mk-svg{stroke:#fff;}
+.hl-slide .hl-deco-ic .hl-mk-vp{width:auto;height:auto;font-size:3.4rem;font-weight:800;color:#fff;letter-spacing:-.02em;}
+.hl-slide.is-in > .hl-deco-ic{animation:hl-mk-in .4s cubic-bezier(.2,.6,.4,1) 1 both;}
+@keyframes hl-mk-in{from{transform:translateX(16px);opacity:0;}to{transform:none;opacity:.08;}}
+.hl-slide > .hl-deco-glow{inset:-14px -12px;background:radial-gradient(closest-side at 50% 60%,color-mix(in srgb,var(--side-rail) 10%,transparent),transparent);}
+@media (min-width:600px){.hl-slide > .hl-deco-ic{width:150px;height:150px;margin-top:-75px;right:-44px;}.hl-slide .hl-deco-ic .hl-mk-vp{font-size:4.4rem;}}
+/* The metrics' short names under the segments from 360 px, where the longest ("Active") leaves a quarter of its segment free. */
+.hl-step-name{display:none;}
+@media (min-width:360px){
+  .hl-panel button.hl-step{height:40px;flex-direction:column;align-items:stretch;justify-content:flex-start;padding-top:10px;}
+  .hl-step::after{top:10px;margin-top:0;}
+  .hl-step-name{display:block;margin-top:6px;font-size:.68rem;font-weight:700;letter-spacing:.04em;color:#8d97a6;text-align:center;white-space:nowrap;}
+  .hl-step[aria-pressed="true"] .hl-step-name,.hl-step:hover .hl-step-name{color:var(--text);}
+}
+/* A turn's top rule in the leader's colour, out in .5 s. */
+.hl-rot-edge{position:absolute;inset:0;z-index:1;pointer-events:none;border-radius:inherit;box-shadow:inset 0 2px 0 var(--side-rail);animation:hl-edge .5s ease-out 1 both;}
+@keyframes hl-edge{from{opacity:1;}to{opacity:0;}}

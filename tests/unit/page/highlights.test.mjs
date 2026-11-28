@@ -1,9 +1,9 @@
 // The highlights' rules in js/highlights.js, run in Node (page/harness.mjs): the skirmish victory point table
 // against the e2e factory's, the table checked against a week, the Closest match's favourite and its tie, and
-// the Hottest fight's line by the map corner's looks.
+// the Hottest fight's line by the map corner's looks, and which metrics the Leaders have a value for.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { matches, MIN, clone, fresh } from './harness.mjs';
+import { matches, MIN, clone, fresh, openMatch } from './harness.mjs';
 import { WAR_VP } from '../../e2e/support/gw2.mjs';
 
 test('the site\'s skirmish VP table is the factory\'s WAR_VP', () => {
@@ -163,4 +163,85 @@ test('the map badges\' repaint of every tier repaints the highlights; of one tie
   assert.equal(p.run('__painted'), 0);
   p.call('paintMapBadges');
   assert.equal(p.run('__painted'), 1);
+});
+
+test('the Leaders: only a metric with a value, and K/D from 500 deaths', () => {
+  const p = fresh();
+  const shorts = (m) => {
+    p.run('newestMatches.clear()');
+    p.call('keepNewestMatch', m);
+    return [...p.call('hlLeaders')].map((x) => x.short);
+  };
+  assert.deepEqual(shorts(clone(openMatch)), ['Kills', 'VP', 'PPT', 'Active', 'K/D']);
+  // A week's first minutes: no kill, no VP, and the objectives not yet worth a tick: nothing to lead.
+  const zero = clone(openMatch);
+  for (const k of ['kills', 'deaths', 'victory_points']) for (const c of ['red', 'blue', 'green']) zero[k][c] = 0;
+  for (const map of zero.maps) for (const o of map.objectives) o.points_tick = 0;
+  assert.deepEqual(shorts(zero), []);
+  // Kills and deaths are in, VP and PPT not: the two metrics that have a value, K/D under its floor.
+  const some = clone(zero);
+  some.kills.red = 5;
+  some.deaths.red = 499;
+  assert.deepEqual(shorts(some), ['Kills', 'Active']);
+  some.deaths.red = 500;
+  assert.deepEqual(shorts(some), ['Kills', 'Active', 'K/D']);
+  // Every team over the floor but none with a kill: K/D 0 is no leader.
+  some.kills.red = 0;
+  assert.deepEqual(shorts(some), ['Active']);
+});
+
+test('the Leaders turn only with two metrics or more', () => {
+  const p = fresh();
+  p.run('hlRot.list = [{}]');
+  assert.equal(p.call('hlHeld'), true);
+  p.run('hlRot.list = [{}, {}]');
+  assert.equal(p.call('hlHeld'), false);
+});
+
+test('the Leaders: a tie for first place leaves the metric out; on VP the skirmish under way breaks it', () => {
+  const p = fresh();
+  const read = (m) => {
+    p.run('newestMatches.clear()');
+    p.call('keepNewestMatch', m);
+    return [...p.call('hlLeaders')];
+  };
+  const m = clone(openMatch);
+  m.start_time = '2026-09-26T02:00:00Z';
+  // Skirmish 1 ended with Red and Blue level on 43 VP (the first place's points to both), Green 21.
+  m.skirmishes = [{ id: 1, scores: { red: 100, blue: 100, green: 50 } }, { id: 2, scores: { red: 10, blue: 5, green: 1 } }];
+  m.victory_points = { red: 43, blue: 43, green: 21 };
+  m.kills = { red: 7, blue: 7, green: 1 };
+  const kills = (list) => list.map((x) => x.short);
+  let list = read(m);
+  assert.ok(!kills(list).includes('Kills'), 'a tie on kills: no leader');
+  const vp = list.find((x) => x.short === 'VP');
+  assert.ok(vp, 'a tie on VP is broken by the skirmish');
+  assert.equal(vp.r.color, 'red');
+  assert.equal(vp.r.ahead, 7, 'Red would take 31 VP, Blue 24');
+  assert.match(p.call('hlLeadersSaid', list), /Tied on VP · 7 VP ahead this skirmish\./);
+  // The same VP in a match with no table that holds: the tie cannot be broken across the two.
+  const other = clone(m);
+  other.id = '1-2';
+  other.skirmishes = [];
+  p.run('newestMatches.clear()');
+  p.call('keepNewestMatch', m);
+  p.call('keepNewestMatch', other);
+  assert.ok(![...p.call('hlLeaders')].some((x) => x.short === 'VP'), 'a team with no count to break it with');
+  // The skirmish level too: the tie stands, and the metric is out.
+  m.skirmishes[1].scores = { red: 10, blue: 10, green: 1 };
+  assert.ok(!kills(read(m)).includes('VP'));
+  // A table that does not hold (VP the finished skirmishes do not add up to): nothing to break it with.
+  m.skirmishes[1].scores = { red: 10, blue: 5, green: 1 };
+  m.victory_points = { red: 44, blue: 44, green: 21 };
+  assert.ok(!kills(read(m)).includes('VP'));
+  // One ahead on kills: the leader again.
+  m.kills.red = 8;
+  assert.ok(kills(read(m)).includes('Kills'));
+});
+
+test('the Leaders ask the reduced-motion setting once, not on every frame', () => {
+  const p = fresh();
+  const before = p.run('__mediaQueries');
+  p.run('hlReduced(); hlReduced(); hlReduced()');
+  assert.equal(p.run('__mediaQueries'), before);
 });
