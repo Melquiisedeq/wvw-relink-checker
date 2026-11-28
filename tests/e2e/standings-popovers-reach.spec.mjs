@@ -32,6 +32,9 @@ const OPEN = { pops: 1, backdrops: 0, expanded: false, active: true, aria: 'true
 
 test.describe('desktop', () => {
   test.use({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
+  // A popover taller than the room above and below its icon is held inside the window and
+  // covers the icon, so a second click on it lands on the popover: these get the room.
+  const ROOM = { width: 1280, height: 2000 };
 
   test('a click outside closes the popover and keeps the caret; a click inside does not', async ({ page, wvw }) => {
     // Tall enough that the guild box needs no scrolling to be clicked: scrolling, the popover held at an edge could cover the box and the click would land inside it.
@@ -53,7 +56,16 @@ test.describe('desktop', () => {
     expect(await state(page, btn), 'after a click on the page margin').toEqual(CLOSED);
   });
 
+  test('at 1280×800, Escape closes and hands focus back', async ({ page, wvw }) => {
+    const btn = await openGuilds(page, wvw);
+    expect(await state(page, btn)).toEqual(OPEN);
+    await page.keyboard.press('Escape');
+    expect(await state(page, btn), 'Escape').toEqual(CLOSED);
+    expect(await btn.evaluate(b => b === document.activeElement), 'focus back on the icon').toBe(true);
+  });
+
   test('the icon toggles, Escape closes and hands focus back, a reopen is a fresh popover', async ({ page, wvw }) => {
+    await page.setViewportSize(ROOM);
     const btn = await openGuilds(page, wvw);
     await btn.click();
     expect(await state(page, btn), 'the icon pressed again').toEqual(CLOSED);
@@ -65,6 +77,7 @@ test.describe('desktop', () => {
   });
 
   test('expand and shrink: the backdrop comes and goes, the popover goes back beside its icon', async ({ page, wvw }) => {
+    await page.setViewportSize(ROOM);
     const btn = await openGuilds(page, wvw);
     const expand = page.locator(`${POP} .info-popover-expand`);
     const aria = () => expand.getAttribute('aria-label');
@@ -225,26 +238,4 @@ test.describe('phone', () => {
     await page.mouse.move(370, 30);
     await expect.poll(async () => (await aim()).yaw, { message: 'a mouse aiming it' }).not.toBe(rest.yaw);
   });
-});
-
-test('Ctrl+Enter in the guild box closes a result row\'s popover and leaves no active trigger', async ({ page, wvw }) => {
-  await page.setViewportSize({ width: 1280, height: 2000 });
-  await load(page, wvw);
-  await search(page, wvw.guilds.slice(0, 1));
-  await page.locator('#resultBody .server-guilds-btn').first().click();
-  await expect(page.locator(POP)).toHaveCount(1);
-  await page.locator('#guildInput').focus();
-  await page.keyboard.press('Control+Enter');
-  await expect(page.locator(POP)).toHaveCount(0);
-  await expect(page.locator('#statusMsg')).toHaveText(/^Done/, { timeout: 15000 });
-  // A popover still held as open would keep the trebuchet from throwing.
-  await page.evaluate(() => {
-    window.__thrown = 0;
-    new MutationObserver(ms => {
-      for (const m of ms) for (const n of m.addedNodes) if (n.classList?.contains('siege-shot')) window.__thrown++;
-    }).observe(document.body, { childList: true });
-  });
-  await page.mouse.click(640, 20);
-  await expect.poll(() => page.evaluate(() => window.__thrown), { message: 'a click on an empty spot throwing a round' }).toBe(1);
-  await wvw.settle();
 });

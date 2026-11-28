@@ -28,7 +28,7 @@ body:
     id: input
     attributes:
       label: What you put in
-      description: The guild names you pasted, or which part of the page you were on. Guild names are public, so pasting them here is fine.
+      description: The guild name you searched for, or which part of the page you were on. Guild names are public, so pasting them here is fine.
     validations:
       required: true
 

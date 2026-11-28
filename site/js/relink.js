@@ -382,9 +382,9 @@ function buildTeamsNotice(windowId) {
 
   text.append(
     lead,
-    ' Paste your guilds and hit ',
+    ' Type your guild and hit ',
     checkRef,
-    ' to see where each one landed — or open the ',
+    ' to see where it landed — or open the ',
     shieldRef,
     ' beside any NA team for every guild on it.'
   );

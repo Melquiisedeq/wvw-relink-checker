@@ -1,7 +1,5 @@
 .page{
   position:relative;z-index:1;
-  /* The shake (.page.struck) only moves a layer already made. A position:fixed inside .page would be pinned to it. */
-  will-change:transform;
   display:flex;
   flex-direction:column;
   align-items:center;
@@ -33,7 +31,6 @@ html[data-rail-first="eu"]:not(.rails-placed) .rail-right{order:1;}
   #relinkBanner[style*="display: none"] + .page .rail{margin-top:0;}
 }
 .title-row{display:flex;align-items:center;gap:12px;margin-bottom:8px;}
-#matchPanelsContainer{display:flex;flex-direction:column;gap:16px;}
 /* The closed contour is what the urgency pulse travels around. */
 .relink-banner{
   /* Shown from first paint at the bar's height so its arrival does not shift the page; updateRelinkBanner takes over display. */

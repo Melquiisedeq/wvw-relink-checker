@@ -327,24 +327,6 @@ export async function connectionDrops(push, { silent = false, quiet = false } = 
   else push.drop();
 }
 
-// A team third in tier 2 of its region, found by a read by team, while the
-// standings are unread: `out` is the address pattern that answers 503 (every
-// ids= read by default; the EU's own ids= read, with the NA one answering,
-// by passing EU_STANDINGS_OUT). `world` is moved to tier 2 of `region`.
-// Returns the id of that match.
-export const EU_STANDINGS_OUT = /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches\?ids=(all|2-)/;
-export async function thirdInTierTwoStandingsOut(page, wvw, { world = 11011, region = '1', out = /^https:\/\/api\.guildwars2\.com\/v2\/wvw\/matches\?ids=/ } = {}) {
-  await fail(page, wvw, out);
-  const held = recordedJson('https://api.guildwars2.com/v2/wvw/matches?ids=all')
-    .find(m => JSON.stringify(m.all_worlds).includes(String(world)));
-  const mine = Object.keys(held.all_worlds).find(c => held.all_worlds[c].includes(world));
-  const match = { ...held, id: `${region}-2`, victory_points: { red: 20, blue: 30, green: 25, [mine]: 10 } };
-  await page.route(`https://api.guildwars2.com/v2/wvw/matches?world=${world}`, route => route.fulfill({
-    status: 200, body: JSON.stringify(match),
-    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' } }));
-  return match.id;
-}
-
 // ---- the reset ---------------------------------------------------------
 // The reset a timeline reaches is a plain weekly one: the game's assignment timer and
 // /api/relink name the relink four weeks on. Set before the page opens. `ownRelink`: /api/relink
