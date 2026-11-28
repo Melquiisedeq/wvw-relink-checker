@@ -1,0 +1,115 @@
+/* The highlights panel (js/highlights.js), above the search; asked for with its script, after the first standings.
+   Drawn for 390 and 320 px first. Every motion is transform or opacity, on the swords' 2.8 s beat; js/boot.js
+   moves them with the embers' clock, so a hidden tab or reduced motion holds them still. */
+.hl-box{margin-bottom:14px;min-width:0;}
+.hl-panel{padding:10px 12px 12px;min-width:0;}
+.hl-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 8px;font-size:.66rem;font-weight:800;color:#a3adbb;text-transform:uppercase;letter-spacing:.1em;}
+/* The region switch: 44 px tall to press, the live map's tab drawn inside; the row keeps its height. */
+.hl-reg{display:flex;margin:-14px -6px -14px 0;}
+.hl-panel button{background:none;color:inherit;border:0;font:inherit;text-shadow:none;box-shadow:none;text-align:left;cursor:pointer;transition:border-color .15s ease;}
+.hl-panel button.hl-reg-btn{min-width:0;min-height:0;width:40px;height:44px;padding:0;display:grid;place-items:center;}
+.hl-reg-btn .wvw-subtab{letter-spacing:.06em;}
+.hl-panel button.hl-reg-btn:focus-visible{outline:2px solid var(--accent);outline-offset:-6px;}
+/* The Hottest fight and the Busiest map side by side, the Closest match under them. One a row under 360 px,
+   where two would cut their text; three a row from 600 px. */
+.hl-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.hl-grid > .hl-close{grid-column:1 / -1;}
+@media (max-width:359px){.hl-grid{grid-template-columns:minmax(0,1fr);}}
+@media (min-width:600px){.hl-grid{grid-template-columns:repeat(3,minmax(0,1fr));}.hl-grid > .hl-close{grid-column:auto;}}
+.hl-panel .hl-tile{
+  position:relative;overflow:hidden;min-width:0;padding:9px 10px;border-radius:10px;
+  display:flex;flex-direction:column;gap:3px;justify-content:flex-start;
+  background:rgba(10,13,17,.5);border:1px solid var(--border);
+}
+.hl-panel button.hl-tile:hover{border-color:rgba(127,214,242,.5);}
+.hl-top{display:flex;align-items:center;justify-content:space-between;gap:6px;min-height:18px;}
+.hl-label{display:flex;align-items:center;gap:5px;min-width:0;font-size:.6rem;font-weight:800;color:#a3adbb;text-transform:uppercase;letter-spacing:.09em;}
+.hl-tier{font-size:.6rem;font-weight:800;letter-spacing:.08em;white-space:nowrap;padding:2px 5px;border-radius:4px;border:1px solid #3a4350;color:var(--text);}
+.hl-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:#6b7584;flex:none;align-self:center;}
+.hl-dot-red{background:var(--red);}
+.hl-dot-blue{background:var(--blue);}
+.hl-dot-green{background:var(--green);}
+.hl-team{display:inline-flex;align-items:baseline;overflow-wrap:anywhere;}
+.hl-big{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 5px;color:var(--text);}
+.hl-num{font-size:1.25rem;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.15;}
+.hl-unit{font-size:.74rem;color:var(--muted);font-weight:600;}
+.hl-map{font-size:.78rem;color:var(--text);line-height:1.3;}
+.hl-line{font-size:.7rem;color:var(--muted);line-height:1.3;}
+.hl-teams,.hl-takers{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 12px;font-size:.78rem;font-weight:600;line-height:1.3;}
+/* The live map's strike at 1.5 times its 14 px box, grown from the box's left middle, and its orange shine on the
+   number. The scale and its shift sit on the strike, a layer already for its punch: on the box around it they make one
+   more layer. Painted above the tile's text (isolated in the tile), no text paints over its layers to need another. */
+.hl-clash{position:relative;width:14px;height:14px;flex:none;margin-right:7px;}
+.hl-clash .wvw-clash{left:0;top:0;translate:3.5px .7px;scale:1.5;z-index:1;}
+.hl-panel :is(.hl-hot,.hl-close){isolation:isolate;}
+.hl-hot .hl-num{position:relative;display:inline-block;color:#ffb070;text-shadow:0 1px 1.5px rgba(0,0,0,.95);}
+.hl-hot .hl-unit{color:#f0b27a;}
+.hl-shine{position:absolute;inset:0;overflow:hidden;pointer-events:none;
+  -webkit-mask-image:linear-gradient(115deg,transparent 20%,#000 50%,transparent 80%);mask-image:linear-gradient(115deg,transparent 20%,#000 50%,transparent 80%);
+  transform:translateX(-100%);animation:hl-shine-band 2.8s infinite;}
+.hl-shine-in{position:absolute;inset:0;color:#fff6e0;text-shadow:none;white-space:nowrap;transform:translateX(100%);animation:hl-shine-copy 2.8s infinite;}
+@keyframes hl-shine-band{0%,33.93%{transform:translateX(-100%);animation-timing-function:ease-in-out;}62.5%,100%{transform:translateX(100%);}}
+@keyframes hl-shine-copy{0%,33.93%{transform:translateX(100%);animation-timing-function:ease-in-out;}62.5%,100%{transform:translateX(-100%);}}
+/* The swords' own shine the same way: the band slides inside the swords' mask (.wvw-clash-shine, css/maps.css). */
+.hl-clash .wvw-clash-shine{background:none;animation:none;overflow:hidden;}
+/* The flash at its widest (1.45 times the map's), shrunk from there, and every moving part on a will-change layer:
+   rastered once, not again at each size or sub-pixel offset. */
+.hl-clash .wvw-clash-flash{left:1px;top:.2px;width:11.6px;height:11.6px;animation-name:hl-clash-flash;}
+@keyframes hl-clash-flash{0%,15.89%{opacity:0;transform:scale(.275862);}16.46%{opacity:.85;transform:scale(.758621);}21.71%,100%{opacity:0;transform:scale(1);}}
+.hl-clash :is(.wvw-clash-sword,.wvw-clash-flash,.wvw-clash-spark,.hl-clash-band),.hl-shine,.hl-shine-in{will-change:transform;}
+.hl-clash-band{position:absolute;inset:0;background:linear-gradient(115deg,transparent 5%,rgba(255,240,200,.95) 50%,transparent 95%);
+  transform:translateX(-100%);animation:hl-shine-band 2.8s infinite;}
+/* No swords lit, or a number that is not a pace of now: grey swords at rest, the number white. */
+.hl-calm .hl-num,.hl-hot.hl-calm .hl-num{color:var(--text);text-shadow:none;}
+.hl-calm .hl-unit,.hl-hot.hl-calm .hl-unit{color:var(--muted);}
+.hl-calm .hl-clash *{animation:none;will-change:auto;}
+.hl-calm .wvw-clash-flash,.hl-calm .wvw-clash-shine,.hl-calm .wvw-clash-spark{display:none;}
+.hl-calm .wvw-clash-sword{filter:grayscale(1) brightness(.75) drop-shadow(0 1px 1px rgba(0,0,0,.7));}
+.hl-wait{display:flex;align-items:center;gap:6px;color:var(--muted);}
+/* The Busiest map: the marker of the last objective taken and the map's capture ring round it, out at the swords'
+   blow (16.5 % of their cycle, clash-punch in css/maps.css); then who holds what was taken. */
+.hl-pulse{position:relative;width:21px;height:21px;flex:none;display:grid;place-items:center;}
+.hl-pulse .hl-ic{position:relative;width:21px;height:21px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.7));}
+/* A layer scaled up is rastered again at each size: the ring is drawn at its widest (2.1 times the marker) and only
+   shrinks, on a will-change layer rastered once. */
+.hl-pulse-ring{position:absolute;inset:-11.55px;border-radius:50%;border:3.15px solid #fff;opacity:0;will-change:transform;animation:hl-ping-beat 2.8s infinite;}
+@keyframes hl-ping-beat{0%,16.4%{opacity:0;transform:scale(.428571);animation-timing-function:ease-out;}16.5%{opacity:.9;transform:scale(.428571);animation-timing-function:ease-out;}60%,100%{opacity:0;transform:scale(1);}}
+.hl-taker{display:inline-flex;align-items:baseline;gap:5px;min-width:0;}
+.hl-taker-n{color:var(--side-glow);font-variant-numeric:tabular-nums;}
+.hl-split{display:flex;height:6px;gap:2px;border-radius:3px;overflow:hidden;margin:2px 0;}
+.hl-seg{display:block;flex-basis:0;min-width:6px;}
+.hl-seg-dim{opacity:.4;}
+/* The Closest match: the skirmish bar with each team's points if it ended now over its ends, the week's VP rows,
+   the foot. A name that may be cut ends in an ellipsis, said whole by the tile's aria-label. */
+.hl-gain-bar{display:flex;flex-direction:column;gap:1px;}
+.hl-gain-ends{display:flex;justify-content:space-between;font-size:.66rem;line-height:1.2;}
+.hl-gain{font-weight:800;color:var(--side-glow);font-variant-numeric:tabular-nums;white-space:nowrap;}
+.hl-vprows{display:flex;flex-direction:column;gap:1px;font-size:.76rem;font-weight:600;}
+.hl-vprow{display:flex;justify-content:space-between;align-items:baseline;gap:6px;min-width:0;}
+.hl-cut{display:flex;min-width:0;}
+.hl-cut-nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.hl-vp{font-variant-numeric:tabular-nums;white-space:nowrap;flex:none;}
+.hl-vp .stat-label{color:#8d97a6;font-weight:400;font-size:.68rem;}
+.hl-sk-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 4px;color:var(--text);}
+.hl-sk-line .hl-team{font-weight:700;}
+/* The scales (hlScales): 21 px like the swords, the room of a 14 px box in the row. The beam turns on its pin, each pan
+   hangs from its end, and they settle with the favourite's side down (--s: -1 the first team, 1 the second, 0 level). */
+.hl-ci{position:relative;z-index:1;width:21px;height:21px;flex:none;margin:-3.5px 0;filter:drop-shadow(0 1.5px 1.5px rgba(0,0,0,.7));}
+.hl-ci svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;}
+.hl-ci-f{fill:#e2c27a;stroke:#1a1408;stroke-width:.9;stroke-linejoin:round;}
+.hl-ci-s{fill:none;stroke:#e2c27a;stroke-width:1.1;stroke-linecap:round;}
+.hl-sc{--s:-1;}
+.hl-sc-right{--s:1;}
+.hl-sc-even{--s:0;}
+.hl-sc .hl-sc-b{transform-origin:10.5px 6.65px;animation:hl-sc-b 5.6s infinite ease-in-out;}
+.hl-sc .hl-sc-l{animation:hl-sc-l 5.6s infinite ease-in-out;}
+.hl-sc .hl-sc-r{animation:hl-sc-r 5.6s infinite ease-in-out;}
+@keyframes hl-sc-b{0%{transform:rotate(calc(var(--s) * 4deg));}4%{transform:rotate(calc(var(--s) * -6deg));}10%{transform:rotate(calc(var(--s) * 9deg));}16%{transform:rotate(0deg);}22%{transform:rotate(calc(var(--s) * 6deg));}28%{transform:rotate(calc(var(--s) * 2.5deg));}34%{transform:rotate(calc(var(--s) * 4.8deg));}40%,100%{transform:rotate(calc(var(--s) * 4deg));}}
+@keyframes hl-sc-l{0%{transform:translateY(calc(var(--s) * -0.4515px));}4%{transform:translateY(calc(var(--s) * 0.67725px));}10%{transform:translateY(calc(var(--s) * -1.01325px));}16%{transform:translateY(0);}22%{transform:translateY(calc(var(--s) * -0.67725px));}28%{transform:translateY(calc(var(--s) * -0.282625px));}34%{transform:translateY(calc(var(--s) * -0.541625px));}40%,100%{transform:translateY(calc(var(--s) * -0.4515px));}}
+@keyframes hl-sc-r{0%{transform:translateY(calc(var(--s) * 0.4515px));}4%{transform:translateY(calc(var(--s) * -0.67725px));}10%{transform:translateY(calc(var(--s) * 1.01325px));}16%{transform:translateY(0);}22%{transform:translateY(calc(var(--s) * 0.67725px));}28%{transform:translateY(calc(var(--s) * 0.282625px));}34%{transform:translateY(calc(var(--s) * 0.541625px));}40%,100%{transform:translateY(calc(var(--s) * 0.4515px));}}
+/* The tile clips its overflow, and with it the strip that keeps a pressed button under the cursor
+   (button:active::after, css/controls.css): it does not sink. */
+.hl-panel button.hl-tile:active{transform:none;}
+/* Reduced motion: drawn after the embers stopped, these never reach their clock (js/boot.js). */
+@media (prefers-reduced-motion: reduce){.hl-shine,.hl-shine-in,.hl-clash-band,.hl-pulse-ring,.hl-sc :is(.hl-sc-b,.hl-sc-l,.hl-sc-r){animation-play-state:paused;}}
+.hl-last{font-size:1rem;font-weight:800;}

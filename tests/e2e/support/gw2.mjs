@@ -87,7 +87,7 @@ const WAR_CAPTURE = Object.freeze({ Camp: [2, 10, 15, 25], Tower: [25, 125, 200,
 const WAR_TICK = Object.freeze({ Tower: 7, Keep: 10, Castle: 20 });   // at T3 only
 // Victory points of a skirmish [1st, 2nd, 3rd], by region and the UTC hour it starts.
 const VP_TIERS = { a: [15, 14, 12], b: [22, 18, 14], c: [31, 24, 17], d: [51, 37, 24], e: [43, 32, 21], f: [23, 18, 14], g: [19, 16, 13] };
-const WAR_VP = Object.freeze({
+export const WAR_VP = Object.freeze({
   1: 'eecfgggffffc'.split('').map(k => VP_TIERS[k]),   // NA, hours 0, 2, ... 22
   2: 'aaaabbbccddc'.split('').map(k => VP_TIERS[k]),   // EU
 });
@@ -284,6 +284,18 @@ class Timeline {
     return this.#with([{ kind: 'worker-kills' }]);
   }
 
+  // For the whole timeline the game gives victory points by a table other than WAR_VP: every body has one VP
+  // more for red than its finished skirmishes add up to.
+  vpTableChanged() {
+    return this.#with([{ kind: 'vp-changed' }]);
+  }
+
+  // For the whole timeline the team of each colour in `teams` is the id given with the match's tier number after it (so that no two matches share a team, and no table names it) or, with
+  // null, none at all: the match lists only the old world numbers on that side. Every match of the focus region.
+  teams(teams) {
+    return this.#with([{ kind: 'teams', teams }]);
+  }
+
   // For the whole timeline the kills sheet as kills.gs writes it (apps-script/kills/kills.gs):
   // each minute in which the score its read gets rose, a row stamped with that minute, the
   // kills, start and score of that body; each write drops the rows over 2 h older than it.
@@ -416,7 +428,7 @@ class Timeline {
     for (const id of ids) roll(id, horizon);
     for (const list of frames.values()) list.sort((a, b) => a.at - b.at);
     const windows = kind => this.#ops.filter(o => o.kind === kind).sort((a, b) => a.at - b.at);
-    this.#compiled = { anchor, base, bodyOf, ids, frames, pools: windows('pool'), statuses: windows('status'), latest: windows('latest'), history: windows('history'), held: windows('held'), stalls: windows('stall'), workerKills: this.#ops.some(o => o.kind === 'worker-kills'), sheetKills: this.#ops.find(o => o.kind === 'sheet-kills') || null };
+    this.#compiled = { anchor, base, bodyOf, ids, frames, pools: windows('pool'), statuses: windows('status'), latest: windows('latest'), history: windows('history'), held: windows('held'), stalls: windows('stall'), workerKills: this.#ops.some(o => o.kind === 'worker-kills'), vpChanged: this.#ops.some(o => o.kind === 'vp-changed'), sheetKills: this.#ops.find(o => o.kind === 'sheet-kills') || null, teams: Object.assign({}, ...this.#ops.filter(o => o.kind === 'teams').map(o => o.teams)) };
     return this.#compiled;
   }
 
@@ -510,7 +522,15 @@ class Timeline {
   // The newest body of a match at t (ms after the recording), as a new object.
   body(id, t) {
     const { state } = this.#frame(id, t);
-    return materialise(this.#compile().bodyOf(id, state.week), state);
+    const b = materialise(this.#compile().bodyOf(id, state.week), state);
+    if (this.#compile().vpChanged) b.victory_points.red += 1;
+    if (id[0] === this.#focus[0]) {
+      for (const [color, team] of Object.entries(this.#compile().teams)) {
+        const rest = (b.all_worlds[color] || []).filter(n => Number(n) < 10000);
+        b.all_worlds[color] = team === null ? rest : [...rest, Number(`${team}${id.split('-')[1]}`)];
+      }
+    }
+    return b;
   }
 
   // When the newest body of a match at t last changed, in page time (ms).

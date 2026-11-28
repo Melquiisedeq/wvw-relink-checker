@@ -15,9 +15,13 @@
     "lines": 3.8,
     "branches": 0
   },
+  "site/js/highlights.js": {
+    "lines": 28.1,
+    "branches": 39.9
+  },
   "site/js/maps-early.js": {
-    "lines": 69.1,
-    "branches": 74.5
+    "lines": 69.3,
+    "branches": 74.7
   },
   "site/js/maps.js": {
     "lines": 19.2,
