@@ -2,8 +2,8 @@
 // switch, the focus kept through a repaint, and the states the factory names: the API stuck in the middle of a
 // fight, a week's first minutes, a victory point table the site does not know, and hours with the tab visible.
 import { test, expect } from './support/fixtures.mjs';
-import { load, phone, search } from './support/steps.mjs';
-import { loadNow, loadSettled } from './support/page.mjs';
+import { board, load, phone, search } from './support/steps.mjs';
+import { boardBodies, loadNow, loadSettled } from './support/page.mjs';
 import { MIN, copyTaken, frozenMidFight, longTeams, noTeams, playing, redOnly, vpTableChanged, weekAtZero } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
@@ -31,7 +31,7 @@ test('the three tiles of the first region, above the search; a tile opens its ma
   await expect(busy(page)).toHaveAccessibleName(/^Busiest map, NA · T\d: \d+ objectives taken in the last 2 hours on .+, held now by .+\. Open the live map on it$/);
   await expect(closest(page)).toHaveAccessibleName(/^Closest match, NA · T\d: (Red|Blue|Green), .+ apart this week\. If this skirmish ended now, /);
   await expect(closest(page)).toContainText(/\+\d+ VP\s*\+\d+ VP/);
-  await expect(closest(page)).toContainText(/ set to (win|pass) · /);
+  await expect(closest(page)).toContainText(/ set to (win|pass|stay ahead) · /);
   const map = (await hot(page).getAttribute('aria-label')).match(/ on (.+), now\./)[1];
   await hot(page).click();
   const tab = { 'Eternal Battlegrounds': 'EBG', 'Red Borderlands': 'Red BL', 'Blue Borderlands': 'Blue BL', 'Green Borderlands': 'Green BL' }[map];
@@ -143,12 +143,12 @@ test.describe('a week\'s first minutes', () => {
 test.describe('a victory point table the site does not know', () => {
   test.use({ timeline: vpTableChanged(10) });
 
-  test('the Closest match shows the week and who leads it, nothing "if it ended now"', async ({ page, wvw }) => {
+  test('the Closest match shows the week and who is ahead, nothing "if it ended now"', async ({ page, wvw }) => {
     await load(page, wvw);
-    await expect(closest(page)).toHaveAccessibleName(/ leads the week\. /);
+    await expect(closest(page), 'the recording\'s fewest VP apart is the 2nd × 3rd pair').toHaveAccessibleName(/ is ahead this week\. /);
     await expect(closest(page)).not.toHaveAccessibleName(/If this skirmish ended now/);
     await expect(closest(page)).not.toContainText(/\+\d+ VP/);
-    await expect(closest(page)).toContainText(/ leads the week · /);
+    await expect(closest(page)).toContainText(/ ahead this week · /);
   });
 });
 
@@ -161,6 +161,33 @@ test.describe('hours with the tab visible and no map open', () => {
     await expect(hot(page)).toHaveAccessibleName(/ kills per 10 minutes on .+, now\. /);
     await expect(panel(page).getByText('Reading the kills…')).toHaveCount(0);
   });
+});
+
+// The recording's NA week has its fewest VP apart between 2nd and 3rd (the `want.place` guard):
+// the tile names that pair and the fight, worked out here from the bodies on show and not asked of the page.
+test('the Closest match takes the neighbours fewest VP apart, the 2nd and 3rd of a tier too', async ({ page, wvw }) => {
+  await load(page, wvw);
+  let want = null;
+  for (const m of (await boardBodies(page)).filter(x => x.id.startsWith('1-'))) {
+    const { byRank } = await board(page, m.id);
+    const vp = byRank.map(c => Number(m.victory_points[c]));
+    for (const place of [1, 2]) {
+      const gap = vp[place - 1] - vp[place];
+      if (!want || gap < want.gap || (gap === want.gap && place < want.place)) want = { id: m.id, gap, place, pair: [byRank[place - 1], byRank[place]], vp: [vp[place - 1], vp[place]] };
+    }
+  }
+  expect(want.place, 'the recording is the 2nd × 3rd case').toBe(2);
+  const [a, b] = want.pair.map(c => c[0].toUpperCase() + c.slice(1));
+  await expect(closest(page)).toHaveAccessibleName(new RegExp(`^Closest match, NA · T${want.id.split('-')[1]}: ${a}, .+, ${want.vp[0].toLocaleString('en-US')} VP; ${b}, .+, ${want.vp[1].toLocaleString('en-US')} VP; ${want.gap} apart this week\\.`));
+  await expect(closest(page).locator('.hl-big')).toHaveText(new RegExp(`^${want.gap}\\s*VP apart$`));
+  await expect(closest(page).locator('.hl-vprow .hl-vp'), 'the two rows, 2nd above 3rd').toHaveText(want.vp.map(v => new RegExp(`^${v.toLocaleString('en-US')}\\s*VP$`)));
+  const foot = closest(page).locator('.hl-sk-line');
+  const lastRow = await closest(page).locator('.hl-vprow').last().boundingBox();
+  expect((await foot.boundingBox()).y - (lastRow.y + lastRow.height), 'the foot stands clear of the last team row').toBeGreaterThanOrEqual(6);
+  await expect(foot, 'the foot\'s phrase is muted').toHaveCSS('color', 'rgb(154, 164, 178)');
+  await expect(foot.locator('.hl-team'), 'the team name stands out').not.toHaveCSS('color', 'rgb(154, 164, 178)');
+  await expect(closest(page)).not.toContainText(/set to win|leads the week/);
+  await expect(closest(page)).toContainText(/set to (stay ahead|pass) · /);
 });
 
 // The tap on the Closest match: its tier is the one the label names, in the first column.
@@ -234,11 +261,13 @@ test.describe('team names the table does not hold', () => {
 
     test('the Closest match moves the ring a search left on another tier', async ({ page, wvw }) => {
       await load(page, wvw);
-      await search(page, wvw.guilds[0]);
+      await search(page, wvw.guilds[1]);
       const team = await page.locator('#searchAnswer .search-team').textContent();
       await page.getByRole('button', { name: new RegExp(`^Show ${team} in the standings`) }).click();
       await expect(page.locator('.tier-spot')).toHaveCount(1);
       const ringed = await page.locator('.standing-match:not(.tier-dimmed)').evaluateAll(l => l.map(t => t.dataset.matchId));
+      const searched = await page.locator('.standing-match:has(.found-mark)').getAttribute('data-match-id');
+      expect(`1-${(await closest(page).getAttribute('aria-label')).match(/NA · T(\d)/)[1]}`, `the search (${searched}) is on another tier than the Closest match's`).not.toBe(searched);
       await showsItsTier(page);
       const now = await page.locator('.standing-match:not(.tier-dimmed)').evaluateAll(l => l.map(t => t.dataset.matchId));
       expect(now, 'the ring left the search\'s tier').not.toEqual(ringed);

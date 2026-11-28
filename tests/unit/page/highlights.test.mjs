@@ -26,7 +26,7 @@ test('the Closest match: level if it ended now names no winner', () => {
   const m = matches[0];
   const a = { color: 'red', name: 'Mosswood', vp: 1447 };
   const b = { color: 'blue', name: 'Lutgardis', vp: 1443 };
-  const c = (next, vp) => ({ m, gap: 4, a, b, next, sk: { left: 69, vp, sc: { red: 1, blue: 2, green: 0 } } });
+  const c = (next, vp) => ({ m, gap: 4, place: 1, a, b, next, sk: { left: 69, vp, sc: { red: 1, blue: 2, green: 0 } } });
   const tied = c(0, { red: 14, blue: 18, green: 12 });
   assert.equal(p.call('hlFav', tied).tied, true);
   const said = p.call('hlClosestSaid', tied);
@@ -42,11 +42,63 @@ test('the Closest match: level if it ended now names no winner', () => {
   assert.equal(p.call('hlFav', none).tied, false);
   assert.match(p.call('hlClosestSaid', none), /Mosswood leads the week\./);
   // Level in the week with no table: no leader picked by the sort's order.
-  const level = { m, gap: 0, a, b: { ...b, vp: a.vp }, sk: { left: 69, vp: null, sc: { red: 1, blue: 2, green: 0 } } };
+  const level = { m, gap: 0, place: 1, a, b: { ...b, vp: a.vp }, sk: { left: 69, vp: null, sc: { red: 1, blue: 2, green: 0 } } };
   assert.equal(p.call('hlFav', level).tied, true);
   const saidLevel = p.call('hlClosestSaid', level);
   assert.match(saidLevel, /0 apart this week\. The two are tied this week\. 1 h 9 min left in this skirmish\./);
   assert.doesNotMatch(saidLevel, /leads the week/);
+});
+
+test('the Closest match: the neighbours fewest VP apart, 2nd and 3rd too; a tie goes to the top pair, then to the first match', () => {
+  const p = fresh();
+  const list = na();
+  const set = (m, [blue, green, red]) => { m.victory_points = { blue, green, red }; m.scores = { blue: 3, green: 2, red: 1 }; };
+  set(list[0], [116, 79, 76]);
+  set(list[1], [113, 87, 71]);
+  set(list[2], [113, 87, 71]);
+  set(list[3], [110, 82, 79]);
+  keep(p, list);
+  const c = p.call('hlClosest');
+  assert.equal(c.m.id, list[0].id);
+  assert.equal(c.place, 2);
+  assert.equal(c.gap, 3);
+  assert.deepEqual([c.a.color, c.b.color], ['green', 'red']);
+  assert.match(p.call('hlClosestSaid', c), /^Closest match, NA · T1: Green, .+, 79 VP; Red, .+, 76 VP; 3 apart this week\./);
+  // The same 3 VP in the top pair, in a later tier: it wins the tie.
+  set(list[2], [90, 87, 71]);
+  keep(p, list);
+  const first = p.call('hlClosest');
+  assert.equal(first.m.id, list[2].id);
+  assert.equal(first.place, 1);
+  assert.match(p.call('hlClosestSaid', first), /^Closest match, NA · T3: /);
+  // Two matches level on a 2nd place pair: the first in order.
+  set(list[2], [113, 87, 84]);
+  set(list[3], [120, 82, 79]);
+  keep(p, list);
+  assert.equal(p.call('hlClosest').m.id, list[0].id);
+  // Each pair's reading of the week with no table: "ahead this week" for the 2nd × 3rd pair, "leads" for the top one.
+  const m = list[0];
+  const a = { color: 'green', name: 'Mosswood', vp: 79 };
+  const b = { color: 'red', name: 'Lutgardis', vp: 76 };
+  const none = (place) => ({ m, gap: 3, place, a, b, next: undefined, sk: { left: 69, vp: null, sc: { red: 1, blue: 2, green: 0 } } });
+  assert.match(p.call('hlClosestSaid', none(2)), /Mosswood is ahead this week\./);
+  assert.match(p.call('hlClosestSaid', none(1)), /Mosswood leads the week\./);
+});
+
+test('the Closest match\'s foot: "set to win" and "leads the week" for the top pair, "set to stay ahead" and "ahead this week" for the lower pair', () => {
+  const p = fresh();
+  const a = { color: 'red', name: 'Mosswood', vp: 100 };
+  const b = { color: 'blue', name: 'Lutgardis', vp: 99 };
+  const word = (place, next, proj = true) => {
+    const c = { m: matches[0], gap: 1, place, a, b, next, sk: { left: 5, vp: proj ? { red: 1, blue: 1, green: 1 } : null, sc: { red: 1, blue: 0, green: 0 } } };
+    return p.call('hlFavWord', c, p.call('hlFav', c));
+  };
+  assert.equal(word(1, 3), 'set to win');
+  assert.equal(word(2, 3), 'set to stay ahead');
+  assert.equal(word(1, -3), 'set to pass');
+  assert.equal(word(2, -3), 'set to pass');
+  assert.equal(word(1, undefined, false), 'leads the week');
+  assert.equal(word(2, undefined, false), 'ahead this week');
 });
 
 test('the Hottest fight with no rate: the spinner before the first read, the reset with no running match', () => {
@@ -141,7 +193,7 @@ test('the Closest match: the fewest VP apart, a new week on 0 VP, the skirmish i
   const list = na();
   keep(p, list);
   const c = p.call('hlClosest');
-  const gaps = list.map((m) => { const v = Object.values(m.victory_points).sort((a, b) => b - a); return v[0] - v[1]; });
+  const gaps = list.flatMap((m) => { const v = Object.values(m.victory_points).sort((a, b) => b - a); return [v[0] - v[1], v[1] - v[2]]; });
   assert.equal(c.gap, Math.min(...gaps));
   assert.ok(c.sk && c.sk.vp, 'the recorded week adds up: the skirmish has its points');
   assert.equal(c.next, (c.a.vp + c.sk.vp[c.a.color]) - (c.b.vp + c.sk.vp[c.b.color]));
@@ -204,7 +256,7 @@ const takenFor = (p, body, taken) => {
   p.ctx.__t = taken;
   p.run('latestTaken.delete(__b); if (latestTakenOf(__t)) latestTaken.set(__b, latestTakenOf(__t))');
 };
-test('the Leaders count the copy\'s objective points, and the Busiest its takes; with no count, as before', () => {
+test('the Leaders count the copy\'s capture score, and the Busiest its takes; with no count, as before', () => {
   const p = fresh();
   const now = p.clock.now;
   const list = na();
@@ -222,19 +274,19 @@ test('the Leaders count the copy\'s objective points, and the Busiest its takes;
   assert.equal(p.call('hlLeaders').length, 0);
   keep(p, list);
   // The week's first minutes: the others have a value, no objective was taken; its slide says the week is new.
-  assert.equal(p.call('hlLeaders').find((x) => x.short === 'Objectives').wait, true);
-  assert.equal(shorts().includes('Objectives'), false, 'no count, no such metric');
+  assert.equal(p.call('hlLeaders').find((x) => x.short === 'Captures').wait, true);
+  assert.equal(shorts().includes('Captures'), false, 'no count, no such metric');
   // A take the page sees in `last_flipped` with no count: the metric stays out, with no sentence either.
   const camp = list[0].maps[0].objectives.find((o) => o.type === 'Camp');
   camp.last_flipped = iso(now - 10 * MIN);
   keep(p, list);
-  assert.equal(shorts().includes('Objectives'), false);
-  assert.equal(p.call('hlLeaders').some((x) => x.short === 'Objectives'), false, 'no slide of any kind: the week is not new');
+  assert.equal(shorts().includes('Captures'), false);
+  assert.equal(p.call('hlLeaders').some((x) => x.short === 'Captures'), false, 'no slide of any kind: the week is not new');
   camp.last_flipped = list[0].start_time;
   // A count (flips, no points yet) is no new week either, though the page sees no take: no metric, no sentence.
   list.forEach((m) => takenFor(p, m, { points: { red: 0, blue: 0, green: 0 }, flips: { red: 1, blue: 0, green: 0 }, maps: {} }));
   keep(p, list);
-  assert.equal(p.call('hlLeaders').filter((x) => x.short === 'Objectives').length, 0);
+  assert.equal(p.call('hlLeaders').filter((x) => x.short === 'Captures').length, 0);
   list.forEach((m) => takenFor(p, m, undefined));
   // The counts of three matches, the sum made apart: each team's points over the matches it is in, the best row.
   const counts = [{ red: 300, blue: 75, green: 125 }, { red: 10, blue: 900, green: 0 }, { red: 0, blue: 0, green: 40 }];
@@ -243,7 +295,7 @@ test('the Leaders count the copy\'s objective points, and the Busiest its takes;
   list.slice(3).forEach((m) => takenFor(p, m, { points: zero, flips: zero, maps: {} }));
   keep(p, list);
   const best = Math.max(...counts.flatMap((c) => Object.values(c)));
-  const top = p.call('hlLeaders').find((x) => x.short === 'Objectives');
+  const top = p.call('hlLeaders').find((x) => x.short === 'Captures');
   assert.equal(top.wait, undefined);
   assert.equal(top.val(top.r), best);
   assert.equal(top.r.m.id, list[1].id);
@@ -260,9 +312,9 @@ test('the Leaders count the copy\'s objective points, and the Busiest its takes;
   assert.equal(p.call('hlFlips').find((f) => f.m === list[2] && f.type === list[2].maps[0].type).held, true);
   seen.last_flipped = list[2].start_time;
   seen.owner = 'Red';
-  // A tier with no count among the others: the region's leader would be wrong, so no objective points at all.
+  // A tier with no count among the others: the region's leader would be wrong, so no capture score at all.
   takenFor(p, list[0], undefined);
-  assert.equal(p.call('hlLeaders').some((x) => x.short === 'Objectives'), false, 'a tier without a count leaves the metric out');
+  assert.equal(p.call('hlLeaders').some((x) => x.short === 'Captures'), false, 'a tier without a count leaves the metric out');
   takenFor(p, list[0], { points: counts[0], flips: { red: 1, blue: 1, green: 1 }, maps: { [list[0].maps[0].id]: 4, [list[0].maps[1].id]: 1 } });
   // Only the maps with a take, by a plain id.
   takenFor(p, list[2], { points: { red: 1, blue: 1, green: 1 }, flips: { red: 1, blue: 1, green: 1 }, maps: { abc: 2, 7: 0, 8: 3, '123456': 1 } });
