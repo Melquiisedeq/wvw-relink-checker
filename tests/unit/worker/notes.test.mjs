@@ -49,7 +49,7 @@ const LINE = 'Fixed an issue that let players into the WvW keep through its wall
 
 test('the 2026 notes: the lab\'s lines as the wiki has them, a release\'s by the first reading, a hotfix\'s a day on', async () => {
   const w = setup();
-  assert.deepEqual((await w.notes()).data, { v: '', wiki: 0, notes: [] }, 'nothing before a reading');
+  assert.deepEqual((await w.notes()).data, { wiki: 0, notes: [] }, 'nothing before a reading');
   assert.equal(await w.push(wikiNotes()), 200);
   const hot = hotfixTexts();
   assert.equal(hot.length, 14);
@@ -233,14 +233,14 @@ test('a line\'s type follows the latest reading: an icon added on the wiki later
 
 test('the same reading again writes no line, and moves only the reading\'s time', async () => {
   const w = await read();
-  const v = (await w.notes()).data.v;
+  const lines = (await w.notes()).data.notes;
   const ran = w.ran.length;
   w.advance(6 * HOUR);
   assert.equal(await w.push(wikiNotes()), 200);
   const writes = w.ran.slice(ran).map((s) => s.q).filter((q) => /^(INSERT|UPDATE|DELETE)/.test(q));
   assert.deepEqual(writes.map((q) => q.split(' ').slice(0, 3).join(' ')), ['UPDATE source SET', 'UPDATE note_served SET']);
   const got = (await w.notes()).data;
-  assert.deepEqual([got.wiki, got.v], [Math.floor(w.now / 1000), v]);
+  assert.deepEqual([got.wiki, got.notes], [Math.floor(w.now / 1000), lines]);
 });
 
 test('what a line may carry: plain text, cut, a link only to a wiki page by a checked name', async () => {
@@ -338,21 +338,17 @@ test('the notes door: the signature, its own secret, the clock, the replay', asy
   assert.equal(r.status, 404);
 });
 
-test('GET /api/notes: short-lived; by version, kept for good, and only the version held', async () => {
+test('GET /api/notes: short-lived, {wiki, notes} and nothing else; a query is a 404 that reads nothing', async () => {
   const w = setup();
   await w.push(wikiNotes());
   const plain = await w.notes();
   assert.equal(plain.headers.get('cache-control'), 'public, max-age=300');
-  assert.match(plain.data.v, /^[0-9a-f]{16}$/);
-  const byV = await w.notes('?v=' + plain.data.v);
-  assert.equal(byV.headers.get('cache-control'), 'public, max-age=31536000, immutable');
-  assert.deepEqual(byV.data, { v: plain.data.v, notes: plain.data.notes });
-  assert.equal((await w.notes('?v=0123456789abcdef')).status, 404);
+  assert.deepEqual(Object.keys(plain.data), ['wiki', 'notes']);
   let prepared = 0;
   const prepare = w.env.DB.prepare;
   w.env.DB.prepare = (q) => { prepared++; return prepare(q); };
-  for (const q of ['?v=XYZ', '?v=0123456789abcdef0', '?x=1', '?v=0123456789abcdef&x=1']) assert.equal((await w.notes(q)).status, 404, q);
-  assert.equal(prepared, 0, 'a query out of shape reads nothing');
+  for (const q of ['?v=0123456789abcdef', '?v=XYZ', '?x=1']) assert.equal((await w.notes(q)).status, 404, q);
+  assert.equal(prepared, 0, 'a query reads nothing');
   const post = await w.call(new Request('https://wvwrelink.com/api/notes', { method: 'POST' }));
   assert.equal(post.status, 405);
 });
@@ -387,22 +383,16 @@ test('a note past KEEP_NOTE_DAYS is deleted by the next reading that changes som
   assert.deepEqual(texts((await w.notes()).data), ['Fixed a WvW sentry that respawned twice.']);
 });
 
-test('/api/latest names the notes\' version and time, and without a version or the table is as before, byte for byte', async () => {
+test('/api/latest carries nothing of the notes: as before, byte for byte, with the notes held or not', async () => {
   const w = setup();
   const at = Math.floor(w.now / 1000);
   w.sql.prepare("INSERT INTO latest (id, start, score, at, reader, gz, sha, raw) VALUES ('1-1', 1, 1, ?1, 'x', '{}', 's', 2)").run(at);
   const latest = async () => (await w.call(new Request('https://wvwrelink.com/api/latest'))).text();
   const before = '{"at":' + at + ',"matches":[{"id":"1-1","start":1,"score":1,"at":' + at + ',"by":"x","v":2,"body":{}}]}';
-  assert.equal(await latest(), before, 'no version yet');
+  assert.equal(await latest(), before, 'no notes yet');
   await w.push(wikiNotes());
-  w.advance(HOUR);
-  w.sql.prepare('UPDATE latest SET at = ?1').run(Math.floor(w.now / 1000));
-  const now = Math.floor(w.now / 1000);
-  const v = (await w.notes()).data.v;
-  assert.equal(await latest(), '{"at":' + now + ',"matches":[{"id":"1-1","start":1,"score":1,"at":' + now + ',"by":"x","v":2,"body":{}}],' +
-    '"notes":{"v":"' + v + '","wiki":' + at + '}}');
-  w.sql.exec('DROP TABLE note_served');
-  assert.equal(await latest(), before.replaceAll(String(at), String(now)), 'no table');
+  assert.ok((await w.notes()).data.notes.length, 'notes held');
+  assert.equal(await latest(), before, 'notes held');
 });
 
 test('a release is an "Update - " heading whose lead is the wiki\'s notice; every other update is a hotfix', async (t) => {
@@ -444,16 +434,16 @@ test('a hotfix\'s line is published once every reading of its page has held it f
     assert.equal((await hotOf(w)).length, 0);
     assert.equal((await hotOf(w, 'Update - November 10, 2026')).length, 50, 'a release\'s lines at once');
     assert.equal(ripe(w), t0 + HOTFIX_WAIT_S);
-    const v = (await w.notes()).data.v;
+    const held = JSON.stringify((await w.notes()).data.notes);
     for (const step of [6, 6, 6, 6 - 1 / 3600]) { w.advance(step * HOUR); await w.push(indexNotes()); }
     assert.equal((await hotOf(w)).length, 0, 'a second short of the day');
-    assert.equal((await w.notes()).data.v, v);
+    assert.equal(JSON.stringify((await w.notes()).data.notes), held);
     w.advance(1000);
     await w.push(indexNotes());
     const hot = await hotOf(w);
     assert.equal(hot.length, 5);
     assert.ok(hot.every((n) => n.hotfix === true));
-    assert.notEqual((await w.notes()).data.v, v);
+    assert.notEqual(JSON.stringify((await w.notes()).data.notes), held);
     assert.equal(ripe(w), 0);
     assert.equal((await published(w)).length, 61);
   });

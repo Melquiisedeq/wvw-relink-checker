@@ -312,16 +312,14 @@ async function publish(db, push, wiki, read) {
     day: r.day, update: r.note, section: r.section, sub: r.sub, text: r.body, type: r.kind,
     hotfix: r.hotfix === 1, page: WIKI + 'Game_updates/' + r.page, link: r.link === null ? null : wikiLink(r.link)
   })));
-  await db.prepare('UPDATE note_served SET body = ?1, version = ?2, push = ?3, wiki = ?4, ' +
-    'ripe = coalesce((SELECT min(l.seen) FROM note_line l JOIN note_group g ON g.note = l.note WHERE g.hotfix = 1 AND l.seen > ?5 AND l.note IN (SELECT value FROM json_each(?7))) + ?6, 0) WHERE id = 1')
-    .bind(body, await sha16(body), push, wiki, held, HOTFIX_WAIT_S, read).run();
+  await db.prepare('UPDATE note_served SET body = ?1, push = ?2, wiki = ?3, ' +
+    'ripe = coalesce((SELECT min(l.seen) FROM note_line l JOIN note_group g ON g.note = l.note WHERE g.hotfix = 1 AND l.seen > ?4 AND l.note IN (SELECT value FROM json_each(?6))) + ?5, 0) WHERE id = 1')
+    .bind(body, push, wiki, held, HOTFIX_WAIT_S, read).run();
 }
 
 // ---- the reads ---------------------------------------------------------------
 
-export const NOTES_VERSION_RE = /^\?v=([0-9a-f]{16})$/;
-
-// {version, wiki, body}: wiki, the time of the last accepted reading, epoch s (0 never).
+// {wiki, body}: wiki, the time of the last accepted reading, epoch s (0 never).
 export async function servedNotes(db) {
-  return db.prepare('SELECT version, wiki, body FROM note_served WHERE id = 1').first();
+  return db.prepare('SELECT wiki, body FROM note_served WHERE id = 1').first();
 }
