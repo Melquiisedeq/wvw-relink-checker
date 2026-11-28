@@ -88,6 +88,17 @@ test.describe('our copy with the Worker\'s count', () => {
     await load(page, wvw);
     await expect(busy(page)).toHaveAccessibleName(/^Busiest map, NA · T\d: no objective taken in the last 2 hours; /);
   });
+
+  test('takes only in the count: the N and the map, no owners to split and no "held now by"', async ({ page, wvw }) => {
+    await copyTaken(page, wvw, { count: (e, taken) => {
+      for (const map of e.body.maps) for (const o of map.objectives) o.last_flipped = e.body.start_time;
+      return { ...taken, maps: { [e.body.maps[0].id]: 5 } };
+    } });
+    await load(page, wvw);
+    await expect(busy(page)).toHaveAccessibleName(/^Busiest map, NA · T\d: 5 objectives taken in the last 2 hours on [^,]+\. Open the live map on it$/);
+    await expect(busy(page).getByText('5', { exact: true })).toBeVisible();
+    await expect(busy(page).locator('.hl-split, .hl-takers')).toHaveCount(0);
+  });
 });
 
 test('2 h with no objective taken: the Busiest map names the last capture and still opens its map', async ({ page, wvw }) => {

@@ -229,6 +229,7 @@ test('the Leaders count the copy\'s objective points, and the Busiest its takes;
   camp.last_flipped = iso(now - 10 * MIN);
   keep(p, list);
   assert.equal(shorts().includes('Objectives'), false);
+  assert.equal(p.call('hlLeaders').some((x) => x.short === 'Objectives'), false, 'no slide of any kind: the week is not new');
   camp.last_flipped = list[0].start_time;
   // A count (flips, no points yet) is no new week either, though the page sees no take: no metric, no sentence.
   list.forEach((m) => takenFor(p, m, { points: { red: 0, blue: 0, green: 0 }, flips: { red: 1, blue: 0, green: 0 }, maps: {} }));
@@ -238,6 +239,8 @@ test('the Leaders count the copy\'s objective points, and the Busiest its takes;
   // The counts of three matches, the sum made apart: each team's points over the matches it is in, the best row.
   const counts = [{ red: 300, blue: 75, green: 125 }, { red: 10, blue: 900, green: 0 }, { red: 0, blue: 0, green: 40 }];
   list.slice(0, 3).forEach((m, i) => takenFor(p, m, { points: counts[i], flips: { red: 1, blue: 1, green: 1 }, maps: { [m.maps[0].id]: 4 + i, [m.maps[1].id]: 1 } }));
+  const zero = { red: 0, blue: 0, green: 0 };
+  list.slice(3).forEach((m) => takenFor(p, m, { points: zero, flips: zero, maps: {} }));
   keep(p, list);
   const best = Math.max(...counts.flatMap((c) => Object.values(c)));
   const top = p.call('hlLeaders').find((x) => x.short === 'Objectives');
@@ -249,10 +252,24 @@ test('the Leaders count the copy\'s objective points, and the Busiest its takes;
   const flips = p.call('hlFlips');
   assert.deepEqual(JSON.parse(JSON.stringify(flips.slice(0, 3).map((f) => [f.m.id, f.type, f.n]))), [[list[2].id, list[2].maps[0].type, 6], [list[1].id, list[1].maps[0].type, 5], [list[0].id, list[0].maps[0].type, 4]]);
   assert.equal(flips.length, 6, 'a map the count has no take on is not there');
-  assert.equal(flips[0].last.color, null);
+  assert.equal(flips[0].held, false, 'the count alone: no owners to show');
+  // A map with a take the page sees holds it; the count still gives the N.
+  const seen = list[2].maps[0].objectives.find((o) => o.type === 'Camp');
+  seen.last_flipped = iso(now - 10 * MIN);
+  seen.owner = 'Green';
+  assert.equal(p.call('hlFlips').find((f) => f.m === list[2] && f.type === list[2].maps[0].type).held, true);
+  seen.last_flipped = list[2].start_time;
+  seen.owner = 'Red';
+  // A tier with no count among the others: the region's leader would be wrong, so no objective points at all.
+  takenFor(p, list[0], undefined);
+  assert.equal(p.call('hlLeaders').some((x) => x.short === 'Objectives'), false, 'a tier without a count leaves the metric out');
+  takenFor(p, list[0], { points: counts[0], flips: { red: 1, blue: 1, green: 1 }, maps: { [list[0].maps[0].id]: 4, [list[0].maps[1].id]: 1 } });
   // Only the maps with a take, by a plain id.
   takenFor(p, list[2], { points: { red: 1, blue: 1, green: 1 }, flips: { red: 1, blue: 1, green: 1 }, maps: { abc: 2, 7: 0, 8: 3, '123456': 1 } });
   assert.deepEqual(JSON.parse(JSON.stringify(p.run('latestTaken.get(__b).maps'))), { 8: 3 });
+  // An id that is a name on every object is no take.
+  assert.equal(p.run('Object.hasOwn(latestTaken.get(__b).maps, "constructor")'), false);
+  assert.equal(p.run('latestTaken.get(__b).maps.constructor'), undefined);
   // A count with the wrong shape is no count.
   takenFor(p, list[2], { points: { red: 1, blue: 1 }, flips: { red: 1, blue: 1, green: 1 }, maps: {} });
   assert.equal(p.run('latestTaken.has(__b)'), false);
