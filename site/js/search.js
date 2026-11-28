@@ -239,9 +239,13 @@ function strikeAnswer() {
 // ---- the found team's card in the standings ------------------------------------------------
 // A sheen and a soft ring for MARK_MS from when the card comes into view; a standings repaint
 // rebuilds the card, and markAfterRepaint paints it again.
-function cardOfTeam(name) {
-  for (const n of document.querySelectorAll('.standing-side .standing-side-name')) {
-    if (n.textContent === name) return n.closest('.standing-side');
+// `matchId` limits it to that match's tier: sides without a team all carry the same name.
+function cardOfTeam(name, matchId) {
+  const roots = matchId ? [...document.querySelectorAll('.standing-match')].filter((t) => t.dataset.matchId === matchId) : [document];
+  for (const root of roots) {
+    for (const n of root.querySelectorAll('.standing-side .standing-side-name')) {
+      if (n.textContent === name) return n.closest('.standing-side');
+    }
   }
   return null;
 }
@@ -255,7 +259,7 @@ function markAfterRepaint() {
   if (!m) return;
   if (found.watch) { found.watch.disconnect(); found.watch = null; }
   if (m.started) { paintMark(false); return; }
-  const card = cardOfTeam(m.name);
+  const card = cardOfTeam(m.name, m.matchId);
   if (!card) return;
   found.watch = new IntersectionObserver((list) => {
     if (list.some((e) => e.isIntersecting)) startMark();
@@ -273,7 +277,7 @@ function startMark() {
 function paintMark(fresh) {
   const m = found.mark;
   if (!m || !m.started || Date.now() - m.started > MARK_MS) return null;
-  const card = cardOfTeam(m.name);
+  const card = cardOfTeam(m.name, m.matchId);
   if (!card) return null;
   for (const old of card.querySelectorAll('.found-mark')) old.remove();
   const layer = el('span', `found-mark${fresh ? ' is-fresh' : ''}`);
@@ -289,8 +293,8 @@ function dropMark() {
 }
 // The strip with the guild's name under its team's card (paintGuildFound in js/standings.js,
 // which every standings repaint calls again until `until`).
-function hangStrip(teamName, guildName) {
-  guildFound = { teamName, guildName, until: Date.now() + MARK_MS };
+function hangStrip(teamName, guildName, matchId) {
+  guildFound = { teamName, guildName, matchId, until: Date.now() + MARK_MS };
   paintGuildFound(document, true);
 }
 function dropStrip() {
@@ -301,8 +305,8 @@ function dropStrip() {
 // ---- the tier spotlight ----------------------------------------------------------------------
 // The tier is brought into view (centred, or its top if taller than the screen); once 60 % of it
 // is in sight the other tiers of its column dim, it is ringed, and its team's card gets its sheen.
-function goToTier(teamName, guild) {
-  const card = cardOfTeam(teamName);
+function goToTier(teamName, guild, matchId) {
+  const card = cardOfTeam(teamName, matchId);
   const tier = card && card.closest('.standing-match');
   if (!tier) return;
   if (found.spot) found.spot.disconnect();
@@ -314,7 +318,7 @@ function goToTier(teamName, guild) {
     if (!list.some((e) => e.isIntersecting && e.intersectionRatio >= need - 0.01)) return;
     io.disconnect();
     found.spot = null;
-    playSpot(tier, teamName, guild);
+    playSpot(tier, teamName, guild, matchId);
   }, { threshold: need });
   found.spot = io;
   io.observe(tier);
@@ -326,11 +330,11 @@ function ringPath(w, h) {
 }
 // The strip hangs before the ring is measured: it makes the tier taller, and a ring measured
 // without it would cross it.
-function playSpot(tier, teamName, guild) {
+function playSpot(tier, teamName, guild, matchId) {
   for (const old of document.querySelectorAll('.tier-spot')) old.remove();
   for (const m of document.querySelectorAll('.tier-dimmed')) m.classList.remove('tier-dimmed');
-  hangStrip(teamName, guild);
-  const first = cardOfTeam(teamName);
+  hangStrip(teamName, guild, matchId);
+  const first = cardOfTeam(teamName, matchId);
   const col = tier.parentElement;
   // The ring hangs beside the grid, not in it: a child the grid does not expect makes the next
   // score rebuild the whole region instead of patching its cards (patchStandingsRegion).
@@ -354,7 +358,7 @@ function playSpot(tier, teamName, guild) {
   for (const m of col.children) if (m !== tier && m.classList.contains('standing-match')) m.classList.add('tier-dimmed');
   setTimeout(() => {
     dropMark();
-    found.mark = { name: teamName, started: Date.now() };
+    found.mark = { name: teamName, matchId, started: Date.now() };
     const card = paintMark(true);
     if (card) sparksFrom(card);
     found.markTimer = setTimeout(dropMark, MARK_MS);

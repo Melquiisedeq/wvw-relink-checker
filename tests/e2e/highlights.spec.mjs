@@ -2,9 +2,9 @@
 // switch, the focus kept through a repaint, and the states the factory names: the API stuck in the middle of a
 // fight, a week's first minutes, a victory point table the site does not know, and hours with the tab visible.
 import { test, expect } from './support/fixtures.mjs';
-import { load, phone } from './support/steps.mjs';
+import { load, phone, search } from './support/steps.mjs';
 import { loadNow, loadSettled } from './support/page.mjs';
-import { MIN, frozenMidFight, longTeams, noTeams, playing, vpTableChanged, weekAtZero } from './support/scenarios.mjs';
+import { MIN, frozenMidFight, longTeams, noTeams, playing, redOnly, vpTableChanged, weekAtZero } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 
@@ -140,7 +140,8 @@ async function showsItsTier(page) {
   await expect(tier).toBeInViewport({ ratio: 0.5 });
   await expect(page.locator('.tier-spot'), 'the ring on the tier').toHaveCount(1);
   await expect(tier).not.toHaveClass(/tier-dimmed/);
-  await expect(page.locator('.standing-side .found-mark'), 'the card of the team sheened').toHaveCount(1);
+  await expect(tier.locator('.found-mark'), 'the card of the team sheened, in that tier').toHaveCount(1);
+  await expect(page.locator('.standing-side .found-mark')).toHaveCount(1);
 }
 
 test.describe('team names the table does not hold', () => {
@@ -190,9 +191,25 @@ test.describe('team names the table does not hold', () => {
       await expect(busy(page)).toBeVisible();
     });
 
-    test.fail('the Closest match brings its tier into view and rings it', async ({ page, wvw }) => {
+    test('the Closest match brings its tier into view and rings it', async ({ page, wvw }) => {
       await load(page, wvw);
       await showsItsTier(page);
+    });
+  });
+
+  test.describe('the red side only', () => {
+    test.use({ timeline: redOnly(10) });
+
+    test('the Closest match moves the ring a search left on another tier', async ({ page, wvw }) => {
+      await load(page, wvw);
+      await search(page, wvw.guilds[0]);
+      const team = await page.locator('#searchAnswer .search-team').textContent();
+      await page.getByRole('button', { name: new RegExp(`^Show ${team} in the standings`) }).click();
+      await expect(page.locator('.tier-spot')).toHaveCount(1);
+      const ringed = await page.locator('.standing-match:not(.tier-dimmed)').evaluateAll(l => l.map(t => t.dataset.matchId));
+      await showsItsTier(page);
+      const now = await page.locator('.standing-match:not(.tier-dimmed)').evaluateAll(l => l.map(t => t.dataset.matchId));
+      expect(now, 'the ring left the search\'s tier').not.toEqual(ringed);
     });
   });
 });

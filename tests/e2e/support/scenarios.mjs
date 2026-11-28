@@ -62,6 +62,9 @@ export const longTeams = (min = 10, id) => opened(id).teams({ red: '999999991', 
 // The region's matches with no team listed on any side (gw2.teams), `min` minutes of play.
 export const noTeams = (min = 10, id) => opened(id).teams({ red: null, blue: null, green: null }).advance(min);
 
+// Only the red side keeps its team (gw2.teams), `min` minutes of play.
+export const redOnly = (min = 10, id) => opened(id).teams({ blue: null, green: null }).advance(min);
+
 // A server group `lag` minutes behind answering every second minute, for
 // `min` minutes of play; /api/latest down, so that only the page's own guard
 // (keepNewestMatch) stands between the older group and the screen.

@@ -442,7 +442,7 @@ function hlClosestTile(c) {
   if (c.sk) body.push(hlSkBar(c));
   body.push(hlWeekRows(c), hlFavFoot(c));
   return hlTile({ key: 'close', cls: 'hl-close', icon: hlScales(f.tied ? 0 : f.x === c.b ? 1 : -1), label: 'Closest match', chip: hlChip(c.m.id),
-    body, go: () => goToTier(c.a.name), aria: hlClosestSaid(c) });
+    body, go: () => goToTier(getTeamName(matchTeamId(c.m, c.a.color)), undefined, c.m.id), aria: hlClosestSaid(c) });
 }
 
 function hlRegionSwitch(region) {
