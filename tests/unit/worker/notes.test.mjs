@@ -182,6 +182,54 @@ test('an update the wiki deletes leaves with the next reading; one on a page the
     for (let i = 0; i < 2; i++) { w.advance(6 * HOUR); await w.push(wikiNotes().filter((n) => n.page !== '2026-04-14')); }
     assert.deepEqual((await w.notes()).data.notes, before);
   });
+  // The index shows the five newest pages, so a page newer than the oldest one read cannot have aged out.
+  await t.test('an update on a page the wiki deleted, newer than the oldest page read, leaves with it', async () => {
+    const w = await read();
+    const PAGE = { page: '2026-11-14', update: 'Update - November 14, 2026', lead: NOTICE, lines: [WVW(0)] };
+    w.advance(6 * HOUR);
+    await w.push([...wikiNotes(), PAGE]);
+    assert.ok((await updates(w)).has(PAGE.update));
+    w.advance(6 * HOUR);
+    await w.push(wikiNotes());
+    assert.ok(!(await updates(w)).has(PAGE.update));
+    assert.equal(linesOf(w, PAGE.update), 0);
+  });
+  await t.test('a page the wiki renamed with its heading\'s date: the update under the old date leaves', async () => {
+    const w = await read();
+    const OLD = 'Update - November 16, 2026';
+    const renamed = wikiNotes().map((n) => (n.update === OLD ? { ...n, page: '2026-11-17', update: 'Update - November 17, 2026' } : n));
+    assert.ok(linesOf(w, OLD) > 0);
+    w.advance(6 * HOUR);
+    await w.push(renamed);
+    assert.equal(linesOf(w, OLD), 0);
+    assert.equal(w.sql.prepare('SELECT count(*) n FROM note_group WHERE note = ?1').get(OLD).n, 0);
+    assert.ok(linesOf(w, 'Update - November 17, 2026') > 0);
+  });
+});
+
+test('a line built to make the type\'s rules backtrack is typed in linear time', () => {
+  // A cost word, then a run of digits with no '%': before, each digit was tried as the start of the
+  // number the rule looks for, about 160 ms here, past the Worker's 10 ms for the whole push.
+  const text = plainText('WvW ' + 'cost '.repeat(100) + '1'.repeat(1480));
+  let best = Infinity;
+  for (let i = 0; i < 3; i++) {
+    const t = performance.now();
+    kindOf(text, 'World vs. World', '', true);
+    best = Math.min(best, performance.now() - t);
+  }
+  assert.ok(best < 50, best + ' ms');
+  assert.equal(kindOf('Reduced the cooldown from 10 seconds to 8 seconds, and damage by 15%.', 'World vs. World', '', true), 'balance_unsure');
+});
+
+test('a line\'s type follows the latest reading: an icon added on the wiki later types it again', async () => {
+  const w = setup();
+  const text = 'Reduced the recharge of Siege Disruption from 20 seconds to 15 seconds in WvW.';
+  const at = (icon) => [{ ...one(text)[0], lines: [{ section: 'World vs. World', sub: '', text, link: null, icon }] }];
+  await w.push(at(false));
+  assert.equal((await w.notes()).data.notes[0].type, 'wvw_rule');
+  w.advance(6 * HOUR);
+  await w.push(at(true));
+  assert.equal((await w.notes()).data.notes[0].type, 'buff');
 });
 
 test('the same reading again writes no line, and moves only the reading\'s time', async () => {
@@ -442,20 +490,39 @@ test('a hotfix\'s line is published once every reading of its page has held it f
     w.advance(12 * HOUR); await w.push(changed);
     assert.equal((await hotOf(w)).length, 5, 'a day after the change');
   });
-  await t.test('a note gone from its page, still read, starts again; a page the push lacks waits for a reading a day on', async () => {
+  await t.test('a note gone from its page, still read, starts again', async () => {
     const w = setup();
     const NOV11B = 'Update 2 - November 11, 2026';
-    const unread = (ns) => ns.filter((n) => n.page !== '2026-11-16');
     await w.push(indexNotes());
-    w.advance(6 * HOUR); await w.push(indexNotes((ns) => unread(ns).filter((n) => n.update !== NOV11B)));
-    w.advance(6 * HOUR); await w.push(indexNotes(unread));
-    w.advance(12 * HOUR); await w.push(indexNotes(unread));
+    w.advance(6 * HOUR); await w.push(indexNotes((ns) => ns.filter((n) => n.update !== NOV11B)));
+    w.advance(6 * HOUR); await w.push(indexNotes());
+    w.advance(12 * HOUR); await w.push(indexNotes());
     assert.equal((await hotOf(w, NOV11B)).length, 0, 'back 18 h ago');
     assert.equal((await hotOf(w)).length, 5, 'its page read all day');
-    assert.equal((await hotOf(w, 'Update - November 16, 2026')).length, 0, 'its page unread since the first reading');
-    assert.equal(ripe(w), Math.floor(START / 1000) + 12 * 3600 + HOTFIX_WAIT_S, 'due: the note back 18 h ago, not the unread page\'s');
+    assert.equal(ripe(w), Math.floor(START / 1000) + 12 * 3600 + HOTFIX_WAIT_S, 'due: the note back 18 h ago');
+  });
+  await t.test('a page the push lacks, older than every page read, waits for a reading a day on', async () => {
+    const w = setup();
+    const NOV11 = 'Update - November 11, 2026';
+    const unread = (ns) => ns.filter((n) => n.page !== '2026-11-10' && n.page !== '2026-11-11');
+    await w.push(indexNotes());
+    for (let i = 0; i < 3; i++) { w.advance(8 * HOUR); await w.push(indexNotes(unread)); }
+    assert.equal((await hotOf(w, NOV11)).length, 0, 'its page unread since the first reading');
+    assert.ok(linesOf(w, NOV11) > 0, 'its lines kept');
     w.advance(6 * HOUR); await w.push(indexNotes());
-    assert.equal((await hotOf(w, 'Update - November 16, 2026')).length, 2, 'read again, a day and more on');
+    assert.equal((await hotOf(w, NOV11)).length, linesOf(w, NOV11), 'read again, a day and more on');
+  });
+  await t.test('a page the push lacks, newer than the oldest page read, is gone: its lines start again when it is back', async () => {
+    const w = setup();
+    const NOV16 = 'Update - November 16, 2026';
+    await w.push(indexNotes());
+    w.advance(6 * HOUR); await w.push(indexNotes((ns) => ns.filter((n) => n.page !== '2026-11-16')));
+    assert.equal(linesOf(w, NOV16), 0);
+    w.advance(6 * HOUR); await w.push(indexNotes());
+    w.advance(18 * HOUR); await w.push(indexNotes());
+    assert.equal((await hotOf(w, NOV16)).length, 0, 'back 18 h ago');
+    w.advance(6 * HOUR); await w.push(indexNotes());
+    assert.equal((await hotOf(w, NOV16)).length, 2, 'held a day since it came back');
   });
   await t.test('the due time counts only the lines of pages the reading had', async () => {
     const w = setup();

@@ -112,7 +112,8 @@ function clauses(t) {
 function polarity(t) {
   if (/\b(now|no longer|reworked|renamed|moved|instead|will|has been|is now|are now)\b/.test(t)) return null;
   if (!/\d/.test(t)) return null;
-  if (new RegExp('(?:' + LOW + ')[^.;]*\\d+%').test(t)) return null;
+  // A digit before '%', not '\d+%': after '[^.;]*' that backtracks on a long run of digits.
+  if (new RegExp('(?:' + LOW + ')[^.;]*\\d%').test(t)) return null;
   const cl = clauses(t);
   if (!cl.length) return null;
   const ps = new Set();
@@ -233,8 +234,10 @@ async function sha16(text) {
 //
 // A reading is one push; a page is read when the push has a note on it (the script sends every
 // update of each page it read, with or without WvW lines, and whole pages only). Each note of a
-// page read takes the reading's lines, and one the reading lacks is deleted. A note on a page the
-// push lacks (a page that failed, or left the index) keeps its lines. A line keeps `seen`, the first
+// page read takes the reading's lines, and one the reading lacks is deleted. The wiki's index shows
+// its five newest pages, so a page the push lacks that is older than every page read has left the
+// index, or was cut for size, and its notes keep their lines; one that is not older was deleted or
+// renamed on the wiki, and its notes are deleted too. A line keeps `seen`, the first
 // reading that had it, while every reading of its page has it, unchanged (a changed line is a new
 // one), and `last`, the latest: a hotfix's line is published once `last` is HOTFIX_WAIT_S past `seen`,
 // so one waiting on a page no longer read is never published.
@@ -260,7 +263,8 @@ export async function acceptNotes(db, data, nowMs, claim) {
   }
   const pages = new Set(checked.notes.map((n) => n.page));
   const read = new Set(checked.notes.map((n) => n.update));
-  const gone = groups.filter((g) => pages.has(g.page) && !read.has(g.note)).map((g) => g.note);
+  const first = [...pages].sort()[0];
+  const gone = groups.filter((g) => !read.has(g.note) && (pages.has(g.page) || g.page > first)).map((g) => g.note);
   const marks = checked.notes.map((n) => [n.update, n.day, n.page, n.hotfix ? 1 : 0]);
   if (gone.length) log.gone = gone;
   const rows = [];
@@ -284,7 +288,9 @@ export async function acceptNotes(db, data, nowMs, claim) {
   await db.prepare('INSERT INTO note_line (note, id, pos, section, sub, body, link, kind, seen, last) ' +
     "SELECT json_extract(j.value, '$[0]'), json_extract(j.value, '$[1]'), json_extract(j.value, '$[2]'), json_extract(j.value, '$[3]'), " +
     "json_extract(j.value, '$[4]'), json_extract(j.value, '$[5]'), json_extract(j.value, '$[6]'), json_extract(j.value, '$[7]'), json_extract(j.value, '$[8]'), json_extract(j.value, '$[9]') FROM json_each(?1) j " +
-    'WHERE true ON CONFLICT (note, id) DO UPDATE SET pos = excluded.pos WHERE note_line.pos <> excluded.pos')
+    // The type is read again: the id leaves out the icon, which the wiki may add later, and the text past the cut.
+    'WHERE true ON CONFLICT (note, id) DO UPDATE SET pos = excluded.pos, kind = excluded.kind ' +
+    'WHERE note_line.pos <> excluded.pos OR note_line.kind IS NOT excluded.kind')
     .bind(JSON.stringify(rows)).run();
   log.lines = rows.length;
   await publish(db, push, now, names);
