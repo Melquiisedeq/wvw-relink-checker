@@ -4,7 +4,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { load, play } from './support/steps.mjs';
 import { loadNow, loadSettled } from './support/page.mjs';
-import { MIN, hidden, playing, visible, wake, weekAtZero } from './support/scenarios.mjs';
+import { MIN, frozen, hidden, playing, visible, wake, weekAtZero, weekFirstKill } from './support/scenarios.mjs';
 
 test.use({ viewport: { width: 1280, height: 800 }, clock: 'playwright' });
 
@@ -200,8 +200,9 @@ test.describe('a repaint of the panel', () => {
   }
 
   test('does not restart the 5 s, nor go back to the first metric', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await opened(page, wvw, 'Highest PPT');
     const at = await which(page);
+    expect(at, 'a metric that is not the first').not.toBe(NAMES[0]);
     await play(page, 3000);
     await repainted(page, wvw);
     expect(await which(page), 'the same metric after the repaint').toBe(at);
@@ -210,12 +211,13 @@ test.describe('a repaint of the panel', () => {
   });
 
   test('the focus goes back to the control it was on, and leaving it lets the turning go on', async ({ page, wvw }) => {
-    await opened(page, wvw);
+    await opened(page, wvw, 'Highest PPT');
     await tabIn(page);
     await page.keyboard.press('Tab');
     const seg = leaders(page).getByRole('button', { name: 'Most kills' });
     await expect(seg).toBeFocused();
     await repainted(page, wvw);
+    expect(await which(page), 'the repaint with the focus held stays on the metric').toBe('Highest PPT');
     await expect(leaders(page).getByRole('button', { name: 'Most kills' }), 'the focus on the same segment').toBeFocused();
     const at = await holds(page);
     await page.keyboard.press('Shift+Tab');
@@ -247,6 +249,54 @@ test.describe('a week\'s first minutes', () => {
     await expect(page.getByRole('region', { name: /^Highlights, / }).getByText(/\b0 VP\b/)).toHaveCount(0);
     await play(page, 5200);
     await expect(shown(page, 'Most active'), 'the focus the box lost holds nothing').toBeVisible();
+  });
+});
+
+test.describe('the week turns over', () => {
+  test.use({ timeline: weekFirstKill(2, 4) });
+
+  for (const width of [1280, 320]) {
+    test(`at ${width} the box says the new week while every metric is 0, and keeps its height when the first kill comes`, async ({ page, wvw }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await load(page, wvw);
+      await expect(leaders(page)).toBeVisible();
+      await wvw.skew(wvw.recordedAt + wvw.timeline.end - 4 * MIN - await wvw.now());
+      await loadNow(page);
+      await loadSettled(page);
+      await wvw.settle();
+      await expect(leaders(page).getByText('New week · first numbers soon')).toBeVisible();
+      await expect(pause(page)).toHaveCount(0);
+      const panel = page.getByRole('region', { name: /^Highlights, / });
+      const quiet = await leaders(page).boundingBox();
+      const quietPanel = await panel.boundingBox();
+      await wvw.skew(4 * MIN);
+      await loadNow(page);
+      await loadSettled(page);
+      await wvw.settle();
+      await expect(leaders(page).getByText('New week · first numbers soon')).toHaveCount(0);
+      await expect(leaders(page).getByRole('button', { name: 'Most kills' })).toBeVisible();
+      const after = await leaders(page).boundingBox();
+      expect(quiet.height, 'the box as high as with the numbers').toBeCloseTo(after.height, 0);
+      expect((await panel.boundingBox()).height, 'the tiles under it did not move').toBeCloseTo(quietPanel.height, 0);
+    });
+  }
+});
+
+test.describe('the API stuck', () => {
+  test.use({ timeline: frozen(40) });
+
+  test('the Highest PPT says the hour of its data, never "now"', async ({ page, wvw }) => {
+    await load(page, wvw);
+    await expect(leaders(page)).toBeVisible();
+    await wvw.skew(30 * MIN);
+    await loadNow(page);
+    await loadSettled(page);
+    await wvw.settle();
+    await expect(leaders(page).getByText(/Highest PPT, data from \d\d:\d\d/)).toHaveCount(1);
+    await expect(leaders(page).getByText(/Highest PPT, now/)).toHaveCount(0);
+    await leaders(page).getByRole('button', { name: 'Highest PPT' }).click();
+    await expect(leaders(page).getByText(/^Highest PPT · data from \d\d:\d\d/)).toBeVisible();
+    await expect(leaders(page).getByText(/Highest PPT · now/)).toHaveCount(0);
   });
 });
 
