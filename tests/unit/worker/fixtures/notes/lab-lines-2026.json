@@ -1,0 +1,1638 @@
+[
+{
+"page": "2026-04-14",
+"update": "Update - April 14, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Waypoints were previously changed to always activate at objective upgrade tier 0 in keeps captured by the home team. They will now activate at objective upgrade tier 0 in keeps captured by their spawn team. The Alpine Borderlands and Desert Borderlands garrisons are considered the spawn keeps for the home team on those maps.",
+"link": "Waypoint",
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-04-14",
+"update": "Update - April 14, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Keep and castle objectives will now stay contested while any inner gates and walls are destroyed.",
+"link": "Stonemist_Castle",
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-04-14",
+"update": "Update - April 14, 2026",
+"section": "Profession Skills",
+"sub": "Ritualist",
+"text": "Splinter Weapon: Reduced the power coefficient from 0.35 to 0.25 in WvW and from 0.5 to 0.4 in PvE.",
+"link": "Splinter_Weapon",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"PvE",
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Late Notes - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Elementalist",
+"text": "Volcano: Fixed an issue that caused this skill to apply its power coefficient twice. Increased the power coefficient from 1.1 to 1.21 in PvE and reduced the power coefficient from 0.77 to 0.5 in WvW.",
+"link": "Volcano",
+"icon": "/images/thum",
+"type": "balance_bug_mix",
+"sure": false,
+"modes": [
+"PvE",
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Elementalist",
+"text": "Blazing Barrage: Reduced the power coefficient from 1.1 to 0.935 in WvW only.",
+"link": "Blazing_Barrage",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Elementalist",
+"text": "Seethe: Reduced the damage bonus from 20% to 10% in WvW only.",
+"link": "Seethe",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Elementalist",
+"text": "Derecho: Reduced the power coefficient from 1.6 to 1.4 in WvW only.",
+"link": "Derecho",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Elementalist",
+"text": "Fissure: Reduced the power coefficient from 1.2 to 1.0 in WvW only.",
+"link": "Fissure",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Elementalist",
+"text": "Haboob: Reduced the power coefficient from 1.4 to 1.2 in WvW only.",
+"link": "Haboob",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Evoker",
+"text": "Rejuvenate: Increased the cooldown from 20 seconds to 25 seconds in WvW only.",
+"link": "Rejuvenate",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Evoker",
+"text": "Hare's Agility: Increased the cooldown from 25 seconds to 30 seconds and reduced the blur duration from 2 seconds to 1 second in WvW only.",
+"link": "Hare%27s_Agility",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Evoker",
+"text": "Zap: Reduced the power coefficient from 0.29 to 0.11 in WvW only.",
+"link": "Zap_(skill)",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Evoker",
+"text": "Familiar's Prowess: Reduced the strike damage bonus from 10% to 5% in WvW only.",
+"link": "Familiar%27s_Prowess",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Evoker",
+"text": "Familiar's Focus: Reduced the strike damage bonus from 20% to 12% in WvW only.",
+"link": "Familiar%27s_Focus",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Necromancer",
+"text": "Life Siphon: This skill now inflicts bleeding on yourself on the initial cast and no longer has increased healing effectiveness while you are bleeding. Increased the base healing coefficient from 0.0684 to 0.082 in PvE only. Increased the base healing coefficient from 0.03 to 0.036 in PvP and WvW.",
+"link": "Life_Siphon",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvE",
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Ranger",
+"text": "Increased the cooldown when swapping a defeated pet from 35 seconds to 45 seconds in WvW only.",
+"link": null,
+"icon": null,
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Ranger",
+"text": "Owl's Flight: Reduced the power coefficient from 1.65 to 1.35 in WvW only.",
+"link": "Owl%27s_Flight",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Ranger",
+"text": "Defy Pain (Ursine): Increased the cooldown from 30 seconds to 45 seconds and reduced the duration from 5 seconds to 2 seconds in WvW only.",
+"link": "Defy_Pain",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Ranger",
+"text": "Stoneform: Reduced the signet duration from 5 seconds to 2.5 seconds in WvW only.",
+"link": "Stoneform",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Untamed",
+"text": "Ravager's Abandon: Reduced the power coefficient from 1.25 to 0.8 in WvW only.",
+"link": "Ravager%27s_Abandon",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Untamed",
+"text": "Exploding Spores: Increased the cooldown from 25 seconds to 35 seconds and reduced the number of targets per spore from 5 to 3 in WvW only.",
+"link": "Exploding_Spores",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Untamed",
+"text": "Forest's Fortification: Reduced the cooldown reduction per hit from 1 second to 0.5 seconds in WvW only.",
+"link": "Forest%27s_Fortification",
+"icon": "/images/thum",
+"type": "buff",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Untamed",
+"text": "Vow of the Untamed: Reduced the outgoing strike damage increase from 15% to 10% and reduced the incoming strike damage reduction from 15% to 10% in WvW only.",
+"link": "Vow_of_the_Untamed",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Thief",
+"text": "Death's Retreat: Reduced the initiative cost from 7 to 6 in PvP and WvW.",
+"link": "Death%27s_Retreat",
+"icon": "/images/thum",
+"type": "buff",
+"sure": true,
+"modes": [
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Thief",
+"text": "Death's Advance: Reduced the initiative cost from 5 to 4 in PvP and WvW.",
+"link": "Death%27s_Advance",
+"icon": "/images/thum",
+"type": "buff",
+"sure": true,
+"modes": [
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-07-15",
+"update": "Update - July 14, 2026",
+"section": "Profession Skills",
+"sub": "Thief",
+"text": "Shadow Refuge: This skill now additionally grants condition damage and strike damage reduction to allies inside the field. Reduced the duration of stealth per pulse from 2.5 seconds to 2 seconds in PvP and WvW.",
+"link": "Shadow_Refuge",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-08-11",
+"update": "Update - August 11, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Fixed a bug that caused War Score to not be given when killing dolyaks.",
+"link": "World_versus_World#War_Score",
+"icon": null,
+"type": "bug",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-08-11",
+"update": "Update - August 11, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Added placement-based skirmish rewards that become active when a War Score beta is enabled. Qualify for these rewards by gaining WvW participation. Rewards can be granted while off-line.",
+"link": "Skirmish_reward",
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-08-11",
+"update": "Update - August 11, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Match history now exists! It is a dedicated Match Statistics tab that also shows War Score stats when a War Score beta is enabled.",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-08-11",
+"update": "Update - August 11, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "War Score values no longer scale with enemy player count or objective type/tier during a War Score beta.",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-08-11",
+"update": "Update - August 11, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Guards no longer give War Score during a War Score beta.",
+"link": "Guard",
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-08-11",
+"update": "Update - August 11, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Camp supervisors now award 2 War Score on death during a War Score beta.",
+"link": "Veteran_Supervisor",
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-08-11",
+"update": "Update - August 11, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Capturing a sentry now awards 2 War Score during a War Score beta.",
+"link": "Sentry",
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-08-11",
+"update": "Update - August 11, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Increased the War Score gained through defensive player kills from 3 to 5 during a War Score beta.",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-08-11",
+"update": "Update - August 11, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Defensive War Score actions must now take place inside the defend/attack event area of objectives during a War Score beta.",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-08-11",
+"update": "Update - August 11, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Objective UI dialog and map tooltips now show capture progress and progress ticks in addition to upgrade score values, when applicable.",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-08-17",
+"update": "Update - August 17, 2026",
+"section": "Bug Fix",
+"sub": "",
+"text": "Fixed a server crash in WvW.",
+"link": null,
+"icon": null,
+"type": "bug",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Late Notes - September 30, 2026",
+"section": "World Polish",
+"sub": "Leyspring Hollows",
+"text": "Added the Tenebral Armor set as a reward choice from the final chest of the Visions of Eternity PvP and WvW reward tracks.",
+"link": null,
+"icon": null,
+"type": "reward",
+"sure": false,
+"modes": [
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Marked will no longer apply the revealed effect to players who are in stealth for longer than 2 seconds. It will still display the position of affected players on the compass.",
+"link": "Marked",
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Enemies near keeps that have recently been captured will now be revealed in addition to being marked while Righteous Indignation is active.",
+"link": "Keep",
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "Profession Skills",
+"sub": "Elementalist",
+"text": "Healing Rain: Increased the healing power scaling from 0.1 to 0.3 in WvW only.",
+"link": "Healing_Rain",
+"icon": "/images/thum",
+"type": "buff",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "Profession Skills",
+"sub": "Elementalist",
+"text": "Healing Ripple: Increased the healing power scaling from 0.5 to 0.75 in WvW only.",
+"link": "Healing_Ripple",
+"icon": "/images/thum",
+"type": "buff",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "Profession Skills",
+"sub": "Tempest",
+"text": "Overload Water: Increased the pulse healing power scaling from 0.1 to 0.3 in WvW only.",
+"link": "Overload_Water",
+"icon": "/images/thum",
+"type": "buff",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "Profession Skills",
+"sub": "Tempest",
+"text": "Latent Stamina: Increased the endurance amount from 10 to 15 in WvW only.",
+"link": "Latent_Stamina",
+"icon": "/images/thum",
+"type": "buff",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "Profession Skills",
+"sub": "Evoker",
+"text": "Specialized Elements: Increased the empowered recharge from 20% to 33% in WvW only.",
+"link": "Specialized_Elements",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "Profession Skills",
+"sub": "Engineer",
+"text": "Essence of Animated Sand: Increased the barrier healing power scaling from 0.5 to 0.65 in WvW only.",
+"link": "Essence_of_Animated_Sand",
+"icon": "/images/thum",
+"type": "buff",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "Profession Skills",
+"sub": "Scrapper",
+"text": "Bulwark Gyro: Increased the pulse barrier healing power scaling from 0.1 to 0.25 in WvW only.",
+"link": "Bulwark_Gyro",
+"icon": "/images/thum",
+"type": "buff",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "Profession Skills",
+"sub": "Druid",
+"text": "Natural Mender: Reduced the outgoing healing effectiveness increase from 15% to 10% in WvW only.",
+"link": "Natural_Mender",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "Profession Skills",
+"sub": "Druid",
+"text": "Seed of Life: Reduced the number of conditions removed from 2 to 1 in WvW only.",
+"link": "Seed_of_Life",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "Profession Skills",
+"sub": "Druid",
+"text": "Cultivated Synergy: Reduced the number of conditions removed by Lesser Seed of Life from 2 to 1 in WvW only.",
+"link": "Cultivated_Synergy",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "Profession Skills",
+"sub": "Druid",
+"text": "Grace of the Land: Reduced the number of might stacks from 2 to 1 in WvW only.",
+"link": "Grace_of_the_Land",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "Profession Skills",
+"sub": "Vindicator",
+"text": "Tree Song: Reduced the energy cost from 25 to 15 in WvW only.",
+"link": "Tree_Song",
+"icon": "/images/thum",
+"type": "buff",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "Profession Skills",
+"sub": "Vindicator",
+"text": "Drop Urn of Saint Viktor: Increased the healing power scaling from 0.22 to 0.5 in WvW only.",
+"link": "Drop_Urn_of_Saint_Viktor",
+"icon": "/images/thum",
+"type": "buff",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "Profession Skills",
+"sub": "Vindicator",
+"text": "Saint's Shield: Increased the healing power scaling from 0.2 to 0.3 in WvW only.",
+"link": "Saint%27s_Shield",
+"icon": "/images/thum",
+"type": "buff",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "Profession Skills",
+"sub": "Vindicator",
+"text": "Reaver's Curse: Increased the healing and barrier increase from 100% to 200% in WvW only.",
+"link": "Reaver%27s_Curse",
+"icon": "/images/thum",
+"type": "buff",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "Profession Skills",
+"sub": "Paragon",
+"text": "Adrenal Health: Paragon chants now only grant one stack of Adrenal Health in PvP and WvW.",
+"link": "Adrenal_Health",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-09-29",
+"update": "Update - September 29, 2026",
+"section": "Profession Skills",
+"sub": "Paragon",
+"text": "Cleansing Ire: Paragon chants now only cleanse one condition in PvP and WvW.",
+"link": "Cleansing_Ire",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update 2 - November 10, 2026",
+"section": "Bug Fixes",
+"sub": "",
+"text": "Augury of Death: Fixed an issue that caused this trait to siphon more health than intended in PvP and WvW.",
+"link": "Augury_of_Death",
+"icon": "/images/thum",
+"type": "bug",
+"sure": true,
+"modes": [
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "",
+"sub": "",
+"text": "New WvW Borderlands map beta event begins.",
+"link": null,
+"icon": null,
+"type": "event",
+"sure": false,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "The new Seared Borderlands map has replaced the Alpine and Desert Borderlands maps in WvW! The beta for this new map will run until December 8. Please note that the map is currently in a gray-box state; the art is not final and neither is the map itself! Please post your feedback on the new borderland map here: https://en-forum.guildwars2.com/topic/178077-feedback-requested-new-wvw-borderlands-map-beta/",
+"link": "Seared_Borderlands",
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Player kills: 5 → 6 (defending)",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Player down: 1 → 2 (defending)",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Player resurrect: 2 → 3 (defending)",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Keep captures: 250 → 100 (T0), 300 → 200 (T1), 375 → 400 (T2), 450 → 500 (T3)",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Tower captures: 50 → 25 (T0), 75 → 125 (T1), 125 → 200 (T2), 175 → 250 (T3)",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Camp captures: 5 → 2 (T0), 8 → 10 (T1), 12 → 15 (T2), 20 → 25 (T3)",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Keep upgrades: 150 → 200 (T1), 225 → 400 (T2), 300 → 600 (T3)",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Tower upgrades: 50 → 75 (T1), 75 → 150 (T2), 100 → 300 (T3)",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Camp upgrades: 15 → 20 (T1), 20 → 35 (T2), 25 → 60 (T3)",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Keep ticks (T3): 15 → 10",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Tower ticks (T3): 8 → 7",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Dolyak delivery: 2 → 1",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Dolyak kill: 6 → 2",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Lord kill: 12 → 10",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Build player siege: 4 → 6 (defending)",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Build prebuilt siege Equipment: 4 → 10",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Repair wall: 8 → 14",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Repair gate: 12 → 20",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Match rewards and skirmish rewards that were previously beta tested will now be fully released as well! Skirmish rewards will be enabled on release, while match rewards will turn on with WvW reset on Friday, November 13.",
+"link": "Skirmish_reward",
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "As part of ongoing server performance improvements, autoloot in WvW has been reworked. The autoloot upgrade has been removed from the Provisions Master ability line, and loot will now directly enter player inventory whenever possible.",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Added an \"Upgrade All\" button to the abilities tab of the WvW dialog that shows when players have enough points to afford every available ability upgrade.",
+"link": null,
+"icon": null,
+"type": "wvw_rule",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "World vs. World",
+"sub": "",
+"text": "Fixed a bug that caused multiple players to sometimes receive multiple instances of War Score while building siege.",
+"link": null,
+"icon": null,
+"type": "bug",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Engineer",
+"text": "Rocket Fist Prototype: Reduced the burning duration from 5 seconds to 1 second in PvP and WvW.",
+"link": "Rocket_Fist_Prototype",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Engineer",
+"text": "Rocket Kick: This skill now breaks stun and then launches the user backwards, allowing them to evade attacks. Increased the cooldown from 15 seconds to 20 seconds in PvE and from 15 seconds to 25 seconds in WvW and PvP.",
+"link": "Rocket_Kick",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvE",
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Engineer",
+"text": "Elixir S: Reduced the cooldown from 60 seconds to 50 seconds in WvW and PvP.",
+"link": "Elixir_S",
+"icon": "/images/thum",
+"type": "buff",
+"sure": true,
+"modes": [
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Engineer",
+"text": "Toss Elixir S: Reduced the cooldown from 45 seconds to 30 seconds in PvE and from 45 seconds to 40 seconds in WvW and PvP.",
+"link": "Toss_Elixir_S",
+"icon": "/images/thum",
+"type": "buff",
+"sure": true,
+"modes": [
+"PvE",
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Engineer",
+"text": "Modified Ammunition: This trait now scales up to 5 conditions only. Increased the damage per condition from 1% to 2% in PvE only and WvW.",
+"link": "Modified_Ammunition",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvE",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Scrapper",
+"text": "Ex Machina: This trait no longer increases the cooldown of Function Gyro in PvP and WvW. Increased the base barrier from 1,034 to 1,500 in PvP and WvW.",
+"link": "Ex_Machina",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Guardian",
+"text": "Smite Condition: This skill now has a casting time. Increased the damage coefficient when removing a condition from 1.9 to 2.75 in PvE and from 0.3 to 1.5 in WvW and PvP.",
+"link": "Smite_Condition",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvE",
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Guardian",
+"text": "Inspired Virtue: This trait now scales up to 5 boons only. Increased the damage per boon from 0.5% to 1.5% in PvE and from 1% to 1.5% in WvW and PvP.",
+"link": "Inspired_Virtue",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvE",
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Guardian",
+"text": "Unscathed Contender: This trait has been reworked. Deal 10% increased damage while above the health threshold or while you have aegis. Lowered the health threshold from 90% to 75%. The damage increase is 12% in PvE and 10% in PvP and WvW.",
+"link": "Unscathed_Contender",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvE",
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Mesmer",
+"text": "Shaper of Chaos: This trait no longer detonates chaos aura when gaining chaos aura and instead detonates chaos aura when shatter skill 1 is used. Increased the confusion from 4 stacks for 5 seconds to 6 stacks for 6 seconds in PvE and from 3 stacks to 4 stacks in WvW and PvP.",
+"link": "Shaper_of_Chaos",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvE",
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Mesmer",
+"text": "Signet of Inspiration: Increased the cooldown from 20 seconds to 30 seconds in WvW only",
+"link": "Signet_of_Inspiration",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Virtuoso",
+"text": "Bladesong Harmony: Fixed an issue that caused this skill to deal more damage than intended with the trait Shatter Storm. Reduced the power coefficient from 0.45 to 0.4 in PvP and WvW.",
+"link": "Bladesong_Harmony",
+"icon": "/images/thum",
+"type": "balance_bug_mix",
+"sure": false,
+"modes": [
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Troubadour",
+"text": "Tale of the August Queen: Increased the cooldown from 75 seconds to 90 seconds in WvW only.",
+"link": "Tale_of_the_August_Queen",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Troubadour",
+"text": "Harmonious Harp: Increased the cooldown from 35 seconds to 45 seconds in WvW only.",
+"link": "Harmonious_Harp",
+"icon": "/images/thum",
+"type": "nerf",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Troubadour",
+"text": "Love Song: Reduced the distortion increase from 1 second to 0.5 seconds and increased the damage reduction from 7% to 10% in WvW only.",
+"link": "Love_Song",
+"icon": "/images/thum",
+"type": "mixed",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Necromancer",
+"text": "Target the Weak: This trait now scales up to 5 conditions only. Increased the critical-strike chance per condition from 2% to 4% in PvE and from 2% to 3% in WvW and PvP.",
+"link": "Target_the_Weak",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvE",
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Reaper",
+"text": "Augury of Death: Increased the life siphon base damage from 172 to 750 and life siphon base healing from 156 to 750 in PvE and from 172 to 450 and life siphon base healing from 156 to 450 in PvP and WvW. Life-siphon healing is reduced for each target beyond the first. Life-siphon healing is no longer increased in melee range.",
+"link": "Augury_of_Death",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvE",
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Ranger",
+"text": "Unleashed Savage Shockwave: This skill's bonus damage now scales up to only 5 conditions, and striking a disabled or defiant target now grants the maximum damage increase instead of granting a separate damage increase. Increased the damage per condition from 2% to 4%. Increased the power coefficient per hit from 0.8 to 0.96 in PvE and from 0.5 to 0.55 in PvP and WvW.",
+"link": "Unleashed_Savage_Shock_Wave",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvE",
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Ranger",
+"text": "Bountiful Hunter: This trait now scales up to 5 boons only. Increased the damage per boon from 1% to 2% in PvE and from 1% to 1.5% in PvP and WvW.",
+"link": "Bountiful_Hunter",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvE",
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Ranger",
+"text": "Crossfire: This skill no longer inflicts increased bleeding duration when flanking a target. Increased the bleeding duration from 2 seconds to 5 seconds in PvE and from 2 seconds to 3 seconds in WvW and PvP.",
+"link": "Crossfire",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvE",
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Ranger",
+"text": "Quick Shot: Reduced the cooldown from 8 seconds to 6 seconds in PvE and from 12 seconds to 10 seconds in WvW and PvP.",
+"link": "Quick_Shot",
+"icon": "/images/thum",
+"type": "buff",
+"sure": true,
+"modes": [
+"PvE",
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Herald",
+"text": "Reinforced Potency: This trait now scales up to 5 boons only. Increased the damage bonus from 1% to 2% in PvE and WvW and from 1.5% to 2% in PvP.",
+"link": "Reinforced_Potency",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvE",
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Vindicator",
+"text": "Heated Rivalry: This is a new grandmaster trait. While in Legendary Alliance stance, when you use a number of Luxon skills, Alliance Tactics is recharged, and your next-used Kurzick skill will have its energy cost refunded. When you use a number of Kurzick skills, Alliance Tactics is recharged, and your next-used Luxon skill will have its energy cost refunded. The number of skills required to trigger the effect is 2 in PvE and 3 in PvP and WvW.",
+"link": "Heated_Rivalry",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvE",
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Warrior",
+"text": "Arcing Arrow: This skill will now also inflict burning in PvP and WvW.",
+"link": "Arcing_Arrow",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Warrior",
+"text": "Empowered: This trait now scales up to 5 boons only. Increased the damage increase per boon from 1% to 2% in PvE and from 1% to 1.5% in PvP and WvW.",
+"link": "Empowered",
+"icon": "/images/thum",
+"type": "balance_unsure",
+"sure": false,
+"modes": [
+"PvE",
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-10",
+"update": "Update - November 10, 2026",
+"section": "Profession Skills",
+"sub": "Spellbreaker",
+"text": "Resolute Counter: Increased the base healing from 820 to 1,250 1,300 in WvW and PvP.",
+"link": "Resolute_Counter",
+"icon": "/images/thum",
+"type": "buff",
+"sure": true,
+"modes": [
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-11",
+"update": "Update - November 11, 2026",
+"section": "Bug Fixes",
+"sub": "",
+"text": "Players can no longer glide into the western keep from the northern keep in the WvW Seared Borderlands map.",
+"link": "Glide",
+"icon": null,
+"type": "bug",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-11-11",
+"update": "Update - November 11, 2026",
+"section": "Bug Fixes",
+"sub": "",
+"text": "Players can no longer stand on top of small gates in the WvW Seared Borderlands map.",
+"link": null,
+"icon": null,
+"type": "bug",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-11-11",
+"update": "Update - November 11, 2026",
+"section": "Bug Fixes",
+"sub": "",
+"text": "The northern keep walls in the WvW Seared Borderlands map now have correct collision.",
+"link": null,
+"icon": null,
+"type": "bug",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-11-12",
+"update": "Update - November 12, 2026",
+"section": "Bug Fixes",
+"sub": "",
+"text": "The Seared Borderlands Garrison Waypoint has been moved to the top of the Lord's Room to make navigating the keep easier.",
+"link": "Seared_Borderlands",
+"icon": null,
+"type": "bug",
+"sure": true,
+"modes": []
+},
+{
+"page": "2026-11-12",
+"update": "Update - November 12, 2026",
+"section": "Bug Fixes",
+"sub": "",
+"text": "Break Enchantments: Fixed an issue that caused this skill to have two maximum ammunition instead of one in WvW. Fixed an issue that caused the Boons Removed tooltip to not be displayed properly in PvP. The ammo recharge has been reduced from 20 seconds to 15 seconds in PvE and WvW only.",
+"link": "Break_Enchantments",
+"icon": "/images/thum",
+"type": "bug",
+"sure": true,
+"modes": [
+"PvE",
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-12",
+"update": "Update - November 12, 2026",
+"section": "Bug Fixes",
+"sub": "",
+"text": "Symbol of Vengeance: Fixed an issue that caused this skill to inflict more bleeding than intended in WvW and PvP.",
+"link": "Symbol_of_Vengeance",
+"icon": "/images/thum",
+"type": "bug",
+"sure": true,
+"modes": [
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-12",
+"update": "Update - November 12, 2026",
+"section": "Bug Fixes",
+"sub": "",
+"text": "Potent Haste: Fixed an issue that caused the might duration to be incorrect in WvW and PvP.",
+"link": "Potent_Haste",
+"icon": "/images/thum",
+"type": "bug",
+"sure": true,
+"modes": [
+"PvP",
+"WvW"
+]
+},
+{
+"page": "2026-11-12",
+"update": "Update - November 12, 2026",
+"section": "Bug Fixes",
+"sub": "",
+"text": "Fixed a bug that prevented players from being able to purchase Heart of Thorns items from the Heroics Notary in WvW.",
+"link": "Heroics_Notary",
+"icon": null,
+"type": "bug",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-11-16",
+"update": "Update - November 16, 2026",
+"section": "Bug Fixes:",
+"sub": "",
+"text": "Set the stone doors in the WvW Seared Borderlands map to be invisible during their off state.",
+"link": "Gate",
+"icon": null,
+"type": "bug",
+"sure": true,
+"modes": [
+"WvW"
+]
+},
+{
+"page": "2026-11-16",
+"update": "Update - November 16, 2026",
+"section": "Bug Fixes:",
+"sub": "",
+"text": "Fixed an issue that prevented mount and gliding usage in the northwestern region of the Seared Borderlands.",
+"link": "Faithleap",
+"icon": null,
+"type": "bug",
+"sure": true,
+"modes": []
+}
+]
