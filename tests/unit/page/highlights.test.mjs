@@ -256,7 +256,7 @@ const takenFor = (p, body, taken) => {
   p.ctx.__t = taken;
   p.run('latestTaken.delete(__b); if (latestTakenOf(__t)) latestTaken.set(__b, latestTakenOf(__t))');
 };
-test('the Leaders count the copy\'s capture score, and the Busiest its takes; with no count, as before', () => {
+test('the Leaders count the copy\'s capture points, and the Busiest its takes; with no count, as before', () => {
   const p = fresh();
   const now = p.clock.now;
   const list = na();
@@ -312,7 +312,7 @@ test('the Leaders count the copy\'s capture score, and the Busiest its takes; wi
   assert.equal(p.call('hlFlips').find((f) => f.m === list[2] && f.type === list[2].maps[0].type).held, true);
   seen.last_flipped = list[2].start_time;
   seen.owner = 'Red';
-  // A tier with no count among the others: the region's leader would be wrong, so no capture score at all.
+  // A tier with no count among the others: the region's leader would be wrong, so no capture points at all.
   takenFor(p, list[0], undefined);
   assert.equal(p.call('hlLeaders').some((x) => x.short === 'Captures'), false, 'a tier without a count leaves the metric out');
   takenFor(p, list[0], { points: counts[0], flips: { red: 1, blue: 1, green: 1 }, maps: { [list[0].maps[0].id]: 4, [list[0].maps[1].id]: 1 } });
