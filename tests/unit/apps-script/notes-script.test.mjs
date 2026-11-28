@@ -40,7 +40,7 @@ test('the parser gives the lab\'s WvW lines of the 2026 pages, the wiki\'s later
   assert.equal(got.find((r) => r.text.startsWith('Splinter Weapon')).icon, true);
 });
 
-test('the index page: each update since the last big one, on its page, an update with no WvW line included', () => {
+test('the index page: each update of the five pages it shows, on its page, an update with no WvW line included', () => {
   const { ctx } = load({ answer: () => null });
   const notes = ctx.out.notes(fixture('index-2026-11-24.html'));
   assert.deepEqual(JSON.parse(JSON.stringify(notes.map((n) => [n.page, n.update, n.lines.length]))), [
