@@ -45,7 +45,7 @@ export function loadPage(startAt = 0) {
   }
   const store = new Map();
   const g = {
-    console, Date: ClockDate, document: dummy(),
+    console, URL, Date: ClockDate, document: dummy(),
     setTimeout: () => 0, setInterval: () => 0, clearTimeout() {}, clearInterval() {},
     localStorage: {
       getItem: (k) => (store.has(k) ? store.get(k) : null),

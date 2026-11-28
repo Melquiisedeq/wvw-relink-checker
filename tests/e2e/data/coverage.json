@@ -1,7 +1,7 @@
 {
   "site/js/api.js": {
-    "lines": 60.1,
-    "branches": 64.3
+    "lines": 60.5,
+    "branches": 64.7
   },
   "site/js/config.js": {
     "lines": 96.1,
@@ -26,6 +26,10 @@
   "site/js/maps.js": {
     "lines": 19.2,
     "branches": 11
+  },
+  "site/js/news.js": {
+    "lines": 38.3,
+    "branches": 39
   },
   "site/js/panels.js": {
     "lines": 20.8,

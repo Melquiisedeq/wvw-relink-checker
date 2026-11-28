@@ -1,12 +1,16 @@
 'use strict';
 // Boot (loads last): the first load, the background refreshes, the ember field, and idling when nobody is looking.
 
-// js/highlights.js is asked for after the first standings, never in the opening; it starts itself on load.
-function loadHighlights() {
+// js/highlights.js and js/news.js are asked for after the first standings, never in the opening; each starts once loaded.
+function loadLater(src, start) {
   const s = document.createElement('script');
-  s.src = 'js/highlights.js';
-  s.onload = () => startHighlights();
+  s.src = src;
+  s.onload = start;
   document.head.appendChild(s);
+}
+function loadPanels() {
+  loadLater('js/highlights.js', () => startHighlights());
+  loadLater('js/news.js', () => startNews());
 }
 
 // Initial load, then keep both data sets fresh in the background for as
@@ -20,7 +24,7 @@ if (pageWhole) {
   });
   showStandingsSkeleton(standingsGridNA);
   showStandingsSkeleton(standingsGridEU);
-  refreshStandings().then(loadHighlights, loadHighlights); // the highlights come once the standings are in
+  refreshStandings().then(loadPanels, loadPanels); // the highlights and the news come once the standings are in
   fetchTimers();
   setInterval(updateRelinkBanner, 60000); // countdown display, and the pace of the teams notice's reads
   startPeeking(); // starts the /api peek timer and opens the socket; reads nothing itself (js/standings.js)

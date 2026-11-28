@@ -14,10 +14,12 @@ const OWN_API = new Map([
   ['/api/relink', 'https://wvwrelink.com/api/relink'],
 ]);
 // /api routes the recording does not hold, answered by default: /api/latest down (the Worker's 503 when its newest
-// body is too old), its summary empty (what the Worker serves with nothing kept).
+// body is too old), its summary empty (what the Worker serves with nothing kept), the notes with no line (the page then
+// makes no panel; a spec that wants lines answers /api/notes itself).
 const OWN_FIXED = new Map([
   ['/api/latest', { status: 503, body: '{"error":"down"}' }],
   ['/api/latest/summary', { status: 200, body: '{}' }],
+  ['/api/notes', { status: 200, body: '{"v":"","wiki":0,"notes":[]}' }],
 ]);
 const EXTERNAL = /^https:\/\/(api\.guildwars2\.com|docs\.google\.com)\//;
 // Analytics: refused, as a blocker would, and their errors ignored.
