@@ -10,13 +10,17 @@
 //   GET  /api/health            when each last reported; nothing else
 //   GET  /api/kills            the last 30 minutes of kills, each match's newest older row (up to 3 h back) and its kills' last move, for the map corner and swords
 //   GET  /api/relink           relink!A1 as numbers, for the teams notice
-//   GET  /api/latest            each match's newest body, as the readers pushed it
+//   GET  /api/latest            each match's newest body, as the readers pushed it, and what
+//                              each team took this week by the Worker's count (takenNext)
 //   GET  /api/latest/summary     the same without the bodies: id, start, score, at, by, hist
 //   GET  /api/latest?v=<at>.<tag>  the same, for the version a push named (tag: VERSION_KEY); 404 for any other
 //   GET  /api/history/<1|2>?v=<n>  a region's finished skirmishes, n of them, this week
 //   GET  /api/ws               a WebSocket that carries nothing in: each newer copy the ingest
 //                              stores, as {matches: [{id, start, score, at}], version: "<at>.<tag>"}
 //                              (the Live object; no version without VERSION_KEY)
+//   POST /api/ingest/notes     the notes script, the wiki's update notes, every 6 hours
+//   GET  /api/notes            the WvW lines of the game's update notes, with when the wiki
+//                              was last read (worker/notes.mjs)
 //   daily, on a schedule       kills older than KEEP_DAYS are deleted
 //
 // A message is signed by its script with a secret of its own:
@@ -26,6 +30,8 @@
 //
 // The latest entrance parses the plain JSON only to check it: it decides by the signed summary
 // and the match's score, never by a reader's clock.
+
+import { acceptNotes, servedNotes } from './notes.mjs';
 
 const MAX_BYTES = 64 * 1024;
 // The HMAC, each part's hash and the parse all run over the whole message, inside
@@ -37,7 +43,8 @@ const MAX_LIVE = 64 * 1024;
 const MAX_HIST = 64 * 1024;
 const SOURCES = {
   kills: 'INGEST_KILLS', relink: 'INGEST_RELINK',
-  'latest-supa-us': 'INGEST_LATEST_SUPA_US', 'latest-supa-eu': 'INGEST_LATEST_SUPA_EU'
+  'latest-supa-us': 'INGEST_LATEST_SUPA_US', 'latest-supa-eu': 'INGEST_LATEST_SUPA_EU',
+  notes: 'INGEST_NOTES'
 };
 // When a region's weekly match starts, UTC (day 0 = Sunday).
 const RESET = { 1: { day: 6, hour: 2 }, 2: { day: 5, hour: 18 } };
@@ -70,6 +77,23 @@ const VERSION_DOMAIN = 'latest-version:';
 // not written. The score-rise rule compares `at` with the clock, and far ahead it would hold
 // the match still.
 const LATEST_AHEAD_S = 60;
+// The objectives a capture pays for; the others (spawns, ruins, mercenary camps) are not counted.
+const TAKEN_TYPES = new Set(['Camp', 'Tower', 'Keep', 'Castle']);
+const TEAMS = ['Red', 'Blue', 'Green'];
+// An objective's capture value past this counts this much: a body cannot add more per objective
+// than the game pays for a keep at its top tier.
+const MAX_CAPTURE = 500;
+// The flips each map keeps, for the busiest map: those of the last two hours.
+const FLIPS_WINDOW_S = 2 * 3600;
+// A body's objectives counted, its maps, and the flips a map keeps: a match has 4 maps and
+// about 90 objectives, so a body that lists more is not the game's; 300 flips is about
+// twice a whole match's two hours at a busy pace, all on one map. They bound what a stolen
+// reader secret adds a message, and the stored lists every message parses.
+const MAX_OBJECTIVES = 120;
+const MAX_MAPS = 8;
+const MAX_MAP_FLIPS = 300;
+// Past this, or not the shape takenNext writes, the stored flips start over.
+const MAX_FLIP_TIMES_BYTES = 32 * 1024;
 const HISTORY_KEY = 'https://wvwrelink.com/api/history/';
 // A version whose every match is in: it never changes. One with a match missing or behind: a minute.
 const HISTORY_MAX_AGE = 4 * 3600;
@@ -78,6 +102,9 @@ const HISTORY_PARTIAL_MAX_AGE = 60;
 const HISTORY_MISS_MAX_AGE = 10;
 // The scripts make 128 hex characters; a short secret fails loudly rather than work weakly.
 const MIN_SECRET = 64;
+const NOTES_KEY = 'https://wvwrelink.com/api/notes';
+// The notes change a few times a month: the read is kept a few minutes.
+const NOTES_MAX_AGE = 300;
 // The daily cleanup deletes kills older than this: two weeks keeps the running match and the one before it.
 const KEEP_DAYS = 14;
 // What GET /api/kills carries in full: the page wants a reading at least ten minutes old, and the
@@ -113,6 +140,15 @@ export default {
         return await readLatestVersion(env, ctx, url);
       } catch (e) {
         console.log(JSON.stringify({ read: 'latest version', failed: String(e) }));
+        return text(503, 'unavailable');
+      }
+    }
+    if (url.pathname === '/api/notes') {
+      if (request.method !== 'GET') return text(405, 'method');
+      try {
+        return await readNotes(env, ctx, url);
+      } catch (e) {
+        console.log(JSON.stringify({ read: 'notes', failed: String(e) }));
         return text(503, 'unavailable');
       }
     }
@@ -189,6 +225,13 @@ async function accept(request, env, ctx, source, path) {
   } catch {
     return refuse(400, source, 'not JSON');
   }
+  if (source === 'notes') {
+    const done = await acceptNotes(env.DB, data, Date.now(), () => claimTime(env.DB, source, Number(t), now));
+    if (typeof done === 'string') return refuse(422, source, done);
+    if (!done) return refuse(409, source, 'replay or out of order');
+    console.log(JSON.stringify({ source, ok: true, ...done }));
+    return text(200, 'ok');
+  }
   const statement = source === 'kills'
     ? killsStatement(env.DB, data, Number(t), Date.now())
     : relinkStatement(env.DB, data, Number(t));
@@ -212,22 +255,144 @@ async function accept(request, env, ctx, source, path) {
   return text(200, 'ok');
 }
 
-// The message's matches as [id, start, score, gz, sha, raw] in ?1, the clock in ?2, the reader in
+// The message's matches as [id, start, score, gz, sha, raw] in ?1 (then TAKEN_COLS, with taken), the clock in ?2, the reader in
 // ?3. Every row it writes gets one `at`: the clock, or one past the newest stored when that is
 // not under it, so each ingest that applies anything is a version of its own, even two in one
 // second; none, past LATEST_AHEAD_S. SQLite runs a SELECT that reads the table it inserts
 // into to the end before writing, so the newest is the one from before this message.
 // RETURNING: the rows that went in.
-const latestUpsertSql =
-  'INSERT INTO latest (id, start, score, at, reader, gz, sha, raw) ' +
-  "SELECT json_extract(j.value, '$[0]'), json_extract(j.value, '$[1]'), json_extract(j.value, '$[2]'), v.at, ?3, " +
-  "json_extract(j.value, '$[3]'), json_extract(j.value, '$[4]'), json_extract(j.value, '$[5]') " +
-  'FROM json_each(?1) j, (SELECT MAX(?2, COALESCE(MAX(at), 0) + 1) AS at FROM latest) v WHERE v.at <= ?2 + ' + LATEST_AHEAD_S + ' ' +
-  'ON CONFLICT (id) DO UPDATE SET start = excluded.start, score = excluded.score, at = excluded.at, ' +
-  'reader = excluded.reader, gz = excluded.gz, sha = excluded.sha, raw = excluded.raw ' +
-  'WHERE excluded.start > latest.start OR (excluded.start = latest.start AND excluded.score > latest.score ' +
-  'AND excluded.score <= latest.score + ' + MAX_SCORE_PER_MIN + ' * ((?2 - latest.at) / 60.0) + ' + SCORE_SLACK + ') ' +
-  'RETURNING id, at';
+const TAKEN_COLS = ['taken_red', 'taken_blue', 'taken_green', 'flips_red', 'flips_blue', 'flips_green', 'flip_times', 'owners'];
+
+const latestUpsertSql = upsertSql(false);
+
+// The same with what each team took (schema-008): the counts of the reading the Worker read
+// before (?4, {id: at}) carried forward, written only if that reading is still the stored one.
+// A match with no stored row has no `at` in ?4, so a row another message wrote meanwhile stays.
+const latestTakenSql = upsertSql(true);
+
+function upsertSql(taken) {
+  const cols = ['id', 'start', 'score', 'at', 'reader', 'gz', 'sha', 'raw', ...(taken ? TAKEN_COLS : [])];
+  const pick = (i) => "json_extract(j.value, '$[" + i + "]')";
+  const values = cols.map((c, k) => (c === 'at' ? 'v.at' : c === 'reader' ? '?3' : pick(k < 3 ? k : k - 2)));
+  const set = cols.filter((c) => c !== 'id').map((c) => c + ' = excluded.' + c).join(', ');
+  return 'INSERT INTO latest (' + cols.join(', ') + ') ' +
+    'SELECT ' + values.join(', ') + ' ' +
+    'FROM json_each(?1) j, (SELECT MAX(?2, COALESCE(MAX(at), 0) + 1) AS at FROM latest) v WHERE v.at <= ?2 + ' + LATEST_AHEAD_S + ' ' +
+    'ON CONFLICT (id) DO UPDATE SET ' + set + ' ' +
+    'WHERE ' + (taken ? 'latest.at = json_extract(?4, \'$."\' || latest.id || \'"\') AND ' : '') +
+    '(excluded.start > latest.start OR (excluded.start = latest.start AND excluded.score > latest.score ' +
+    'AND excluded.score <= latest.score + ' + MAX_SCORE_PER_MIN + ' * ((?2 - latest.at) / 60.0) + ' + SCORE_SLACK + ')) ' +
+    'RETURNING id, at';
+}
+
+// Each row of `rows` gets what its teams took this week (TAKEN_COLS), counted against the body
+// stored before it; returns the `at` of each stored row read, {id: at}, the lock of
+// latestTakenSql. Null, and the rows left as they are, without schema-008.
+async function takenRows(db, ms, rows, now) {
+  let results;
+  try {
+    ({ results } = await db.prepare('SELECT id, start, at, ' + TAKEN_COLS.join(', ') +
+      ' FROM latest WHERE id IN (SELECT value FROM json_each(?1))').bind(JSON.stringify(rows.map((r) => r[0]))).all());
+  } catch (e) {
+    console.log(JSON.stringify({ taken: 'failed', why: String(e) }));
+    return null;
+  }
+  const read = {};
+  for (const row of rows) {
+    const m = ms.find((x) => x.id === row[0]);
+    const prev = results.find((r) => r.id === m.id);
+    if (prev) read[m.id] = prev.at;
+    row.push(...takenNext(prev, m, now));
+  }
+  return read;
+}
+
+// The counts after this body: [points of red, blue, green, flips of red, blue, green, flip
+// times, owners]. Each objective whose owner changed since the stored body gives its new owner
+// one flip and the capture value it had in the stored body, not the one it has now: right after
+// a flip the game shows the objective at its lowest tier. That the game pays the tier before the
+// flip is not checked against it (api.md, "What each team took this week"). A new week, or no
+// stored body, starts from nothing.
+function takenNext(prev, m, now) {
+  const counts = [0, 0, 0, 0, 0, 0];
+  const owners = objectivesOf(m.stored.value);
+  const own = JSON.stringify(owners.map((o) => [o.id, o.team, o.points]));
+  // A row without `owners` (written before schema-008, or cleared by the undo in api.md) is a
+  // first reading too: its body is not parsed for the one beat of flips it would give.
+  if (!prev || prev.start !== m.start || typeof prev.owners !== 'string') return [...counts, '{}', own];
+  TAKEN_COLS.slice(0, 6).forEach((c, i) => { counts[i] = prev[c] || 0; });
+  // No owner changed, the common case: the counts and the stored flips as they are. Flips past
+  // the window stay stored until the next flip prunes them; takenOf counts by the row's `at`.
+  if (prev.owners === own) return [...counts, typeof prev.flip_times === 'string' ? prev.flip_times : '{}', own];
+  const times = storedTimes(prev.flip_times);
+  const before = new Map(storedOwners(prev));
+  for (const o of owners) {
+    const was = before.get(o.id);
+    if (!was || was.team === o.team || o.team < 0) continue;
+    counts[o.team] += was.points;
+    counts[3 + o.team] += 1;
+    times.set(o.map, (times.get(o.map) || []).concat(now));
+  }
+  const kept = [];
+  for (const [map, list] of times) {
+    const recent = list.filter((t) => t > now - FLIPS_WINDOW_S);
+    if (recent.length) kept.push(JSON.stringify(map) + ':' + JSON.stringify(recent.slice(-MAX_MAP_FLIPS)));
+  }
+  return [...counts, '{' + kept.join(',') + '}', own];
+}
+
+// The stored flip times as a Map, or an empty one when they are too long or not the shape
+// written: a bad row must not stop the writes that would replace it.
+function storedTimes(text) {
+  const out = new Map();
+  if (typeof text !== 'string' || text.length > MAX_FLIP_TIMES_BYTES) return out;
+  let x;
+  try {
+    x = JSON.parse(text);
+  } catch {
+    return out;
+  }
+  if (!x || typeof x !== 'object' || Array.isArray(x)) return out;
+  for (const [map, list] of Object.entries(x).slice(0, MAX_MAPS)) {
+    if (Array.isArray(list) && list.every(isInt)) out.set(map, list);
+  }
+  return out;
+}
+
+// The stored reading's objectives as [id, {team, points}], from `owners`; nothing when it is not
+// what was written.
+function storedOwners(prev) {
+  try {
+    const list = JSON.parse(prev.owners);
+    if (!Array.isArray(list)) return [];
+    return list.slice(0, MAX_OBJECTIVES).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && isInt(e[1]) && isInt(e[2]))
+      .map(([id, team, points]) => [id, { team, points }]);
+  } catch {
+    return [];
+  }
+}
+
+// A body's objectives that a capture pays for: [{id, team (TEAMS, -1 for none), points, map}],
+// each id once and on its own map ("<map id>-<n>"), at most MAX_OBJECTIVES on MAX_MAPS maps.
+// Anything out of shape is skipped: the body is the readers', checked only for its id, week and scores.
+function objectivesOf(body) {
+  const out = [];
+  const seen = new Set();
+  const maps = body && Array.isArray(body.maps) ? body.maps.slice(0, MAX_MAPS) : [];
+  for (const map of maps) {
+    if (!map || !isInt(map.id) || !Array.isArray(map.objectives)) continue;
+    const prefix = map.id + '-';
+    for (const o of map.objectives) {
+      if (!o || typeof o.id !== 'string' || !/^\d{1,5}-\d{1,5}$/.test(o.id) || !o.id.startsWith(prefix)) continue;
+      if (!TAKEN_TYPES.has(o.type) || seen.has(o.id)) continue;
+      if (out.length === MAX_OBJECTIVES) return out;
+      seen.add(o.id);
+      const points = isInt(o.points_capture) && o.points_capture > 0 ? Math.min(o.points_capture, MAX_CAPTURE) : 0;
+      out.push({ id: o.id, team: TEAMS.indexOf(o.owner), points, map: String(map.id) });
+    }
+  }
+  return out;
+}
 
 async function claimTime(db, source, t, now) {
   const claim = await db.prepare(
@@ -258,7 +423,7 @@ async function acceptLatest(env, ctx, source, body, t, now) {
     if (m.live) {
       const live = await partOf(cut(m.live.bytes), m.live.sha256, (x, text) => liveShape(x, text, m));
       if (live.why) left.push(m.id + ' live ' + live.why);
-      else m.stored = { text: live.text, sha256: m.live.sha256, raw: m.live.bytes };
+      else m.stored = { text: live.text, value: live.value, sha256: m.live.sha256, raw: m.live.bytes };
     }
     if (!m.hist) continue;
     const hist = await partOf(cut(m.hist.bytes), m.hist.sha256, (x) => histShape(x, m.hist.n));
@@ -280,7 +445,10 @@ async function acceptLatest(env, ctx, source, body, t, now) {
   const lost = [];
   let version = now;
   if (rows.length) {
-    let { results, meta } = await env.DB.prepare(latestUpsertSql).bind(JSON.stringify(rows), now, source).all();
+    const taken = await takenRows(env.DB, ms, rows, now);
+    let { results, meta } = await (taken
+      ? env.DB.prepare(latestTakenSql).bind(JSON.stringify(rows), now, source, JSON.stringify(taken))
+      : env.DB.prepare(latestUpsertSql).bind(JSON.stringify(rows), now, source)).all();
     // https://developers.cloudflare.com/d1/worker-api/prepared-statements/ says a write's
     // `results` are empty: if RETURNING gave none and rows changed, this message's are the
     // reader's newest (supabase/reader.mjs sends its messages one at a time).
@@ -361,7 +529,7 @@ async function partOf(bytes, sha, shape) {
     return { why: 'not JSON' };
   }
   const why = shape(value, text);
-  return why ? { why } : { text };
+  return why ? { why } : { text, value };
 }
 
 // The live part is the match the summary describes: its id, week and scores.
@@ -889,17 +1057,48 @@ const READS = {
 
 // The copy /api/latest serves, and its newest `at`; null when it is stale.
 async function latestCopy(env) {
-  const { results } = await env.DB.prepare('SELECT id, start, score, at, reader, gz FROM latest').all();
+  // What takenOf reads; `owners` is only the next message's.
+  const taken = ', ' + TAKEN_COLS.filter((c) => c !== 'owners').join(', ');
+  let results;
+  // Without schema-008 the copy still answers, without the counts.
+  try {
+    ({ results } = await env.DB.prepare('SELECT id, start, score, at, reader, gz' + taken + ' FROM latest').all());
+  } catch (e) {
+    console.log(JSON.stringify({ read: 'latest', without: 'taken', failed: String(e) }));
+    ({ results } = await env.DB.prepare('SELECT id, start, score, at, reader, gz FROM latest').all());
+  }
   // Two hours without an update: a tier that no longer exists.
   const live = results.filter((r) => nowS() - r.at <= LATEST_KEEP_S);
   const newest = Math.max(0, ...live.map((r) => r.at));
   if (!live.length || nowS() - newest > STALE_LATEST_S) return null;
   // The text was parsed whole by the entrance, so it goes in as it is.
   const entry = (r) => {
-    const head = JSON.stringify({ id: r.id, start: r.start, score: r.score, at: r.at, by: r.reader }).slice(0, -1);
-    return head + ',"v":2,"body":' + r.gz + '}';
+    const head = JSON.stringify({ id: r.id, start: r.start, score: r.score, at: r.at, by: r.reader, v: 2, taken: takenOf(r) }).slice(0, -1);
+    return head + ',"body":' + r.gz + '}';
   };
   return { newest, body: '{"at":' + newest + ',"matches":[' + live.map(entry).join(',') + ']}' };
+}
+
+// What the teams took this week, once one of them took something: {points, flips} by team, and
+// {map id: flips} in the two hours up to the row's `at`, not up to now: a version's copy never
+// changes. Counted here, since the stored flips keep older ones until a flip prunes them.
+function takenOf(r) {
+  const flips = [r.flips_red, r.flips_blue, r.flips_green];
+  if (!flips.some((n) => n > 0)) return undefined;
+  const team = (list) => ({ red: list[0], blue: list[1], green: list[2] });
+  const maps = Object.fromEntries([...storedTimes(r.flip_times)]
+    .map(([map, list]) => [map, list.filter((t) => t > r.at - FLIPS_WINDOW_S).length]).filter(([, n]) => n > 0));
+  return { points: team([r.taken_red, r.taken_blue, r.taken_green]), flips: team(flips), maps };
+}
+
+// GET /api/notes: {wiki, notes}, the published lines and when the wiki was last read. Any query is a 404
+// before D1.
+async function readNotes(env, ctx, url) {
+  if (url.search !== '') return text(404, 'not found');
+  return cached(ctx, NOTES_KEY, async () => {
+    const f = await servedNotes(env.DB);
+    return json('{"wiki":' + f.wiki + ',"notes":' + f.body + '}', NOTES_MAX_AGE);
+  });
 }
 
 // GET /api/latest?v=<at>.<tag>: the copy whose newest `at` is that, kept under the version's

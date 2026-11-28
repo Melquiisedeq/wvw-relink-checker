@@ -28,6 +28,7 @@ function world(plan = {}) {
     kills: { rows: plan.rows ?? [row(NOW - 60), row(NOW - 60, '2-1')] },
     relink: 'relink' in plan ? plan.relink : { window: 1794016800, published: 1793823875 },
     latest: { x: 1 },
+    notes: plan.notes ?? { v: '0123456789abcdef', wiki: NOW - 6 * 3600, notes: [] },
     'latest/summary': plan.summary ?? { '1-1': sum(), '2-1': sum({ by: 'latest-supa-eu' }) },
   };
   const game = plan.game ?? [{ id: '1-1', start_time: new Date(START).toISOString(), scores: { red: 50, blue: 30, green: 20 } },
@@ -103,8 +104,8 @@ test('the deadline the check uses is the one in the Worker file, not a copy', ()
   assert.deepEqual([limits.killsWorkerStale, limits.latestWorkerStale, limits.stale.relink, limits.skirmishSeconds, limits.skewSeconds], [420, 180, 540, 10800, 90]);
   assert.equal(limits.stale.kills, 5400);
   const more = readLimits(SOURCE.replace("kills: 'INGEST_KILLS',", "kills: 'INGEST_KILLS', fresh: 'INGEST_FRESH',"));
-  assert.deepEqual(more.sources, ['kills', 'fresh', 'relink', 'latest-supa-us', 'latest-supa-eu']);
-  assert.deepEqual(limits.sources, ['kills', 'relink', 'latest-supa-us', 'latest-supa-eu']);
+  assert.deepEqual(more.sources, ['kills', 'fresh', 'relink', 'latest-supa-us', 'latest-supa-eu', 'notes']);
+  assert.deepEqual(limits.sources, ['kills', 'relink', 'latest-supa-us', 'latest-supa-eu', 'notes']);
 });
 
 test('makeContext reads worker/index.mjs of the root it is given', () => {
@@ -117,7 +118,7 @@ test('makeContext reads worker/index.mjs of the root it is given', () => {
 
 test('every source of the Worker\'s entrance gets its unsigned POST', async () => {
   const r = await green({});
-  for (const name of ['kills', 'relink', 'latest-supa-us', 'latest-supa-eu']) {
+  for (const name of ['kills', 'relink', 'latest-supa-us', 'latest-supa-eu', 'notes']) {
     assert.ok(r.asked.includes(`POST ${API}ingest/${name}`), name);
     assert.match(r.log, new RegExp(`^unsigned POST ${name} +HTTP 401$`, 'm'));
   }
@@ -537,4 +538,13 @@ test('run as a script: it prints the log and exits with the code; a Worker it ca
   assert.match(r.stderr, /worker\/index\.mjs no longer has `const STALE_RELINK_S = a \* b;`/);
   assert.equal(r.stdout, '');
   fs.rmSync(root, { recursive: true });
+});
+
+test('the notes: the wiki read within 3 days, else red with where to look', async () => {
+  await green({}, /^notes: wiki last read +6 h ago$/m);
+  await green({ notes: { wiki: NOW - 72 * 3600 } }, /^notes: wiki last read +72 h ago$/m);
+  await red({ notes: { wiki: NOW - 72 * 3600 - 1 } }, /\/api\/notes last read the wiki 72 hours ago \(limit 72\)\. Check the notes script/);
+  await red({ notes: { wiki: 0 } }, /\/api\/notes has never read the wiki\. Check the notes script/);
+  await red({ notes: {} }, /\/api\/notes has never read the wiki/);
+  await red({ status: { [`${API}notes`]: 503 } }, /\/api\/notes: HTTP 503 after 3 attempts\./);
 });

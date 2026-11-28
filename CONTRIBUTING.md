@@ -36,10 +36,11 @@ worker/        wvwrelink.com/api: takes each script's signed results into a
                (/api/health), tells the page by WebSocket (/api/ws) when
                newer matches are in, and serves the page its reads (/api/kills,
                /api/relink, /api/latest,
-               /api/latest/summary, /api/history/<region>); its SQL schemas
-               and wrangler.jsonc sit beside index.mjs
-apps-script/   the two Google Apps Script projects behind the spreadsheets:
-               the teams notice and the kills history; the copies they are
+               /api/latest/summary, /api/history/<region>, /api/notes); its
+               SQL schemas and wrangler.jsonc sit beside index.mjs
+apps-script/   the three Google Apps Script projects: the two behind the
+               spreadsheets, the teams notice and the kills history, and the
+               game's update notes, bound to no file; the copies they are
                pasted from
 supabase/      the reader, one function run from two Supabase regions, one per
                API server pool, that pushes the newest match
