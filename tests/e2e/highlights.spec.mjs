@@ -136,7 +136,7 @@ test.describe('hours with the tab visible and no map open', () => {
 async function showsItsTier(page) {
   const no = (await closest(page).getAttribute('aria-label')).match(/NA · T(\d)/)[1];
   await closest(page).click();
-  const tier = page.locator('.standing-match').filter({ has: page.getByRole('heading', { name: `Tier ${no}`, exact: true }) }).first();
+  const tier = page.locator(`.standing-match[data-match-id="1-${no}"]`);
   await expect(tier).toBeInViewport({ ratio: 0.5 });
   await expect(page.locator('.tier-spot'), 'the ring on the tier').toHaveCount(1);
   await expect(tier).not.toHaveClass(/tier-dimmed/);

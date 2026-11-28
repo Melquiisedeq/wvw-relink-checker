@@ -155,7 +155,7 @@ document.addEventListener('animationend', (e) => {
 // After the search's arrow (js/search.js): a strip with the guild's name hangs from
 // its team's card. A refresh rebuilds the cards, so it is painted again after every
 // refresh until `until`.
-let guildFound = null; // { teamName, guildName, matchId, until }
+let guildFound = null; // { teamName, guildName, until }
 
 function paintGuildFound(root, fresh) {
   if (!guildFound) return null;
@@ -163,11 +163,7 @@ function paintGuildFound(root, fresh) {
   if (left <= 0) { guildFound = null; return null; }
   let card = null;
   for (const n of root.querySelectorAll('.standing-side .standing-side-name')) {
-    if (n.textContent !== guildFound.teamName) continue;
-    const tier = n.closest('.standing-match');
-    if (guildFound.matchId && (!tier || tier.dataset.matchId !== guildFound.matchId)) continue;
-    card = n.closest('.standing-side');
-    break;
+    if (n.textContent === guildFound.teamName) { card = n.closest('.standing-side'); break; }
   }
   if (!card) return null;
   const next = card.nextElementSibling;

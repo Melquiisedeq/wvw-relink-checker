@@ -293,8 +293,8 @@ function dropMark() {
 }
 // The strip with the guild's name under its team's card (paintGuildFound in js/standings.js,
 // which every standings repaint calls again until `until`).
-function hangStrip(teamName, guildName, matchId) {
-  guildFound = { teamName, guildName, matchId, until: Date.now() + MARK_MS };
+function hangStrip(teamName, guildName) {
+  guildFound = { teamName, guildName, until: Date.now() + MARK_MS };
   paintGuildFound(document, true);
 }
 function dropStrip() {
@@ -334,7 +334,7 @@ function playSpot(tier, teamName, guild, matchId) {
   for (const old of document.querySelectorAll('.tier-spot')) old.remove();
   for (const m of document.querySelectorAll('.tier-dimmed')) m.classList.remove('tier-dimmed');
   // The "from your search" strip only for a search: the Closest match's tap names no guild.
-  if (guild) hangStrip(teamName, guild, matchId);
+  if (guild) hangStrip(teamName, guild);
   const first = cardOfTeam(teamName, matchId);
   const col = tier.parentElement;
   // The ring hangs beside the grid, not in it: a child the grid does not expect makes the next
