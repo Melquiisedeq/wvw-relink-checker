@@ -90,8 +90,8 @@
 .hl-cut-nm{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .hl-vp{font-variant-numeric:tabular-nums;white-space:nowrap;flex:none;}
 .hl-vp .stat-label{color:#8d97a6;font-weight:400;font-size:.68rem;}
-.hl-sk-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 4px;color:var(--text);}
-.hl-sk-line .hl-team{font-weight:700;}
+.hl-sk-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 4px;margin-top:8px;color:var(--muted);}
+.hl-sk-line .hl-team{font-weight:700;color:var(--text);}
 /* The scales (hlScales): 21 px like the swords, the room of a 14 px box in the row. The beam turns on its pin, each pan
    hangs from its end, and they settle with the favourite's side down (--s: -1 the first team, 1 the second, 0 level). */
 .hl-ci{position:relative;z-index:1;width:21px;height:21px;flex:none;margin:-3.5px 0;filter:drop-shadow(0 1.5px 1.5px rgba(0,0,0,.7));}

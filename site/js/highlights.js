@@ -167,8 +167,9 @@ function hlSkirmishNow(m) {
   if (!Number.isFinite(left) || left > 120) return null;
   return { sc, left, vp: hlVpHolds(m) ? hlSkirmishVp(m, sk, sc) : null };
 }
-// The running match whose top two are fewest VP apart; null with no running match, { fresh } while every running
-// match is still on 0 VP (a new week).
+// The fewest VP apart between two neighbours (1st and 2nd, or 2nd and 3rd) over the running matches; a tie goes to
+// the pair at the top, then to the match first in order. `place` is 1 or 2, the place the pair holds. Null with
+// no running match, { fresh } while every running match is still on 0 VP (a new week).
 function hlClosest() {
   let best = null;
   let any = false;
@@ -177,8 +178,10 @@ function hlClosest() {
     const r = COLORS.map((c) => ({ color: c, name: hlTeamName(m, c), vp: Number((m.victory_points || {})[c]) || 0,
       score: Number((m.scores || {})[c]) || 0 })).sort((a, b) => b.vp - a.vp || b.score - a.score);
     if (!r[0].vp) continue;
-    const gap = r[0].vp - r[1].vp;
-    if (!best || gap < best.gap) best = { m, gap, a: r[0], b: r[1] };
+    for (const place of [1, 2]) {
+      const gap = r[place - 1].vp - r[place].vp;
+      if (!best || gap < best.gap || (gap === best.gap && place < best.place)) best = { m, gap, place, a: r[place - 1], b: r[place] };
+    }
   }
   if (!best) return any || hlKept().length ? { fresh: true } : null;
   const s = hlSkirmishNow(best.m);
@@ -210,7 +213,7 @@ function hlClosestSaid(c) {
     s += f.tied ? ' and the two would be tied.'
       : f.x === c.a ? ` and ${c.a.name} would stay ahead, by ${hlNum(f.by)}.`
       : ` and ${c.b.name} would pass ${c.a.name}, ahead by ${hlNum(f.by)}.`;
-  } else s += f.tied ? ' The two are tied this week.' : ` ${c.a.name} leads the week.`;
+  } else s += f.tied ? ' The two are tied this week.' : ` ${c.a.name} ${c.place === 1 ? 'leads the week' : 'is ahead this week'}.`;
   if (c.sk) s += c.sk.left > 0 ? ` ${hlLeft(c.sk.left)} in this skirmish.` : ' This skirmish is ending now.';
   return `${s} Show them in the standings`;
 }
@@ -411,13 +414,15 @@ function hlWeekRows(c) {
   return rows;
 }
 // "● Name set to win · 57 min left"; the second passing the first, "set to pass"; level, "Tied if it ended now",
-// or with no table "Tied this week".
+// or with no table "Tied this week". For the pair of 2nd and 3rd: "set to stay ahead", "ahead this week".
+const hlFavWord = (c, f) => (!f.proj ? (c.place === 1 ? 'leads the week' : 'ahead this week')
+  : f.x === c.b ? 'set to pass' : c.place === 1 ? 'set to win' : 'set to stay ahead');
 function hlFavFoot(c) {
   const f = hlFav(c);
   const line = hlEl('span', 'hl-line hl-sk-line');
   const tail = `${c.sk ? ` · ${hlLeft(c.sk.left)}` : ''}${hlDataFrom(c.m)}`;
   if (f.tied) line.append(`${f.proj ? 'Tied if it ended now' : 'Tied this week'}${tail}`);
-  else line.append(hlTeamText(f.x.name, f.x.color), ` ${!f.proj ? 'leads the week' : f.x === c.b ? 'set to pass' : 'set to win'}${tail}`);
+  else line.append(hlTeamText(f.x.name, f.x.color), ` ${hlFavWord(c, f)}${tail}`);
   return line;
 }
 // The scales, drawn like the other tiles' game icons: the beam turns on its pin and each pan hangs from an end
@@ -483,7 +488,7 @@ function hlSvg(paths, cls) {
   return svg;
 }
 // The metrics with a value: the best team of each over the running matches of the region, none for a metric every
-// team is still at 0 on (the week's first minutes). Objective points come only from the copy's count: with none
+// team is still at 0 on (the week's first minutes). Capture points come only from the copy's count: with none
 // there is no such metric, and its slide says the week is new only while no objective has been taken at all.
 function hlLeaders() {
   const rows = [];
@@ -521,17 +526,17 @@ function hlLeaders() {
   const list = [
     { label: 'Most kills', short: 'Kills', icon: () => hlImg('Event_Swords', 'hl-mk hl-mk-img', 16), r: top((r) => r.kills), val: (r) => r.kills, big: (r) => hlNum(r.kills), unit: 'kills', period: 'this week' },
     { label: 'Most VP', short: 'VP', icon: () => hlEl('span', 'hl-mk hl-mk-vp', 'VP'), r: top((r) => r.vp, undefined, nowVp), val: (r) => r.vp, big: (r) => hlNum(r.vp), unit: 'VP', period: 'this week' },
-    { label: 'Objective points', short: 'Objectives', icon: () => hlImg('Event_Keep', 'hl-mk hl-mk-img', 16), r: top((r) => r.obj), val: (r) => r.obj, big: (r) => hlNum(r.obj),
-      unit: 'points · the value of each objective when taken', period: 'this week' },
+    { label: 'Capture points', short: 'Captures', icon: () => hlImg('Event_Keep', 'hl-mk hl-mk-img', 16), r: top((r) => r.obj), val: (r) => r.obj, big: (r) => hlNum(r.obj),
+      unit: 'points from objectives taken · by their tier', period: 'this week' },
     { label: 'Most active', short: 'Active', icon: () => hlSvg(HL_BOLT, 'hl-mk hl-mk-svg'), r: top((r) => r.kills + r.deaths), val: (r) => r.kills + r.deaths, big: (r) => hlNum(r.kills + r.deaths), unit: 'kills + deaths', period: 'this week' },
     { label: 'Best K/D', short: 'K/D', kd: true, r: top((r) => r.kills / r.deaths, (r) => r.deaths >= HL_KD_MIN_DEATHS),
       val: (r) => r.kills / r.deaths, big: (r) => (r.kills / r.deaths).toFixed(2), unit: 'kills per death', period: 'this week' },
   ];
   // A tier with no count would enter with 0 and name the wrong leader of the region: no metric while any is without.
   const counted = hlLive().every(hlTaken);
-  const shown = list.filter((x) => x.r && x.val(x.r) > 0 && (counted || x.short !== 'Objectives'));
-  // No objective points yet and none taken this week by what the page can see: the slide says so, in the place of its number.
-  if (shown.length && !shown.some((x) => x.short === 'Objectives') && !hlLive().some(hlTaken)) {
+  const shown = list.filter((x) => x.r && x.val(x.r) > 0 && (counted || x.short !== 'Captures'));
+  // No capture points yet and none taken this week by what the page can see: the slide says so, in the place of its number.
+  if (shown.length && !shown.some((x) => x.short === 'Captures') && !hlLive().some(hlTaken)) {
     hlFlips();
     if (!hlNewest) shown.splice(Math.min(2, shown.length), 0, { ...list[2], r: { color: 'new' }, wait: true });
   }
