@@ -374,7 +374,7 @@ function sitemapNote(root) {
     + 'change to the content, the JSON-LD or the links.';
 }
 
-// Both Apps Script projects pin the same two scopes: the annotation on the
+// The two Apps Script projects bound to a sheet pin the same two scopes: the annotation on the
 // first line and a manifest with oauthScopes; without them Apps Script scans
 // the source and may ask for every spreadsheet.
 export function checkAppsScriptScopes(problems, root = ROOT) {
@@ -397,6 +397,17 @@ export function checkAppsScriptScopes(problems, root = ROOT) {
     if (JSON.stringify(got) !== JSON.stringify(want)) {
       problems.push(`apps-script/${name}/appsscript.json: oauthScopes must be exactly ${list(want)}.`);
     }
+  }
+  // The notes script is bound to no file: external requests only.
+  let notes;
+  try {
+    notes = JSON.parse(fs.readFileSync(path.join(root, 'apps-script', 'notes', 'appsscript.json'), 'utf8')).oauthScopes;
+  } catch {
+    problems.push('apps-script/notes/appsscript.json: missing or not JSON.');
+    return;
+  }
+  if (JSON.stringify(notes) !== JSON.stringify([want[1]])) {
+    problems.push(`apps-script/notes/appsscript.json: oauthScopes must be exactly ${list([want[1]])}.`);
   }
 }
 
@@ -421,7 +432,7 @@ export function main(root = ROOT) {
       `${fetched + mentioned} hosts in the tree: ${fetched} fetched and named in the CSP, ${mentioned} mentioned only.`,
       'No demo hatch in js/.',
       'The teams notice is the first element in the body.',
-      'Both Apps Script projects pin the same two scopes.',
+      'The two sheet-bound Apps Script projects pin the same two scopes; the notes project, external requests only.',
       sitemapNote(root),
     ],
   };
