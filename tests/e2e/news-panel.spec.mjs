@@ -126,6 +126,13 @@ test.describe('event, reward and hotfix', () => {
     await expect(p.locator('.news-r').filter({ hasText: 'Example Borderlands map has replaced' }).getByText('Map', { exact: true })).toBeVisible();
   });
 
+  test('the panel sits right under the search', async ({ page, wvw }) => {
+    await serveNotes(page, extras(wvw.opensAt));
+    await page.goto(wvw.url);
+    await expect(panel(page)).toBeVisible();
+    await expect(page.locator('.search-panel + *')).toHaveAttribute('aria-label', 'Game updates for WvW');
+  });
+
   test('a hotfix alone is never a lead', async ({ page, wvw }) => {
     await serveNotes(page, [line(wvw.opensAt, 1, 'Fixed a bug with the gates.', 'bug', { hotfix: true })]);
     await page.goto(wvw.url);

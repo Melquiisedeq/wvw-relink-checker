@@ -331,7 +331,7 @@ function newsMount() {
   sheet.href = 'css/news.css';
   sheet.addEventListener('load', () => {
     newsPanel = newsBuild();
-    matchPanelsContainer.after(newsPanel);
+    document.querySelector('.search-panel').after(newsPanel);
     if (newsItems.some(newsLive)) {
       newsTimer = setInterval(newsTick, NEWS_TICK_MS);
       document.addEventListener('visibilitychange', () => { if (newsTimer && !document.hidden) newsTick(); });
