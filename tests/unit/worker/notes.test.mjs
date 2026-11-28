@@ -151,7 +151,7 @@ test('a note is what the wiki\'s last reading of its page had: gutted, blanked, 
   assert.deepEqual(await own(), original);
 });
 
-test('an update the wiki deletes leaves with the next reading; one on a page the push lacks stays', async (t) => {
+test('an update the wiki deletes leaves with the next reading; one on a page the push lacks, older than every page read, stays', async (t) => {
   const FAKE = 'Update - November 13, 2026';
   const fake = { page: '2026-11-12', update: FAKE, lead: NOTICE, lines: Array.from({ length: 60 }, (_, i) => WVW(i)) };
   const updates = async (w) => new Set((await w.notes()).data.notes.map((n) => n.update));
@@ -176,7 +176,7 @@ test('an update the wiki deletes leaves with the next reading; one on a page the
     await w.push(without);
     assert.ok(!(await updates(w)).has(JULY));
   });
-  await t.test('the notes of a page the push lacks (it failed, or left the index) stay', async () => {
+  await t.test('the notes of a page the push lacks, older than every page read (it left the five, or was cut for size), stay', async () => {
     const w = await read();
     const before = (await w.notes()).data.notes;
     for (let i = 0; i < 2; i++) { w.advance(6 * HOUR); await w.push(wikiNotes().filter((n) => n.page !== '2026-04-14')); }
@@ -208,8 +208,7 @@ test('an update the wiki deletes leaves with the next reading; one on a page the
 });
 
 test('a line built to make the type\'s rules backtrack is typed in linear time', () => {
-  // A cost word, then a run of digits with no '%': before, each digit was tried as the start of the
-  // number the rule looks for, about 160 ms here, past the Worker's 10 ms for the whole push.
+  // A cost word, then a run of digits with no '%'.
   const text = plainText('WvW ' + 'cost '.repeat(100) + '1'.repeat(1480));
   let best = Infinity;
   for (let i = 0; i < 3; i++) {
