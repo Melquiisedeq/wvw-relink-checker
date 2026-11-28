@@ -488,7 +488,7 @@ function hlSvg(paths, cls) {
   return svg;
 }
 // The metrics with a value: the best team of each over the running matches of the region, none for a metric every
-// team is still at 0 on (the week's first minutes). Capture score comes only from the copy's count: with none
+// team is still at 0 on (the week's first minutes). Capture points come only from the copy's count: with none
 // there is no such metric, and its slide says the week is new only while no objective has been taken at all.
 function hlLeaders() {
   const rows = [];
@@ -526,8 +526,8 @@ function hlLeaders() {
   const list = [
     { label: 'Most kills', short: 'Kills', icon: () => hlImg('Event_Swords', 'hl-mk hl-mk-img', 16), r: top((r) => r.kills), val: (r) => r.kills, big: (r) => hlNum(r.kills), unit: 'kills', period: 'this week' },
     { label: 'Most VP', short: 'VP', icon: () => hlEl('span', 'hl-mk hl-mk-vp', 'VP'), r: top((r) => r.vp, undefined, nowVp), val: (r) => r.vp, big: (r) => hlNum(r.vp), unit: 'VP', period: 'this week' },
-    { label: 'Capture score', short: 'Captures', icon: () => hlImg('Event_Keep', 'hl-mk hl-mk-img', 16), r: top((r) => r.obj), val: (r) => r.obj, big: (r) => hlNum(r.obj),
-      unit: 'War Score from captures · by the objective\'s tier', period: 'this week' },
+    { label: 'Capture points', short: 'Captures', icon: () => hlImg('Event_Keep', 'hl-mk hl-mk-img', 16), r: top((r) => r.obj), val: (r) => r.obj, big: (r) => hlNum(r.obj),
+      unit: 'points from objectives taken · by their tier', period: 'this week' },
     { label: 'Most active', short: 'Active', icon: () => hlSvg(HL_BOLT, 'hl-mk hl-mk-svg'), r: top((r) => r.kills + r.deaths), val: (r) => r.kills + r.deaths, big: (r) => hlNum(r.kills + r.deaths), unit: 'kills + deaths', period: 'this week' },
     { label: 'Best K/D', short: 'K/D', kd: true, r: top((r) => r.kills / r.deaths, (r) => r.deaths >= HL_KD_MIN_DEATHS),
       val: (r) => r.kills / r.deaths, big: (r) => (r.kills / r.deaths).toFixed(2), unit: 'kills per death', period: 'this week' },
@@ -535,7 +535,7 @@ function hlLeaders() {
   // A tier with no count would enter with 0 and name the wrong leader of the region: no metric while any is without.
   const counted = hlLive().every(hlTaken);
   const shown = list.filter((x) => x.r && x.val(x.r) > 0 && (counted || x.short !== 'Captures'));
-  // No capture score yet and none taken this week by what the page can see: the slide says so, in the place of its number.
+  // No capture points yet and none taken this week by what the page can see: the slide says so, in the place of its number.
   if (shown.length && !shown.some((x) => x.short === 'Captures') && !hlLive().some(hlTaken)) {
     hlFlips();
     if (!hlNewest) shown.splice(Math.min(2, shown.length), 0, { ...list[2], r: { color: 'new' }, wait: true });
